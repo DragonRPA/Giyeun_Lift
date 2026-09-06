@@ -31,6 +31,7 @@ import { Repairs } from './pages/Repairs';
 import { SmartAsRequest } from './pages/SmartAsRequest';
 import { FieldAsManagement } from './pages/FieldAsManagement';
 import { SmartDispatch } from './pages/smart_dispatch';
+import { SmartDispatch2 } from './pages/smart_dispatch2';
 import { SmartReturn } from './pages/smart_return';
 import { AssetHistory } from './pages/asset_history';
 import { AssetAssignment } from './pages/asset_assignment';
@@ -199,6 +200,7 @@ const App: React.FC = () => {
         { id: 'billing', name: '청구 / 수납 관리', icon: <CreditCard size={16} />, component: <Billings /> },
         { id: 'receivable', name: '외상미수금 대장', icon: <CreditCard size={16} />, component: <Receivables /> },
         { id: 'smart_dispatch', name: '출고 요청', icon: <Zap size={16} />, component: <SmartDispatch /> },
+        { id: 'smart_dispatch2', name: '출고 요청 (신설)', icon: <Zap size={16} />, component: <SmartDispatch2 /> },
         { id: 'smart_return', name: '회수 요청', icon: <Zap size={16} />, component: <SmartReturn /> },
         { id: 'smart_as_request', name: 'AS 요청', icon: <Wrench size={16} />, component: <SmartAsRequest /> },
       ]

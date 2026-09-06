@@ -8,7 +8,7 @@ import {
 import { useApp } from '../context/AppContext';
 import { ttsService } from '../services/ttsService';
 import { Customer, CustomerSite } from '../services/db';
-import { matchHangulAny, matchHangulFuzzy } from '../utils/hangulSearch';
+import { matchHangulAny } from '../utils/hangulSearch';
 import { 
   parseCustomerVoiceInput, 
   parseSiteVoiceInput, 
@@ -116,13 +116,12 @@ export const SmartDispatchConversationalStudio: React.FC<SmartDispatchConversati
     return isOptionsChangedFromSite(targetSite, paidOptions, protection, checkedSpecs);
   }, [selectedSite, pendingSite, paidOptions, protection, checkedSpecs]);
 
-  // 고객사 필터 (완성형, 초성 및 인접 자음 전치 퍼지 검색 완비)
+  // 고객사 필터 (완성형 및 초성 검색 지원)
   const filteredCustomers = useMemo(() => {
     if (!customerSearchText.trim()) return (customers || []).slice(0, 8);
     const q = customerSearchText.trim();
     return (customers || []).filter(c => 
-      matchHangulAny([c.name, c.representative, c.bizRegNo], q) ||
-      matchHangulFuzzy(c.name, q)
+      matchHangulAny([c.name, c.representative, c.bizRegNo], q)
     ).slice(0, 8);
   }, [customers, customerSearchText]);
 

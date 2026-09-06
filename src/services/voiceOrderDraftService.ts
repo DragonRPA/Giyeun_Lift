@@ -1,6 +1,6 @@
 // src/services/voiceOrderDraftService.ts
 import { Customer, CustomerSite, Asset, Delivery } from './db';
-import { matchHangul, matchHangulFuzzy, extractChosung } from '../utils/hangulSearch';
+import { matchHangul, extractChosung } from '../utils/hangulSearch';
 
 export interface EquipmentOrderItem {
   ft: string;
@@ -1306,12 +1306,6 @@ export function parseCustomerVoiceInput(text: string, customers: Customer[]): Cu
     if (c.representative && matchHangul(c.representative, clean)) return c;
   }
 
-  // 9. 초성 자음 전치/오타 퍼지 매칭 (예: 'ㅅㅂㅇㅇ' -> '백산이엔씨')
-  for (const c of customers) {
-    const sName = c.name.replace(/주식회사|\(주\)|\s/g, '');
-    if (matchHangulFuzzy(sName, clean)) return c;
-  }
-
   return null;
 }
 
@@ -1379,10 +1373,10 @@ export function parseSiteVoiceInput(
     }
   }
 
-  // 5-2. 기존 현장 초성 및 퍼지 매칭 (예: 'ㅍㅌ' -> '평택고덕', 'ㅍㄱ' -> '판교 R&D 센터 현장')
+  // 5-2. 기존 현장 초성 매칭 (예: 'ㅍㅌ' -> '평택고덕', 'ㅍㄱ' -> '판교 R&D 센터 현장')
   for (const s of targetSites) {
     const sName = s.name.replace(/\s/g, '');
-    if (matchHangul(sName, cleanForMatch) || matchHangulFuzzy(sName, cleanForMatch)) {
+    if (matchHangul(sName, cleanForMatch)) {
       return {
         site: s,
         isNew: false,

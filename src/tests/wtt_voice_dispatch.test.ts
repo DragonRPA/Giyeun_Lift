@@ -1105,24 +1105,30 @@ export function runWttSuite(): WttResult[] {
   }
 
   // -------------------------------------------------------------
-  // 시나리오 42: 초성 자음 전치(Swap) 오타 퍼지 보정 검증
-  // 5대 축: 공간/맥락(자음 도치 오타 허용)
+  // 시나리오 42: 초성 자음 임의 전치(Swap) 배제 및 의도왜곡 방지 거버넌스 가드 검증
+  // 5대 축: 공간/거버넌스(임의 자음 치환 금지 및 거래처 의도왜곡 원천 차단)
   // -------------------------------------------------------------
   {
     const issues: string[] = [];
-    // 'ㅅㅂㅇㅇ' (ㅂ과 ㅅ 도치 오타) -> '백산이엔씨' (ㅂㅅㅇㅇ) 퍼지 보정 매칭
-    const custFuzzy = parseCustomerVoiceInput('ㅅㅂㅇㅇ', mockCustomers);
-    if (!custFuzzy || custFuzzy.name !== '백산이엔씨') {
-      issues.push(`'ㅅㅂㅇㅇ' 자음 도치 퍼지 매칭 실패: ${custFuzzy?.name}`);
+    // 1) 'ㅅㅂㅇㅇ' 입력 시 시스템이 임의로 자음을 뒤바꿔 '백산이엔씨'(ㅂㅅㅇㅇ)로 왜곡 매칭하지 않고 안전하게 null을 반환해야 함
+    const custStrict = parseCustomerVoiceInput('ㅅㅂㅇㅇ', mockCustomers);
+    if (custStrict !== null) {
+      issues.push(`'ㅅㅂㅇㅇ' 임의 자음 전치로 인한 의도왜곡 매칭 발생: ${custStrict?.name}`);
+    }
+
+    // 2) 사용자가 의도한 정당한 초성 'ㅂㅅㅇㅇ' 입력 시에는 정상적으로 '백산이엔씨' 매칭
+    const validCust = parseCustomerVoiceInput('ㅂㅅㅇㅇ', mockCustomers);
+    if (!validCust || validCust.name !== '백산이엔씨') {
+      issues.push(`정규 초성 'ㅂㅅㅇㅇ' 매칭 실패: ${validCust?.name}`);
     }
 
     results.push({
       scenarioId: 'WTT-DISP-42',
-      name: '초성 자음 전치(Swap) 오타 퍼지 보정 검증 (ㅅㅂㅇㅇ -> 백산이엔씨)',
-      axis: '공간/맥락(자음 도치 오타 허용)',
+      name: '초성 자음 임의 전치(Swap) 배제 및 의도왜곡 방지 거버넌스 가드 검증 (ㅅㅂㅇㅇ -> null 안전 차단)',
+      axis: '공간/거버넌스(임의 자음 치환 금지 및 거래처 의도왜곡 원천 차단)',
       passed: issues.length === 0,
       issues,
-      details: { input: 'ㅅㅂㅇㅇ', matched: custFuzzy?.name }
+      details: { input: 'ㅅㅂㅇㅇ', result: custStrict, validMatch: validCust?.name }
     });
   }
 

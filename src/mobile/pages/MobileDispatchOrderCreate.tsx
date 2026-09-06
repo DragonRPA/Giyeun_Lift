@@ -5,7 +5,7 @@ import {
   Building2, MapPin, Phone, Calendar, Clock, Plus, Minus, 
   Send, AlertTriangle, CheckCircle2, ChevronRight, ArrowLeft, Bot,
   Mic, MicOff, RotateCcw, FileText, Check, Sparkles, ClipboardList,
-  RotateCw, Truck, ArrowDownLeft, ArrowUpRight
+  RotateCw, Truck, ArrowDownLeft, ArrowUpRight, Shield, ChevronDown, ChevronUp, Wrench
 } from 'lucide-react';
 import { matchHangul } from '../../utils/hangulSearch';
 import { 
@@ -16,8 +16,9 @@ import {
   VoiceOrderDraft, 
   EquipmentOrderItem 
 } from '../../services/voiceOrderDraftService';
-import { db, ContractHistory, Delivery, ContractAsset } from '../../services/db';
+import { db, ContractHistory, Delivery, ContractAsset, STANDARD_SPECS } from '../../services/db';
 import { broadcastWorkNotification } from '../../utils/workNotificationService';
+import { VoiceGuideWizardModal, VoiceGuideWizardCompleteData } from '../components/VoiceGuideWizardModal';
 
 interface MobileDispatchOrderCreateProps {
   onBack: () => void;
@@ -70,6 +71,17 @@ export const MobileDispatchOrderCreate: React.FC<MobileDispatchOrderCreateProps>
   const [siteContactName, setSiteContactName] = useState('');
   const [siteContactPhone, setSiteContactPhone] = useState('');
   
+  // 전체 출고의뢰 8대 도메인 확장 상태
+  const [paidOptions, setPaidOptions] = useState('');
+  const [protection, setProtection] = useState('');
+  const [checkedSpecs, setCheckedSpecs] = useState<Record<string, boolean>>({});
+  const [billableToCustomer, setBillableToCustomer] = useState(false);
+  const [closingDay, setClosingDay] = useState('말일');
+  const [paymentDay, setPaymentDay] = useState('익월 25일');
+  const [taxBillEmail, setTaxBillEmail] = useState('');
+  const [vehicleType, setVehicleType] = useState('5톤 렉카');
+  const [isSpecsAccordionOpen, setIsSpecsAccordionOpen] = useState(false);
+  
   // 납품/회수 일시 (기본값: 내일 08:00)
   const tomorrow = useMemo(() => {
     const d = new Date();
@@ -94,6 +106,9 @@ export const MobileDispatchOrderCreate: React.FC<MobileDispatchOrderCreateProps>
   const [memo, setMemo] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [toastMessage, setToastMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
+  // 대화형 음성 가이드 위자드 모달 상태
+  const [isVoiceWizardOpen, setIsVoiceWizardOpen] = useState(false);
 
   // 음성 조각 입력 및 임시저장 상태
   const [isListening, setIsListening] = useState(false);
@@ -126,6 +141,14 @@ export const MobileDispatchOrderCreate: React.FC<MobileDispatchOrderCreateProps>
       if (saved.deliveryTime) setDeliveryTime(saved.deliveryTime);
       if (saved.orders && saved.orders.length > 0) setOrders(saved.orders);
       if (saved.memo) setMemo(saved.memo);
+      if (saved.paidOptions) setPaidOptions(saved.paidOptions);
+      if (saved.protection) setProtection(saved.protection);
+      if (saved.checkedSpecs) setCheckedSpecs(saved.checkedSpecs);
+      if (saved.billableToCustomer !== undefined) setBillableToCustomer(saved.billableToCustomer);
+      if (saved.closingDay) setClosingDay(saved.closingDay);
+      if (saved.paymentDay) setPaymentDay(saved.paymentDay);
+      if (saved.taxBillEmail) setTaxBillEmail(saved.taxBillEmail);
+      if (saved.vehicleType) setVehicleType(saved.vehicleType);
       if (saved.snippets && saved.snippets.length > 0) setSnippetsHistory(saved.snippets);
       setHasRestoredDraft(true);
     }
@@ -145,7 +168,7 @@ export const MobileDispatchOrderCreate: React.FC<MobileDispatchOrderCreateProps>
 
   // 2. 값 변경 시 로컬스토리지 자동 임시저장
   useEffect(() => {
-    if (selectedCustomerId || siteAddress || siteContactPhone || memo || orders.length > 1 || orders[0]?.count > 1 || snippetsHistory.length > 0) {
+    if (selectedCustomerId || siteAddress || siteContactPhone || memo || paidOptions || protection || orders.length > 1 || orders[0]?.count > 1 || snippetsHistory.length > 0) {
       const cust = customers.find(c => c.id === selectedCustomerId);
       const site = sites.find(s => s.id === selectedSiteId);
       const draft: VoiceOrderDraft = {
@@ -157,17 +180,30 @@ export const MobileDispatchOrderCreate: React.FC<MobileDispatchOrderCreateProps>
         siteAddress,
         siteContactName,
         siteContactPhone,
+        siteContactEmail: '',
         deliveryDate,
         deliveryTime,
         orders,
         memo,
+        paidOptions,
+        protection,
+        checkedSpecs,
+        billableToCustomer,
+        closingDay,
+        paymentDay,
+        taxBillEmail,
+        vehicleType,
         snippets: snippetsHistory,
         updatedAt: new Date().toISOString()
       };
       saveVoiceOrderDraft(draft);
       setHasRestoredDraft(true);
     }
-  }, [selectedCustomerId, selectedSiteId, newSiteName, siteAddress, siteContactName, siteContactPhone, deliveryDate, deliveryTime, orders, memo, snippetsHistory, customers, sites]);
+  }, [
+    selectedCustomerId, selectedSiteId, newSiteName, siteAddress, siteContactName, siteContactPhone,
+    deliveryDate, deliveryTime, orders, memo, paidOptions, protection, checkedSpecs, billableToCustomer,
+    closingDay, paymentDay, taxBillEmail, vehicleType, snippetsHistory, customers, sites
+  ]);
 
   // 해당 고객사/현장에서 현재 대여 중인 자산 목록
   const siteRentedAssets = useMemo(() => {
@@ -209,6 +245,14 @@ export const MobileDispatchOrderCreate: React.FC<MobileDispatchOrderCreateProps>
     setActiveFt('19ft');
     setSelectedReturnAssetIds([]);
     setMemo('');
+    setPaidOptions('');
+    setProtection('');
+    setCheckedSpecs({});
+    setBillableToCustomer(false);
+    setClosingDay('말일');
+    setPaymentDay('익월 25일');
+    setTaxBillEmail('');
+    setVehicleType('5톤 렉카');
     setSnippetsHistory([]);
     setRecentModifiedFields([]);
     setHasRestoredDraft(false);
@@ -267,6 +311,13 @@ export const MobileDispatchOrderCreate: React.FC<MobileDispatchOrderCreateProps>
       setOrders(updatedDraft.orders);
     }
     if (updatedDraft.memo) setMemo(updatedDraft.memo);
+    if (updatedDraft.paidOptions) setPaidOptions(updatedDraft.paidOptions);
+    if (updatedDraft.protection) setProtection(updatedDraft.protection);
+    if (updatedDraft.checkedSpecs) setCheckedSpecs(updatedDraft.checkedSpecs);
+    if (updatedDraft.billableToCustomer !== undefined) setBillableToCustomer(updatedDraft.billableToCustomer);
+    if (updatedDraft.closingDay) setClosingDay(updatedDraft.closingDay);
+    if (updatedDraft.paymentDay) setPaymentDay(updatedDraft.paymentDay);
+    if (updatedDraft.vehicleType) setVehicleType(updatedDraft.vehicleType);
     if (updatedDraft.snippets) setSnippetsHistory(updatedDraft.snippets);
 
     // 회수 모드일 때 언급된 장비번호 자동 체크
@@ -400,6 +451,15 @@ export const MobileDispatchOrderCreate: React.FC<MobileDispatchOrderCreateProps>
     setSiteContactName('');
     setSiteContactPhone('');
     setSelectedReturnAssetIds([]);
+    const cust = customers.find(c => c.id === custId);
+    if (cust) {
+      if (cust.defaultPaidOptions) setPaidOptions(cust.defaultPaidOptions);
+      if (cust.defaultProtection) setProtection(cust.defaultProtection);
+      if (cust.defaultCheckedSpecs) setCheckedSpecs(cust.defaultCheckedSpecs);
+      if (cust.defaultBillingDay) setClosingDay(cust.defaultBillingDay === 30 || cust.defaultBillingDay === 31 ? '말일' : `${cust.defaultBillingDay}일`);
+      if (cust.paymentDueDay) setPaymentDay(`익월 ${cust.paymentDueDay}일`);
+      if (cust.repEmail && cust.repEmail !== '미상') setTaxBillEmail(cust.repEmail);
+    }
   };
 
   // 현장 변경 핸들러
@@ -417,6 +477,9 @@ export const MobileDispatchOrderCreate: React.FC<MobileDispatchOrderCreateProps>
       setSiteAddress(found.address || '');
       setSiteContactName(found.contactName || '');
       setSiteContactPhone(found.contact || '');
+      if (found.paidOptions) setPaidOptions(found.paidOptions);
+      if (found.protection) setProtection(found.protection);
+      if (found.checkedSpecs) setCheckedSpecs(found.checkedSpecs);
     }
   };
 
@@ -757,16 +820,23 @@ export const MobileDispatchOrderCreate: React.FC<MobileDispatchOrderCreateProps>
         salespersonPhone: currentUser?.phone || '',
         siteContactName: siteContactName.trim() || '현장소장',
         siteContactPhone: siteContactPhone.trim(),
+        siteContactEmail: '',
+        billingContactName: '',
+        billingContactPhone: '',
+        statementEmail: '',
+        taxBillEmail: taxBillEmail.trim() || selectedCust.repEmail || '',
         loadingTime: `${deliveryDate} ${deliveryTime}`,
         unloadingTime: `${deliveryDate} ${deliveryTime}`,
         equipments: equipmentsList,
-        closingDay: String(selectedCust.defaultBillingDay || 30),
-        paymentDay: String(selectedCust.paymentDueDay || 25),
+        closingDay: closingDay || String(selectedCust.defaultBillingDay || 30),
+        paymentDay: paymentDay || String(selectedCust.paymentDueDay || 25),
         note: `[모바일 외근 출고의뢰] ${memo}`.trim(),
         rawText: `모바일 출고요청: ${selectedCust.name} / ${finalSiteName} (${totalEquipCount}대)`,
-        paidOptions: '',
-        protection: '',
-        checkedSpecs: {},
+        paidOptions: paidOptions.trim(),
+        protection: protection.trim(),
+        checkedSpecs,
+        billableToCustomer,
+        vehicleType,
         isSetAsCustomerDefault: false,
         applyToAllSites: false
       };
@@ -930,42 +1000,51 @@ export const MobileDispatchOrderCreate: React.FC<MobileDispatchOrderCreateProps>
           )}
         </div>
 
-        {/* 큰 터치 녹음 버튼 */}
+        {/* 🌟 [1] 메인: 대화형 4단계 음성 가이드 위자드 실행 버튼 */}
         <button
           type="button"
-          onClick={handleToggleListening}
-          className={`w-full py-3 px-4 rounded-xl flex items-center justify-center gap-2 font-bold text-xs transition-all active:scale-[0.98] ${
-            isListening
-              ? 'bg-rose-600 text-white animate-pulse shadow-lg shadow-rose-900/50'
-              : dispatchMode === 'EXCHANGE'
-              ? 'bg-purple-600 hover:bg-purple-500 text-white shadow-md shadow-purple-900/30'
-              : dispatchMode === 'RETURN'
-              ? 'bg-amber-600 hover:bg-amber-500 text-white shadow-md shadow-amber-900/30'
-              : 'bg-blue-600 hover:bg-blue-500 text-white shadow-md shadow-blue-900/30'
-          }`}
+          onClick={() => setIsVoiceWizardOpen(true)}
+          className="w-full py-3.5 px-4 rounded-xl flex items-center justify-between font-black text-xs text-white bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-500 hover:from-blue-500 hover:to-indigo-500 shadow-lg shadow-blue-600/30 transition-all active:scale-[0.98]"
         >
-          {isListening ? (
-            <>
-              <MicOff className="w-4 h-4" />
-              <span>음성 수신 중</span>
-            </>
-          ) : (
-            <>
-              <Mic className="w-4 h-4" />
-              <span>음성 입력</span>
-            </>
-          )}
+          <div className="flex items-center gap-2">
+            <div className="w-7 h-7 rounded-lg bg-white/20 flex items-center justify-center">
+              <Sparkles className="w-4 h-4 text-white" />
+            </div>
+            <div className="text-left">
+              <div className="text-[13px] font-extrabold tracking-tight">대화형 음성 인터뷰 접수</div>
+              <div className="text-[10px] text-blue-200 font-normal">고객 ➔ 현장 ➔ 장비/수량 ➔ 하차일시 4단계 가이드</div>
+            </div>
+          </div>
+          <div className="flex items-center gap-1 text-[11px] font-bold bg-white/15 px-2.5 py-1 rounded-lg">
+            <Mic className="w-3.5 h-3.5" />
+            <span>시작</span>
+          </div>
         </button>
 
-        {/* 클립보드 통화 녹음 텍스트 붙여넣기 버튼 */}
-        <button
-          type="button"
-          onClick={handlePasteCallTranscript}
-          className="w-full py-2.5 px-3 rounded-xl bg-slate-800 hover:bg-slate-750 border border-slate-700 text-xs font-bold text-slate-200 flex items-center justify-center gap-1.5 transition-all active:scale-[0.98]"
-        >
-          <ClipboardList className="w-3.5 h-3.5 text-sky-400" />
-          <span>통화 텍스트 붙여넣기</span>
-        </button>
+        {/* 🌟 [2] 보조: 단일 음성 발화 & 통화 텍스트 붙여넣기 (2열 그리드) */}
+        <div className="grid grid-cols-2 gap-2">
+          <button
+            type="button"
+            onClick={handleToggleListening}
+            className={`py-2.5 px-3 rounded-xl flex items-center justify-center gap-1.5 font-bold text-xs transition-all active:scale-[0.98] ${
+              isListening
+                ? 'bg-rose-600 text-white animate-pulse shadow-md shadow-rose-900/50'
+                : 'bg-slate-800 hover:bg-slate-750 border border-slate-700 text-slate-200'
+            }`}
+          >
+            {isListening ? <MicOff className="w-3.5 h-3.5" /> : <Mic className="w-3.5 h-3.5 text-blue-400" />}
+            <span>{isListening ? '수신 중단' : '자유 음성 발화'}</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={handlePasteCallTranscript}
+            className="py-2.5 px-3 rounded-xl bg-slate-800 hover:bg-slate-750 border border-slate-700 text-xs font-bold text-slate-200 flex items-center justify-center gap-1.5 transition-all active:scale-[0.98]"
+          >
+            <ClipboardList className="w-3.5 h-3.5 text-sky-400" />
+            <span>통화 텍스트 붙여넣기</span>
+          </button>
+        </div>
 
         {/* 실시간 말풍선 */}
         {(isListening || interimText) && (
@@ -1440,14 +1519,257 @@ export const MobileDispatchOrderCreate: React.FC<MobileDispatchOrderCreateProps>
           </div>
         </div>
 
-        {/* 4. 특이사항 및 현장 메모 */}
+        {/* 4. 유상옵션 및 보양작업 / 21대 안전스펙 (출고 및 대차 모드) */}
+        {dispatchMode !== 'RETURN' && (
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 flex flex-col gap-3.5">
+            <span className="text-xs font-bold text-purple-400 flex items-center gap-1.5">
+              <Shield className="w-3.5 h-3.5" />
+              현장 유상옵션 및 보양 / 안전스펙
+            </span>
+
+            {/* 유상옵션 입력 및 추천 칩 */}
+            <div className="flex flex-col gap-1.5">
+              <div className="flex items-center justify-between">
+                <label className="text-[11px] text-slate-400 font-bold">유상 옵션 (철망/함석/에어배관 등)</label>
+                {paidOptions && (
+                  <button
+                    type="button"
+                    onClick={() => setPaidOptions('')}
+                    className="text-[10px] text-slate-500 hover:text-slate-400"
+                  >
+                    초기화
+                  </button>
+                )}
+              </div>
+              <input
+                type="text"
+                value={paidOptions}
+                onChange={(e) => setPaidOptions(e.target.value)}
+                placeholder="예: 4면 철망 설치, 에어배관, 소형 발전기..."
+                className="w-full rounded-xl p-2.5 text-xs text-white placeholder-slate-500 focus:outline-none"
+                style={{ backgroundColor: '#090d16', border: '1px solid #334155' }}
+              />
+              <div className="flex flex-wrap gap-1.5 mt-0.5">
+                {['4면 철망', '3면 철망', '함석 설치', '에어배관', '발전기 탑재'].map((chip) => {
+                  const isIncluded = paidOptions.includes(chip);
+                  return (
+                    <button
+                      key={chip}
+                      type="button"
+                      onClick={() => {
+                        if (isIncluded) {
+                          setPaidOptions(prev => prev.split(', ').filter(s => s !== chip).join(', '));
+                        } else {
+                          setPaidOptions(prev => prev ? `${prev}, ${chip}` : chip);
+                        }
+                      }}
+                      className={`px-2 py-1 rounded-lg text-[10.5px] font-bold transition-all ${
+                        isIncluded
+                          ? 'bg-purple-600 text-white border border-purple-500'
+                          : 'bg-slate-950 text-slate-400 border border-slate-800 hover:border-slate-700'
+                      }`}
+                    >
+                      {isIncluded ? `✓ ${chip}` : `+ ${chip}`}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* 보양작업 입력 및 추천 칩 */}
+            <div className="flex flex-col gap-1.5 pt-1 border-t border-slate-800/80">
+              <div className="flex items-center justify-between">
+                <label className="text-[11px] text-slate-400 font-bold">보양 작업 (바닥보양/휠보양/사다리 등)</label>
+                {protection && (
+                  <button
+                    type="button"
+                    onClick={() => setProtection('')}
+                    className="text-[10px] text-slate-500 hover:text-slate-400"
+                  >
+                    초기화
+                  </button>
+                )}
+              </div>
+              <input
+                type="text"
+                value={protection}
+                onChange={(e) => setProtection(e.target.value)}
+                placeholder="예: 바닥 보양(부직포/플라베니아), 휠커버, 탑승구 사다리보양..."
+                className="w-full rounded-xl p-2.5 text-xs text-white placeholder-slate-500 focus:outline-none"
+                style={{ backgroundColor: '#090d16', border: '1px solid #334155' }}
+              />
+              <div className="flex flex-wrap gap-1.5 mt-0.5">
+                {['바닥 보양(부직포)', '타이어 휠커버', '사다리 보양', '모서리 랩핑'].map((chip) => {
+                  const isIncluded = protection.includes(chip);
+                  return (
+                    <button
+                      key={chip}
+                      type="button"
+                      onClick={() => {
+                        if (isIncluded) {
+                          setProtection(prev => prev.split(', ').filter(s => s !== chip).join(', '));
+                        } else {
+                          setProtection(prev => prev ? `${prev}, ${chip}` : chip);
+                        }
+                      }}
+                      className={`px-2 py-1 rounded-lg text-[10.5px] font-bold transition-all ${
+                        isIncluded
+                          ? 'bg-indigo-600 text-white border border-indigo-500'
+                          : 'bg-slate-950 text-slate-400 border border-slate-800 hover:border-slate-700'
+                      }`}
+                    >
+                      {isIncluded ? `✓ ${chip}` : `+ ${chip}`}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* 21대 안전 스펙 빠른 체크 아코디언 */}
+            <div className="pt-1 border-t border-slate-800/80 flex flex-col gap-2">
+              <button
+                type="button"
+                onClick={() => setIsSpecsAccordionOpen(prev => !prev)}
+                className="flex items-center justify-between text-[11px] font-bold text-slate-300 py-1 hover:text-white"
+              >
+                <span className="flex items-center gap-1.5">
+                  <Wrench className="w-3 h-3 text-amber-400" />
+                  현장 필수 안전장치 스펙 ({Object.values(checkedSpecs).filter(Boolean).length}개 선택됨)
+                </span>
+                {isSpecsAccordionOpen ? <ChevronUp className="w-3.5 h-3.5 text-slate-400" /> : <ChevronDown className="w-3.5 h-3.5 text-slate-400" />}
+              </button>
+
+              {isSpecsAccordionOpen && (
+                <div className="grid grid-cols-2 gap-1.5 pt-1">
+                  {[
+                    { id: 'spec3', label: '상단 감지봉/협착센서' },
+                    { id: 'spec4', label: '원판 설치' },
+                    { id: 'spec11', label: '탑승구 사다리 보양' },
+                    { id: 'spec13', label: '소화기함/손잡이 부착' },
+                    { id: 'spec15', label: '점멸등/비상정지장치' },
+                    { id: 'spec21', label: '인증서/보험증권 서류세트' },
+                  ].map(item => {
+                    const isChecked = !!checkedSpecs[item.id];
+                    return (
+                      <button
+                        key={item.id}
+                        type="button"
+                        onClick={() => setCheckedSpecs(prev => ({ ...prev, [item.id]: !prev[item.id] }))}
+                        className={`p-2 rounded-xl border text-[11px] font-bold flex items-center gap-1.5 text-left transition-all ${
+                          isChecked
+                            ? 'bg-amber-950/40 border-amber-500 text-amber-200'
+                            : 'bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-700'
+                        }`}
+                      >
+                        <div className={`w-3.5 h-3.5 rounded flex items-center justify-center border shrink-0 ${
+                          isChecked ? 'bg-amber-600 border-amber-500 text-white' : 'border-slate-700 bg-slate-900'
+                        }`}>
+                          {isChecked && <Check className="w-2.5 h-2.5" />}
+                        </div>
+                        <span className="truncate">{item.label}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* 5. 물류 운송비 부담 및 정산마감 조건 */}
+        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 flex flex-col gap-3.5">
+          <span className="text-xs font-bold text-emerald-400 flex items-center gap-1.5">
+            <Truck className="w-3.5 h-3.5" />
+            물류 운송비 및 정산 마감조건
+          </span>
+
+          {/* 운송비 부담주체 원터치 토글 (당사부담 vs 고객청구) */}
+          <div className="flex flex-col gap-1">
+            <label className="text-[11px] text-slate-400 font-bold">운송비 부담 주체 *</label>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => setBillableToCustomer(false)}
+                className={`p-2.5 rounded-xl border text-xs font-bold flex items-center justify-center gap-1.5 transition-all ${
+                  !billableToCustomer
+                    ? 'bg-emerald-600 text-white border-emerald-500 shadow-lg shadow-emerald-950/40'
+                    : 'bg-slate-950 text-slate-400 border-slate-800 hover:border-slate-700'
+                }`}
+              >
+                {!billableToCustomer && <Check className="w-3.5 h-3.5" />}
+                <span>당사 부담 (기본)</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setBillableToCustomer(true)}
+                className={`p-2.5 rounded-xl border text-xs font-bold flex items-center justify-center gap-1.5 transition-all ${
+                  billableToCustomer
+                    ? 'bg-rose-600 text-white border-rose-500 shadow-lg shadow-rose-950/40'
+                    : 'bg-slate-950 text-slate-400 border-slate-800 hover:border-slate-700'
+                }`}
+              >
+                {billableToCustomer && <Check className="w-3.5 h-3.5" />}
+                <span>고객사 청구 (현장부담)</span>
+              </button>
+            </div>
+          </div>
+
+          {/* 차종 선택 */}
+          <div className="flex flex-col gap-1">
+            <label className="text-[11px] text-slate-400 font-bold">배차 희망 차종</label>
+            <div className="grid grid-cols-3 gap-1.5">
+              {['5톤 렉카', '셀프로더', '대형 축차'].map(vt => (
+                <button
+                  key={vt}
+                  type="button"
+                  onClick={() => setVehicleType(vt)}
+                  className={`py-2 px-1 rounded-xl border text-center text-xs font-bold transition-all ${
+                    vehicleType === vt
+                      ? 'bg-slate-800 text-white border-blue-500'
+                      : 'bg-slate-950 text-slate-400 border-slate-800 hover:border-slate-700'
+                  }`}
+                >
+                  {vt}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* 마감일 / 결제일 / 계산서 수신 메일 */}
+          <div className="grid grid-cols-2 gap-2 pt-1 border-t border-slate-800/80">
+            <div className="flex flex-col gap-1">
+              <label className="text-[11px] text-slate-400">청구 마감일</label>
+              <input
+                type="text"
+                value={closingDay}
+                onChange={(e) => setClosingDay(e.target.value)}
+                placeholder="말일, 20일, 25일..."
+                className="w-full rounded-xl p-2.5 text-xs text-white focus:outline-none"
+                style={{ backgroundColor: '#090d16', border: '1px solid #334155' }}
+              />
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className="text-[11px] text-slate-400">대금 결제일</label>
+              <input
+                type="text"
+                value={paymentDay}
+                onChange={(e) => setPaymentDay(e.target.value)}
+                placeholder="익월 25일, 익월 말일..."
+                className="w-full rounded-xl p-2.5 text-xs text-white focus:outline-none"
+                style={{ backgroundColor: '#090d16', border: '1px solid #334155' }}
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* 6. 특이사항 및 현장 메모 */}
         <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 flex flex-col gap-2">
           <label className="text-xs font-bold text-slate-300">특이사항 및 배차 메모</label>
           <textarea
             rows={3}
             value={memo}
             onChange={(e) => setMemo(e.target.value)}
-            placeholder={dispatchMode === 'RETURN' ? '회수 위치, 하역장 위치 등 메모...' : '현장 출입 조건, 진입로 주의점, 특이 요청사항 등...'}
+            placeholder={dispatchMode === 'RETURN' ? '회수 위치, 하역장 위치 등 메모...' : '지게차 하차 필요, 지하 2층 높이제한 2.3m, 현장 출입 조건 등...'}
             className="w-full rounded-xl p-3 text-xs text-white placeholder-slate-500 focus:outline-none"
             style={{
               backgroundColor: '#090d16',
@@ -1490,6 +1812,33 @@ export const MobileDispatchOrderCreate: React.FC<MobileDispatchOrderCreateProps>
           )}
         </button>
       </form>
+
+      {/* ─── 대화형 음성 인터뷰 위자드 모달 ─── */}
+      <VoiceGuideWizardModal
+        isOpen={isVoiceWizardOpen}
+        onClose={() => setIsVoiceWizardOpen(false)}
+        onComplete={(data: VoiceGuideWizardCompleteData) => {
+          if (data.customerId) setSelectedCustomerId(data.customerId);
+          if (data.siteId) setSelectedSiteId(data.siteId);
+          if (data.newSiteName) setNewSiteName(data.newSiteName);
+          if (data.siteAddress) setSiteAddress(data.siteAddress);
+          if (data.siteContactName) setSiteContactName(data.siteContactName);
+          if (data.siteContactPhone) setSiteContactPhone(data.siteContactPhone);
+          if (data.deliveryDate) setDeliveryDate(data.deliveryDate);
+          if (data.deliveryTime) setDeliveryTime(data.deliveryTime);
+          if (data.orders && data.orders.length > 0) setOrders(data.orders);
+          if (data.paidOptions) setPaidOptions(data.paidOptions);
+          if (data.protection) setProtection(data.protection);
+          if (data.checkedSpecs) setCheckedSpecs(data.checkedSpecs);
+          if (data.billableToCustomer !== undefined) setBillableToCustomer(data.billableToCustomer);
+          if (data.closingDay) setClosingDay(data.closingDay);
+          if (data.paymentDay) setPaymentDay(data.paymentDay);
+          if (data.vehicleType) setVehicleType(data.vehicleType);
+          if (data.memo) setMemo(data.memo);
+          setHasRestoredDraft(true);
+          showToast('대화형 음성으로 출고의뢰 전체 서식이 완성되었습니다.');
+        }}
+      />
     </div>
   );
 };

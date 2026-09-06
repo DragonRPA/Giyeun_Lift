@@ -4,10 +4,11 @@ import { useApp } from '../../context/AppContext';
 import { CameraUploader } from '../components/CameraUploader';
 import { 
   ArrowLeft, Check, Plus, AlertTriangle, Mic, MicOff, 
-  FileText, RotateCcw, Sparkles, X, CheckCircle2, MapPin
+  FileText, RotateCcw, Sparkles, X, CheckCircle2, MapPin, Volume2, VolumeX
 } from 'lucide-react';
 import { parseAsCallTranscript } from '../../services/voiceOrderDraftService';
 import { resolveSiteDetailedAddress } from '../../utils/nativeLauncher';
+import { ttsService } from '../../services/ttsService';
 
 interface MobileAsCreateProps {
   onBack: () => void;
@@ -52,11 +53,16 @@ export const MobileAsCreate: React.FC<MobileAsCreateProps> = ({
 
   // 음성 및 통화 텍스트 파싱 상태
   const [isListening, setIsListening] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [ttsEnabled, setTtsEnabled] = useState<boolean>(() => ttsService.getIsEnabled());
   const [interimText, setInterimText] = useState('');
   const [showPasteModal, setShowPasteModal] = useState(false);
   const [pastedTranscript, setPastedTranscript] = useState('');
   const [recentModifiedFields, setRecentModifiedFields] = useState<string[]>([]);
   const recognitionRef = useRef<any>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
+  const streamRef = useRef<MediaStream | null>(null);
 
   // 🌟 1. 장비번호 입력 시 계약 현장 및 고객사·도로명 주소 실시간 자동 역추적
   const handleAssetNoChange = (val: string) => {
@@ -176,19 +182,130 @@ export const MobileAsCreate: React.FC<MobileAsCreateProps> = ({
     setRecentModifiedFields(result.modifiedFields);
   };
 
-  // Web Speech API 음성 인식 제어
-  const toggleListening = () => {
+  // 고정밀 Groq Whisper STT 및 Web Speech 폴백 음성 제어
+  const toggleListening = async () => {
     if (isListening) {
-      if (recognitionRef.current) {
-        recognitionRef.current.stop();
-      }
+      // 녹음 종료 및 STT 분석
       setIsListening(false);
+
+      if (recognitionRef.current) {
+        try { recognitionRef.current.stop(); } catch {}
+        recognitionRef.current = null;
+        return;
+      }
+
+      if (!mediaRecorderRef.current || mediaRecorderRef.current.state === 'inactive') {
+        return;
+      }
+
+      setIsProcessing(true);
+      setInterimText('음성을 분석하고 있습니다...');
+
+      mediaRecorderRef.current.onstop = async () => {
+        try {
+          if (streamRef.current) {
+            streamRef.current.getTracks().forEach(t => t.stop());
+            streamRef.current = null;
+          }
+
+          const mime = mediaRecorderRef.current?.mimeType || 'audio/webm';
+          const blob = new Blob(audioChunksRef.current, { type: mime });
+
+          if (blob.size < 200) {
+            setIsProcessing(false);
+            setInterimText('');
+            return;
+          }
+
+          const reader = new FileReader();
+          reader.readAsDataURL(blob);
+          reader.onloadend = async () => {
+            const base64Audio = reader.result as string;
+            try {
+              const res = await fetch('/api/groq-stt', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  audioBase64: base64Audio,
+                  mimeType: mime,
+                  language: 'ko',
+                  prompt: '기연리프트 현장 긴급 AS 접수 고장수리. 증상: 상하강불량, 충전 전원 방전, 오일누유, 키박스 스위치 레버 조이스틱, 에러코드, 방지봉 협착, 파이프걸림. 긴급, 당장. 관리번호 장비번호 호기.'
+                })
+              });
+
+              if (res.ok) {
+                const data = await res.json();
+                const text = (data?.textTranscript || '').trim();
+                if (text) {
+                  applyTranscript(text);
+                  setInterimText(`인식완료: "${text}"`);
+                  if (ttsService.getIsEnabled()) {
+                    ttsService.speak('AS 정보가 폼에 반영되었습니다.');
+                  }
+                  setTimeout(() => setInterimText(''), 3000);
+                } else {
+                  setInterimText('음성이 명확하지 않습니다.');
+                }
+              } else {
+                throw new Error('STT API 오류');
+              }
+            } catch (err) {
+              console.warn('Groq STT failed:', err);
+              setInterimText('음성 분석 실패. 다시 시도해주세요.');
+            } finally {
+              setIsProcessing(false);
+            }
+          };
+        } catch (e) {
+          setIsProcessing(false);
+          setInterimText('');
+        }
+      };
+
+      mediaRecorderRef.current.stop();
       return;
     }
 
+    // 녹음 시작
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true
+        }
+      });
+      streamRef.current = stream;
+
+      if (typeof MediaRecorder !== 'undefined') {
+        const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+        const candidates = isSafari
+          ? ['audio/mp4', 'audio/aac']
+          : ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4'];
+        const mimeType = candidates.find(t => { try { return MediaRecorder.isTypeSupported(t); } catch { return false; } }) || '';
+
+        audioChunksRef.current = [];
+        const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+        recorder.ondataavailable = (e) => {
+          if (e.data && e.data.size > 0) audioChunksRef.current.push(e.data);
+        };
+        recorder.start();
+        mediaRecorderRef.current = recorder;
+        setIsListening(true);
+        setInterimText('음성 듣는 중... (말씀 후 터치하여 완료)');
+      } else {
+        startBrowserAsStt();
+      }
+    } catch (err: any) {
+      console.warn('Microphone error, fallback to browser STT:', err);
+      startBrowserAsStt();
+    }
+  };
+
+  const startBrowserAsStt = () => {
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (!SpeechRecognition) {
-      showErrorModal('이 브라우저는 음성 인식을 지원하지 않습니다. 크롬 또는 최신 모바일 브라우저를 이용하세요.');
+      showErrorModal('이 브라우저는 음성 인식을 지원하지 않습니다.');
       return;
     }
 
@@ -204,28 +321,17 @@ export const MobileAsCreate: React.FC<MobileAsCreateProps> = ({
       };
 
       recognition.onresult = (event: any) => {
-        let currentInterim = '';
         let finalChunk = '';
-
         for (let i = event.resultIndex; i < event.results.length; i++) {
-          const transcript = event.results[i][0].transcript;
-          if (event.results[i].isFinal) {
-            finalChunk += transcript;
-          } else {
-            currentInterim += transcript;
-          }
+          if (event.results[i].isFinal) finalChunk += event.results[i][0].transcript;
         }
-
         if (finalChunk.trim()) {
           applyTranscript(finalChunk.trim());
           setInterimText('');
-        } else if (currentInterim.trim()) {
-          setInterimText(currentInterim);
         }
       };
 
-      recognition.onerror = (event: any) => {
-        console.error('Speech recognition error:', event.error);
+      recognition.onerror = () => {
         setIsListening(false);
         setInterimText('');
       };
@@ -238,7 +344,6 @@ export const MobileAsCreate: React.FC<MobileAsCreateProps> = ({
       recognitionRef.current = recognition;
       recognition.start();
     } catch (err: any) {
-      showErrorModal('음성 인식 시작 실패: ' + err.message);
       setIsListening(false);
     }
   };
@@ -313,6 +418,22 @@ export const MobileAsCreate: React.FC<MobileAsCreateProps> = ({
           뒤로가기
         </button>
         <span className="text-sm font-black text-white">현장 AS 접수</span>
+        <button
+          type="button"
+          onClick={() => {
+            const next = ttsService.toggle();
+            setTtsEnabled(next);
+          }}
+          className={`flex items-center gap-1 text-[11px] font-bold py-1.5 px-2.5 rounded-xl border transition-all ${
+            ttsEnabled
+              ? 'bg-blue-600/20 border-blue-500 text-blue-400'
+              : 'bg-slate-900 border-slate-800 text-slate-400'
+          }`}
+          title="음성 안내(TTS) 켜기/끄기"
+        >
+          {ttsEnabled ? <Volume2 className="w-3.5 h-3.5" /> : <VolumeX className="w-3.5 h-3.5" />}
+          <span>{ttsEnabled ? '소리 ON' : '소리 OFF'}</span>
+        </button>
       </div>
 
       {/* 🎙️ 음성 & 통화 텍스트 입력 바 */}

@@ -1,3 +1,133 @@
+## [v1.9.2.Build.216] - 2026-09-06 16:38
+
+### 🛡️ [출고의뢰 통합 스튜디오] 정형화 서식 실시간 표시 & 7대 필수 스키마 방어 차단 실드 구축
+
+#### 개발 배경
+- 기존 출고의뢰(통합) 메뉴가 좁은 모바일 뷰(540px)로 제한되어 우측 공간이 낭비되고, 입력 내용의 정형화 서식 미리보기가 부재했던 결함 해소.
+- 필수 정보(거래처, 현장, 장비, 상차일시, 인수자/연락처 등)가 누락된 불완전한 상태로 출고지시가 시도되는 것을 **원천 방어 차단(Validation Shield)**하여 배차/출고 사고를 사전 차단.
+
+#### 핵심 개선 및 구현 내역
+
+##### 1. PC 2열 마스터-디테일 스튜디오 레이아웃 복원 (전사 표준 3.5 Z-Pattern 준수)
+- **화면 확장**: 모바일 540px 단일 뷰에서 `max-w-7xl` 12컬럼 전문 ERP 스튜디오 그리드로 전면 개편.
+- **좌측 7열 (58%)**: 텍스트 파싱, 맥락 7종 칩 선택, WHO(고객사), WHERE(현장), WHAT(장비), WHEN(일정/인수자) 입력 폼.
+- **우측 5열 (42%)**: 정형화된 출고의뢰서 실시간 요약 서식 + 7대 필수 스키마 유효성 검증 실드 + 최종 출고지시 완결 버튼.
+
+##### 2. 7대 필수 스키마 유효성 검증 실드 (Validation Checklist)
+- **실시간 무결성 검증**:
+  1. 거래처 지정 (기존 고객 또는 신규 상호)
+  2. 투입 현장명 (검색 선택 또는 수동 입력)
+  3. 현장 상세주소 (배차용 도로명 주소 유무)
+  4. 출고 신청 장비 (최소 1대 이상 규격 및 수량)
+  5. 상차/출고 희망일자
+  6. 상차 지정시간 (기본 08:00)
+  7. 현장 인수자 성명 및 9자리 이상 유효 연락처
+- **항목별 원클릭 포커스**: 누락된 항목 클릭 시 해당 입력 블록(WHO/WHERE/WHAT/WHEN)으로 즉시 자동 스크롤 및 아코디언 오픈.
+
+##### 3. 정보 누락 시 사전 방어 차단 (Defensive Gate)
+- 필수 7개 항목 중 1개라도 누락 시:
+  - 우측 하단 버튼이 `[출고지시 (미충족 N건 방어차단)]` 경고 상태로 유지.
+  - 클릭 시 즉시 토스트 경고 표출과 함께 **출고 지시를 원천 방어 차단**하고 첫 번째 누락 블록을 자동 개방.
+- 7개 항목 100% 충족 시: `[출고지시 발행 (검증 완료 7/7) ➔]` 파란색 활성화.
+
+##### 4. 정형화된 출고의뢰서 실시간 문서 뷰 (Dossier Preview)
+- 기연리프트 표준 출고요청서 규격 테이블을 실시간 1:1 렌더링.
+- 고객사, 투입현장, 도로명주소, 상차일시, 현장인수자 및 연락처, 신청 장비 모델/수량 집계, 특이사항이 타이핑과 동시에 정형화 서식으로 시각화.
+
+##### 5. 다크모드/라이트모드 UI 깨짐 근절
+- 인라인 스타일의 흰색 인풋 덩어리 현상을 전사 표준 Tailwind 다크 테마(`bg-slate-800`, `border-slate-700`, `text-slate-100`)로 일괄 정돈하여 스크린 가독성과 일관성 100% 확보.
+
+---
+
+## [v1.9.2.Build.215] - 2026-09-06 16:30
+
+### 🎙️ [웹앱 통화녹음 직접 업로드] APK 미설치자/아이폰/PC 웹 환경 완벽 대응
+
+#### 개발 배경
+- 사내 영업직원 중 APK 사이드로드를 거부하거나, iOS(아이폰) 단말을 사용하거나, PC/태블릿 환경에서 업무를 처리하는 임직원을 위해 **웹앱에서 통화 녹음 파일(.m4a, .mp3, .wav 등)을 직접 찾아 업로드하는 기능** 완비.
+- APK 없이도 음성 녹음 파일을 올리기만 하면 동일한 Groq STT + LLM 파이프라인이 자동 가동되어 출고의뢰 초안이 생성됨.
+
+#### 신규 기능 및 구현 내역
+
+##### 1. 웹 전용 통화 녹음 직접 업로드 모달 (`CallAudioUploadModal.tsx`)
+- **드래그 앤 드롭 및 브라우저 파일 선택**: `.m4a`, `.mp3`, `.wav`, `.aac`, `.ogg` 등 스마트폰 기본 녹음기 포맷 전체 지원.
+- **오디오 실시간 미리듣기**: 업로드 전 파일 확인용 내장 오디오 플레이어 탑재.
+- **업무 맥락 7종 칩 선택**: 신규출고, 추가출고, 교체(대차), 회수, 현장AS, 운송협의, 전대협의 복합 다중 선택 지원.
+- **삼성 통화요약 텍스트 붙여넣기 박스**: 스마트폰 AI 요약 텍스트를 함께 붙여넣을 경우, STT 결과와 교차 검증하여 초안 신뢰도(Confidence)를 자동으로 상향.
+- **Supabase Storage 연동**: `call-recordings` 버킷 직결 업로드 및 `call_uploads` 테이블 이벤트 자동 기록.
+
+##### 2. PC/태블릿 출고의뢰 통합 메뉴 연동 (`smart_dispatch4.tsx`)
+- 상단 헤더 우측에 `[통화 녹음 업로드]` 버튼 배치.
+- 업로드 완료 시 즉시 처리 대기 큐(`QUEUE`) 탭으로 자동 전환 및 Realtime 대기 안내 토스트 표출.
+
+##### 3. 모바일 웹 영업 홈 연동 (`MobileHome.tsx`)
+- 영업부 홈 화면 상단에 `[통화 녹음 파일 직접 업로드]` 전용 카드 배치.
+- 모바일 브라우저에서 탭 한 번으로 스마트폰 음성녹음 폴더의 파일을 선택하여 즉시 업로드 가능.
+- 출근/퇴근 토글 카드 및 통화캡처 APK 다운로드 링크와 유기적으로 병행 배치.
+
+##### 4. 공통 서비스 레이어 확장
+- `src/services/callUploadService.ts`: `CALL_CONTEXT_OPTIONS` 공통 상수 export 및 파일 업로드 인터페이스 완비.
+- `src/services/workStatusService.ts`: 웹앱 ↔ APK 간 출퇴근 상태 실시간 양방향 동기화.
+
+---
+
+## [v1.9.1.Build.214] - 2026-09-06 16:10
+
+### 🔧 [통화 파이프라인 백엔드] STT + LLM 파이프라인 인프라 구성 (Stage 1)
+
+#### 설계 확정사항
+- **저장소**: Supabase Storage (`call-recordings` 버킷, 24h 자동 삭제)
+- **STT**: Groq `whisper-large-v3-turbo` (한국어 구어체 최적, 기존 Groq 키 재사용)
+- **LLM**: Groq `llama-3.3-70b-versatile` (JSON 필드 추출)
+- **APK**: Expo + EAS Build, Android 10+, 사내 사이드로드 배포
+- **STT 실패 시**: 빈 초안 생성 → 수동 입력 (서비스 중단 없음)
+
+#### 신규 파일
+
+##### Supabase SQL 마이그레이션
+- `sql/call_pipeline_tables.sql` — `call_uploads` + `draft_dispatch_orders` 테이블 + RLS 정책
+  - Realtime 활성화 (`draft_dispatch_orders`)
+  - 인덱스 6개 (owner, status, urgency, created_at 등)
+  - 24시간 자동 삭제 컬럼 (`auto_delete_at`)
+
+##### Supabase Edge Functions
+- `supabase/functions/process-call-recording/index.ts` — STT + LLM 파이프라인
+  - Groq Whisper STT (한국어, 전문 어휘 힌트)
+  - Groq LLaMA JSON 필드 추출 (7종 맥락별 프롬프트)
+  - 교차 검증 (STT + 삼성 요약 동시 존재 시 신뢰도 자동 상향)
+  - 긴급도 자동 계산 (출고일 기준)
+  - STT 실패 시 빈 초안 생성 (폴백)
+- `supabase/functions/cleanup-expired-recordings/index.ts` — 24h 음성 파일 자동 삭제
+  - 매일 오전 3시 실행 (Supabase Cron 설정 필요)
+
+##### 웹앱 서비스
+- `src/services/callUploadService.ts` — 통화 업로드 서비스 신규 생성
+  - `fetchMyDrafts()` — Supabase DB 초안 목록 조회
+  - `subscribeDraftUpdates()` — Realtime 구독 (새 초안 자동 수신)
+  - `uploadCallRecording()` — Storage 업로드 + DB 레코드 생성
+  - `submitDraft()`, `discardDraft()`, `mergeDrafts()` — 초안 CRUD
+
+#### 수정 파일
+
+##### `src/pages/smart_dispatch4.tsx`
+- 처리 대기 큐 → 로컬 state에서 **실제 Supabase DB 연동**으로 전환
+- 컴포넌트 마운트 시 `fetchMyDrafts()` 자동 로드
+- Supabase Realtime 구독: 새 초안 INSERT 시 큐에 자동 추가 + 토스트 알림
+- `queueLoading` 상태 추가
+- `ScoredField.source` 옵셔널 처리 (DB 값 없는 경우 렌더 안 함)
+
+#### APK 프로젝트 (별도 진행 중)
+- `d:\01.AntiGravity\KiyeunCallCapture\` — Expo 프로젝트 생성 중
+
+#### 남은 작업 (수동 설정 필요)
+1. Supabase Dashboard에서 `call-recordings` 버킷 생성 (Private)
+2. `sql/call_pipeline_tables.sql` → Supabase SQL Editor 실행
+3. Supabase Edge Function 배포 (Dashboard 또는 CLI)
+4. `GROQ_API_KEY` → Supabase Edge Function Secrets 등록
+5. Cleanup Function Cron 설정: `0 3 * * *`
+
+---
+
 ## [v1.9.0.Build.213] - 2026-09-06 15:30
 
 ### 🚀 [출고의뢰 통합] 신규 메뉴 — APK 파이프라인 대응 설계 + Review Mode + 처리 대기 큐

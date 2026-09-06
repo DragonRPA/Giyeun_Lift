@@ -1,12 +1,15 @@
 // src/mobile/pages/MobileHome.tsx
-import React from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useApp } from '../../context/AppContext';
 import { 
   Wrench, Truck, CheckSquare, Search, Send, Building2, 
-  ArrowRight, AlertTriangle, Clock, Plus, Boxes, ArrowDownToLine, Users, Car, BookOpen
+  ArrowRight, AlertTriangle, Clock, Plus, Boxes, ArrowDownToLine, Users, Car, BookOpen,
+  Smartphone, Download, UploadCloud
 } from 'lucide-react';
 import { MobileTabType } from '../MobileBottomNav';
 import { MobileDeptMode } from '../MobileHeader';
+import { clockIn, clockOut, getMyWorkStatus, getLatestApkRelease, subscribeWorkStatus, WorkStatus, ApkRelease } from '../../services/workStatusService';
+import { CallAudioUploadModal } from '../../components/CallAudioUploadModal';
 
 interface MobileHomeProps {
   deptMode: MobileDeptMode;
@@ -22,30 +25,142 @@ export const MobileHome: React.FC<MobileHomeProps> = ({
   onOpenCreateAs,
 }) => {
   const { fieldAsTickets, deliveries, outboundInspections, currentUser, assets, contracts, mechanicConsumableStocks, customers } = useApp();
-  
-  // 자사 가용 자산 (ownerType !== 'RENTED')
-  const availableAssetCount = assets.filter(a => a.status === 'AVAILABLE' && a.ownerType !== 'RENTED').length;
 
-  // 당일 미처리 AS 티켓
+  // ── 출퇴근 상태 ────────────────────────────────────────
+  const [workStatus, setWorkStatus] = useState<WorkStatus | null>(null);
+  const [workLoading, setWorkLoading] = useState(false);
+  const [apkRelease, setApkRelease] = useState<ApkRelease | null>(null);
+  const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
+
+  useEffect(() => {
+    if (deptMode !== 'SALES') return;
+    getMyWorkStatus().then(s => setWorkStatus(s));
+    getLatestApkRelease().then(r => setApkRelease(r));
+    if (!currentUser?.id) return;
+    const unsub = subscribeWorkStatus(currentUser.id, s => setWorkStatus(s));
+    return unsub;
+  }, [deptMode, currentUser?.id]);
+
+  const handleWorkToggle = useCallback(async () => {
+    if (!currentUser?.id || workLoading) return;
+    setWorkLoading(true);
+    try {
+      if (workStatus?.isWorking) {
+        await clockOut(currentUser.id);
+      } else {
+        await clockIn(currentUser.id);
+      }
+    } catch (e) {
+      alert((e as Error).message);
+    } finally {
+      setWorkLoading(false);
+    }
+  }, [currentUser?.id, workStatus, workLoading]);
+
+  // ── KPI 집계 ───────────────────────────────────────────
+  const availableAssetCount = assets.filter(a => a.status === 'AVAILABLE' && a.ownerType !== 'RENTED').length;
   const pendingAsTickets = fieldAsTickets.filter(
     (t) => t.status === 'REQUESTED' || t.status === 'SCHEDULED' || t.status === 'REVISIT' || t.status === 'IN_PROGRESS'
   );
-
-  // 대기 배차
   const pendingDeliveries = deliveries.filter(
     (d) => d.status === 'PENDING' || d.status === 'REQUESTED' || d.status === 'DISPATCHED'
   );
-
-  // 출고 검수 대기
   const pendingInspections = outboundInspections.filter((ins) => ins.status === 'PENDING');
-
-  // 활성 계약
   const activeContracts = contracts.filter(c => c.status === 'ACTIVE' || c.status === 'EXTENDED');
+
+  // ── 출근/퇴근 카드 (공통) ─────────────────────────────
+  const WorkStatusCard = () => {
+    const isWorking = workStatus?.isWorking ?? false;
+    const startedAt = workStatus?.workStartedAt
+      ? new Date(workStatus.workStartedAt).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })
+      : null;
+
+    return (
+      <div className="flex gap-3">
+        {/* 출근/퇴근 토글 */}
+        <button
+          onClick={handleWorkToggle}
+          disabled={workLoading}
+          className={`flex-1 flex flex-col items-center justify-center gap-1.5 rounded-2xl py-4 border-2 transition-all active:scale-95 ${
+            isWorking
+              ? 'bg-emerald-900/60 border-emerald-500 shadow-[0_0_16px_rgba(34,197,94,0.3)]'
+              : 'bg-slate-800 border-slate-600'
+          }`}
+        >
+          <span className="text-3xl">{workLoading ? '⏳' : isWorking ? '🟢' : '⚫'}</span>
+          <span className={`text-sm font-black ${isWorking ? 'text-emerald-300' : 'text-slate-300'}`}>
+            {isWorking ? '출근 중' : '퇴근'}
+          </span>
+          {isWorking && startedAt && (
+            <span className="text-[10px] text-emerald-400 font-mono">since {startedAt}</span>
+          )}
+          {!isWorking && (
+            <span className="text-[10px] text-slate-500">탭하여 출근</span>
+          )}
+        </button>
+
+        {/* APK 다운로드 */}
+        <div className="flex flex-col gap-2 w-[120px]">
+          <a
+            href={apkRelease?.downloadUrl ?? '#'}
+            target="_blank"
+            rel="noopener noreferrer"
+            className={`flex flex-col items-center justify-center gap-1 rounded-2xl py-3 border transition-all active:scale-95 ${
+              apkRelease?.downloadUrl
+                ? 'bg-blue-900/50 border-blue-500/60 text-blue-300'
+                : 'bg-slate-800 border-slate-700 text-slate-500 pointer-events-none'
+            }`}
+          >
+            <Download className="w-5 h-5" />
+            <span className="text-[11px] font-bold">통화캡처 APK</span>
+            <span className="text-[10px] opacity-70">
+              {apkRelease?.version ?? '준비중'}
+            </span>
+          </a>
+          <div className={`flex items-center justify-center gap-1 rounded-xl py-2 border text-[10px] font-bold ${
+            isWorking
+              ? 'bg-emerald-950 border-emerald-800/60 text-emerald-400'
+              : 'bg-slate-900 border-slate-700 text-slate-500'
+          }`}>
+            <Smartphone className="w-3 h-3" />
+            {isWorking ? 'APK 활성' : 'APK 대기'}
+          </div>
+        </div>
+      </div>
+    );
+  };
 
   // 1. [영업부 전용 홈 화면]
   if (deptMode === 'SALES') {
     return (
       <div className="flex flex-col gap-4 pb-24 p-4 font-sans text-slate-100">
+        {/* 출근/퇴근 + APK 다운로드 카드 */}
+        <WorkStatusCard />
+
+        {/* APK 미설치자/아이폰 대응: 통화 녹음 직접 업로드 카드 */}
+        <div
+          onClick={() => setIsUploadModalOpen(true)}
+          className="cursor-pointer bg-gradient-to-r from-blue-950/70 to-slate-900 border border-blue-500/40 rounded-2xl p-3.5 flex items-center justify-between shadow-md active:scale-98 transition-all"
+        >
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-blue-500/20 border border-blue-500/30 flex items-center justify-center flex-shrink-0 text-blue-400">
+              <UploadCloud className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="text-xs font-black text-white flex items-center gap-1.5">
+                <span>통화 녹음 파일 직접 업로드</span>
+                <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-300 font-semibold">
+                  웹 직접 등록
+                </span>
+              </div>
+              <div className="text-[11px] text-slate-400 mt-0.5">
+                APK 미설치 단말 · 스마트폰 녹음 파일 선택 즉시 AI 분석
+              </div>
+            </div>
+          </div>
+          <ArrowRight className="w-4 h-4 text-blue-400 flex-shrink-0" />
+        </div>
+
         {/* 상단 ToDo 카드 */}
         <div className="bg-gradient-to-br from-blue-900/60 to-slate-900 border border-blue-500/30 rounded-3xl p-5 shadow-xl">
           <div className="flex items-center justify-between mb-2">
@@ -180,6 +295,14 @@ export const MobileHome: React.FC<MobileHomeProps> = ({
           </div>
           <ArrowRight className="w-5 h-5 text-slate-500" />
         </div>
+
+        <CallAudioUploadModal
+          isOpen={isUploadModalOpen}
+          onClose={() => setIsUploadModalOpen(false)}
+          onSuccess={() => {
+            alert('통화 녹음 파일이 업로드되었습니다.\nAI 분석 완료 후 출고의뢰 대기 큐에 초안으로 등록됩니다.');
+          }}
+        />
       </div>
     );
   }

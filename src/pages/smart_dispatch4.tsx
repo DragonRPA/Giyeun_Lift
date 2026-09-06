@@ -13,20 +13,20 @@
 // └─────────────────────────────────────────────────────────────────────────┘
 import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
-import { Customer, CustomerSite, findCustomerByNormalizedName } from '../services/db';
+import { db, Customer, CustomerSite, findCustomerByNormalizedName } from '../services/db';
 import { EQUIPMENT_SPEC_MATRIX } from '../services/voiceOrderDraftService';
 import { matchHangul } from '../utils/hangulSearch';
 import {
-  fetchMyDrafts, subscribeDraftUpdates, submitDraft, discardDraft, mergeDrafts,
+  fetchMyDrafts, subscribeDraftUpdates, submitDraft, discardDraft,
   createDraftOrder, DraftDispatchOrder
 } from '../services/callUploadService';
 import {
   Plus, Minus, Trash2, ChevronDown, ChevronUp,
-  Building2, MapPin, Package, Calendar,
+  Building2, MapPin, Package, Calendar, User,
   ClipboardPaste, ArrowRight, Info, Merge,
-  UploadCloud, ShieldCheck, ShieldAlert, CheckCircle2,
-  AlertTriangle, FileText, Check, AlertCircle, RotateCcw,
-  Truck, DollarSign, Wrench, Shield
+  UploadCloud, ShieldCheck, ShieldAlert,
+  AlertTriangle, Check, AlertCircle, RotateCcw,
+  Truck, Wrench, Shield
 } from 'lucide-react';
 import { CallAudioUploadModal } from '../components/CallAudioUploadModal';
 
@@ -132,7 +132,7 @@ const makeScoredField = (value: string, source: ScoredField['source'] = 'MANUAL'
 export const SmartDispatch4: React.FC = () => {
   const {
     hasPermission, customers, sites, contacts, currentUser,
-    saveSmartDispatch, contractAssets, assets
+    saveSmartDispatch, assets
   } = useApp();
 
   const canSave = hasPermission('delivery', 'save');
@@ -151,7 +151,6 @@ export const SmartDispatch4: React.FC = () => {
   // ── 처리 대기 큐 ──────────────────────────────────────────────────────────
   const [queue, setQueue] = useState<DraftOrder[]>([]);
   const [selectedQueueIds, setSelectedQueueIds] = useState<Set<string>>(new Set());
-  const [expandedDraftId, setExpandedDraftId] = useState<string | null>(null);
 
   const loadDrafts = useCallback(async () => {
     try {
@@ -216,23 +215,23 @@ export const SmartDispatch4: React.FC = () => {
 
   const pendingCount = queue.filter(q => q.status === 'DRAFT').length;
 
-  // ── 맥락 선택 ─────────────────────────────────────────────────────────────
-  const [selectedContexts, setSelectedContexts] = useState<Set<CallContext>>(new Set(['ADDITIONAL']));
+  // ── 업무 유형 (단일 맥락 선택) ─────────────────────────────────────────
+  const [selectedContext, setSelectedContext] = useState<CallContext>('ADDITIONAL');
 
-  const toggleContext = (ctx: CallContext) => {
-    setSelectedContexts(prev => {
-      const next = new Set(prev);
-      if (next.has(ctx)) {
-        if (next.size > 1) next.delete(ctx);
-      } else {
-        next.add(ctx);
-      }
-      return next;
-    });
-  };
+  // 안전옵션 추출 헬퍼 (CustomerSite로부터 유상옵션 및 보양 추출)
+  const extractSafetyOptionsFromSite = useCallback((site: CustomerSite | null): Set<string> => {
+    const s = new Set<string>();
+    if (!site) return s;
+    const p = `${site.paidOptions || ''} ${site.protection || ''}`;
+    if (/협착|BAR_4EA/i.test(p)) s.add('BAR_4EA');
+    if (/소화기|FIRE_EXT/i.test(p)) s.add('FIRE_EXT');
+    if (/철망|망보양|MESH_4SIDE/i.test(p)) s.add('MESH_4SIDE');
+    if (/도색|비닐|커버|PAINT_COVER/i.test(p)) s.add('PAINT_COVER');
+    return s;
+  }, []);
 
-  const isNewCustomerMode = selectedContexts.has('NEW_CUSTOMER');
-  const isExchangeMode = selectedContexts.has('EXCHANGE');
+  const isNewCustomerMode = selectedContext === 'NEW_CUSTOMER';
+  const isExchangeMode = selectedContext === 'EXCHANGE';
 
   // ── 붙여넣기 파싱 존 ──────────────────────────────────────────────────────
   const [pasteZoneOpen, setPasteZoneOpen] = useState(false);
@@ -249,8 +248,9 @@ export const SmartDispatch4: React.FC = () => {
   const [newCustomerPhone, setNewCustomerPhone] = useState('');
   const [newCustomerAddress, setNewCustomerAddress] = useState('');
 
+  // 🌟 검색어가 없을 때는 고객사를 일절 추천/제시하지 않음 (사용자 피드백 100% 반영)
   const filteredCustomers = useMemo(() => {
-    if (!customerQuery.trim()) return customers.slice(0, 16);
+    if (!customerQuery.trim()) return [];
     return customers.filter(c => matchHangul(c.name, customerQuery)).slice(0, 16);
   }, [customers, customerQuery]);
 
@@ -266,11 +266,13 @@ export const SmartDispatch4: React.FC = () => {
     return duplicates.length > 0 ? duplicates : null;
   }, [selectedCustomer, queue]);
 
-  // ── WHERE 블록 — 현장 ─────────────────────────────────────────────────────
+  // ── WHERE 블록 — 투입 현장 및 현장 담당자 ────────────────────────────────
   const [siteQuery, setSiteQuery] = useState('');
   const [selectedSite, setSelectedSite] = useState<CustomerSite | null>(null);
   const [newSiteName, setNewSiteName] = useState('');
   const [newSiteAddress, setNewSiteAddress] = useState('');
+  const [contactPerson, setContactPerson] = useState('');
+  const [contactPhone, setContactPhone] = useState('');
 
   const filteredSites = useMemo(() => {
     const base = selectedCustomer
@@ -300,13 +302,14 @@ export const SmartDispatch4: React.FC = () => {
       return u;
     });
   };
+  const removeEquipment = (index: number) => {
+    setEquipments(prev => prev.filter((_, i) => i !== index));
+  };
   const totalQty = equipments.reduce((s, e) => s + e.qty, 0);
 
-  // ── WHEN 블록 — 일정 및 현장인수자 ─────────────────────────────────────────
+  // ── WHEN 블록 — 출고 및 상차 일정 ─────────────────────────────────────────
   const [loadingDate, setLoadingDate] = useState('');
   const [loadingTimeVal, setLoadingTimeVal] = useState('08:00');
-  const [contactPerson, setContactPerson] = useState('');
-  const [contactPhone, setContactPhone] = useState('');
   const [note, setNote] = useState('');
 
   // ── 🌟 [WTT 결함 해결 1] 대차(EXCHANGE) 회수 대상 전자산 1:1 매핑 ─────────
@@ -315,15 +318,17 @@ export const SmartDispatch4: React.FC = () => {
   // 선택된 고객사의 현재 가동 중인 장비 목록 (대차 대상)
   const activeCustomerAssets = useMemo(() => {
     if (!selectedCustomer) return [];
-    // contractAssets 중 해당 고객사 장비 또는 RENTED 자산 필터링
     return assets.filter(a => a.status === 'RENTED');
   }, [selectedCustomer, assets]);
 
   // ── 🌟 [WTT 결함 해결 2] 운송비 귀속선 (paidBy) ─────────────────────────
   const [paidBy, setPaidBy] = useState<PaidBy>('CUSTOMER');
 
-  // ── 🌟 [WTT 결함 해결 3] 안전옵션 및 보양 ───────────────────────────────
+  // ── 🌟 [추가출고 기본옵션 상속 및 첨삭 감지] 안전옵션 및 보양 ─────────────
   const [selectedSafetyOptions, setSelectedSafetyOptions] = useState<Set<string>>(new Set());
+  const [initialSiteOptions, setInitialSiteOptions] = useState<Set<string>>(new Set());
+  const [optionConfirmModalOpen, setOptionConfirmModalOpen] = useState(false);
+
   const toggleSafetyOption = (id: string) => {
     setSelectedSafetyOptions(prev => {
       const n = new Set(prev);
@@ -331,6 +336,17 @@ export const SmartDispatch4: React.FC = () => {
       return n;
     });
   };
+
+  // 첨삭(변경) 발생 여부 계산: 추가출고이면서 현장 기존 옵션과 달라진 경우 true
+  const isOptionsModified = useMemo(() => {
+    if (selectedContext !== 'ADDITIONAL') return false;
+    if (!selectedSite) return false;
+    if (selectedSafetyOptions.size !== initialSiteOptions.size) return true;
+    for (const opt of selectedSafetyOptions) {
+      if (!initialSiteOptions.has(opt)) return true;
+    }
+    return false;
+  }, [selectedContext, selectedSite, selectedSafetyOptions, initialSiteOptions]);
 
   // ── 🌟 [WTT 결함 해결 4] 시차 출고 메모 ────────────────────────────────
   const [staggeredMemo, setStaggeredMemo] = useState('');
@@ -364,7 +380,24 @@ export const SmartDispatch4: React.FC = () => {
     setSelectedSite(site);
     setSiteQuery('');
     applyInheritance(selectedCustomer, site);
+
+    // 🌟 추가출고인 경우 기존 옵션값을 디폴트로 자동 상속
+    if (selectedContext === 'ADDITIONAL') {
+      const defaultOpts = extractSafetyOptionsFromSite(site);
+      setSelectedSafetyOptions(new Set(defaultOpts));
+      setInitialSiteOptions(new Set(defaultOpts));
+    }
     setOpenBlock('WHAT');
+  };
+
+  const handleSelectContext = (ctx: CallContext) => {
+    setSelectedContext(ctx);
+    // 추가출고로 전환 시 이미 선택된 현장이 있으면 옵션 자동 로드
+    if (ctx === 'ADDITIONAL' && selectedSite) {
+      const defaultOpts = extractSafetyOptionsFromSite(selectedSite);
+      setSelectedSafetyOptions(new Set(defaultOpts));
+      setInitialSiteOptions(new Set(defaultOpts));
+    }
   };
 
   // ── 붙여넣기 파싱 ─────────────────────────────────────────────────────────
@@ -372,7 +405,7 @@ export const SmartDispatch4: React.FC = () => {
     if (!text.trim()) { showToast('텍스트를 입력하세요.', 'error'); return; }
     const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 0);
     const extractPhone = (s: string) => (s.match(/(01[016789]\s*[-~]?\s*\d{3,4}\s*[-~]?\s*\d{4})/g) || [''])[0].replace(/\s+/g, '');
-    const extractName = (s: string) => s.split(/01[016789]/)[0].replace(/[:\-]/g, '').replace(/선임|책임|담당자|소장|부장|팀장/g, '').trim();
+    const extractName = (s: string) => s.split(/01[016789]/)[0].replace(/[:-]/g, '').replace(/선임|책임|담당자|소장|부장|팀장/g, '').trim();
 
     let pc = '', ps = '', pscname = '', pscphone = '', pload = '';
     const peqs: EquipmentItem[] = [];
@@ -388,7 +421,7 @@ export const SmartDispatch4: React.FC = () => {
       else if (/^(?:\d+[.)]\s*)?(?:상차\s*스케줄|상차\s*시간|상차시간|상차)/i.test(line)) pload = val;
       else if (/^(?:\d+[.)]\s*)?(?:신청.*모델.*목록|신청모델|모델명?|장비명?|규격)/i.test(line) || /^\s*-\s*(?:GS|SJ|JCPT|HD)/i.test(line)) {
         const raw = val || line.replace(/^.*[:：]/, '').replace(/^-\s*/, '');
-        raw.split(/[\/,]/).forEach(p => {
+        raw.split(/[/,]/).forEach(p => {
           const m = p.match(/(.+?)\s*[*xX대]\s*(\d+)/) || p.match(/(.+?)\s*(\d+)\s*대/);
           if (m) peqs.push({ modelName: m[1].replace(/대$/, '').trim(), qty: parseInt(m[2]) || 1 });
           else if (p.trim()) peqs.push({ modelName: p.trim(), qty: 1 });
@@ -438,8 +471,9 @@ export const SmartDispatch4: React.FC = () => {
     setNewCustomerName(''); setNewCustomerPhone(''); setNewCustomerAddress('');
     setNewSiteName(''); setNewSiteAddress('');
     setRetrievalAssetId(''); setPaidBy('CUSTOMER');
-    setSelectedSafetyOptions(new Set()); setStaggeredMemo('');
-    setSelectedContexts(new Set(['ADDITIONAL']));
+    setSelectedSafetyOptions(new Set()); setInitialSiteOptions(new Set());
+    setStaggeredMemo('');
+    setSelectedContext('ADDITIONAL');
     setOpenBlock('WHO');
   };
 
@@ -456,8 +490,8 @@ export const SmartDispatch4: React.FC = () => {
   }
 
   const validationRules = useMemo<ValidationRule[]>(() => {
-    const skipEquip = selectedContexts.has('RETURN') || selectedContexts.has('FIELD_AS') ||
-      selectedContexts.has('TRANSPORT_NEGO') || selectedContexts.has('SUBLEASE_NEGO');
+    const skipEquip = selectedContext === 'RETURN' || selectedContext === 'FIELD_AS' ||
+      selectedContext === 'TRANSPORT_NEGO' || selectedContext === 'SUBLEASE_NEGO';
 
     const custName = isNewCustomerMode ? newCustomerName.trim() : (selectedCustomer?.name || '');
     const siteNameVal = isNewCustomerMode ? newSiteName.trim() : (selectedSite?.name || '');
@@ -500,6 +534,16 @@ export const SmartDispatch4: React.FC = () => {
         hint: '배차 기사용 정확한 현장 주소',
       },
       {
+        id: 'CONTACT',
+        label: '현장 인수자/연락처',
+        targetBlock: 'WHERE', // 🌟 현장 블록으로 이동
+        status: (hasContactPerson && hasContactPhone) ? 'VALID' : 'INVALID',
+        currentVal: (hasContactPerson || hasContactPhone)
+          ? `${contactPerson || '(성명누락)'} / ${contactPhone || '(전화누락)'}`
+          : '(인수자 미입력)',
+        hint: '현장 담당자 성명 및 9자리 이상 연락처',
+      },
+      {
         id: 'EQUIPMENT',
         label: '출고 신청 장비',
         targetBlock: 'WHAT',
@@ -528,16 +572,6 @@ export const SmartDispatch4: React.FC = () => {
         hint: '상차 예정 시간 (기본 08:00)',
       },
       {
-        id: 'CONTACT',
-        label: '현장 인수자/연락처',
-        targetBlock: 'WHEN',
-        status: (hasContactPerson && hasContactPhone) ? 'VALID' : 'INVALID',
-        currentVal: (hasContactPerson || hasContactPhone)
-          ? `${contactPerson || '(성명누락)'} / ${contactPhone || '(전화누락)'}`
-          : '(인수자 미입력)',
-        hint: '현장 인수 담당자 성명 및 9자리 이상 연락처',
-      },
-      {
         id: 'RETRIEVAL_ASSET',
         label: '회수 전자산 (대차전용)',
         targetBlock: 'SAFETY_COST',
@@ -557,7 +591,7 @@ export const SmartDispatch4: React.FC = () => {
   }, [
     isNewCustomerMode, isExchangeMode, newCustomerName, selectedCustomer,
     newSiteName, selectedSite, newSiteAddress, newCustomerAddress,
-    selectedContexts, equipments, totalQty,
+    selectedContext, equipments, totalQty,
     loadingDate, loadingTimeVal, contactPerson, contactPhone,
     retrievalAssetId, paidBy
   ]);
@@ -576,51 +610,74 @@ export const SmartDispatch4: React.FC = () => {
       return;
     }
 
-    if (selectedContexts.size === 0) {
-      showToast('맥락 유형을 하나 이상 선택하세요.', 'error');
+    // 🌟 [추가출고 첨삭 저장 확인] 기존 옵션에서 첨삭이 발생한 경우 확인 모달 표출
+    if (isOptionsModified) {
+      setOptionConfirmModalOpen(true);
       return;
     }
 
+    // 첨삭이 없거나 추가출고가 아닌 경우 패스 (바로 저장)
+    await executeSaveDraft(false);
+  };
+
+  const executeSaveDraft = async (saveToSite: boolean) => {
+    setOptionConfirmModalOpen(false);
     try {
       const uploaderId = currentUser?.id || 'anonymous_user';
 
-      // 🌟 [WTT 해결 1] Supabase DB `draft_dispatch_orders`에 동기 무누락 영구 저장!
-      for (const ctx of Array.from(selectedContexts)) {
-        const siteConf: ConfidenceLevel = selectedSite ? 'HIGH' : 'MISSING';
-        const siteSrc: ScoredField['source'] = selectedSite ? 'DB' : 'MANUAL';
-        const loadConf: ConfidenceLevel = loadingDate ? 'HIGH' : 'MISSING';
-        const timeConf: ConfidenceLevel = loadingTimeVal ? 'HIGH' : 'MISSING';
+      // 🌟 [첨삭 저장 확인] 현장 기본값으로 저장 선택 시 CustomerSite DB 업데이트
+      if (saveToSite && selectedSite) {
+        const paidOpts = Array.from(selectedSafetyOptions)
+          .filter(id => id === 'BAR_4EA' || id === 'FIRE_EXT')
+          .map(id => SAFETY_OPTION_LIST.find(s => s.id === id)?.label)
+          .join(', ');
+        const protOpts = Array.from(selectedSafetyOptions)
+          .filter(id => id === 'MESH_4SIDE' || id === 'PAINT_COVER')
+          .map(id => SAFETY_OPTION_LIST.find(s => s.id === id)?.label)
+          .join(', ');
 
-        const fullNote = [
-          note,
-          selectedSafetyOptions.size > 0 ? `[안전옵션] ${Array.from(selectedSafetyOptions).map(id => SAFETY_OPTION_LIST.find(s => s.id === id)?.label).join(', ')}` : '',
-          staggeredMemo ? `[시차출고] ${staggeredMemo}` : '',
-          isExchangeMode && retrievalAssetId ? `[대차회수대상] 자산 #${retrievalAssetId}` : '',
-          `[운송비부담] ${paidBy === 'CUSTOMER' ? '고객청구' : paidBy === 'OURS' ? '당사부담' : '편도지원'}`
-        ].filter(Boolean).join(' | ');
-
-        await createDraftOrder({
-          ownerId: uploaderId,
-          sourceCallIds: [],
-          context: [ctx],
-          customerName: isNewCustomerMode
-            ? { value: newCustomerName, confidence: 'LOW' as ConfidenceLevel, source: 'MANUAL' as const, confirmed: false }
-            : { value: selectedCustomer!.name, confidence: 'HIGH' as ConfidenceLevel, source: 'DB' as const, confirmed: true },
-          siteName: isNewCustomerMode
-            ? { value: newSiteName || '미정', confidence: 'LOW' as ConfidenceLevel, source: 'MANUAL' as const, confirmed: false }
-            : { value: selectedSite?.name || '미정', confidence: siteConf, source: siteSrc, confirmed: !!selectedSite },
-          equipments: [...equipments],
-          loadingDate: { value: loadingDate, confidence: loadConf, source: 'MANUAL' as const, confirmed: !!loadingDate },
-          loadingTime: { value: loadingTimeVal, confidence: timeConf, source: 'MANUAL' as const, confirmed: !!loadingTimeVal },
-          contactPerson: makeScoredField(contactPerson),
-          contactPhone: makeScoredField(contactPhone).value,
-          note: fullNote,
-          status: 'DRAFT',
-          urgency: calcUrgency(loadingDate),
-          isNewCustomer: isNewCustomerMode,
-          customerRegistered: !isNewCustomerMode,
+        db.updateRow<CustomerSite>('sites', selectedSite.id, {
+          paidOptions: paidOpts,
+          protection: protOpts,
+          updatedAt: new Date().toISOString(),
         });
+        showToast(`현장 '${selectedSite.name}'의 기본 옵션이 갱신 저장되었습니다.`, 'info');
       }
+
+      const siteConf: ConfidenceLevel = selectedSite ? 'HIGH' : 'MISSING';
+      const siteSrc: ScoredField['source'] = selectedSite ? 'DB' : 'MANUAL';
+      const loadConf: ConfidenceLevel = loadingDate ? 'HIGH' : 'MISSING';
+      const timeConf: ConfidenceLevel = loadingTimeVal ? 'HIGH' : 'MISSING';
+
+      const fullNote = [
+        note,
+        selectedSafetyOptions.size > 0 ? `[안전옵션] ${Array.from(selectedSafetyOptions).map(id => SAFETY_OPTION_LIST.find(s => s.id === id)?.label).join(', ')}` : '',
+        staggeredMemo ? `[시차출고] ${staggeredMemo}` : '',
+        isExchangeMode && retrievalAssetId ? `[대차회수대상] 자산 #${retrievalAssetId}` : '',
+        `[운송비부담] ${paidBy === 'CUSTOMER' ? '고객청구' : paidBy === 'OURS' ? '당사부담' : '편도지원'}`
+      ].filter(Boolean).join(' | ');
+
+      await createDraftOrder({
+        ownerId: uploaderId,
+        sourceCallIds: [],
+        context: [selectedContext],
+        customerName: isNewCustomerMode
+          ? { value: newCustomerName, confidence: 'LOW' as ConfidenceLevel, source: 'MANUAL' as const, confirmed: false }
+          : { value: selectedCustomer!.name, confidence: 'HIGH' as ConfidenceLevel, source: 'DB' as const, confirmed: true },
+        siteName: isNewCustomerMode
+          ? { value: newSiteName || '미정', confidence: 'LOW' as ConfidenceLevel, source: 'MANUAL' as const, confirmed: false }
+          : { value: selectedSite?.name || '미정', confidence: siteConf, source: siteSrc, confirmed: !!selectedSite },
+        equipments: [...equipments],
+        loadingDate: { value: loadingDate, confidence: loadConf, source: 'MANUAL' as const, confirmed: !!loadingDate },
+        loadingTime: { value: loadingTimeVal, confidence: timeConf, source: 'MANUAL' as const, confirmed: !!loadingTimeVal },
+        contactPerson: makeScoredField(contactPerson),
+        contactPhone: makeScoredField(contactPhone).value,
+        note: fullNote,
+        status: 'DRAFT',
+        urgency: calcUrgency(loadingDate),
+        isNewCustomer: isNewCustomerMode,
+        customerRegistered: !isNewCustomerMode,
+      });
 
       await loadDrafts();
       resetForm();
@@ -629,6 +686,71 @@ export const SmartDispatch4: React.FC = () => {
     } catch (e: any) {
       showToast(`초안 저장 오류: ${e?.message}`, 'error');
     }
+  };
+
+  // ── 큐에서 선택하여 새 의뢰 작성으로 가져오기 ────────────────────────────
+  const handleLoadDraftToForm = (draft: DraftOrder) => {
+    // 1. 업무 유형 (단일 맥락)
+    const ctx = (draft.context && draft.context[0]) || 'ADDITIONAL';
+    setSelectedContext(ctx);
+
+    // 2. 고객사
+    if (draft.isNewCustomer) {
+      setSelectedCustomer(null);
+      setNewCustomerName(draft.customerName.value || '');
+    } else {
+      const mc = customers.find(c => c.name === draft.customerName.value) || findCustomerByNormalizedName(customers, draft.customerName.value);
+      if (mc) {
+        setSelectedCustomer(mc);
+        setCustomerQuery('');
+      } else {
+        setNewCustomerName(draft.customerName.value || '');
+      }
+    }
+
+    // 3. 현장 및 담당자
+    if (draft.siteName?.value) {
+      const ms = sites.find(s => s.name === draft.siteName.value);
+      if (ms) {
+        setSelectedSite(ms);
+        setSiteQuery('');
+        if (ctx === 'ADDITIONAL') {
+          const defaultOpts = extractSafetyOptionsFromSite(ms);
+          setSelectedSafetyOptions(new Set(defaultOpts));
+          setInitialSiteOptions(new Set(defaultOpts));
+        }
+      } else {
+        setSelectedSite(null);
+        setNewSiteName(draft.siteName.value);
+      }
+    }
+
+    // 4. 장비
+    setEquipments(draft.equipments || []);
+
+    // 5. 현장 담당자
+    setContactPerson(draft.contactPerson?.value || '');
+    setContactPhone(draft.contactPhone?.value || '');
+
+    // 6. 상차일시
+    setLoadingDate(draft.loadingDate?.value || '');
+    setLoadingTimeVal(draft.loadingTime?.value || '08:00');
+
+    // 7. 메모 및 안전옵션 파싱
+    const noteText = draft.note || '';
+    setNote(noteText);
+    const parsedOpts = new Set<string>();
+    if (noteText.includes('협착방지봉')) parsedOpts.add('BAR_4EA');
+    if (noteText.includes('소화기')) parsedOpts.add('FIRE_EXT');
+    if (noteText.includes('철망')) parsedOpts.add('MESH_4SIDE');
+    if (noteText.includes('도색') || noteText.includes('비닐')) parsedOpts.add('PAINT_COVER');
+    if (parsedOpts.size > 0) {
+      setSelectedSafetyOptions(parsedOpts);
+    }
+
+    setActiveTab('NEW');
+    setOpenBlock('WHAT');
+    showToast(`'${draft.customerName.value || '선택 의뢰'}' 데이터를 새 의뢰 작성으로 가져왔습니다.`, 'info');
   };
 
   // ── 병합 ─────────────────────────────────────────────────────────────────
@@ -728,7 +850,7 @@ export const SmartDispatch4: React.FC = () => {
     return (
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
         {/* ── 좌측 입력 섹션 (7열 / 58%) ────────────────────────────── */}
-        <div className="lg:col-span-7 flex flex-col gap-4">
+        <div className="lg:col-span-7 min-w-0 flex flex-col gap-4">
 
           {/* 텍스트 붙여넣기 파싱 */}
           <div className="bg-slate-900 border border-slate-700/80 rounded-xl overflow-hidden shadow-sm">
@@ -769,26 +891,22 @@ export const SmartDispatch4: React.FC = () => {
             )}
           </div>
 
-          {/* 맥락 유형 선택 칩 (전사 표준 3.4 상하 스택) */}
+          {/* 업무 유형 선택 버튼군 (단일 선택 강제 & 건조한 명사 단일 표준) */}
           <div className="bg-slate-900 border border-slate-800 rounded-xl p-4 shadow-sm">
             <div className="flex items-center justify-between mb-2">
-              <label className="text-xs font-bold text-slate-300">
-                맥락 유형 <span className="text-slate-500 font-normal">(복합 선택 가능)</span>
-              </label>
-              <span className="text-[11px] text-blue-400 font-medium">
-                {selectedContexts.size}개 선택됨
-              </span>
+              <label className="text-xs font-bold text-slate-300">업무 유형</label>
             </div>
             <div className="flex flex-wrap gap-2">
               {CONTEXT_OPTIONS.map(opt => {
-                const active = selectedContexts.has(opt.id);
+                const active = selectedContext === opt.id;
                 return (
                   <button
                     key={opt.id}
-                    onClick={() => toggleContext(opt.id)}
+                    type="button"
+                    onClick={() => handleSelectContext(opt.id)}
                     className={`px-3 py-1.5 rounded-lg text-xs font-bold transition border ${
                       active
-                        ? 'border-blue-500 bg-blue-600/30 text-blue-200 shadow-sm'
+                        ? 'border-blue-500 bg-blue-600/40 text-blue-200 shadow-sm font-black'
                         : 'border-slate-800 bg-slate-950 text-slate-400 hover:border-slate-700 hover:text-slate-200'
                     }`}
                   >
@@ -798,11 +916,6 @@ export const SmartDispatch4: React.FC = () => {
                 );
               })}
             </div>
-            {selectedContexts.size > 1 && (
-              <p className="text-[11px] text-slate-400 mt-2">
-                * 복합 맥락 선택 시 의뢰 초안 {selectedContexts.size}건이 동시 분할 생성됩니다.
-              </p>
-            )}
           </div>
 
           {/* 신규 고객 안내 배너 */}
@@ -877,33 +990,61 @@ export const SmartDispatch4: React.FC = () => {
                   </>
                 ) : (
                   <>
-                    <div className="flex flex-col gap-1">
-                      <label className="text-xs font-semibold text-slate-300">거래처 검색 (초성 검색 가능)</label>
-                      <input
-                        className="bg-slate-800 border border-slate-700 text-white rounded-lg p-2.5 text-xs focus:outline-none focus:border-blue-500"
-                        value={customerQuery}
-                        onChange={e => setCustomerQuery(e.target.value)}
-                        placeholder="예: 현대, ㅎㄷ, 대우..."
-                      />
-                    </div>
-                    <div className="flex flex-wrap gap-1.5 max-h-36 overflow-y-auto p-1 bg-slate-950/60 rounded-lg border border-slate-800">
-                      {filteredCustomers.map(c => {
-                        const isSelected = selectedCustomer?.id === c.id;
-                        return (
-                          <button
-                            key={c.id}
-                            onClick={() => handleSelectCustomer(c)}
-                            className={`px-2.5 py-1 rounded text-xs font-medium transition border ${
-                              isSelected
-                                ? 'bg-blue-600 border-blue-400 text-white'
-                                : 'bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-700'
-                            }`}
-                          >
-                            {c.name}
-                          </button>
-                        );
-                      })}
-                    </div>
+                    {selectedCustomer ? (
+                      <div className="flex items-center justify-between p-3 bg-slate-950 rounded-lg border border-slate-700">
+                        <div className="flex items-center gap-2">
+                          <Building2 className="w-4 h-4 text-emerald-400" />
+                          <span className="text-xs font-black text-white">{selectedCustomer.name}</span>
+                          <span className="text-[11px] text-slate-400 font-mono">({selectedCustomer.bizRegNo || '사업자번호 미등록'})</span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedCustomer(null);
+                            setSelectedSite(null);
+                            setCustomerQuery('');
+                          }}
+                          className="text-xs text-slate-300 hover:text-white px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 border border-slate-600 transition"
+                        >
+                          고객 변경
+                        </button>
+                      </div>
+                    ) : (
+                      <>
+                        <div className="flex flex-col gap-1">
+                          <label className="text-xs font-semibold text-slate-300">거래처 검색 (초성 검색 가능)</label>
+                          <input
+                            className="bg-slate-800 border border-slate-700 text-white rounded-lg p-2.5 text-xs focus:outline-none focus:border-blue-500"
+                            value={customerQuery}
+                            onChange={e => setCustomerQuery(e.target.value)}
+                            placeholder="거래처명 또는 초성 입력 (예: 현대, ㅎㄷ, 대우...)"
+                          />
+                        </div>
+                        {customerQuery.trim() ? (
+                          <div className="flex flex-wrap gap-1.5 max-h-36 overflow-y-auto p-1 bg-slate-950/60 rounded-lg border border-slate-800">
+                            {filteredCustomers.map(c => (
+                              <button
+                                key={c.id}
+                                type="button"
+                                onClick={() => handleSelectCustomer(c)}
+                                className="px-2.5 py-1 rounded text-xs font-medium transition border bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-700"
+                              >
+                                {c.name}
+                              </button>
+                            ))}
+                            {filteredCustomers.length === 0 && (
+                              <div className="text-xs text-slate-500 py-2 px-3">
+                                일치하는 거래처가 없습니다.
+                              </div>
+                            )}
+                          </div>
+                        ) : (
+                          <div className="text-xs text-slate-500 py-3 text-center bg-slate-950/40 rounded-lg border border-slate-800/60">
+                            거래처명 또는 초성을 입력하면 검색 결과가 표시됩니다.
+                          </div>
+                        )}
+                      </>
+                    )}
                     {duplicateAlert && (
                       <div className="p-2.5 rounded-lg bg-amber-950/40 border border-amber-500/40 text-amber-300 text-xs flex items-center gap-2">
                         <AlertTriangle className="w-4 h-4 flex-shrink-0" />
@@ -916,7 +1057,7 @@ export const SmartDispatch4: React.FC = () => {
             )}
           </div>
 
-          {/* WHERE 블록 — 투입 현장 */}
+          {/* WHERE 블록 — 투입 현장 및 현장 담당자 */}
           <div className="bg-slate-900 border border-slate-700/80 rounded-xl overflow-hidden shadow-sm">
             <div
               className={`flex items-center justify-between px-4 py-3 cursor-pointer select-none transition ${
@@ -926,15 +1067,15 @@ export const SmartDispatch4: React.FC = () => {
             >
               <div className="flex items-center gap-2 text-sm font-bold text-slate-100">
                 <MapPin className="w-4 h-4 text-cyan-400" />
-                <span>2. WHERE — 투입 현장</span>
+                <span>2. WHERE — 투입 현장 및 현장 담당자</span>
                 {!isNewCustomerMode && selectedSite && (
                   <span className="text-xs font-semibold text-emerald-400 bg-emerald-950/50 px-2 py-0.5 rounded border border-emerald-500/30">
-                    ✓ {selectedSite.name}
+                    ✓ {selectedSite.name}{contactPerson ? ` (${contactPerson})` : ''}
                   </span>
                 )}
                 {isNewCustomerMode && newSiteName && (
                   <span className="text-xs font-semibold text-purple-300 bg-purple-950/50 px-2 py-0.5 rounded border border-purple-500/30">
-                    ✓ {newSiteName}
+                    ✓ {newSiteName}{contactPerson ? ` (${contactPerson})` : ''}
                   </span>
                 )}
               </div>
@@ -1018,6 +1159,35 @@ export const SmartDispatch4: React.FC = () => {
                     </div>
                   </>
                 )}
+
+                {/* 🌟 현장 담당자 성명 및 연락처 (WHEN에서 WHERE로 이동) */}
+                <div className="pt-3 border-t border-slate-800 flex flex-col gap-2">
+                  <div className="text-xs font-bold text-cyan-300 flex items-center gap-1.5">
+                    <User className="w-3.5 h-3.5" />
+                    <span>현장 담당자 정보 *</span>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <div className="flex flex-col gap-1">
+                      <label className="text-xs font-semibold text-slate-300">현장 담당자 성명 *</label>
+                      <input
+                        className="bg-slate-800 border border-slate-700 text-white rounded-lg p-2.5 text-xs focus:outline-none focus:border-cyan-500"
+                        value={contactPerson}
+                        onChange={e => setContactPerson(e.target.value)}
+                        placeholder="현장 인수 소장/담당자명"
+                      />
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <label className="text-xs font-semibold text-slate-300">인수 담당자 연락처 *</label>
+                      <input
+                        className="bg-slate-800 border border-slate-700 text-white rounded-lg p-2.5 text-xs focus:outline-none focus:border-cyan-500"
+                        value={contactPhone}
+                        onChange={e => setContactPhone(e.target.value)}
+                        placeholder="010-0000-0000"
+                        inputMode="tel"
+                      />
+                    </div>
+                  </div>
+                </div>
               </div>
             )}
           </div>
@@ -1083,29 +1253,41 @@ export const SmartDispatch4: React.FC = () => {
                   <div className="mt-2 flex flex-col gap-2 p-2 bg-slate-950 rounded-lg border border-slate-800">
                     <div className="text-xs font-bold text-slate-400 px-1">선택된 출고 장비 목록:</div>
                     {equipments.map((eq, idx) => (
-                      <div key={idx} className="flex items-center justify-between bg-slate-900 px-3 py-2 rounded border border-slate-800">
-                        <span className="text-xs font-bold text-white">{eq.modelName}</span>
+                      <div key={idx} className="flex items-center justify-between bg-slate-900 px-3.5 py-2.5 rounded-lg border border-slate-700/80 shadow-sm">
                         <div className="flex items-center gap-2">
+                          <Package className="w-4 h-4 text-emerald-400 flex-shrink-0" />
+                          <span className="text-xs font-black text-white">{eq.modelName}</span>
+                        </div>
+                        {/* 🌟 수량 조절 -, + 및 삭제(휴지통) 아이콘 버튼군 */}
+                        <div className="flex items-center gap-1.5 bg-slate-950 px-2 py-1 rounded-lg border border-slate-700">
                           <button
+                            type="button"
                             onClick={() => changeQty(idx, -1)}
-                            className="w-6 h-6 rounded bg-slate-800 hover:bg-slate-700 flex items-center justify-center text-slate-300"
+                            className="w-7 h-7 rounded bg-slate-800 hover:bg-slate-700 active:bg-slate-600 border border-slate-600 flex items-center justify-center text-white font-bold text-base transition select-none shadow-sm"
+                            title="수량 1대 감소"
                           >
-                            <Minus className="w-3 h-3" />
+                            <Minus className="w-3.5 h-3.5 text-white stroke-[2.5]" />
                           </button>
-                          <span className="text-xs font-bold text-emerald-400 min-w-[20px] text-center font-mono">
-                            {eq.qty}대
-                          </span>
+                          <div className="flex items-center justify-center min-w-[48px] px-1 font-mono">
+                            <span className="text-sm font-black text-emerald-400">{eq.qty}</span>
+                            <span className="text-xs text-slate-400 font-bold ml-0.5">대</span>
+                          </div>
                           <button
+                            type="button"
                             onClick={() => changeQty(idx, 1)}
-                            className="w-6 h-6 rounded bg-slate-800 hover:bg-slate-700 flex items-center justify-center text-slate-300"
+                            className="w-7 h-7 rounded bg-slate-800 hover:bg-slate-700 active:bg-slate-600 border border-slate-600 flex items-center justify-center text-white font-bold text-base transition select-none shadow-sm"
+                            title="수량 1대 증가"
                           >
-                            <Plus className="w-3 h-3" />
+                            <Plus className="w-3.5 h-3.5 text-white stroke-[2.5]" />
                           </button>
+                          <div className="w-[1px] h-4 bg-slate-700 mx-1" />
                           <button
-                            onClick={() => changeQty(idx, -eq.qty)}
-                            className="w-6 h-6 rounded bg-red-950/60 hover:bg-red-900 flex items-center justify-center text-red-400 ml-1"
+                            type="button"
+                            onClick={() => removeEquipment(idx)}
+                            className="w-7 h-7 rounded bg-red-950/80 hover:bg-red-900 active:bg-red-800 border border-red-700/80 flex items-center justify-center text-red-300 transition select-none shadow-sm"
+                            title="장비 삭제"
                           >
-                            <Trash2 className="w-3 h-3" />
+                            <Trash2 className="w-3.5 h-3.5 text-red-400 stroke-[2.5]" />
                           </button>
                         </div>
                       </div>
@@ -1120,7 +1302,7 @@ export const SmartDispatch4: React.FC = () => {
             )}
           </div>
 
-          {/* WHEN 블록 — 일정 및 현장 인수자 */}
+          {/* WHEN 블록 — 출고 일정 (건조한 명사 단일 표준) */}
           <div className="bg-slate-900 border border-slate-700/80 rounded-xl overflow-hidden shadow-sm">
             <div
               className={`flex items-center justify-between px-4 py-3 cursor-pointer select-none transition ${
@@ -1130,10 +1312,10 @@ export const SmartDispatch4: React.FC = () => {
             >
               <div className="flex items-center gap-2 text-sm font-bold text-slate-100">
                 <Calendar className="w-4 h-4 text-amber-400" />
-                <span>4. WHEN — 출고 일정 및 현장 인수자</span>
-                {loadingDate && contactPerson && (
-                  <span className="text-xs font-semibold text-emerald-400 bg-emerald-950/50 px-2 py-0.5 rounded border border-emerald-500/30">
-                    ✓ {loadingDate} {loadingTimeVal} ({contactPerson})
+                <span>4. WHEN — 출고 일정</span>
+                {loadingDate && (
+                  <span className="text-xs font-semibold text-emerald-400 bg-emerald-950/50 px-2 py-0.5 rounded border border-emerald-500/30 font-mono">
+                    ✓ {loadingDate} {loadingTimeVal}
                   </span>
                 )}
               </div>
@@ -1147,7 +1329,7 @@ export const SmartDispatch4: React.FC = () => {
                     <label className="text-xs font-semibold text-slate-300">출고(상차) 희망일자 *</label>
                     <input
                       type="date"
-                      className="bg-slate-800 border border-slate-700 text-white rounded-lg p-2.5 text-xs focus:outline-none focus:border-blue-500"
+                      className="bg-slate-800 border border-slate-700 text-white rounded-lg p-2.5 text-xs focus:outline-none focus:border-blue-500 font-mono"
                       value={loadingDate}
                       onChange={e => setLoadingDate(e.target.value)}
                     />
@@ -1156,31 +1338,9 @@ export const SmartDispatch4: React.FC = () => {
                     <label className="text-xs font-semibold text-slate-300">상차 지정시간 *</label>
                     <input
                       type="time"
-                      className="bg-slate-800 border border-slate-700 text-white rounded-lg p-2.5 text-xs focus:outline-none focus:border-blue-500"
+                      className="bg-slate-800 border border-slate-700 text-white rounded-lg p-2.5 text-xs focus:outline-none focus:border-blue-500 font-mono"
                       value={loadingTimeVal}
                       onChange={e => setLoadingTimeVal(e.target.value)}
-                    />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  <div className="flex flex-col gap-1">
-                    <label className="text-xs font-semibold text-slate-300">현장 인수 담당자 성명 *</label>
-                    <input
-                      className="bg-slate-800 border border-slate-700 text-white rounded-lg p-2.5 text-xs focus:outline-none focus:border-blue-500"
-                      value={contactPerson}
-                      onChange={e => setContactPerson(e.target.value)}
-                      placeholder="현장 인수 소장/담당자명"
-                    />
-                  </div>
-                  <div className="flex flex-col gap-1">
-                    <label className="text-xs font-semibold text-slate-300">인수 담당자 연락처 *</label>
-                    <input
-                      className="bg-slate-800 border border-slate-700 text-white rounded-lg p-2.5 text-xs focus:outline-none focus:border-blue-500"
-                      value={contactPhone}
-                      onChange={e => setContactPhone(e.target.value)}
-                      placeholder="010-0000-0000"
-                      inputMode="tel"
                     />
                   </div>
                 </div>
@@ -1340,7 +1500,7 @@ export const SmartDispatch4: React.FC = () => {
         </div>
 
         {/* ── 우측 정형화 표시 & 방어 차단 실드 섹션 (5열 / 42%) ────────── */}
-        <div className="lg:col-span-5 flex flex-col gap-4 sticky top-4">
+        <div className="lg:col-span-5 min-w-0 flex flex-col gap-4 sticky top-4">
 
           {/* 🛡️ [1] 9대 필수 스키마 유효성 검증 실드 */}
           <div className={`rounded-xl border p-4 shadow-lg transition-all ${
@@ -1417,142 +1577,140 @@ export const SmartDispatch4: React.FC = () => {
           </div>
 
           {/* 📄 [2] 정형화된 출고의뢰서 실시간 요약 (Dossier Preview) */}
-          <div className="bg-white text-slate-900 border border-slate-300 rounded-xl p-4 shadow-xl select-text">
+          <div className="bg-slate-900 border border-slate-700/80 rounded-xl p-4 shadow-xl select-text flex flex-col gap-3">
             {/* 서식 헤더 */}
-            <div className="flex items-center justify-between border-b-2 border-slate-900 pb-2 mb-3">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-2.5">
               <div>
-                <span className="text-[10px] font-extrabold text-blue-800 uppercase tracking-widest block">
+                <span className="text-[10px] font-bold text-blue-400 uppercase tracking-widest block font-mono">
                   KIYEUN LIFT ERP DISPATCH ORDER
                 </span>
-                <h3 className="text-base font-black text-slate-900 tracking-tight">
+                <h3 className="text-sm font-black text-white tracking-tight">
                   출고 요청서 (실시간 정형화)
                 </h3>
               </div>
-              <div className="text-right">
-                <span className="text-[10px] text-slate-500 font-mono block">
+              <div className="text-right flex flex-col items-end gap-0.5">
+                <span className="text-[10px] text-slate-400 font-mono">
                   {new Date().toLocaleDateString('ko-KR')}
                 </span>
-                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-blue-100 text-blue-800 border border-blue-200">
-                  {Array.from(selectedContexts).map(c => CONTEXT_OPTIONS.find(o => o.id === c)?.label).join(' · ')}
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-blue-950 text-blue-300 border border-blue-800">
+                  {CONTEXT_OPTIONS.find(o => o.id === selectedContext)?.label}
                 </span>
               </div>
             </div>
 
-            {/* 서식 테이블 1: 거래처 / 현장 정보 */}
-            <table className="w-full text-xs border-collapse border border-slate-300 mb-3">
-              <tbody>
-                <tr>
-                  <th className="w-1/4 bg-slate-100 border border-slate-300 p-1.5 font-bold text-slate-700 text-left">
-                    고객사명
-                  </th>
-                  <td className="w-3/4 border border-slate-300 p-1.5 font-black text-slate-900">
-                    {custDisplay}
-                  </td>
-                </tr>
-                <tr>
-                  <th className="bg-slate-100 border border-slate-300 p-1.5 font-bold text-slate-700 text-left">
-                    투입현장
-                  </th>
-                  <td className="border border-slate-300 p-1.5 font-bold text-slate-800">
-                    {siteDisplay}
-                  </td>
-                </tr>
-                <tr>
-                  <th className="bg-slate-100 border border-slate-300 p-1.5 font-bold text-slate-700 text-left">
-                    현장주소
-                  </th>
-                  <td className="border border-slate-300 p-1.5 text-slate-700 break-all text-[11px]">
-                    {addrDisplay}
-                  </td>
-                </tr>
-              </tbody>
-            </table>
+            {/* 서식 테이블 1: 거래처 / 현장 정보 (담당자 포함) */}
+            <div className="border border-slate-800 rounded-lg overflow-hidden text-xs">
+              <div className="grid grid-cols-4 border-b border-slate-800">
+                <div className="col-span-1 bg-slate-950 p-2 font-bold text-slate-400 border-r border-slate-800 flex items-center">
+                  고객사명
+                </div>
+                <div className="col-span-3 bg-slate-900/90 p-2 font-black text-white">
+                  {custDisplay}
+                </div>
+              </div>
+              <div className="grid grid-cols-4 border-b border-slate-800">
+                <div className="col-span-1 bg-slate-950 p-2 font-bold text-slate-400 border-r border-slate-800 flex items-center">
+                  투입현장
+                </div>
+                <div className="col-span-3 bg-slate-900/90 p-2 font-bold text-slate-200">
+                  {siteDisplay}
+                </div>
+              </div>
+              <div className="grid grid-cols-4 border-b border-slate-800">
+                <div className="col-span-1 bg-slate-950 p-2 font-bold text-slate-400 border-r border-slate-800 flex items-center">
+                  현장주소
+                </div>
+                <div className="col-span-3 bg-slate-900/90 p-2 text-slate-300 break-all text-[11px]">
+                  {addrDisplay}
+                </div>
+              </div>
+              <div className="grid grid-cols-4">
+                <div className="col-span-1 bg-slate-950 p-2 font-bold text-slate-400 border-r border-slate-800 flex items-center">
+                  현장담당자
+                </div>
+                <div className="col-span-3 bg-slate-900/90 p-2 font-bold text-slate-100">
+                  {contactPerson ? `${contactPerson} (${contactPhone || '연락처 미등록'})` : '(담당자 미등록)'}
+                </div>
+              </div>
+            </div>
 
-            {/* 서식 테이블 2: 일정 / 인수자 */}
-            <table className="w-full text-xs border-collapse border border-slate-300 mb-3">
-              <tbody>
-                <tr>
-                  <th className="w-1/4 bg-slate-100 border border-slate-300 p-1.5 font-bold text-slate-700 text-left">
-                    상차일시
-                  </th>
-                  <td className="w-3/4 border border-slate-300 p-1.5 font-bold text-blue-900 font-mono">
-                    {loadingDate ? `${loadingDate} ${loadingTimeVal}` : '(상차일시 미지정)'}
-                  </td>
-                </tr>
-                <tr>
-                  <th className="bg-slate-100 border border-slate-300 p-1.5 font-bold text-slate-700 text-left">
-                    현장인수자
-                  </th>
-                  <td className="border border-slate-300 p-1.5 font-bold text-slate-900">
-                    {contactPerson ? `${contactPerson} (${contactPhone || '연락처 미등록'})` : '(인수자 미등록)'}
-                  </td>
-                </tr>
-                <tr>
-                  <th className="bg-slate-100 border border-slate-300 p-1.5 font-bold text-slate-700 text-left">
-                    운송비부담
-                  </th>
-                  <td className="border border-slate-300 p-1.5 font-bold text-emerald-800">
-                    {paidBy === 'CUSTOMER' ? '고객사 전액 청구' : paidBy === 'OURS' ? '당사 영업 부담(면제)' : '편도 지원'}
-                  </td>
-                </tr>
-              </tbody>
-            </table>
+            {/* 서식 테이블 2: 출고 일정 / 운송비 부담 */}
+            <div className="border border-slate-800 rounded-lg overflow-hidden text-xs">
+              <div className="grid grid-cols-4 border-b border-slate-800">
+                <div className="col-span-1 bg-slate-950 p-2 font-bold text-slate-400 border-r border-slate-800 flex items-center">
+                  상차일시
+                </div>
+                <div className="col-span-3 bg-slate-900/90 p-2 font-bold text-blue-400 font-mono">
+                  {loadingDate ? `${loadingDate} ${loadingTimeVal}` : '(상차일시 미지정)'}
+                </div>
+              </div>
+              <div className={`grid grid-cols-4 ${staggeredMemo ? 'border-b border-slate-800' : ''}`}>
+                <div className="col-span-1 bg-slate-950 p-2 font-bold text-slate-400 border-r border-slate-800 flex items-center">
+                  운송비부담
+                </div>
+                <div className="col-span-3 bg-slate-900/90 p-2 font-bold text-emerald-400">
+                  {paidBy === 'CUSTOMER' ? '고객사 전액 청구' : paidBy === 'OURS' ? '당사 영업 부담(면제)' : '편도 지원'}
+                </div>
+              </div>
+              {staggeredMemo && (
+                <div className="grid grid-cols-4">
+                  <div className="col-span-1 bg-slate-950 p-2 font-bold text-slate-400 border-r border-slate-800 flex items-center">
+                    시차출고
+                  </div>
+                  <div className="col-span-3 bg-slate-900/90 p-2 text-slate-300 text-[11px]">
+                    {staggeredMemo}
+                  </div>
+                </div>
+              )}
+            </div>
 
             {/* 서식 테이블 3: 신청 장비 규격 */}
-            <div className="mb-3">
-              <div className="text-[11px] font-bold text-slate-800 mb-1 flex items-center justify-between">
+            <div>
+              <div className="text-[11px] font-bold text-slate-400 mb-1.5 flex items-center justify-between">
                 <span>신청 장비 제원</span>
-                <span className="text-blue-700 font-mono font-bold">합계: {totalQty}대</span>
+                <span className="text-blue-400 font-mono font-bold">합계: {totalQty}대</span>
               </div>
-              <table className="w-full text-xs border-collapse border border-slate-300">
-                <thead>
-                  <tr className="bg-slate-100 text-slate-700">
-                    <th className="border border-slate-300 p-1 font-bold text-left">모델명</th>
-                    <th className="border border-slate-300 p-1 font-bold text-right w-16">수량</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {equipments.length > 0 ? (
-                    equipments.map((eq, i) => (
-                      <tr key={i} className="hover:bg-slate-50">
-                        <td className="border border-slate-300 p-1.5 font-bold text-slate-800">
-                          {eq.modelName}
-                        </td>
-                        <td className="border border-slate-300 p-1.5 text-right font-mono font-bold text-blue-900">
-                          {eq.qty}대
-                        </td>
-                      </tr>
-                    ))
-                  ) : (
-                    <tr>
-                      <td colSpan={2} className="border border-slate-300 p-2 text-center text-slate-400 italic">
-                        선택된 장비가 없습니다.
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
+              <div className="border border-slate-800 rounded-lg overflow-hidden text-xs">
+                <div className="grid grid-cols-4 bg-slate-950 border-b border-slate-800 p-2 font-bold text-slate-400">
+                  <div className="col-span-3">모델명</div>
+                  <div className="col-span-1 text-right font-mono">수량</div>
+                </div>
+                {equipments.length > 0 ? (
+                  equipments.map((eq, i) => (
+                    <div key={i} className="grid grid-cols-4 border-b border-slate-800/80 last:border-b-0 p-2 bg-slate-900/80 hover:bg-slate-850">
+                      <div className="col-span-3 font-bold text-white">{eq.modelName}</div>
+                      <div className="col-span-1 text-right font-mono font-bold text-blue-400">{eq.qty}대</div>
+                    </div>
+                  ))
+                ) : (
+                  <div className="p-3 text-center text-slate-500 italic bg-slate-900/60">
+                    선택된 장비가 없습니다.
+                  </div>
+                )}
+              </div>
             </div>
 
             {/* 특이사항 및 옵션 */}
             {(note || selectedSafetyOptions.size > 0 || isExchangeMode) && (
-              <div className="bg-slate-50 border border-slate-200 rounded p-2 text-[11px] text-slate-700 flex flex-col gap-1">
+              <div className="bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-[11px] text-slate-300 flex flex-col gap-1.5">
                 {selectedSafetyOptions.size > 0 && (
                   <div>
-                    <span className="font-bold text-slate-800">안전옵션: </span>
-                    {Array.from(selectedSafetyOptions).map(id => SAFETY_OPTION_LIST.find(s => s.id === id)?.label).join(', ')}
+                    <span className="font-bold text-amber-400">안전옵션: </span>
+                    <span className="text-slate-200">
+                      {Array.from(selectedSafetyOptions).map(id => SAFETY_OPTION_LIST.find(s => s.id === id)?.label).join(', ')}
+                    </span>
                   </div>
                 )}
                 {isExchangeMode && retrievalAssetId && (
                   <div>
-                    <span className="font-bold text-cyan-800">대차 회수장비: </span>
-                    자산 #{retrievalAssetId} (입고검수 자동연계)
+                    <span className="font-bold text-cyan-400">대차 회수장비: </span>
+                    <span className="text-slate-200">자산 #{retrievalAssetId} (입고검수 자동연계)</span>
                   </div>
                 )}
                 {note && (
                   <div>
-                    <span className="font-bold text-slate-800">배차 메모: </span>
-                    {note}
+                    <span className="font-bold text-slate-400">배차 메모: </span>
+                    <span className="text-slate-200">{note}</span>
                   </div>
                 )}
               </div>
@@ -1634,7 +1792,6 @@ export const SmartDispatch4: React.FC = () => {
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {activeQueue.map(draft => {
-            const isExpanded = expandedDraftId === draft.id;
             const isSelected = selectedQueueIds.has(draft.id);
             return (
               <div
@@ -1709,12 +1866,19 @@ export const SmartDispatch4: React.FC = () => {
                   )}
                 </div>
 
-                <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-800">
+                <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-800 flex-wrap">
                   <button
                     onClick={() => handleDiscardDraft(draft.id)}
                     className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 hover:bg-red-950/60 hover:text-red-300 text-slate-400 transition"
                   >
                     폐기
+                  </button>
+                  <button
+                    onClick={() => handleLoadDraftToForm(draft)}
+                    className="px-3 py-1.5 rounded-lg text-xs font-bold bg-slate-800 hover:bg-slate-700 border border-slate-600 text-slate-200 hover:text-white transition flex items-center gap-1"
+                    title="선택된 초안 데이터를 새 의뢰 작성 폼으로 가져와 수정/보완합니다"
+                  >
+                    <span>새의뢰 작성으로 가져오기 ➔</span>
                   </button>
                   <button
                     onClick={() => handleSubmitDraft(draft)}
@@ -1797,6 +1961,70 @@ export const SmartDispatch4: React.FC = () => {
           showToast('통화 녹음 업로드 완료 — AI 분석 완료 시 초안 큐에 등록됩니다.');
         }}
       />
+
+      {/* 🌟 [추가출고 현장 옵션 첨삭 저장 확인 모달] */}
+      {optionConfirmModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-md shadow-2xl p-6 flex flex-col gap-4 animate-in fade-in zoom-in-95">
+            <div className="flex items-center gap-2.5 pb-3 border-b border-slate-800">
+              <div className="p-2 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-400">
+                <Shield className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-white">현장 옵션 변경 저장 확인</h3>
+                <p className="text-xs text-slate-400">{selectedSite?.name || '해당 현장'}</p>
+              </div>
+            </div>
+
+            <div className="text-xs text-slate-300 leading-relaxed bg-slate-800/60 p-3.5 rounded-xl border border-slate-750 flex flex-col gap-2">
+              <p>
+                현장의 기존 기본 안전/보양 옵션과 다르게 <span className="text-amber-400 font-bold">첨삭(변경)</span>되었습니다.
+              </p>
+              <div className="text-[11px] text-slate-400">
+                <p className="font-semibold text-slate-300 mb-1">• 현재 선택된 옵션:</p>
+                <div className="flex flex-wrap gap-1">
+                  {selectedSafetyOptions.size > 0 ? (
+                    Array.from(selectedSafetyOptions).map(id => (
+                      <span key={id} className="px-2 py-0.5 rounded bg-slate-700 text-amber-300 text-[10px] font-mono">
+                        {SAFETY_OPTION_LIST.find(o => o.id === id)?.label || id}
+                      </span>
+                    ))
+                  ) : (
+                    <span className="text-slate-500">선택된 옵션 없음 (전부 해제)</span>
+                  )}
+                </div>
+              </div>
+              <p className="text-[11px] text-slate-400 pt-1">
+                변경된 옵션을 이 현장의 마스터 기본값으로 갱신하시겠습니까, 아니면 이번 출고에만 1회성으로 적용하시겠습니까?
+              </p>
+            </div>
+
+            <div className="flex flex-col gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => executeSaveDraft(true)}
+                className="w-full py-2.5 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs transition shadow flex items-center justify-center gap-1.5"
+              >
+                <span>현장 기본값으로 갱신 저장</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => executeSaveDraft(false)}
+                className="w-full py-2.5 px-4 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-600 text-slate-200 hover:text-white font-bold text-xs transition flex items-center justify-center gap-1.5"
+              >
+                <span>이번만 1회성 적용 (현장 보존)</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setOptionConfirmModalOpen(false)}
+                className="w-full py-1.5 text-center text-xs font-semibold text-slate-500 hover:text-slate-300 transition"
+              >
+                취소 (서식으로 돌아가기)
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* 토스트 */}
       {toast && (

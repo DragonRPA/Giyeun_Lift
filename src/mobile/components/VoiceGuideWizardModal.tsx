@@ -1,8 +1,9 @@
 // src/mobile/components/VoiceGuideWizardModal.tsx
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { 
   Mic, MicOff, Volume2, VolumeX, X, Check, ChevronRight, 
-  RotateCcw, Sparkles, Building2, MapPin, Layers, Clock, ArrowRight, AlertTriangle
+  RotateCcw, Sparkles, Building2, MapPin, Layers, Clock, ArrowRight, AlertTriangle,
+  Edit3, Search, Plus, Minus, FileText, Calendar, CornerDownLeft
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { ttsService } from '../../services/ttsService';
@@ -18,6 +19,7 @@ import {
   parseContactNameVoiceInput,
   parseContactPhoneVoiceInput,
   getSiteOptionsSummary,
+  isOptionsChangedFromSite,
   EQUIPMENT_SPEC_MATRIX,
   ParsedEquipmentResult,
   ParsedDateTimeResult
@@ -42,11 +44,13 @@ export interface VoiceGuideWizardCompleteData {
   paidOptions: string;
   protection: string;
   checkedSpecs: Record<string, boolean>;
+  saveOptionsToSite?: boolean; // 🌟 옵션 변경 시 현장 마스터 저장 여부 (false: 1회성 적용)
   billableToCustomer: boolean;
   closingDay: string;
   paymentDay: string;
   vehicleType: string;
   isAsap: boolean;
+  isPartialHandOff?: boolean; // 🌟 작성 중 일반 폼으로 핸드오프 전환 여부
 }
 
 interface VoiceGuideWizardModalProps {
@@ -84,11 +88,18 @@ export const VoiceGuideWizardModal: React.FC<VoiceGuideWizardModalProps> = ({
   const [paidOptions, setPaidOptions] = useState<string>('');
   const [protection, setProtection] = useState<string>('');
   const [checkedSpecs, setCheckedSpecs] = useState<Record<string, boolean>>({});
+  const [saveOptionsToSite, setSaveOptionsToSite] = useState<boolean>(true); // 🌟 변경된 옵션을 현장 기본값으로 저장할지 여부
   const [billableToCustomer, setBillableToCustomer] = useState<boolean>(false);
   const [closingDay, setClosingDay] = useState<string>('');
   const [paymentDay, setPaymentDay] = useState<string>('');
   const [vehicleType, setVehicleType] = useState<string>('5톤 렉카');
   const [specialMemo, setSpecialMemo] = useState<string>('');
+
+  // 🌟 기존 현장 옵션과 현재 입력된 옵션 간 차이 발생 여부 실시간 감지
+  const isOptionsDiff = useMemo(() => {
+    const targetSite = selectedSite || pendingSite;
+    return isOptionsChangedFromSite(targetSite, paidOptions, protection, checkedSpecs);
+  }, [selectedSite, pendingSite, paidOptions, protection, checkedSpecs]);
 
   // 긴급 발화 확인 대기 상태 ("시간 무관하게 가장 빨리로 접수할까요?" 질문 중)
   const [isAwaitingAsapConfirmation, setIsAwaitingAsapConfirmation] = useState<boolean>(false);
@@ -100,10 +111,42 @@ export const VoiceGuideWizardModal: React.FC<VoiceGuideWizardModalProps> = ({
   const [recognizedText, setRecognizedText] = useState<string>('');
   const [statusMessage, setStatusMessage] = useState<string>('');
 
+  // 5. 음성-터치 하이브리드 인터리빙(Hybrid Interleaving) 상태
+  const defaultTomorrowStr = useMemo(() => {
+    const d = new Date();
+    d.setDate(d.getDate() + 1);
+    return d.toISOString().split('T')[0];
+  }, []);
+
+  const [isEditingText, setIsEditingText] = useState<boolean>(false);
+  const [editingTextValue, setEditingTextValue] = useState<string>('');
+  const [customerSearchText, setCustomerSearchText] = useState<string>('');
+  const [touchEquipmentFt, setTouchEquipmentFt] = useState<string>('19ft');
+  const [touchEquipmentModel, setTouchEquipmentModel] = useState<string>('GS-1930');
+  const [touchEquipmentQty, setTouchEquipmentQty] = useState<number>(1);
+  const [touchCustomDate, setTouchCustomDate] = useState<string>(defaultTomorrowStr);
+  const [touchCustomTime, setTouchCustomTime] = useState<string>('08:00');
+  const [showNewSiteForm, setShowNewSiteForm] = useState<boolean>(false);
+  const [manualNewSiteName, setManualNewSiteName] = useState<string>('');
+  const [manualNewSiteAddr, setManualNewSiteAddr] = useState<string>('');
+  const [manualContactInput, setManualContactInput] = useState<string>('');
+  const [manualPhoneInput, setManualPhoneInput] = useState<string>('');
+  const [manualMemoInput, setManualMemoInput] = useState<string>('');
+
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const streamRef = useRef<MediaStream | null>(null);
   const recognitionRef = useRef<any>(null); // 브라우저 STT 폴백용
+
+  // 고객사 실시간 필터 목록
+  const filteredCustomers = useMemo(() => {
+    if (!customerSearchText.trim()) return customers || [];
+    const q = customerSearchText.trim().toLowerCase();
+    return (customers || []).filter(c => 
+      c.name.toLowerCase().includes(q) || 
+      (c.representative && c.representative.toLowerCase().includes(q))
+    );
+  }, [customers, customerSearchText]);
 
   // TTS 상태 구독
   useEffect(() => {
@@ -137,6 +180,23 @@ export const VoiceGuideWizardModal: React.FC<VoiceGuideWizardModalProps> = ({
       setIsAwaitingAsapConfirmation(false);
       setRecognizedText('');
       setStatusMessage('');
+
+      // 하이브리드 인터리빙 상태 초기화
+      setIsEditingText(false);
+      setEditingTextValue('');
+      setCustomerSearchText('');
+      setTouchEquipmentFt('19ft');
+      setTouchEquipmentModel('GS-1930');
+      setTouchEquipmentQty(1);
+      setTouchCustomDate(defaultTomorrowStr);
+      setTouchCustomTime('08:00');
+      setShowNewSiteForm(false);
+      setManualNewSiteName('');
+      setManualNewSiteAddr('');
+      setManualContactInput('');
+      setManualPhoneInput('');
+      setManualMemoInput('');
+
       guideCurrentStep('CUSTOMER');
     } else {
       stopRecording();
@@ -175,6 +235,119 @@ export const VoiceGuideWizardModal: React.FC<VoiceGuideWizardModalProps> = ({
     if (ttsService.getIsEnabled()) {
       ttsService.speak(prompt);
     }
+  };
+
+  // ── 🖐️ 터치 선택/수정 핸들러군 (하이브리드 인터리빙) ──
+  // 1) 고객사 터치 선택
+  const handleTouchSelectCustomer = (customer: Customer) => {
+    setSelectedCustomer(customer);
+    if (customer.defaultBillingDay) setClosingDay(customer.defaultBillingDay === 30 || customer.defaultBillingDay === 31 ? '말일' : `${customer.defaultBillingDay}일`);
+    if (customer.paymentDueDay) setPaymentDay(`익월 ${customer.paymentDueDay}일`);
+    if (customer.defaultPaidOptions) setPaidOptions(customer.defaultPaidOptions);
+    if (customer.defaultProtection) setProtection(customer.defaultProtection);
+    if (customer.defaultCheckedSpecs) setCheckedSpecs(customer.defaultCheckedSpecs);
+
+    setRecognizedText(customer.name);
+    setStatusMessage(`고객사: [${customer.name}] 선택 완료.`);
+    setTimeout(() => {
+      setCurrentStep('SITE');
+      setSiteSubStep('SITE_SELECT');
+      guideCurrentStep('SITE', `${customer.name}의 현장명을 말씀해주세요.`);
+    }, 800);
+  };
+
+  // 2) 신규 현장 직접 등록
+  const handleTouchSubmitNewSite = () => {
+    if (!manualNewSiteName.trim()) return;
+    const sName = manualNewSiteName.trim();
+    setNewSiteName(sName);
+    setSelectedSite(null);
+    setPendingSite(null);
+    if (manualNewSiteAddr.trim()) setSiteAddress(manualNewSiteAddr.trim());
+    if (manualContactInput.trim()) setSiteContactName(manualContactInput.trim());
+    if (manualPhoneInput.trim()) setSiteContactPhone(manualPhoneInput.trim());
+
+    setRecognizedText(sName);
+    setStatusMessage(`신규 현장: [${sName}] 등록 완료.`);
+    setShowNewSiteForm(false);
+    setTimeout(() => {
+      setCurrentStep('EQUIPMENT');
+      guideCurrentStep('EQUIPMENT', '출고할 장비의 제조사나 모델명, 대수를 말씀해주세요.');
+    }, 800);
+  };
+
+  // 3) 장비/대수 터치 확정
+  const handleTouchSelectEquipment = (ft: string, model: string, count: number) => {
+    const matchedItem = EQUIPMENT_SPEC_MATRIX.find(m => m.ft === ft || m.modelName === model);
+    const confirmedDescription = `${matchedItem?.manufacturer || ''} ${model} ${count}대`.trim();
+    const eqResult: ParsedEquipmentResult = {
+      orders: [{ ft, modelName: model, count }],
+      order: { ft, modelName: model, count },
+      matchedItem: matchedItem || EQUIPMENT_SPEC_MATRIX[0],
+      confirmedDescription
+    };
+    setEquipmentResult(eqResult);
+    setRecognizedText(confirmedDescription);
+    setStatusMessage(`장비: [${confirmedDescription}] 지정 완료.`);
+    setTimeout(() => {
+      setCurrentStep('DATETIME');
+      guideCurrentStep('DATETIME', '하차 희망 일시를 말씀해주세요.');
+    }, 800);
+  };
+
+  // 4) 하차일시 터치 확정
+  const handleTouchSelectDateTime = (dateStr: string, timeStr: string, isAsap: boolean = false) => {
+    const dtResult: ParsedDateTimeResult = {
+      date: dateStr,
+      time: isAsap ? 'ASAP' : timeStr,
+      isAsap,
+      confirmQuestion: '',
+      displayText: isAsap ? `${dateStr} [긴급 최우선 배차(ASAP)]` : `${dateStr} ${timeStr}`
+    };
+    setDateTimeResult(dtResult);
+    setRecognizedText(dtResult.displayText);
+    setStatusMessage(`하차일시: [${dtResult.displayText}] 지정 완료.`);
+    setTimeout(() => {
+      setCurrentStep('OPTIONS_NOTE');
+      guideCurrentStep('OPTIONS_NOTE', '철망, 보양, 운송비나 현장 특이사항이 있나요? 없으면 건너뛰기를 누르세요.');
+    }, 800);
+  };
+
+  // 5) 일반 서식으로 안전 전환 (Safe Hand-off)
+  const handleHandOffToForm = () => {
+    const finalSiteAddress = siteAddress || selectedSite?.address || selectedCustomer?.address || manualNewSiteAddr || '';
+    const finalContactName = siteContactName || selectedSite?.contactName || manualContactInput || '';
+    const finalContactPhone = siteContactPhone || selectedSite?.contact || manualPhoneInput || '';
+
+    const payload: VoiceGuideWizardCompleteData = {
+      customerId: selectedCustomer?.id || '',
+      customerName: selectedCustomer?.name || '',
+      siteId: selectedSite?.id || (newSiteName || manualNewSiteName ? 'NEW' : ''),
+      siteName: selectedSite?.name || newSiteName || manualNewSiteName || '',
+      newSiteName: newSiteName || manualNewSiteName || '',
+      siteAddress: finalSiteAddress,
+      siteContactName: finalContactName,
+      siteContactPhone: finalContactPhone,
+      deliveryDate: dateTimeResult?.date || touchCustomDate || defaultTomorrowStr,
+      deliveryTime: dateTimeResult?.time === 'ASAP' ? '07:00' : (dateTimeResult?.time || touchCustomTime || '08:00'),
+      orders: equipmentResult?.orders && equipmentResult.orders.length > 0
+        ? equipmentResult.orders
+        : (equipmentResult?.order ? [equipmentResult.order] : [{ ft: touchEquipmentFt, modelName: touchEquipmentModel, count: touchEquipmentQty }]),
+      memo: specialMemo || manualMemoInput || '',
+      paidOptions,
+      protection,
+      checkedSpecs,
+      saveOptionsToSite,
+      billableToCustomer,
+      closingDay: closingDay || '',
+      paymentDay: paymentDay || '',
+      vehicleType,
+      isAsap: !!dateTimeResult?.isAsap,
+      isPartialHandOff: true
+    };
+
+    onComplete(payload);
+    onClose();
   };
 
   // ── 🎙️ 녹음 시작 ──
@@ -679,6 +852,26 @@ export const VoiceGuideWizardModal: React.FC<VoiceGuideWizardModalProps> = ({
       }, 1200);
       return;
     }
+
+    // ── [Step 6: 확인 단계 음성 명령] ──
+    if (currentStep === 'CONFIRM') {
+      if (/현장\s*저장|기본값|저장해|계속\s*유지|네|맞아|그렇게/i.test(text)) {
+        setSaveOptionsToSite(true);
+        setStatusMessage('현장 기본값으로 저장하도록 설정되었습니다.');
+        if (ttsEnabled) ttsService.speak('현장 기본값으로 저장합니다.');
+        return;
+      }
+      if (/이번만|1회|일회|그냥\s*이번|아니|보존/i.test(text)) {
+        setSaveOptionsToSite(false);
+        setStatusMessage('이번 출고에만 1회성으로 적용하고 기존 현장 옵션은 보존합니다.');
+        if (ttsEnabled) ttsService.speak('이번 출고에만 1회성으로 적용합니다.');
+        return;
+      }
+      if (/접수|등록|출고|확인|완료/i.test(text)) {
+        handleFinalSubmit();
+        return;
+      }
+    }
   };
 
   // ── 최종 완료 제출 ──
@@ -716,6 +909,7 @@ export const VoiceGuideWizardModal: React.FC<VoiceGuideWizardModalProps> = ({
       paidOptions,
       protection,
       checkedSpecs,
+      saveOptionsToSite,
       billableToCustomer,
       closingDay: closingDay || (selectedCustomer.defaultBillingDay ? String(selectedCustomer.defaultBillingDay) : '말일'),
       paymentDay: paymentDay || (selectedCustomer.paymentDueDay ? `익월 ${selectedCustomer.paymentDueDay}일` : '익월 25일'),
@@ -748,13 +942,14 @@ export const VoiceGuideWizardModal: React.FC<VoiceGuideWizardModalProps> = ({
         borderTopRightRadius: '24px',
         padding: '20px 16px 24px',
         maxHeight: '90vh',
+        overflowY: 'auto',
         display: 'flex',
         flexDirection: 'column',
         gap: '14px',
         boxShadow: '0 -10px 25px rgba(0,0,0,0.5)',
         color: '#ffffff'
       }}>
-        {/* ── 1. 상단 타이틀 바 & TTS 토글 ── */}
+        {/* ── 1. 상단 타이틀 바 & TTS 토글 & 일반서식 이동 ── */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <div style={{
@@ -769,7 +964,30 @@ export const VoiceGuideWizardModal: React.FC<VoiceGuideWizardModalProps> = ({
             </h3>
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            {/* ✏️ 일반 화면에서 이어서 작성 (Safe Hand-off) */}
+            <button
+              type="button"
+              onClick={handleHandOffToForm}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '4px',
+                padding: '5px 8px',
+                borderRadius: '16px',
+                border: '1px solid #475569',
+                backgroundColor: 'rgba(51, 65, 85, 0.7)',
+                color: '#93c5fd',
+                fontSize: '11px',
+                fontWeight: '700',
+                cursor: 'pointer'
+              }}
+              title="지금까지 입력한 내용으로 일반 서식에서 이어서 작성"
+            >
+              <Edit3 size={12} />
+              <span>일반서식 이동</span>
+            </button>
+
             {/* 🔊 TTS 음성 안내 ON/OFF 토글 버튼 */}
             <button
               type="button"
@@ -778,18 +996,18 @@ export const VoiceGuideWizardModal: React.FC<VoiceGuideWizardModalProps> = ({
                 display: 'flex',
                 alignItems: 'center',
                 gap: '5px',
-                padding: '6px 10px',
-                borderRadius: '20px',
+                padding: '5px 8px',
+                borderRadius: '16px',
                 border: ttsEnabled ? '1px solid #3b82f6' : '1px solid #475569',
                 backgroundColor: ttsEnabled ? 'rgba(59, 130, 246, 0.25)' : 'rgba(30, 41, 59, 0.6)',
                 color: ttsEnabled ? '#60a5fa' : '#94a3b8',
-                fontSize: '11.5px',
+                fontSize: '11px',
                 fontWeight: '700',
                 cursor: 'pointer'
               }}
               title="음성 안내(TTS) 켜기/끄기"
             >
-              {ttsEnabled ? <Volume2 size={14} color="#60a5fa" /> : <VolumeX size={14} color="#94a3b8" />}
+              {ttsEnabled ? <Volume2 size={13} color="#60a5fa" /> : <VolumeX size={13} color="#94a3b8" />}
               <span>{ttsEnabled ? '소리 ON' : '소리 OFF'}</span>
             </button>
 
@@ -806,7 +1024,7 @@ export const VoiceGuideWizardModal: React.FC<VoiceGuideWizardModalProps> = ({
                 cursor: 'pointer'
               }}
             >
-              <X size={18} />
+              <X size={16} />
             </button>
           </div>
         </div>
@@ -876,44 +1094,178 @@ export const VoiceGuideWizardModal: React.FC<VoiceGuideWizardModalProps> = ({
             {statusMessage || '질문을 준비 중입니다...'}
           </div>
 
-          {recognizedText && (
-            <div style={{ fontSize: '12.5px', color: '#38bdf8', backgroundColor: 'rgba(56, 189, 248, 0.1)', padding: '4px 8px', borderRadius: '6px' }}>
-              🎙️ 들린 내용: <strong>"{recognizedText}"</strong>
-            </div>
-          )}
-        </div>
-
-        {/* ── 4. 단계별 서브 가이드 및 빠른 선택 칩 ── */}
-        {currentStep === 'CUSTOMER' && !selectedCustomer && (
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-            <span style={{ fontSize: '11px', color: '#94a3b8', width: '100%', marginBottom: '2px' }}>최근 거래처 빠른 선택:</span>
-            {(customers || []).slice(0, 4).map(c => (
+          {/* 들린 내용 & 인라인 터치 수정 에디터 (Tap-to-Edit Buffer) */}
+          {isEditingText ? (
+            <div style={{ display: 'flex', gap: '6px', alignItems: 'center', marginTop: '4px' }}>
+              <input
+                type="text"
+                value={editingTextValue}
+                onChange={(e) => setEditingTextValue(e.target.value)}
+                placeholder="인식된 내용 직접 수정 또는 입력"
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && editingTextValue.trim()) {
+                    setIsEditingText(false);
+                    handleRecognizedText(editingTextValue.trim());
+                  }
+                }}
+                autoFocus
+                style={{
+                  flex: 1,
+                  backgroundColor: '#1e293b',
+                  border: '1.5px solid #38bdf8',
+                  borderRadius: '8px',
+                  padding: '6px 10px',
+                  color: '#ffffff',
+                  fontSize: '13px',
+                  outline: 'none'
+                }}
+              />
               <button
-                key={c.id}
                 type="button"
                 onClick={() => {
-                  setSelectedCustomer(c);
-                  if (c.defaultBillingDay) setClosingDay(c.defaultBillingDay === 30 || c.defaultBillingDay === 31 ? '말일' : `${c.defaultBillingDay}일`);
-                  if (c.paymentDueDay) setPaymentDay(`익월 ${c.paymentDueDay}일`);
-                  if (c.defaultPaidOptions) setPaidOptions(c.defaultPaidOptions);
-                  if (c.defaultProtection) setProtection(c.defaultProtection);
-                  if (c.defaultCheckedSpecs) setCheckedSpecs(c.defaultCheckedSpecs);
-                  setCurrentStep('SITE');
-                  guideCurrentStep('SITE', `${c.name}의 현장명을 말씀해주세요.`);
+                  if (editingTextValue.trim()) {
+                    setIsEditingText(false);
+                    handleRecognizedText(editingTextValue.trim());
+                  }
                 }}
                 style={{
-                  padding: '5px 10px',
-                  borderRadius: '6px',
+                  padding: '6px 12px',
+                  backgroundColor: '#0284c7',
+                  color: '#ffffff',
+                  borderRadius: '8px',
+                  border: 'none',
+                  fontSize: '12px',
+                  fontWeight: 700,
+                  cursor: 'pointer'
+                }}
+              >
+                반영
+              </button>
+              <button
+                type="button"
+                onClick={() => setIsEditingText(false)}
+                style={{
+                  padding: '6px 8px',
                   backgroundColor: '#334155',
-                  border: '1px solid #475569',
-                  color: '#e2e8f0',
+                  color: '#94a3b8',
+                  borderRadius: '8px',
+                  border: 'none',
                   fontSize: '12px',
                   cursor: 'pointer'
                 }}
               >
-                {c.name}
+                취소
               </button>
-            ))}
+            </div>
+          ) : recognizedText ? (
+            <div
+              onClick={() => {
+                setEditingTextValue(recognizedText);
+                setIsEditingText(true);
+              }}
+              style={{
+                fontSize: '12.5px',
+                color: '#38bdf8',
+                backgroundColor: 'rgba(56, 189, 248, 0.1)',
+                padding: '6px 10px',
+                borderRadius: '8px',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                border: '1px dashed rgba(56, 189, 248, 0.4)'
+              }}
+              title="터치하여 직접 텍스트 수정"
+            >
+              <span>🎙️ 들린 내용: <strong>"{recognizedText}"</strong></span>
+              <span style={{ fontSize: '11px', color: '#93c5fd', textDecoration: 'underline', marginLeft: '6px', flexShrink: 0, display: 'flex', alignItems: 'center', gap: '2px' }}>
+                <Edit3 size={11} />
+                <span>터치 수정</span>
+              </span>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+              <button
+                type="button"
+                onClick={() => {
+                  setEditingTextValue('');
+                  setIsEditingText(true);
+                }}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  color: '#64748b',
+                  fontSize: '11px',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '3px',
+                  padding: '2px 4px'
+                }}
+              >
+                <Edit3 size={11} />
+                <span>직접 텍스트로 입력</span>
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* ── 4. 단계별 스마트 터치 컨트롤러 (하이브리드 인터리빙) ── */}
+        {currentStep === 'CUSTOMER' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            {/* 고객사 실시간 검색바 */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', backgroundColor: '#1e293b', border: '1px solid #334155', borderRadius: '10px', padding: '6px 10px' }}>
+              <Search size={14} color="#94a3b8" />
+              <input
+                type="text"
+                placeholder="고객사 검색 (예: 삼보, 현대, 성우)"
+                value={customerSearchText}
+                onChange={(e) => setCustomerSearchText(e.target.value)}
+                style={{
+                  flex: 1,
+                  backgroundColor: 'transparent',
+                  border: 'none',
+                  color: '#ffffff',
+                  fontSize: '12px',
+                  outline: 'none'
+                }}
+              />
+              {customerSearchText && (
+                <button
+                  type="button"
+                  onClick={() => setCustomerSearchText('')}
+                  style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', padding: 0 }}
+                >
+                  <X size={14} />
+                </button>
+              )}
+            </div>
+
+            {/* 고객사 칩 목록 */}
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+              <span style={{ fontSize: '11px', color: '#94a3b8', width: '100%', marginBottom: '2px' }}>
+                {customerSearchText ? '검색 결과 (터치하여 선택):' : '주요 거래처 빠른 선택:'}
+              </span>
+              {filteredCustomers.slice(0, 6).map(c => (
+                <button
+                  key={c.id}
+                  type="button"
+                  onClick={() => handleTouchSelectCustomer(c)}
+                  style={{
+                    padding: '6px 10px',
+                    borderRadius: '8px',
+                    backgroundColor: selectedCustomer?.id === c.id ? 'rgba(59, 130, 246, 0.3)' : '#334155',
+                    border: selectedCustomer?.id === c.id ? '1px solid #3b82f6' : '1px solid #475569',
+                    color: selectedCustomer?.id === c.id ? '#60a5fa' : '#e2e8f0',
+                    fontSize: '12px',
+                    fontWeight: 600,
+                    cursor: 'pointer'
+                  }}
+                >
+                  {c.name}
+                </button>
+              ))}
+            </div>
           </div>
         )}
 
@@ -967,53 +1319,123 @@ export const VoiceGuideWizardModal: React.FC<VoiceGuideWizardModalProps> = ({
               </div>
             )}
 
-            {/* 2) 새 담당자 성함 발화 안내 */}
+            {/* 2) 새 담당자 성함 발화/직접입력 안내 */}
             {siteSubStep === 'CONTACT_NAME' && (
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-                <span style={{ fontSize: '11px', color: '#94a3b8', width: '100%' }}>성함 또는 직함 발화 예시:</span>
-                {['김철수 소장', '이반장', '박소장님'].map(ex => (
-                  <button
-                    key={ex}
-                    type="button"
-                    onClick={() => handleRecognizedText(ex)}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                <div style={{ display: 'flex', gap: '6px' }}>
+                  <input
+                    type="text"
+                    placeholder="담당자 성함 직접 입력 (예: 김철수 소장)"
+                    value={manualContactInput}
+                    onChange={(e) => setManualContactInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && manualContactInput.trim()) {
+                        handleRecognizedText(manualContactInput.trim());
+                        setManualContactInput('');
+                      }
+                    }}
                     style={{
-                      padding: '4px 8px',
-                      borderRadius: '6px',
-                      backgroundColor: 'rgba(59, 130, 246, 0.15)',
-                      border: '1px solid rgba(59, 130, 246, 0.4)',
-                      color: '#93c5fd',
-                      fontSize: '11.5px',
-                      cursor: 'pointer'
+                      flex: 1, backgroundColor: '#1e293b', border: '1px solid #334155',
+                      borderRadius: '8px', padding: '6px 10px', color: '#ffffff', fontSize: '12px', outline: 'none'
+                    }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (manualContactInput.trim()) {
+                        handleRecognizedText(manualContactInput.trim());
+                        setManualContactInput('');
+                      }
+                    }}
+                    style={{
+                      padding: '6px 12px', backgroundColor: '#2563eb', color: '#ffffff',
+                      borderRadius: '8px', border: 'none', fontSize: '12px', fontWeight: 700, cursor: 'pointer'
                     }}
                   >
-                    "{ex}"
+                    반영
                   </button>
-                ))}
+                </div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                  <span style={{ fontSize: '11px', color: '#94a3b8', width: '100%' }}>성함 또는 직함 발화/터치 예시:</span>
+                  {['김철수 소장', '이반장', '박소장님'].map(ex => (
+                    <button
+                      key={ex}
+                      type="button"
+                      onClick={() => handleRecognizedText(ex)}
+                      style={{
+                        padding: '4px 8px',
+                        borderRadius: '6px',
+                        backgroundColor: 'rgba(59, 130, 246, 0.15)',
+                        border: '1px solid rgba(59, 130, 246, 0.4)',
+                        color: '#93c5fd',
+                        fontSize: '11.5px',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      "{ex}"
+                    </button>
+                  ))}
+                </div>
               </div>
             )}
 
-            {/* 3) 새 전화번호 발화 안내 */}
+            {/* 3) 새 전화번호 발화/직접입력 안내 */}
             {siteSubStep === 'CONTACT_PHONE' && (
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-                <span style={{ fontSize: '11px', color: '#94a3b8', width: '100%' }}>전화번호 발화 예시:</span>
-                {['010-1234-5678', '010-9876-5432'].map(ex => (
-                  <button
-                    key={ex}
-                    type="button"
-                    onClick={() => handleRecognizedText(ex)}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                <div style={{ display: 'flex', gap: '6px' }}>
+                  <input
+                    type="tel"
+                    placeholder="010-0000-0000 직접 입력"
+                    value={manualPhoneInput}
+                    onChange={(e) => setManualPhoneInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && manualPhoneInput.trim()) {
+                        handleRecognizedText(manualPhoneInput.trim());
+                        setManualPhoneInput('');
+                      }
+                    }}
                     style={{
-                      padding: '4px 8px',
-                      borderRadius: '6px',
-                      backgroundColor: 'rgba(245, 158, 11, 0.15)',
-                      border: '1px solid rgba(245, 158, 11, 0.4)',
-                      color: '#fcd34d',
-                      fontSize: '11.5px',
-                      cursor: 'pointer'
+                      flex: 1, backgroundColor: '#1e293b', border: '1px solid #334155',
+                      borderRadius: '8px', padding: '6px 10px', color: '#ffffff', fontSize: '12px', outline: 'none'
+                    }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (manualPhoneInput.trim()) {
+                        handleRecognizedText(manualPhoneInput.trim());
+                        setManualPhoneInput('');
+                      }
+                    }}
+                    style={{
+                      padding: '6px 12px', backgroundColor: '#2563eb', color: '#ffffff',
+                      borderRadius: '8px', border: 'none', fontSize: '12px', fontWeight: 700, cursor: 'pointer'
                     }}
                   >
-                    "{ex}"
+                    반영
                   </button>
-                ))}
+                </div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                  <span style={{ fontSize: '11px', color: '#94a3b8', width: '100%' }}>전화번호 발화/터치 예시:</span>
+                  {['010-1234-5678', '010-9876-5432'].map(ex => (
+                    <button
+                      key={ex}
+                      type="button"
+                      onClick={() => handleRecognizedText(ex)}
+                      style={{
+                        padding: '4px 8px',
+                        borderRadius: '6px',
+                        backgroundColor: 'rgba(245, 158, 11, 0.15)',
+                        border: '1px solid rgba(245, 158, 11, 0.4)',
+                        color: '#fcd34d',
+                        fontSize: '11.5px',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      "{ex}"
+                    </button>
+                  ))}
+                </div>
               </div>
             )}
 
@@ -1065,133 +1487,486 @@ export const VoiceGuideWizardModal: React.FC<VoiceGuideWizardModalProps> = ({
               </div>
             )}
 
-            {/* 5) 기본: 현장 선택 칩 목록 */}
+            {/* 5) 기본: 현장 선택 칩 목록 + 신규 현장 직접 입력 폼 */}
             {siteSubStep === 'SITE_SELECT' && (
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-                <span style={{ fontSize: '11px', color: '#94a3b8', width: '100%', marginBottom: '2px' }}>해당 고객사의 기존 현장:</span>
-                {sites.filter(s => s.customerId === selectedCustomer.id).slice(0, 4).map(s => (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                  <span style={{ fontSize: '11px', color: '#94a3b8', width: '100%', marginBottom: '2px' }}>해당 고객사의 기존 현장:</span>
+                  {sites.filter(s => s.customerId === selectedCustomer.id).slice(0, 6).map(s => (
+                    <button
+                      key={s.id}
+                      type="button"
+                      onClick={() => startSiteProactiveInterview(s)}
+                      style={{
+                        padding: '6px 10px',
+                        borderRadius: '8px',
+                        backgroundColor: '#334155',
+                        border: '1px solid #475569',
+                        color: '#e2e8f0',
+                        fontSize: '12px',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      📍 {s.name}
+                    </button>
+                  ))}
+                </div>
+
+                {/* 신규 현장 직접 입력 토글 */}
+                {!showNewSiteForm ? (
                   <button
-                    key={s.id}
                     type="button"
-                    onClick={() => startSiteProactiveInterview(s)}
+                    onClick={() => setShowNewSiteForm(true)}
                     style={{
-                      padding: '5px 10px',
-                      borderRadius: '6px',
-                      backgroundColor: '#334155',
-                      border: '1px solid #475569',
-                      color: '#e2e8f0',
+                      padding: '7px 10px',
+                      borderRadius: '8px',
+                      backgroundColor: 'rgba(59, 130, 246, 0.15)',
+                      border: '1px dashed #3b82f6',
+                      color: '#60a5fa',
                       fontSize: '12px',
-                      cursor: 'pointer'
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '6px'
                     }}
                   >
-                    {s.name}
+                    <Plus size={14} />
+                    <span>목록에 없는 신규 현장 직접 입력</span>
                   </button>
-                ))}
+                ) : (
+                  <div style={{
+                    padding: '10px',
+                    borderRadius: '10px',
+                    backgroundColor: 'rgba(30, 41, 59, 0.8)',
+                    border: '1px solid #3b82f6',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '6px'
+                  }}>
+                    <div style={{ fontSize: '12px', fontWeight: 800, color: '#60a5fa' }}>신규 현장 정보 입력</div>
+                    <input
+                      type="text"
+                      placeholder="현장명 (필수, 예: 판교 제2밸리 신축)"
+                      value={manualNewSiteName}
+                      onChange={(e) => setManualNewSiteName(e.target.value)}
+                      style={{ backgroundColor: '#0f172a', border: '1px solid #475569', borderRadius: '6px', color: '#fff', padding: '6px 8px', fontSize: '12px', outline: 'none' }}
+                    />
+                    <input
+                      type="text"
+                      placeholder="현장 주소 (선택)"
+                      value={manualNewSiteAddr}
+                      onChange={(e) => setManualNewSiteAddr(e.target.value)}
+                      style={{ backgroundColor: '#0f172a', border: '1px solid #475569', borderRadius: '6px', color: '#fff', padding: '6px 8px', fontSize: '12px', outline: 'none' }}
+                    />
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' }}>
+                      <input
+                        type="text"
+                        placeholder="현장소장 (선택)"
+                        value={manualContactInput}
+                        onChange={(e) => setManualContactInput(e.target.value)}
+                        style={{ backgroundColor: '#0f172a', border: '1px solid #475569', borderRadius: '6px', color: '#fff', padding: '6px 8px', fontSize: '12px', outline: 'none' }}
+                      />
+                      <input
+                        type="tel"
+                        placeholder="전화번호 (선택)"
+                        value={manualPhoneInput}
+                        onChange={(e) => setManualPhoneInput(e.target.value)}
+                        style={{ backgroundColor: '#0f172a', border: '1px solid #475569', borderRadius: '6px', color: '#fff', padding: '6px 8px', fontSize: '12px', outline: 'none' }}
+                      />
+                    </div>
+                    <div style={{ display: 'flex', gap: '6px', marginTop: '2px' }}>
+                      <button
+                        type="button"
+                        onClick={handleTouchSubmitNewSite}
+                        disabled={!manualNewSiteName.trim()}
+                        style={{
+                          flex: 1, padding: '7px', borderRadius: '6px', backgroundColor: manualNewSiteName.trim() ? '#2563eb' : '#475569',
+                          color: '#fff', border: 'none', fontSize: '12px', fontWeight: 700, cursor: manualNewSiteName.trim() ? 'pointer' : 'not-allowed'
+                        }}
+                      >
+                        신규 현장 등록 후 다음 ➔
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setShowNewSiteForm(false)}
+                        style={{ padding: '7px 10px', borderRadius: '6px', backgroundColor: '#334155', color: '#94a3b8', border: 'none', fontSize: '12px', cursor: 'pointer' }}
+                      >
+                        취소
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>
         )}
 
+        {/* ── 3단계: 장비 규격 및 수량 스마트 터치 컨트롤러 ── */}
         {currentStep === 'EQUIPMENT' && (
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-            <span style={{ fontSize: '11px', color: '#94a3b8', width: '100%', marginBottom: '2px' }}>발화 예시:</span>
-            {['스카이잭 19피트 2대', '지니 1930 1대', '시노붐 0812 2대', '3246 1대'].map(ex => (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            <div style={{ fontSize: '11px', color: '#94a3b8' }}>주요 규격 터치 선택:</div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '6px' }}>
+              {[
+                { ft: '19ft', model: 'GS-1930', label: '19ft (GS-1930)' },
+                { ft: '26ft', model: 'SJ-3219', label: '26ft 협폭 (3219)' },
+                { ft: '26ft', model: 'GS-2646', label: '26ft 광폭 (2646)' },
+                { ft: '32ft', model: 'SJ-3246', label: '32ft (3246)' },
+                { ft: '40ft', model: 'GS-4047', label: '40ft (4047)' },
+                { ft: '53ft', model: 'S1614AC+', label: '53ft 대형 (Dingli)' },
+              ].map(item => {
+                const isSelected = touchEquipmentFt === item.ft && touchEquipmentModel === item.model;
+                return (
+                  <button
+                    key={item.label}
+                    type="button"
+                    onClick={() => {
+                      setTouchEquipmentFt(item.ft);
+                      setTouchEquipmentModel(item.model);
+                    }}
+                    style={{
+                      padding: '8px 4px',
+                      borderRadius: '8px',
+                      backgroundColor: isSelected ? 'rgba(59, 130, 246, 0.25)' : '#1e293b',
+                      border: isSelected ? '1.5px solid #3b82f6' : '1px solid #334155',
+                      color: isSelected ? '#60a5fa' : '#cbd5e1',
+                      fontSize: '11.5px',
+                      fontWeight: '700',
+                      cursor: 'pointer',
+                      textAlign: 'center'
+                    }}
+                  >
+                    {item.label}
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* 수량 증감 카운터 및 터치 확정 버튼 */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', backgroundColor: '#1e293b', padding: '8px 12px', borderRadius: '10px', border: '1px solid #334155', marginTop: '2px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span style={{ fontSize: '12px', color: '#94a3b8' }}>수량:</span>
+                <button
+                  type="button"
+                  onClick={() => setTouchEquipmentQty(prev => Math.max(1, prev - 1))}
+                  style={{ width: '28px', height: '28px', borderRadius: '6px', backgroundColor: '#334155', border: 'none', color: '#ffffff', fontSize: '16px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                >
+                  -
+                </button>
+                <span style={{ fontSize: '15px', fontWeight: '800', color: '#ffffff', minWidth: '24px', textAlign: 'center' }}>
+                  {touchEquipmentQty}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setTouchEquipmentQty(prev => prev + 1)}
+                  style={{ width: '28px', height: '28px', borderRadius: '6px', backgroundColor: '#334155', border: 'none', color: '#ffffff', fontSize: '16px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                >
+                  +
+                </button>
+                <span style={{ fontSize: '12px', color: '#94a3b8' }}>대</span>
+              </div>
+
               <button
-                key={ex}
                 type="button"
-                onClick={() => handleRecognizedText(ex)}
+                onClick={() => handleTouchSelectEquipment(touchEquipmentFt, touchEquipmentModel, touchEquipmentQty)}
                 style={{
-                  padding: '4px 8px',
-                  borderRadius: '6px',
-                  backgroundColor: 'rgba(59, 130, 246, 0.15)',
-                  border: '1px solid rgba(59, 130, 246, 0.4)',
-                  color: '#93c5fd',
-                  fontSize: '11.5px',
-                  cursor: 'pointer'
+                  padding: '8px 14px',
+                  borderRadius: '8px',
+                  backgroundColor: '#2563eb',
+                  color: '#ffffff',
+                  border: 'none',
+                  fontSize: '12.5px',
+                  fontWeight: '800',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '4px'
                 }}
               >
-                "{ex}"
+                <span>터치 확정 ➔</span>
               </button>
-            ))}
+            </div>
           </div>
         )}
 
+        {/* ── 4단계: 하차 일시 스마트 터치 컨트롤러 ── */}
         {currentStep === 'DATETIME' && (
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-            <span style={{ fontSize: '11px', color: '#94a3b8', width: '100%', marginBottom: '2px' }}>발화 예시:</span>
-            {['내일 최대한 빨리', '내일 아침 8시', '다음주 월요일 7시', '당일 즉시 배차'].map(ex => (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            <div style={{ fontSize: '11px', color: '#94a3b8' }}>빠른 일시 터치 선택:</div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '6px' }}>
               <button
-                key={ex}
                 type="button"
-                onClick={() => handleRecognizedText(ex)}
+                onClick={() => handleTouchSelectDateTime(defaultTomorrowStr, '08:00', false)}
                 style={{
-                  padding: '4px 8px',
-                  borderRadius: '6px',
-                  backgroundColor: 'rgba(245, 158, 11, 0.15)',
-                  border: '1px solid rgba(245, 158, 11, 0.4)',
-                  color: '#fcd34d',
-                  fontSize: '11.5px',
-                  cursor: 'pointer'
+                  padding: '8px', borderRadius: '8px', backgroundColor: '#1e293b',
+                  border: '1px solid #334155', color: '#e2e8f0', fontSize: '12px', fontWeight: '700', cursor: 'pointer'
                 }}
               >
-                "{ex}"
+                🌅 내일 아침 08:00
               </button>
-            ))}
+              <button
+                type="button"
+                onClick={() => handleTouchSelectDateTime(defaultTomorrowStr, '07:00', false)}
+                style={{
+                  padding: '8px', borderRadius: '8px', backgroundColor: '#1e293b',
+                  border: '1px solid #334155', color: '#e2e8f0', fontSize: '12px', fontWeight: '700', cursor: 'pointer'
+                }}
+              >
+                ⚡ 내일 이른아침 07:00
+              </button>
+              <button
+                type="button"
+                onClick={() => handleTouchSelectDateTime(new Date().toISOString().split('T')[0], 'ASAP', true)}
+                style={{
+                  padding: '8px', borderRadius: '8px', backgroundColor: 'rgba(239, 68, 68, 0.15)',
+                  border: '1px solid rgba(239, 68, 68, 0.4)', color: '#f87171', fontSize: '12px', fontWeight: '700', cursor: 'pointer'
+                }}
+              >
+                🚨 오늘 당장 (긴급 ASAP)
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const afterTomorrow = new Date();
+                  afterTomorrow.setDate(afterTomorrow.getDate() + 2);
+                  handleTouchSelectDateTime(afterTomorrow.toISOString().split('T')[0], '08:00', false);
+                }}
+                style={{
+                  padding: '8px', borderRadius: '8px', backgroundColor: '#1e293b',
+                  border: '1px solid #334155', color: '#e2e8f0', fontSize: '12px', fontWeight: '700', cursor: 'pointer'
+                }}
+              >
+                📅 모레 아침 08:00
+              </button>
+            </div>
+
+            {/* 직접 날짜/시간 피커 */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', backgroundColor: '#1e293b', padding: '8px 10px', borderRadius: '10px', border: '1px solid #334155' }}>
+              <input
+                type="date"
+                value={touchCustomDate}
+                onChange={(e) => setTouchCustomDate(e.target.value)}
+                style={{
+                  backgroundColor: '#0f172a', border: '1px solid #475569', borderRadius: '6px',
+                  color: '#ffffff', padding: '4px 6px', fontSize: '12px', outline: 'none'
+                }}
+              />
+              <input
+                type="time"
+                value={touchCustomTime}
+                onChange={(e) => setTouchCustomTime(e.target.value)}
+                style={{
+                  backgroundColor: '#0f172a', border: '1px solid #475569', borderRadius: '6px',
+                  color: '#ffffff', padding: '4px 6px', fontSize: '12px', outline: 'none'
+                }}
+              />
+              <button
+                type="button"
+                onClick={() => handleTouchSelectDateTime(touchCustomDate, touchCustomTime, false)}
+                style={{
+                  padding: '6px 12px', borderRadius: '6px', backgroundColor: '#2563eb',
+                  color: '#ffffff', border: 'none', fontSize: '12px', fontWeight: '700', cursor: 'pointer', marginLeft: 'auto'
+                }}
+              >
+                확정 ➔
+              </button>
+            </div>
           </div>
         )}
 
+        {/* ── 5단계: 옵션, 보양, 운송비 및 특이사항 스마트 터치 컨트롤러 ── */}
         {currentStep === 'OPTIONS_NOTE' && (
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-            <span style={{ fontSize: '11px', color: '#94a3b8', width: '100%', marginBottom: '2px' }}>발화 예시:</span>
-            {[
-              '4면 철망 바닥보양',
-              '운송비 고객부담',
-              '지하 2층 지게차 하차',
-              '기본사양으로 진행'
-            ].map(ex => (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            <div style={{ fontSize: '11px', color: '#94a3b8' }}>주요 옵션 및 조건 터치 선택:</div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+              {[
+                { label: '4면 철망', type: 'paid', val: '4면 철망' },
+                { label: '바닥보양', type: 'protection', val: '바닥보양(플라베니아)' },
+                { label: '타이어 휠커버', type: 'protection', val: '타이어 휠커버' },
+                { label: '탑승구 사다리', type: 'protection', val: '탑승구 사다리' },
+                { label: '모서리 랩핑', type: 'protection', val: '모서리 랩핑' },
+                { label: '에어배관', type: 'paid', val: '에어배관' },
+              ].map(opt => {
+                const isActive = opt.type === 'paid' ? paidOptions.includes(opt.val) : protection.includes(opt.val);
+                return (
+                  <button
+                    key={opt.label}
+                    type="button"
+                    onClick={() => {
+                      if (opt.type === 'paid') {
+                        setPaidOptions(prev => prev.includes(opt.val) ? prev.replace(opt.val, '').replace(/,\s*,/g, ',').replace(/^,\s*|,\s*$/g, '') : (prev ? `${prev}, ${opt.val}` : opt.val));
+                      } else {
+                        setProtection(prev => prev.includes(opt.val) ? prev.replace(opt.val, '').replace(/,\s*,/g, ',').replace(/^,\s*|,\s*$/g, '') : (prev ? `${prev}, ${opt.val}` : opt.val));
+                      }
+                    }}
+                    style={{
+                      padding: '5px 10px',
+                      borderRadius: '8px',
+                      backgroundColor: isActive ? 'rgba(168, 85, 247, 0.3)' : '#1e293b',
+                      border: isActive ? '1.5px solid #a855f7' : '1px solid #334155',
+                      color: isActive ? '#d8b4fe' : '#cbd5e1',
+                      fontSize: '11.5px',
+                      fontWeight: 600,
+                      cursor: 'pointer'
+                    }}
+                  >
+                    {isActive ? '✓ ' : ''}{opt.label}
+                  </button>
+                );
+              })}
+
+              {/* 운송비 귀속선 토글 버튼 */}
               <button
-                key={ex}
                 type="button"
-                onClick={() => handleRecognizedText(ex)}
+                onClick={() => setBillableToCustomer(prev => !prev)}
                 style={{
-                  padding: '4px 8px',
-                  borderRadius: '6px',
-                  backgroundColor: 'rgba(168, 85, 247, 0.15)',
-                  border: '1px solid rgba(168, 85, 247, 0.4)',
-                  color: '#c084fc',
+                  padding: '5px 10px',
+                  borderRadius: '8px',
+                  backgroundColor: billableToCustomer ? 'rgba(239, 68, 68, 0.2)' : 'rgba(16, 185, 129, 0.2)',
+                  border: billableToCustomer ? '1.5px solid #ef4444' : '1.5px solid #10b981',
+                  color: billableToCustomer ? '#f87171' : '#34d399',
                   fontSize: '11.5px',
+                  fontWeight: 700,
                   cursor: 'pointer'
                 }}
               >
-                "{ex}"
+                운송비: {billableToCustomer ? '🔴 고객청구' : '🟢 당사부담'}
               </button>
-            ))}
+            </div>
+
+            {/* 특이사항 인라인 입력 및 확정 버튼 */}
+            <div style={{ display: 'flex', gap: '6px', marginTop: '2px' }}>
+              <input
+                type="text"
+                placeholder="현장 특이사항 직접 입력 (예: 지하 2층 진입, 지게차 하차)"
+                value={manualMemoInput}
+                onChange={(e) => setManualMemoInput(e.target.value)}
+                style={{
+                  flex: 1,
+                  backgroundColor: '#1e293b',
+                  border: '1px solid #334155',
+                  borderRadius: '8px',
+                  color: '#ffffff',
+                  padding: '6px 10px',
+                  fontSize: '12px',
+                  outline: 'none'
+                }}
+              />
+              <button
+                type="button"
+                onClick={() => {
+                  if (manualMemoInput.trim()) {
+                    setSpecialMemo(prev => prev ? `${prev}, ${manualMemoInput.trim()}` : manualMemoInput.trim());
+                    setManualMemoInput('');
+                  }
+                  setCurrentStep('CONFIRM');
+                  guideCurrentStep('CONFIRM', '출고 의뢰 전체 내용이 완성되었습니다. 확인 후 접수해주세요.');
+                }}
+                style={{
+                  padding: '6px 14px',
+                  borderRadius: '8px',
+                  backgroundColor: '#2563eb',
+                  color: '#ffffff',
+                  border: 'none',
+                  fontSize: '12px',
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  flexShrink: 0
+                }}
+              >
+                다음 ➔
+              </button>
+            </div>
           </div>
         )}
 
         {/* ── 5. 최종 확정 8대 전 영역 요약 카드 (CONFIRM 단계) ── */}
         {currentStep === 'CONFIRM' && (
-          <div style={{
-            padding: '12px 14px',
-            borderRadius: '12px',
-            backgroundColor: 'rgba(16, 185, 129, 0.08)',
-            border: '1px solid #10b981',
-            display: 'grid',
-            gridTemplateColumns: 'repeat(2, 1fr)',
-            gap: '8px',
-            fontSize: '12px'
-          }}>
-            <div>🏢 <strong>고객사:</strong> {selectedCustomer?.name}</div>
-            <div>📍 <strong>현장명:</strong> {selectedSite?.name || newSiteName}</div>
-            <div style={{ gridColumn: 'span 2' }}>🏠 <strong>주소:</strong> {siteAddress || selectedSite?.address || selectedCustomer?.address || '미상'}</div>
-            <div>👤 <strong>소장:</strong> {siteContactName || selectedSite?.contactName || '미지정'} ({siteContactPhone || selectedSite?.contact || '-'})</div>
-            <div>🏗️ <strong>장비:</strong> {equipmentResult?.confirmedDescription}</div>
-            <div>⏰ <strong>하차일시:</strong> {dateTimeResult?.displayText}</div>
-            <div>🚚 <strong>운송비:</strong> {billableToCustomer ? '🔴 고객부담(청구)' : '🟢 당사부담'}</div>
-            <div>🛡️ <strong>유상옵션:</strong> {paidOptions || '표준 사양'}</div>
-            <div>📦 <strong>보양작업:</strong> {protection || '표준 사양'}</div>
-            <div style={{ gridColumn: 'span 2' }}>📄 <strong>마감/결제:</strong> {closingDay || '말일'} 마감 / {paymentDay || '익월 25일'} 결제</div>
-            {specialMemo && <div style={{ gridColumn: 'span 2', color: '#f59e0b' }}>📝 <strong>특이사항:</strong> {specialMemo}</div>}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            <div style={{
+              padding: '12px 14px',
+              borderRadius: '12px',
+              backgroundColor: 'rgba(16, 185, 129, 0.08)',
+              border: '1px solid #10b981',
+              display: 'grid',
+              gridTemplateColumns: 'repeat(2, 1fr)',
+              gap: '8px',
+              fontSize: '12px'
+            }}>
+              <div>🏢 <strong>고객사:</strong> {selectedCustomer?.name}</div>
+              <div>📍 <strong>현장명:</strong> {selectedSite?.name || newSiteName}</div>
+              <div style={{ gridColumn: 'span 2' }}>🏠 <strong>주소:</strong> {siteAddress || selectedSite?.address || selectedCustomer?.address || '미상'}</div>
+              <div>👤 <strong>소장:</strong> {siteContactName || selectedSite?.contactName || '미지정'} ({siteContactPhone || selectedSite?.contact || '-'})</div>
+              <div>🏗️ <strong>장비:</strong> {equipmentResult?.confirmedDescription}</div>
+              <div>⏰ <strong>하차일시:</strong> {dateTimeResult?.displayText}</div>
+              <div>🚚 <strong>운송비:</strong> {billableToCustomer ? '🔴 고객부담(청구)' : '🟢 당사부담'}</div>
+              <div>🛡️ <strong>유상옵션:</strong> {paidOptions || '표준 사양'}</div>
+              <div>📦 <strong>보양작업:</strong> {protection || '표준 사양'}</div>
+              <div style={{ gridColumn: 'span 2' }}>📄 <strong>마감/결제:</strong> {closingDay || '말일'} 마감 / {paymentDay || '익월 25일'} 결제</div>
+              {specialMemo && <div style={{ gridColumn: 'span 2', color: '#f59e0b' }}>📝 <strong>특이사항:</strong> {specialMemo}</div>}
+            </div>
+
+            {/* 🌟 옵션 변경 시 현장 마스터 저장 확인 패널 */}
+            {isOptionsDiff && (
+              <div style={{
+                padding: '10px 12px',
+                borderRadius: '10px',
+                backgroundColor: 'rgba(245, 158, 11, 0.08)',
+                border: '1px solid rgba(245, 158, 11, 0.4)',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '6px'
+              }}>
+                <div style={{ fontSize: '12px', fontWeight: '800', color: '#f59e0b', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <AlertTriangle size={14} />
+                  <span>현장 기존 옵션과 변경사항 감지됨</span>
+                </div>
+                <div style={{ fontSize: '11px', color: '#94a3b8' }}>
+                  변경된 옵션을 현장 기본값으로 저장할까요? (1회성 선택 시 기존 현장 옵션이 유지됩니다)
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px', marginTop: '4px' }}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSaveOptionsToSite(true);
+                      setStatusMessage('현장 기본값으로 저장하도록 설정되었습니다.');
+                    }}
+                    style={{
+                      padding: '8px 6px',
+                      borderRadius: '8px',
+                      border: saveOptionsToSite ? '2px solid #10b981' : '1px solid #334155',
+                      backgroundColor: saveOptionsToSite ? 'rgba(16, 185, 129, 0.2)' : 'rgba(255,255,255,0.05)',
+                      color: saveOptionsToSite ? '#10b981' : '#64748b',
+                      fontSize: '11.5px',
+                      fontWeight: '700',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    {saveOptionsToSite ? '✓ ' : ''}현장 기본값 저장 (유지)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSaveOptionsToSite(false);
+                      setStatusMessage('이번 출고에만 1회성으로 적용하고 기존 현장 옵션은 보존합니다.');
+                    }}
+                    style={{
+                      padding: '8px 6px',
+                      borderRadius: '8px',
+                      border: !saveOptionsToSite ? '2px solid #3b82f6' : '1px solid #334155',
+                      backgroundColor: !saveOptionsToSite ? 'rgba(59, 130, 246, 0.2)' : 'rgba(255,255,255,0.05)',
+                      color: !saveOptionsToSite ? '#60a5fa' : '#64748b',
+                      fontSize: '11.5px',
+                      fontWeight: '700',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    {!saveOptionsToSite ? '✓ ' : ''}이번만 1회성 적용 (보존)
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         )}
 

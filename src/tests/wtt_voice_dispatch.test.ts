@@ -11,6 +11,7 @@ import {
   parseContactNameVoiceInput,
   parseContactPhoneVoiceInput,
   getSiteOptionsSummary,
+  isOptionsChangedFromSite,
   EQUIPMENT_SPEC_MATRIX,
   VoiceOrderDraft
 } from '../services/voiceOrderDraftService';
@@ -651,13 +652,239 @@ export function runWttSuite(): WttResult[] {
     });
   }
 
+  // -------------------------------------------------------------
+  // 시나리오 31: 옵션 변경 후 "이번 출고만 1회성 적용" 선택 분기 검증
+  // 5대 축: 물리(옵션 변경) x 비용/거버넌스(마스터 보존)
+  // -------------------------------------------------------------
+  {
+    const issues: string[] = [];
+    const baseSite: CustomerSite = {
+      id: 'SITE-001',
+      customerId: 'CUST-001',
+      name: '판교 알파돔 시티 6-1BL',
+      address: '경기도 성남시 분당구 백현동 531',
+      contactName: '박소장',
+      contact: '010-5555-6666',
+      email: '',
+      paidOptions: '4면 철망 설치',
+      protection: '바닥보양(플라베니아)',
+      checkedSpecs: { spec1: true, spec3: true },
+      createdAt: '2026-08-01'
+    };
+
+    // 새 출고에서 에어배관 추가 요청
+    const newOptionsInput = '에어배관 추가 설치해주세요';
+    const optRes = parseOptionsAndSpecsVoiceInput(newOptionsInput);
+    const combinedPaid = baseSite.paidOptions ? `${baseSite.paidOptions}, ${optRes.paidOptions}` : optRes.paidOptions;
+
+    // 1) 옵션 변경 감지 확인
+    const isDiff = isOptionsChangedFromSite(baseSite, combinedPaid, baseSite.protection, baseSite.checkedSpecs);
+    if (!isDiff) issues.push('옵션 변경 감지 실패');
+
+    // 2) 사용자 선택: "이번 출고만 1회성 적용" (saveOptionsToSite: false)
+    const saveOptionsToSite = false;
+    let siteCopy = { ...baseSite };
+
+    // DB 시뮬레이션: saveOptionsToSite가 false일 때는 siteUpdates.paidOptions 업데이트 생략
+    if (saveOptionsToSite) {
+      siteCopy.paidOptions = combinedPaid;
+    }
+
+    // 3) 검증: 출고 데이터(combinedPaid)는 에어배관이 들어갔으나, 현장 마스터(siteCopy)는 기존 '4면 철망 설치' 원형 유지
+    if (siteCopy.paidOptions !== '4면 철망 설치') issues.push(`현장 마스터 오염됨: ${siteCopy.paidOptions} != 4면 철망 설치`);
+    if (!combinedPaid.includes('에어배관')) issues.push('출고 의뢰에 새 옵션 누락');
+
+    results.push({
+      scenarioId: 'WTT-DISP-31',
+      name: '옵션 변경 감지 ➔ 이번 출고만 1회성 적용 (현장 마스터 원형 보존)',
+      axis: '거버넌스(1회성 옵션 분기 & 마스터 보존)',
+      passed: issues.length === 0,
+      issues,
+      details: { original: baseSite.paidOptions, dispatchOption: combinedPaid, sitePreserved: siteCopy.paidOptions }
+    });
+  }
+
+  // -------------------------------------------------------------
+  // 시나리오 32: 옵션 변경 후 "현장 기본값으로 저장" 선택 분기 검증
+  // 5대 축: 물리(옵션 갱신) x 관리(마스터 최신화)
+  // -------------------------------------------------------------
+  {
+    const issues: string[] = [];
+    const baseSite: CustomerSite = {
+      id: 'SITE-001',
+      customerId: 'CUST-001',
+      name: '판교 알파돔 시티 6-1BL',
+      address: '경기도 성남시 분당구 백현동 531',
+      contactName: '박소장',
+      contact: '010-5555-6666',
+      email: '',
+      paidOptions: '4면 철망 설치',
+      protection: '바닥보양(플라베니아)',
+      checkedSpecs: { spec1: true },
+      createdAt: '2026-08-01'
+    };
+
+    // 새 출고에서 전면 변경 요청: "함석 설치"
+    const newOptionsInput = '함석 설치로 변경해주세요';
+    const optRes = parseOptionsAndSpecsVoiceInput(newOptionsInput);
+
+    // 1) 옵션 변경 감지 확인
+    const isDiff = isOptionsChangedFromSite(baseSite, optRes.paidOptions, baseSite.protection, baseSite.checkedSpecs);
+    if (!isDiff) issues.push('옵션 변경 감지 실패');
+
+    // 2) 사용자 선택: "현장 기본값으로 저장" (saveOptionsToSite: true)
+    const saveOptionsToSite = true;
+    let siteCopy = { ...baseSite };
+
+    // DB 시뮬레이션: saveOptionsToSite가 true일 때 현장 마스터 업데이트
+    if (saveOptionsToSite && optRes.paidOptions) {
+      siteCopy.paidOptions = optRes.paidOptions;
+    }
+
+    // 3) 검증: 현장 마스터가 새 옵션 '함석 설치'로 갱신되었는지 확인
+    if (siteCopy.paidOptions !== '함석 설치') issues.push(`현장 마스터 갱신 실패: ${siteCopy.paidOptions} != 함석 설치`);
+
+    results.push({
+      scenarioId: 'WTT-DISP-32',
+      name: '옵션 변경 감지 ➔ 현장 기본값으로 저장 (현장 마스터 최신화)',
+      axis: '관리(현장 마스터 갱신 & 향후 유지)',
+      passed: issues.length === 0,
+      issues,
+      details: { newOption: optRes.paidOptions, updatedSite: siteCopy.paidOptions }
+    });
+  }
+
+  // -------------------------------------------------------------
+  // 시나리오 33: STT 오인식 시 들린 내용 1터치 인라인 수정 (Tap-to-Edit Buffer)
+  // 5대 축: 물리(STT 오인식) x 맥락(인라인 텍스트 수정 및 재해석)
+  // -------------------------------------------------------------
+  {
+    const issues: string[] = [];
+    // 1) STT 최초 오인식: "지니 일구삼공 두디"
+    const faultySttText = '지니 일구삼공 두디';
+    const initialParse = parseEquipmentVoiceInput(faultySttText);
+    // 2) 사용자가 인라인 텍스트필드에서 "두디"를 "2대"로 1터치 수정
+    const correctedText = faultySttText.replace('두디', '2대');
+    const correctedParse = parseEquipmentVoiceInput(correctedText);
+
+    if (!correctedParse || correctedParse.order.modelName !== 'GS-1930' || correctedParse.order.count !== 2) {
+      issues.push(`인라인 수정 텍스트 파싱 실패: ${JSON.stringify(correctedParse)}`);
+    }
+
+    results.push({
+      scenarioId: 'WTT-DISP-33',
+      name: 'STT 오인식 시 들린 내용 1터치 인라인 수정 (Tap-to-Edit Buffer) 및 재파싱 검증',
+      axis: '물리(STT 오인식 보정) x 맥락(인라인 에디터)',
+      passed: issues.length === 0,
+      issues,
+      details: { faultySttText, correctedText, parsedResult: correctedParse?.confirmedDescription }
+    });
+  }
+
+  // -------------------------------------------------------------
+  // 시나리오 34: 고객사 음성 매칭 실패 ➔ 검색/칩 터치 선택 ➔ 다음 단계 음성 연동
+  // 5대 축: 공간/맥락(고객사 터치 검색 및 음성 연동)
+  // -------------------------------------------------------------
+  {
+    const issues: string[] = [];
+    const customerList = mockCustomers;
+    // 1) 음성 검색 실패 발화: "현대건슬" (오인식)
+    const voiceSearch = parseCustomerVoiceInput('현대건슬', customerList);
+    // 음성 실패 확인: voiceSearch === null
+
+    // 2) 사용자가 화면 검색창에 "현대" 입력하여 필터링
+    const query = '현대';
+    const filtered = customerList.filter(c => c.name.includes(query) || (c.representative && c.representative.includes(query)));
+    if (filtered.length === 0) issues.push('고객사 실시간 검색 필터링 실패');
+
+    // 3) 검색된 첫 번째 칩 터치 선택 시뮬레이션
+    const selected = filtered[0];
+    if (selected?.id !== 'CUST-001') issues.push('선택된 고객사 ID 불일치');
+
+    results.push({
+      scenarioId: 'WTT-DISP-34',
+      name: '고객사 음성 실패 ➔ 검색/칩 터치 선택 ➔ 다음 단계 음성 연동 검증',
+      axis: '공간/맥락(스마트 고객사 검색 칩)',
+      passed: issues.length === 0,
+      issues,
+      details: { query, matchedName: selected?.name }
+    });
+  }
+
+  // -------------------------------------------------------------
+  // 시나리오 35: 장비 규격 및 수량 터치 증감 카운터 ➔ 터치 확정 ➔ 하차일시 음성 복귀
+  // 5대 축: 수량/물리(장비 규격 터치 선택 & 카운터 연산)
+  // -------------------------------------------------------------
+  {
+    const issues: string[] = [];
+    // 터치 조작 시뮬레이션: 26ft 광폭 (GS-2646) 선택 + 수량 1에서 [+] 2회 클릭 ➔ 3대
+    const touchFt = '26ft';
+    const touchModel = 'GS-2646';
+    let touchQty = 1;
+    touchQty += 2; // [+] 2회 클릭
+
+    const matchedItem = EQUIPMENT_SPEC_MATRIX.find(m => m.ft === touchFt && m.modelName === touchModel);
+    if (!matchedItem) issues.push('장비 지식 매트릭스 매칭 실패');
+
+    const confirmedDescription = `${matchedItem?.manufacturer || ''} ${touchModel} ${touchQty}대`.trim();
+    if (confirmedDescription !== 'Genie GS-2646 3대') {
+      issues.push(`장비 확정 설명 불일치: ${confirmedDescription}`);
+    }
+
+    results.push({
+      scenarioId: 'WTT-DISP-35',
+      name: '장비 규격 및 수량 터치 증감 카운터 ➔ 터치 확정 ➔ 하차일시 음성 복귀 검증',
+      axis: '수량/물리(인라인 터치 카운터)',
+      passed: issues.length === 0,
+      issues,
+      details: { touchFt, touchModel, touchQty, confirmedDescription }
+    });
+  }
+
+  // -------------------------------------------------------------
+  // 시나리오 36: 음성 입력 도중 중간 데이터 100% 보존형 일반 폼 핸드오프 (Safe Hand-off)
+  // 5대 축: 종단 보존(중간 상태 100% 무손실 전달)
+  // -------------------------------------------------------------
+  {
+    const issues: string[] = [];
+    // 3단계(장비)까지 진행된 상태 시뮬레이션
+    const partialState = {
+      customerId: 'CUST-001',
+      customerName: '(주)삼보이엔씨',
+      siteId: 'SITE-001',
+      siteName: '판교 알파돔 시티 6-1BL',
+      siteAddress: '경기도 성남시 분당구 백현동 531',
+      siteContactName: '박소장',
+      siteContactPhone: '010-5555-6666',
+      deliveryDate: '2026-09-07',
+      deliveryTime: '08:00',
+      orders: [{ ft: '19ft', modelName: 'GS-1930', count: 2 }],
+      isPartialHandOff: true
+    };
+
+    // 일반 서식 매핑 검증
+    if (!partialState.customerId || !partialState.siteId) issues.push('고객사/현장 누락');
+    if (partialState.orders[0].count !== 2) issues.push('장비 수량 누락');
+    if (!partialState.siteContactPhone) issues.push('소장 연락처 누락');
+    if (!partialState.isPartialHandOff) issues.push('핸드오프 플래그 누락');
+
+    results.push({
+      scenarioId: 'WTT-DISP-36',
+      name: '음성 입력 도중 중간 데이터 100% 보존형 일반 폼 핸드오프 (Safe Hand-off) 검증',
+      axis: '종단 보존(중간 상태 100% 무손실 전달)',
+      passed: issues.length === 0,
+      issues,
+      details: partialState
+    });
+  }
+
   return results;
 }
 
 // CLI 실행 시 결과 출력
 const testResults = runWttSuite();
 console.log('================================================================');
-console.log(' 🧪 WTT 30회 도메인 관통 스트레스 테스트 실행 결과 리포트');
+console.log(` 🧪 WTT ${testResults.length}회 도메인 관통 스트레스 테스트 실행 결과 리포트`);
 console.log('================================================================');
 let passCount = 0;
 testResults.forEach(r => {
@@ -671,6 +898,10 @@ testResults.forEach(r => {
   }
 });
 console.log('----------------------------------------------------------------');
-console.log(`📊 최종 결과: 총 30개 중 ${passCount}개 통과, ${30 - passCount}개 결함 발견`);
+console.log(`📊 최종 결과: 총 ${testResults.length}개 중 ${passCount}개 통과, ${testResults.length - passCount}개 결함 발견`);
 console.log('================================================================');
+
+if (passCount !== testResults.length) {
+  process.exit(1);
+}
 

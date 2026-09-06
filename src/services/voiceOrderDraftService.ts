@@ -25,6 +25,7 @@ export interface VoiceOrderDraft {
   paidOptions?: string;          // 유상옵션 (철망, 함석, 에어배관 등)
   protection?: string;           // 보양작업 (바닥보양, 휠보양 등)
   checkedSpecs?: Record<string, boolean>; // 21대 표준 스펙 체크
+  saveOptionsToSite?: boolean;   // 변경된 옵션을 현장 기본값으로 저장할지 여부 (1회성: false)
   billableToCustomer?: boolean;  // 운송비 청구 (고객부담: true, 당사부담: false)
   closingDay?: string;           // 마감일 (말일, 20일, 25일 등)
   paymentDay?: string;           // 결제일 (익월 25일, 말일 등)
@@ -1404,3 +1405,38 @@ export function getSiteOptionsSummary(site: CustomerSite): string {
   if (specCount > 0) parts.push(`안전스펙 ${specCount}건`);
   return parts.length > 0 ? parts.join(', ') : '표준 사양';
 }
+
+/**
+ * 현장의 기존 기억된 옵션과 이번 출고 요청 옵션 간 차이 발생 여부 감지
+ */
+export function isOptionsChangedFromSite(
+  site: CustomerSite | null | undefined,
+  paidOptions?: string,
+  protection?: string,
+  checkedSpecs?: Record<string, boolean>
+): boolean {
+  if (!site) return false;
+  
+  // 1. 유상옵션 비교 (정규화)
+  const sitePaid = (site.paidOptions || '').trim();
+  const reqPaid = (paidOptions || '').trim();
+  if (sitePaid !== reqPaid) return true;
+
+  // 2. 보양작업 비교 (정규화)
+  const siteProt = (site.protection || '').trim();
+  const reqProt = (protection || '').trim();
+  if (siteProt !== reqProt) return true;
+
+  // 3. 21대 안전스펙 비교
+  const siteSpecs = site.checkedSpecs || {};
+  const reqSpecs = checkedSpecs || {};
+  const allSpecKeys = Array.from(new Set([...Object.keys(siteSpecs), ...Object.keys(reqSpecs)]));
+  for (const k of allSpecKeys) {
+    if (!!siteSpecs[k] !== !!reqSpecs[k]) {
+      return true;
+    }
+  }
+
+  return false;
+}
+

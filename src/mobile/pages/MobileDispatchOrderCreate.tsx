@@ -13,6 +13,7 @@ import {
   saveVoiceOrderDraft, 
   clearVoiceOrderDraft, 
   mergeVoiceFragmentToDraft, 
+  isOptionsChangedFromSite,
   VoiceOrderDraft, 
   EquipmentOrderItem 
 } from '../../services/voiceOrderDraftService';
@@ -75,12 +76,17 @@ export const MobileDispatchOrderCreate: React.FC<MobileDispatchOrderCreateProps>
   const [paidOptions, setPaidOptions] = useState('');
   const [protection, setProtection] = useState('');
   const [checkedSpecs, setCheckedSpecs] = useState<Record<string, boolean>>({});
+  const [saveOptionsToSite, setSaveOptionsToSite] = useState<boolean>(true); // 🌟 변경된 옵션을 현장 기본값으로 저장할지 여부
   const [billableToCustomer, setBillableToCustomer] = useState(false);
   const [closingDay, setClosingDay] = useState('말일');
   const [paymentDay, setPaymentDay] = useState('익월 25일');
   const [taxBillEmail, setTaxBillEmail] = useState('');
   const [vehicleType, setVehicleType] = useState('5톤 렉카');
   const [isSpecsAccordionOpen, setIsSpecsAccordionOpen] = useState(false);
+
+  // 🌟 선택된 현장 객체 및 옵션 변경 발생 여부 실시간 감지
+  const selectedSite = useMemo(() => sites.find(s => s.id === selectedSiteId), [sites, selectedSiteId]);
+  const isOptionsDiff = useMemo(() => isOptionsChangedFromSite(selectedSite, paidOptions, protection, checkedSpecs), [selectedSite, paidOptions, protection, checkedSpecs]);
   
   // 납품/회수 일시 (기본값: 내일 08:00)
   const tomorrow = useMemo(() => {
@@ -835,6 +841,7 @@ export const MobileDispatchOrderCreate: React.FC<MobileDispatchOrderCreateProps>
         paidOptions: paidOptions.trim(),
         protection: protection.trim(),
         checkedSpecs,
+        saveOptionsToSite,
         billableToCustomer,
         vehicleType,
         isSetAsCustomerDefault: false,
@@ -1673,6 +1680,45 @@ export const MobileDispatchOrderCreate: React.FC<MobileDispatchOrderCreateProps>
                 </div>
               )}
             </div>
+
+            {/* 🌟 옵션 변경 시 현장 마스터 저장 확인 토글 */}
+            {selectedSite && isOptionsDiff && (
+              <div className="mt-2 p-2.5 rounded-xl border border-amber-500/40 bg-amber-950/20 flex flex-col gap-1.5">
+                <div className="flex items-center gap-1.5 text-[11px] font-bold text-amber-400">
+                  <AlertTriangle className="w-3.5 h-3.5" />
+                  <span>현장 기존 옵션과 변경사항 감지</span>
+                </div>
+                <div className="text-[10px] text-slate-400">
+                  변경된 옵션을 현장 기본값으로 저장할까요? (1회성 선택 시 기존 현장 옵션이 유지됩니다)
+                </div>
+                <div className="grid grid-cols-2 gap-1.5 mt-1">
+                  <button
+                    type="button"
+                    onClick={() => setSaveOptionsToSite(true)}
+                    className={`p-1.5 rounded-lg border text-[11px] font-bold flex items-center justify-center gap-1 transition-all ${
+                      saveOptionsToSite
+                        ? 'bg-emerald-600 text-white border-emerald-500'
+                        : 'bg-slate-950 text-slate-400 border-slate-800'
+                    }`}
+                  >
+                    {saveOptionsToSite && <Check className="w-3 h-3" />}
+                    <span>현장 기본값 저장 (유지)</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSaveOptionsToSite(false)}
+                    className={`p-1.5 rounded-lg border text-[11px] font-bold flex items-center justify-center gap-1 transition-all ${
+                      !saveOptionsToSite
+                        ? 'bg-blue-600 text-white border-blue-500'
+                        : 'bg-slate-950 text-slate-400 border-slate-800'
+                    }`}
+                  >
+                    {!saveOptionsToSite && <Check className="w-3 h-3" />}
+                    <span>이번만 1회성 적용 (보존)</span>
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         )}
 
@@ -1830,13 +1876,17 @@ export const MobileDispatchOrderCreate: React.FC<MobileDispatchOrderCreateProps>
           if (data.paidOptions) setPaidOptions(data.paidOptions);
           if (data.protection) setProtection(data.protection);
           if (data.checkedSpecs) setCheckedSpecs(data.checkedSpecs);
+          if (data.saveOptionsToSite !== undefined) setSaveOptionsToSite(data.saveOptionsToSite);
           if (data.billableToCustomer !== undefined) setBillableToCustomer(data.billableToCustomer);
           if (data.closingDay) setClosingDay(data.closingDay);
           if (data.paymentDay) setPaymentDay(data.paymentDay);
           if (data.vehicleType) setVehicleType(data.vehicleType);
-          if (data.memo) setMemo(data.memo);
           setHasRestoredDraft(true);
-          showToast('대화형 음성으로 출고의뢰 전체 서식이 완성되었습니다.');
+          if (data.isPartialHandOff) {
+            showToast('입력 중이던 내용이 일반 서식에 반영되었습니다. 나머지 항목을 확인 후 접수해주세요.');
+          } else {
+            showToast('대화형 음성으로 출고의뢰 전체 서식이 완성되었습니다.');
+          }
         }}
       />
     </div>

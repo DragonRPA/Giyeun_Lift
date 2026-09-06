@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useApp } from '../context/AppContext';
 import { findCustomerByNormalizedName, STANDARD_SPECS, SpecItem } from '../services/db';
+import { isOptionsChangedFromSite } from '../services/voiceOrderDraftService';
 import { Zap, Clipboard, FileText, Copy, Printer, Braces, Plus, Trash2, RefreshCw, CheckCircle2, AlertTriangle, Settings, ShieldCheck } from 'lucide-react';
 
 interface EquipmentItem {
@@ -88,10 +89,26 @@ export const SmartDispatch: React.FC = () => {
   // 🌟 고객사 기본값 등록 및 전체 현장 일괄 전파 플래그 상태
   const [isSetAsCustomerDefault, setIsSetAsCustomerDefault] = useState(false);
   const [applyToAllSites, setApplyToAllSites] = useState(false);
+  const [saveOptionsToSite, setSaveOptionsToSite] = useState(true); // 🌟 변경된 옵션을 현장 기본값으로 저장할지 여부
 
   // 요구사항 필수 체크리스트 선택/해제 상태 (Record<specId, boolean>)
   const [checkedSpecs, setCheckedSpecs] = useState<Record<string, boolean>>({});
   const [showAllSpecs, setShowAllSpecs] = useState<boolean>(false);
+
+  // 🌟 현재 매핑된 고객사/현장 및 옵션 변경 감지 memo
+  const currentMatchedCustomer = useMemo(() => {
+    return findCustomerByNormalizedName(customers, customerName);
+  }, [customers, customerName]);
+
+  const currentMatchedSite = useMemo(() => {
+    if (!currentMatchedCustomer || !siteName) return null;
+    const cleanSite = siteName.replace(/\s/g, '');
+    return sites.find(s => s.customerId === currentMatchedCustomer.id && (s.name.replace(/\s/g, '') === cleanSite || s.name.includes(siteName) || siteName.includes(s.name))) || null;
+  }, [sites, currentMatchedCustomer, siteName]);
+
+  const isOptionsDiff = useMemo(() => {
+    return isOptionsChangedFromSite(currentMatchedSite, paidOptions, protection, checkedSpecs);
+  }, [currentMatchedSite, paidOptions, protection, checkedSpecs]);
 
   const [closingDay, setClosingDay] = useState('');
   const [paymentDay, setPaymentDay] = useState('');
@@ -1030,7 +1047,7 @@ ${activeSpecs.map((s, idx) => `  ${idx + 1}. [적용] ${s.label}`).join('\n') ||
       siteContactName, siteContactPhone, siteContactEmail,
       billingContactName, billingContactPhone, statementEmail, taxBillEmail,
       loadingTime, unloadingTime, equipments: updatedEquipments, note, rawText: rawText || note,
-      paidOptions, protection, checkedSpecs, isSetAsCustomerDefault, applyToAllSites,
+      paidOptions, protection, checkedSpecs, saveOptionsToSite, isSetAsCustomerDefault, applyToAllSites,
       closingDay, paymentDay
     };
 
@@ -1625,6 +1642,32 @@ ${activeSpecs.map((s, idx) => `  ${idx + 1}. [적용] ${s.label}`).join('\n') ||
                   />
                   <span>⚡ '{customerName || '해당 고객사'}'의 등록된 모든 현장에도 이 옵션·보양을 동일하게 일괄 적용</span>
                 </label>
+
+                {/* 🌟 옵션 변경 시 현장 마스터 저장 확인 토글 (PC 버전) */}
+                {currentMatchedSite && isOptionsDiff && (
+                  <div style={{
+                    padding: '8px 12px',
+                    backgroundColor: 'rgba(245, 158, 11, 0.08)',
+                    border: '1px solid rgba(245, 158, 11, 0.4)',
+                    borderRadius: '6px',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '4px'
+                  }}>
+                    <div style={{ fontSize: '12px', fontWeight: 700, color: '#f59e0b', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <AlertTriangle size={14} />
+                      <span>현장 기존 옵션과 변경사항 감지됨</span>
+                    </div>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '12px', fontWeight: 600 }}>
+                      <input
+                        type="checkbox"
+                        checked={saveOptionsToSite}
+                        onChange={e => setSaveOptionsToSite(e.target.checked)}
+                      />
+                      <span>📍 변경된 옵션을 '{siteName || '해당 현장'}' 기본값으로 갱신 저장 (미체크 시 이번 출고 1회성 적용, 기존 현장 옵션 보존)</span>
+                    </label>
+                  </div>
+                )}
               </div>
 
               {/* 💡 [텍스트 추출 감지 수량 안내 뱃지] */}

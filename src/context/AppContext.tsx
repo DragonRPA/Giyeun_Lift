@@ -48,6 +48,7 @@ export interface SmartDispatchData {
   paidOptions?: string;
   protection?: string;
   checkedSpecs?: Record<string, boolean>;
+  saveOptionsToSite?: boolean; // 🌟 옵션 변경 시 현장 마스터 저장 여부 (false: 이번 출고만 1회성 적용, true: 현장 마스터 갱신)
   isSetAsCustomerDefault?: boolean;
   applyToAllSites?: boolean;
   closingDay?: string;
@@ -1297,14 +1298,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (data.siteContactEmail && data.siteContactEmail !== '미상' && data.siteContactEmail !== site.email) {
         siteUpdates.email = data.siteContactEmail;
       }
-      if (data.paidOptions !== undefined && data.paidOptions !== site.paidOptions) {
-        siteUpdates.paidOptions = data.paidOptions;
-      }
-      if (data.protection !== undefined && data.protection !== site.protection) {
-        siteUpdates.protection = data.protection;
-      }
-      if (data.checkedSpecs && Object.keys(data.checkedSpecs).length > 0) {
-        siteUpdates.checkedSpecs = data.checkedSpecs;
+      // 🌟 옵션 변경 시 현장 마스터 저장 여부 확인 (false인 경우 이번 출고만 1회성 적용하고 현장 마스터는 기존 옵션 원형 보존)
+      if (data.saveOptionsToSite !== false) {
+        if (data.paidOptions !== undefined && data.paidOptions !== site.paidOptions) {
+          siteUpdates.paidOptions = data.paidOptions;
+        }
+        if (data.protection !== undefined && data.protection !== site.protection) {
+          siteUpdates.protection = data.protection;
+        }
+        if (data.checkedSpecs && Object.keys(data.checkedSpecs).length > 0) {
+          siteUpdates.checkedSpecs = data.checkedSpecs;
+        }
       }
       if (Object.keys(siteUpdates).length > 0) {
         site = db.updateRow<CustomerSite>('sites', site.id, { ...siteUpdates, updatedAt: new Date().toISOString() }) as CustomerSite;

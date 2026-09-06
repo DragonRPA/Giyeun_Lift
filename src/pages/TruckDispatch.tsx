@@ -10,7 +10,7 @@ import {
   UserCheck
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
-import { Delivery, TransportCompany, TransportDriver, db, DeliveryStatus, Asset } from '../services/db';
+import { Delivery, TransportCompany, TransportDriver, TransportNegotiation, db, DeliveryStatus, Asset } from '../services/db';
 import { DestinationWeatherModal } from '../components/DestinationWeatherModal';
 import { matchHangul } from '../utils/hangulSearch';
 import { buildDispatchSmsText, launchDispatchSms } from '../utils/nativeLauncher';
@@ -71,7 +71,7 @@ export const TruckDispatch: React.FC = () => {
     currentUser,
     deliveries, contracts, customers, products, sites, users,
     contractAssets, assets,
-    transportCompanies, transportDrivers, outboundInspections, hasPermission, 
+    transportCompanies, transportDrivers, transportNegotiations, outboundInspections, hasPermission, 
     refreshAllData, showErrorModal, convertReconciledDeliveriesToSettlement
   } = useApp();
 
@@ -258,7 +258,7 @@ export const TruckDispatch: React.FC = () => {
     return str;
   };
 
-  const [activeTab, setActiveTab] = useState<'DISPATCH' | 'RECONCILIATION'>('DISPATCH');
+  const [activeTab, setActiveTab] = useState<'DISPATCH' | 'NEGOTIATION' | 'RECONCILIATION'>('DISPATCH');
 
   // 토스트 알림 상태 (헌장 5.2: 브라우저 alert/confirm 전면 퇴출)
   const [toastMessage, setToastMessage] = useState<{ type: 'success' | 'error' | 'warning'; text: string } | null>(null);
@@ -298,7 +298,110 @@ export const TruckDispatch: React.FC = () => {
     }
   };
 
+  // ── 운송사 배차 협의 (NEGOTIATION) 전용 상태 ──
+  const [selectedNegoDeliveryId, setSelectedNegoDeliveryId] = useState<string | null>(null);
+  const [negoCompanyId, setNegoCompanyId] = useState<string>('');
+  const [negoVehicleType, setNegoVehicleType] = useState<string>('5T');
+  const [negoProposedCost, setNegoProposedCost] = useState<number>(0);
+  const [negoTargetCost, setNegoTargetCost] = useState<number>(0);
+  const [negoCallSummary, setNegoCallSummary] = useState<string>('');
+  const [negoSpecialTerms, setNegoSpecialTerms] = useState<string>('');
+  const [negoFilterStatus, setNegoFilterStatus] = useState<'ALL' | 'PENDING' | 'IN_NEGOTIATION' | 'CONFIRMED'>('ALL');
+  const [negoSearchQuery, setNegoSearchQuery] = useState<string>('');
+
+  // 기존 배차 관리 상세 선택 상태
   const [selectedDelivery, setSelectedDelivery] = useState<Delivery | null>(null);
+
+  // 운송사 배차 협의 전용 선택 배차 건
+  const selectedNegoDelivery = useMemo(() => {
+    return deliveries.find(d => d.id === selectedNegoDeliveryId) || null;
+  }, [deliveries, selectedNegoDeliveryId]);
+
+  // 운송사 협의 이력 저장 핸들러
+  const handleSaveNegotiation = async () => {
+    if (!selectedNegoDeliveryId) {
+      showToast('배차 건을 먼저 선택하십시오.', 'error');
+      return;
+    }
+    if (!negoCompanyId) {
+      showToast('협의 운송사를 선택하십시오.', 'error');
+      return;
+    }
+    const company = transportCompanies.find(c => c.id === negoCompanyId);
+    const newNego: TransportNegotiation = {
+      id: `TN-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+      deliveryId: selectedNegoDeliveryId,
+      transportCompanyId: negoCompanyId,
+      transportCompanyName: company?.name || '기타 운송사',
+      vehicleType: negoVehicleType,
+      proposedCost: Number(negoProposedCost) || 0,
+      targetCost: Number(negoTargetCost) || 0,
+      status: 'IN_NEGOTIATION',
+      negotiatorName: currentUser?.name || '배차담당자',
+      callSummary: negoCallSummary,
+      specialTerms: negoSpecialTerms,
+      negotiatedAt: new Date().toISOString(),
+      createdAt: new Date().toISOString()
+    };
+
+    const currentList = db.transportNegotiations || [];
+    db.transportNegotiations = [newNego, ...currentList];
+    await db.awaitPendingWrites();
+    refreshAllData();
+    showToast(`${company?.name || '운송사'} 협의 견적이 등록되었습니다.`);
+    setNegoCallSummary('');
+    setNegoSpecialTerms('');
+  };
+
+  // 협의 조건으로 배차 건 확정 승계 핸들러
+  const handleConfirmNegotiation = async (nego: TransportNegotiation) => {
+    if (!nego.deliveryId) return;
+    const targetDel = deliveries.find(d => d.id === nego.deliveryId);
+    if (!targetDel) return;
+
+    // 1. 배차 건에 운송사 및 비용 반영
+    const costToApply = nego.confirmedCost || nego.proposedCost || 0;
+    const updatedDeliveries = deliveries.map(d => {
+      if (d.id === nego.deliveryId) {
+        return {
+          ...d,
+          transportCompany: nego.transportCompanyName,
+          vehicleType: nego.vehicleType,
+          deliveryCost: costToApply,
+          expectedCost: costToApply,
+          deliveryCostConfirmed: costToApply,
+          memo: d.memo ? `${d.memo} | [협의확정] ${nego.transportCompanyName} ${nego.vehicleType} ₩${costToApply.toLocaleString()}` : `[협의확정] ${nego.transportCompanyName} ${nego.vehicleType} ₩${costToApply.toLocaleString()}`,
+          updatedAt: new Date().toISOString()
+        };
+      }
+      return d;
+    });
+    db.deliveries = updatedDeliveries;
+
+    // 2. 협의 상태 CONFIRMED로 변경
+    const updatedNegos = (db.transportNegotiations || []).map(n => {
+      if (n.id === nego.id) {
+        return {
+          ...n,
+          status: 'CONFIRMED' as const,
+          confirmedCost: costToApply,
+          updatedAt: new Date().toISOString()
+        };
+      } else if (n.deliveryId === nego.deliveryId && n.status === 'IN_NEGOTIATION') {
+        return {
+          ...n,
+          status: 'REJECTED' as const,
+          updatedAt: new Date().toISOString()
+        };
+      }
+      return n;
+    });
+    db.transportNegotiations = updatedNegos;
+
+    await db.awaitPendingWrites();
+    refreshAllData();
+    showToast(`배차 조건이 [${nego.transportCompanyName} / ₩${costToApply.toLocaleString()}]으로 확정되었습니다.`);
+  };
   
   // 배차 세부 유형 ('출고' | '입고' | '반납' | '정비' | '이동')
   const [dispatchCategory, setDispatchCategory] = useState<'출고' | '입고' | '반납' | '정비' | '이동' | '교환'>('출고');
@@ -1943,29 +2046,51 @@ export const TruckDispatch: React.FC = () => {
         )}
       </div>
 
-      {/* 메인 탭 (배차 관리 / 월말 운송료 대사) */}
+      {/* 메인 탭 (헌장 3.1 무수식어 건조 표준: 배차 관리 / 운송사 배차 협의 / 운송료 대사) */}
       <div style={{ display: 'flex', gap: '8px', borderBottom: '1px solid var(--border-color)', marginBottom: '20px' }}>
         <button
           onClick={() => setActiveTab('DISPATCH')}
           style={{
             padding: '10px 18px', fontSize: '14px', fontWeight: 700, backgroundColor: 'transparent', border: 'none',
             borderBottom: activeTab === 'DISPATCH' ? '3px solid var(--primary)' : 'none',
-            color: activeTab === 'DISPATCH' ? 'var(--primary)' : 'var(--text-muted)', cursor: 'pointer'
+            color: activeTab === 'DISPATCH' ? 'var(--primary)' : 'var(--text-muted)', cursor: 'pointer',
+            whiteSpace: 'nowrap', flexShrink: 0
           }}
         >
           <Truck size={15} style={{ marginRight: '6px', verticalAlign: 'middle' }} />
-          배차 및 운송 기사 배정 관리
+          배차 관리
+        </button>
+        <button
+          onClick={() => setActiveTab('NEGOTIATION')}
+          style={{
+            padding: '10px 18px', fontSize: '14px', fontWeight: 700, backgroundColor: 'transparent', border: 'none',
+            borderBottom: activeTab === 'NEGOTIATION' ? '3px solid var(--primary)' : 'none',
+            color: activeTab === 'NEGOTIATION' ? 'var(--primary)' : 'var(--text-muted)', cursor: 'pointer',
+            whiteSpace: 'nowrap', flexShrink: 0, display: 'inline-flex', alignItems: 'center', gap: '6px'
+          }}
+        >
+          <MessageSquare size={15} style={{ verticalAlign: 'middle' }} />
+          운송사 배차 협의
+          {deliveries.filter(d => d.status === 'PENDING').length > 0 && (
+            <span style={{ 
+              backgroundColor: '#ef4444', color: '#fff', fontSize: '11px', fontWeight: 800,
+              padding: '1px 6px', borderRadius: '10px', marginLeft: '2px'
+            }}>
+              {deliveries.filter(d => d.status === 'PENDING').length}
+            </span>
+          )}
         </button>
         <button
           onClick={() => setActiveTab('RECONCILIATION')}
           style={{
             padding: '10px 18px', fontSize: '14px', fontWeight: 700, backgroundColor: 'transparent', border: 'none',
             borderBottom: activeTab === 'RECONCILIATION' ? '3px solid var(--primary)' : 'none',
-            color: activeTab === 'RECONCILIATION' ? 'var(--primary)' : 'var(--text-muted)', cursor: 'pointer'
+            color: activeTab === 'RECONCILIATION' ? 'var(--primary)' : 'var(--text-muted)', cursor: 'pointer',
+            whiteSpace: 'nowrap', flexShrink: 0
           }}
         >
           <FileText size={15} style={{ marginRight: '6px', verticalAlign: 'middle' }} />
-          월말 운송료 대사 및 매입 지급 요청
+          운송료 대사
         </button>
       </div>
 
@@ -2963,7 +3088,415 @@ export const TruckDispatch: React.FC = () => {
         </div>
       )}
 
-      {/* 탭 2: 월말 운송료 대사 및 매입 지급 요청 (Z-패턴 4단계 직무 완결 동선) */}
+      {/* 탭 2: 운송사 배차 협의 (마스터-디테일 스튜디오, 헌장 3.1, 3.2, 3.4, 3.6 준수) */}
+      {activeTab === 'NEGOTIATION' && (
+        <div style={{ display: 'flex', gap: '16px', minHeight: '650px', alignItems: 'flex-start' }}>
+          {/* ── 좌측 Master: 배차 대상 건 리스트 (너비 400px 고정) ── */}
+          <div style={{
+            width: '400px', flexShrink: 0, display: 'flex', flexDirection: 'column', gap: '10px',
+            backgroundColor: 'var(--bg-card)', border: '1px solid var(--border-color)', borderRadius: '10px',
+            padding: '14px', boxSizing: 'border-box'
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <h3 style={{ fontSize: '14px', fontWeight: 800, margin: 0, display: 'flex', alignItems: 'center', gap: '6px', whiteSpace: 'nowrap' }}>
+                <Truck size={16} /> 배차 대상 목록
+              </h3>
+              <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: 700 }}>
+                총 {deliveries.filter(d => d.status !== 'CANCELLED').length}건
+              </span>
+            </div>
+
+            {/* 필터 & 검색 */}
+            <div style={{ display: 'flex', gap: '6px' }}>
+              <select
+                value={negoFilterStatus}
+                onChange={e => setNegoFilterStatus(e.target.value as any)}
+                style={{
+                  padding: '6px 8px', borderRadius: '6px', border: '1px solid var(--border-color)',
+                  backgroundColor: 'var(--bg-body)', color: 'var(--text-primary)', fontSize: '12px', fontWeight: 700
+                }}
+              >
+                <option value="ALL">전체 상태</option>
+                <option value="PENDING">배차 대기</option>
+                <option value="IN_NEGOTIATION">협의 중</option>
+                <option value="CONFIRMED">협의 완료</option>
+              </select>
+              <input
+                type="text"
+                value={negoSearchQuery}
+                onChange={e => setNegoSearchQuery(e.target.value)}
+                placeholder="고객/현장/주소 검색..."
+                style={{
+                  flex: 1, padding: '6px 10px', borderRadius: '6px', border: '1px solid var(--border-color)',
+                  backgroundColor: 'var(--bg-body)', color: 'var(--text-primary)', fontSize: '12px'
+                }}
+              />
+            </div>
+
+            {/* 배차 건 스크롤 리스트 */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '580px', overflowY: 'auto' }}>
+              {(() => {
+                const filtered = deliveries.filter(d => {
+                  if (d.status === 'CANCELLED') return false;
+                  const negos = (transportNegotiations || []).filter(n => n.deliveryId === d.id);
+                  const hasConfirmed = negos.some(n => n.status === 'CONFIRMED');
+                  const hasNegotiating = negos.some(n => n.status === 'IN_NEGOTIATION');
+
+                  if (negoFilterStatus === 'PENDING' && d.status !== 'PENDING') return false;
+                  if (negoFilterStatus === 'IN_NEGOTIATION' && !hasNegotiating) return false;
+                  if (negoFilterStatus === 'CONFIRMED' && !hasConfirmed) return false;
+
+                  if (negoSearchQuery) {
+                    const q = negoSearchQuery.toLowerCase();
+                    const contract = contracts.find(c => c.id === d.contractId);
+                    const customer = customers.find(c => c.id === contract?.customerId);
+                    const site = sites?.find(s => s.id === contract?.siteId);
+                    const match = (customer?.name || '').toLowerCase().includes(q) ||
+                                  (site?.name || '').toLowerCase().includes(q) ||
+                                  (d.destinationAddress || '').toLowerCase().includes(q) ||
+                                  (d.originAddress || '').toLowerCase().includes(q);
+                    if (!match) return false;
+                  }
+                  return true;
+                });
+
+                if (filtered.length === 0) {
+                  return (
+                    <div style={{ textAlign: 'center', padding: '40px 10px', color: 'var(--text-muted)', fontSize: '12px' }}>
+                      해당 조건의 배차 건이 없습니다.
+                    </div>
+                  );
+                }
+
+                return filtered.map(del => {
+                  const isSelected = selectedNegoDeliveryId === del.id;
+                  const contract = contracts.find(c => c.id === del.contractId);
+                  const customer = customers.find(c => c.id === contract?.customerId);
+                  const site = sites?.find(s => s.id === contract?.siteId);
+                  const negos = (transportNegotiations || []).filter(n => n.deliveryId === del.id);
+                  const confirmedNego = negos.find(n => n.status === 'CONFIRMED');
+
+                  const typeLabel = del.type === 'OUTBOUND' ? '출고' : del.type === 'INBOUND' ? '회수' : del.type === 'EXCHANGE' ? '교환' : '이동';
+                  const typeColor = del.type === 'OUTBOUND' ? '#2563eb' : del.type === 'INBOUND' ? '#dc2626' : del.type === 'EXCHANGE' ? '#0891b2' : '#6b7280';
+
+                  return (
+                    <div
+                      key={del.id}
+                      onClick={() => setSelectedNegoDeliveryId(del.id)}
+                      style={{
+                        padding: '10px 12px', borderRadius: '8px', cursor: 'pointer', transition: 'all 0.15s ease',
+                        backgroundColor: isSelected ? 'rgba(59,130,246,0.12)' : 'var(--bg-body)',
+                        border: isSelected ? '1.5px solid var(--primary)' : '1px solid var(--border-color)',
+                        display: 'flex', flexDirection: 'column', gap: '5px'
+                      }}
+                    >
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span style={{
+                          padding: '2px 6px', borderRadius: '4px', fontSize: '10.5px', fontWeight: 800,
+                          backgroundColor: `${typeColor}20`, color: typeColor, border: `1px solid ${typeColor}40`, whiteSpace: 'nowrap'
+                        }}>
+                          {typeLabel}
+                        </span>
+                        <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: 600 }}>
+                          {del.loadingDate || del.scheduledDate || del.requestDate}
+                        </span>
+                      </div>
+
+                      <div style={{ fontSize: '12.5px', fontWeight: 800, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {customer?.name || '(고객사 미지정)'} · {site?.name || '현장'}
+                      </div>
+
+                      <div style={{ fontSize: '11px', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                        <MapPin size={11} /> {del.destinationAddress || del.originAddress || '주소 미입력'}
+                      </div>
+
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '2px' }}>
+                        <span style={{ fontSize: '11px', fontWeight: 700, color: '#10b981' }}>
+                          ₩{del.deliveryCost ? del.deliveryCost.toLocaleString() : '미정'}
+                        </span>
+                        <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+                          {confirmedNego ? (
+                            <span style={{ fontSize: '10px', padding: '1px 5px', borderRadius: '4px', backgroundColor: 'rgba(16,185,129,0.15)', color: '#10b981', fontWeight: 800 }}>
+                              확정: {confirmedNego.transportCompanyName}
+                            </span>
+                          ) : negos.length > 0 ? (
+                            <span style={{ fontSize: '10px', padding: '1px 5px', borderRadius: '4px', backgroundColor: 'rgba(59,130,246,0.15)', color: '#2563eb', fontWeight: 800 }}>
+                              견적 {negos.length}건
+                            </span>
+                          ) : (
+                            <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>
+                              협의대기
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                });
+              })()}
+            </div>
+          </div>
+
+          {/* ── 우측 Detail Studio: 선택된 배차의 운송사 협의 데스크 ── */}
+          <div style={{
+            flex: 1, display: 'flex', flexDirection: 'column', gap: '14px',
+            backgroundColor: 'var(--bg-card)', border: '1px solid var(--border-color)', borderRadius: '10px',
+            padding: '16px', boxSizing: 'border-box', minWidth: 0
+          }}>
+            {!selectedNegoDelivery ? (
+              <div style={{ textAlign: 'center', padding: '100px 20px', color: 'var(--text-muted)' }}>
+                <Truck size={40} style={{ opacity: 0.3, marginBottom: '12px' }} />
+                <h4 style={{ fontSize: '14px', fontWeight: 700, margin: '0 0 6px 0' }}>선택된 배차 건이 없습니다</h4>
+                <p style={{ fontSize: '12px', margin: 0 }}>좌측 목록에서 운송사와 협의할 배차 건을 선택하십시오.</p>
+              </div>
+            ) : (
+              (() => {
+                const contract = contracts.find(c => c.id === selectedNegoDelivery.contractId);
+                const customer = customers.find(c => c.id === contract?.customerId);
+                const site = sites?.find(s => s.id === contract?.siteId);
+                const currentNegos = (transportNegotiations || []).filter(n => n.deliveryId === selectedNegoDelivery.id);
+                const confirmedNego = currentNegos.find(n => n.status === 'CONFIRMED');
+
+                return (
+                  <>
+                    {/* 1. 배차 기본 정보 카드 */}
+                    <div style={{
+                      backgroundColor: 'var(--bg-body)', border: '1px solid var(--border-color)', borderRadius: '8px',
+                      padding: '12px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px'
+                    }}>
+                      <div>
+                        <div style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: 700 }}>
+                          배차 번호 #{selectedNegoDelivery.id.slice(-6)} · {selectedNegoDelivery.type}
+                        </div>
+                        <div style={{ fontSize: '15px', fontWeight: 800, color: 'var(--text-primary)', marginTop: '2px' }}>
+                          {customer?.name || '고객사'} — {site?.name || '현장'}
+                        </div>
+                        <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '4px', display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+                          <span><strong>상차:</strong> {selectedNegoDelivery.originAddress || '본사 주기장'} ({selectedNegoDelivery.loadingDate || '-'})</span>
+                          <span>➔</span>
+                          <span><strong>하차:</strong> {selectedNegoDelivery.destinationAddress || '현장 주소'} ({selectedNegoDelivery.unloadingDate || '-'})</span>
+                        </div>
+                        {selectedNegoDelivery.memo && (
+                          <div style={{ fontSize: '11.5px', color: 'var(--text-muted)', marginTop: '4px' }}>
+                            메모: {selectedNegoDelivery.memo}
+                          </div>
+                        )}
+                      </div>
+
+                      <div style={{ textAlign: 'right' }}>
+                        <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>현재 등록 운송비</div>
+                        <div style={{ fontSize: '18px', fontWeight: 800, color: '#10b981' }}>
+                          ₩{selectedNegoDelivery.deliveryCost ? selectedNegoDelivery.deliveryCost.toLocaleString() : '0'}
+                        </div>
+                        <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '2px' }}>
+                          차종: {selectedNegoDelivery.vehicleType || '미지정'} | 운송사: {selectedNegoDelivery.transportCompany || '미지정'}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* 2. 기 접수된 운송사 협의 내역 */}
+                    <div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                        <h4 style={{ fontSize: '13px', fontWeight: 800, margin: 0, display: 'flex', alignItems: 'center', gap: '6px', whiteSpace: 'nowrap' }}>
+                          <FileText size={14} /> 운송사별 견적 및 협의 현황 ({currentNegos.length}건)
+                        </h4>
+                      </div>
+
+                      {currentNegos.length === 0 ? (
+                        <div style={{ padding: '20px', textAlign: 'center', backgroundColor: 'var(--bg-body)', borderRadius: '6px', color: 'var(--text-muted)', fontSize: '12px' }}>
+                          아직 등록된 운송사 협의 내역이 없습니다. 아래 폼에서 첫 견적을 등록하십시오.
+                        </div>
+                      ) : (
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '10px' }}>
+                          {currentNegos.map(n => {
+                            const isConfirmed = n.status === 'CONFIRMED';
+                            const isRejected = n.status === 'REJECTED';
+                            return (
+                              <div
+                                key={n.id}
+                                style={{
+                                  padding: '12px', borderRadius: '8px', border: isConfirmed ? '2px solid #10b981' : isRejected ? '1px solid rgba(239,68,68,0.3)' : '1px solid var(--border-color)',
+                                  backgroundColor: isConfirmed ? 'rgba(16,185,129,0.08)' : isRejected ? 'rgba(239,68,68,0.03)' : 'var(--bg-body)',
+                                  display: 'flex', flexDirection: 'column', gap: '6px'
+                                }}
+                              >
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                  <span style={{ fontSize: '13px', fontWeight: 800, color: 'var(--text-primary)' }}>
+                                    {n.transportCompanyName}
+                                  </span>
+                                  <span style={{
+                                    fontSize: '10.5px', padding: '2px 6px', borderRadius: '4px', fontWeight: 800,
+                                    backgroundColor: isConfirmed ? '#10b981' : isRejected ? '#ef4444' : '#2563eb',
+                                    color: '#ffffff'
+                                  }}>
+                                    {isConfirmed ? '확정/낙찰' : isRejected ? '결렬' : '협의중'}
+                                  </span>
+                                </div>
+
+                                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11.5px', color: 'var(--text-secondary)' }}>
+                                  <span>차종: <strong>{n.vehicleType}</strong></span>
+                                  <span>제시: <strong style={{ color: '#ef4444' }}>₩{n.proposedCost.toLocaleString()}</strong></span>
+                                  <span>목표: <strong style={{ color: '#10b981' }}>₩{n.targetCost.toLocaleString()}</strong></span>
+                                </div>
+
+                                {n.specialTerms && (
+                                  <div style={{ fontSize: '11px', color: '#d97706', backgroundColor: 'rgba(217,119,6,0.1)', padding: '4px 6px', borderRadius: '4px' }}>
+                                    특약: {n.specialTerms}
+                                  </div>
+                                )}
+
+                                {n.callSummary && (
+                                  <div style={{ fontSize: '11.5px', color: 'var(--text-secondary)' }}>
+                                    {n.callSummary}
+                                  </div>
+                                )}
+
+                                {!isConfirmed && (
+                                  <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '6px' }}>
+                                    <button
+                                      className="btn-primary"
+                                      onClick={() => handleConfirmNegotiation(n)}
+                                      style={{ padding: '6px 12px', fontSize: '11.5px', fontWeight: 800, display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+                                    >
+                                      <Check size={13} /> 이 조건으로 배차 확정
+                                    </button>
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* 3. 신규 운송사 견적 및 통화 협의 기록 폼 (헌장 3.4 상하 세로 스택 레이아웃) */}
+                    <div style={{
+                      backgroundColor: 'var(--bg-body)', border: '1px solid var(--border-color)', borderRadius: '8px',
+                      padding: '14px', display: 'flex', flexDirection: 'column', gap: '12px'
+                    }}>
+                      <h4 style={{ fontSize: '13px', fontWeight: 800, margin: 0, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <Plus size={14} /> 신규 운송사 통화 및 견적 등록
+                      </h4>
+
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '10px' }}>
+                        {/* 1. 협의 운송사 */}
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                          <label style={{ fontSize: '11.5px', fontWeight: 700, color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>협의 운송사 *</label>
+                          <select
+                            value={negoCompanyId}
+                            onChange={e => setNegoCompanyId(e.target.value)}
+                            style={{
+                              padding: '8px', borderRadius: '6px', border: '1px solid var(--border-color)',
+                              backgroundColor: 'var(--bg-card)', color: 'var(--text-primary)', fontSize: '12px', fontWeight: 700
+                            }}
+                          >
+                            <option value="">운송사 선택</option>
+                            {transportCompanies.map(c => (
+                              <option key={c.id} value={c.id}>{c.name} ({c.contact || '연락처없음'})</option>
+                            ))}
+                          </select>
+                        </div>
+
+                        {/* 2. 제안 차종 */}
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                          <label style={{ fontSize: '11.5px', fontWeight: 700, color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>제안 차종</label>
+                          <select
+                            value={negoVehicleType}
+                            onChange={e => setNegoVehicleType(e.target.value)}
+                            style={{
+                              padding: '8px', borderRadius: '6px', border: '1px solid var(--border-color)',
+                              backgroundColor: 'var(--bg-card)', color: 'var(--text-primary)', fontSize: '12px', fontWeight: 700
+                            }}
+                          >
+                            {VEHICLE_TYPE_OPTIONS.map(v => (
+                              <option key={v} value={v}>{v}</option>
+                            ))}
+                          </select>
+                        </div>
+
+                        {/* 3. 운송사 제시가 */}
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                          <label style={{ fontSize: '11.5px', fontWeight: 700, color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>운송사 제시 금액 (원)</label>
+                          <input
+                            type="number"
+                            value={negoProposedCost || ''}
+                            onChange={e => setNegoProposedCost(Number(e.target.value))}
+                            placeholder="예: 120000"
+                            style={{
+                              padding: '8px', borderRadius: '6px', border: '1px solid var(--border-color)',
+                              backgroundColor: 'var(--bg-card)', color: 'var(--text-primary)', fontSize: '12px', fontWeight: 700
+                            }}
+                          />
+                        </div>
+
+                        {/* 4. 당사 목표가 */}
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                          <label style={{ fontSize: '11.5px', fontWeight: 700, color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>당사 목표 금액 (원)</label>
+                          <input
+                            type="number"
+                            value={negoTargetCost || ''}
+                            onChange={e => setNegoTargetCost(Number(e.target.value))}
+                            placeholder="예: 100000"
+                            style={{
+                              padding: '8px', borderRadius: '6px', border: '1px solid var(--border-color)',
+                              backgroundColor: 'var(--bg-card)', color: 'var(--text-primary)', fontSize: '12px', fontWeight: 700
+                            }}
+                          />
+                        </div>
+                      </div>
+
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: '10px' }}>
+                        {/* 특약 사항 */}
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                          <label style={{ fontSize: '11.5px', fontWeight: 700, color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>할증/회차 특약 메모</label>
+                          <input
+                            type="text"
+                            value={negoSpecialTerms}
+                            onChange={e => setNegoSpecialTerms(e.target.value)}
+                            placeholder="예: 회차비 50%, 야간 2만원 할증..."
+                            style={{
+                              padding: '8px', borderRadius: '6px', border: '1px solid var(--border-color)',
+                              backgroundColor: 'var(--bg-card)', color: 'var(--text-primary)', fontSize: '12px'
+                            }}
+                          />
+                        </div>
+
+                        {/* 통화 내용 요약 */}
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                          <label style={{ fontSize: '11.5px', fontWeight: 700, color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>통화 및 협의 내용 요약</label>
+                          <input
+                            type="text"
+                            value={negoCallSummary}
+                            onChange={e => setNegoCallSummary(e.target.value)}
+                            placeholder="예: 내일 오전 08시 상차 가능하다고 회신받음..."
+                            style={{
+                              padding: '8px', borderRadius: '6px', border: '1px solid var(--border-color)',
+                              backgroundColor: 'var(--bg-card)', color: 'var(--text-primary)', fontSize: '12px'
+                            }}
+                          />
+                        </div>
+                      </div>
+
+                      {/* 우하단 등록 완결 버튼 */}
+                      <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '4px' }}>
+                        <button
+                          className="btn-primary"
+                          onClick={handleSaveNegotiation}
+                          style={{ padding: '8px 20px', fontSize: '12.5px', fontWeight: 800, display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+                        >
+                          <Check size={14} /> 협의 내용 저장
+                        </button>
+                      </div>
+                    </div>
+                  </>
+                );
+              })()
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* 탭 3: 월말 운송료 대사 및 매입 지급 요청 (Z-패턴 4단계 직무 완결 동선) */}
       {activeTab === 'RECONCILIATION' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
           

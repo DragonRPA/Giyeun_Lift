@@ -40,9 +40,7 @@ type CallContext =
   | 'ADDITIONAL'
   | 'EXCHANGE'
   | 'RETURN'
-  | 'FIELD_AS'
-  | 'TRANSPORT_NEGO'
-  | 'SUBLEASE_NEGO';
+  | 'FIELD_AS';
 
 type ConfidenceLevel = 'HIGH' | 'MEDIUM' | 'LOW' | 'MISSING';
 
@@ -95,8 +93,6 @@ const CONTEXT_OPTIONS: { id: CallContext; label: string; color: string }[] = [
   { id: 'EXCHANGE',       label: '교체(대차)',       color: '#0891b2' },
   { id: 'RETURN',         label: '회수 요청',       color: '#dc2626' },
   { id: 'FIELD_AS',       label: '현장 AS',         color: '#d97706' },
-  { id: 'TRANSPORT_NEGO', label: '운송사 배차 협의', color: '#059669' },
-  { id: 'SUBLEASE_NEGO',  label: '전대 임차 협의',  color: '#6b7280' },
 ];
 
 const FT_GROUPS = ['19ft', '26ft', '32ft', '33ft', '40ft', '특수/기타'];
@@ -213,7 +209,7 @@ export const SmartDispatch4: React.FC = () => {
         const meta = parseNoteMeta(d.note);
         return {
           id:                 d.id,
-          context:            d.context,
+          context:            (d.context || []).filter(c => c !== 'TRANSPORT_NEGO' && c !== 'SUBLEASE_NEGO') as CallContext[],
           customerName:       { ...d.customerName, confirmed: false },
           siteName:           { ...d.siteName,     confirmed: false },
           siteAddress:        meta.siteAddress,
@@ -254,7 +250,7 @@ export const SmartDispatch4: React.FC = () => {
           const meta = parseNoteMeta(newDraft.note);
           const mapped: DraftOrder = {
             id:                 newDraft.id,
-            context:            newDraft.context,
+            context:            (newDraft.context || []).filter(c => c !== 'TRANSPORT_NEGO' && c !== 'SUBLEASE_NEGO') as CallContext[],
             customerName:       { ...newDraft.customerName, confirmed: false },
             siteName:           { ...newDraft.siteName,     confirmed: false },
             siteAddress:        meta.siteAddress,
@@ -641,8 +637,7 @@ export const SmartDispatch4: React.FC = () => {
 
   const validationRules = useMemo<ValidationRule[]>(() => {
     const hasContext = selectedContext !== null;
-    const skipEquip = selectedContext === 'RETURN' || selectedContext === 'FIELD_AS' ||
-      selectedContext === 'TRANSPORT_NEGO' || selectedContext === 'SUBLEASE_NEGO';
+    const skipEquip = selectedContext === 'RETURN' || selectedContext === 'FIELD_AS';
 
     const custName = isNewCustomerMode ? newCustomerName.trim() : (selectedCustomer?.name || '');
     const siteNameVal = (selectedSite?.name || newSiteName).trim();

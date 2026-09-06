@@ -4,7 +4,7 @@ import { useApp } from '../context/AppContext';
 import {
   Plus, CheckCircle, Search, AlertTriangle, Download, Clock, Layers, ShieldAlert, Upload, FileSpreadsheet, RefreshCw, FileText, Check, ArrowRight, XCircle, CreditCard, CheckCircle2, AlertCircle, X, ExternalLink, ShieldCheck, Building, Calendar
 } from 'lucide-react';
-import { Asset, db, PurchaseSettlement, PurchaseSettlementItem, Delivery } from '../services/db';
+import { Asset, db, PurchaseSettlement, PurchaseSettlementItem, Delivery, SubleaseNegotiation } from '../services/db';
 import { exportToExcel } from '../services/excel';
 import * as XLSX from 'xlsx';
 
@@ -30,8 +30,8 @@ export const RentAssets: React.FC = () => {
   const { 
     assets, products, customers, vendors, contracts, sites, billings, billingDetails,
     purchaseSettlements, purchaseSettlementItems, deliveries, receivables, assetInOutLogs,
-    registerRentedAsset, returnRentedAsset, createVendorClaimReceivable,
-    hasPermission, setActiveTab: setGlobalActiveTab
+    subleaseNegotiations, registerRentedAsset, returnRentedAsset, createVendorClaimReceivable,
+    hasPermission, refreshAllData, setActiveTab: setGlobalActiveTab
   } = useApp();
   
   const canSave = hasPermission('rent_asset', 'save');
@@ -58,8 +58,8 @@ export const RentAssets: React.FC = () => {
   const [claimDisplayName, setClaimDisplayName] = useState<string>('');
   const [claimOccurredDate, setClaimOccurredDate] = useState<string>(new Date().toISOString().split('T')[0]);
 
-  // 활성화 탭 상태: CURRENT (임차자산 대장 & 반납 관리), PROFIT_LEDGER (전대 손익 원장), RECONCILIATION (임차처 거래명세서 대사 & 매입 정산)
-  const [activeTab, setActiveTab] = useState<'CURRENT' | 'PROFIT_LEDGER' | 'RECONCILIATION'>('CURRENT');
+  // 활성화 탭 상태: CURRENT (임차자산 대장 & 반납 관리), NEGOTIATION (전대 임차 협의), PROFIT_LEDGER (전대 손익 원장), RECONCILIATION (임차처 거래명세서 대사)
+  const [activeTab, setActiveTab] = useState<'CURRENT' | 'NEGOTIATION' | 'PROFIT_LEDGER' | 'RECONCILIATION'>('CURRENT');
   const [profitLedgerSubTab, setProfitLedgerSubTab] = useState<'CONTRACT' | 'ASSET'>('CONTRACT');
 
   // ==========================================
@@ -76,6 +76,100 @@ export const RentAssets: React.FC = () => {
   // 임차 자산(ownerType === 'RENTED') 전체 리스트
   const rentedAssets = assets.filter(a => a.ownerType === 'RENTED');
 
+  // ── [전대 임차 협의] 전용 로컬 상태 ──
+  const [selectedSubleaseId, setSelectedSubleaseId] = useState<string | null>(null);
+  const [subleaseVendorId, setSubleaseVendorId] = useState<string>('');
+  const [subleaseModelName, setSubleaseModelName] = useState<string>('');
+  const [subleaseQuantity, setSubleaseQuantity] = useState<number>(1);
+  const [subleaseMonthlyRate, setSubleaseMonthlyRate] = useState<number>(0);
+  const [subleaseDailyRate, setSubleaseDailyRate] = useState<number>(0);
+  const [subleaseStartDate, setSubleaseStartDate] = useState<string>(() => new Date().toISOString().split('T')[0]);
+  const [subleaseEndDate, setSubleaseEndDate] = useState<string>('');
+  const [subleaseTransportPayer, setSubleaseTransportPayer] = useState<'VENDOR' | 'OURS' | 'SPLIT'>('OURS');
+  const [subleaseCustomerId, setSubleaseCustomerId] = useState<string>('');
+  const [subleaseSiteName, setSubleaseSiteName] = useState<string>('');
+  const [subleaseMemo, setSubleaseMemo] = useState<string>('');
+  const [subleaseFilterStatus, setSubleaseFilterStatus] = useState<'ALL' | 'INQUIRY' | 'NEGOTIATING' | 'CONTRACTED' | 'CANCELLED'>('ALL');
+  const [subleaseSearchQuery, setSubleaseSearchQuery] = useState<string>('');
+
+  // 신규 전대 임차 협의 저장 핸들러
+  const handleSaveSubleaseNegotiation = async () => {
+    if (!subleaseVendorId) {
+      showToast('원사(협력사)를 선택하십시오.', 'error');
+      return;
+    }
+    if (!subleaseModelName) {
+      showToast('요청 장비 모델을 선택 또는 입력하십시오.', 'error');
+      return;
+    }
+    const vendor = vendors.find(v => v.id === subleaseVendorId);
+    const newNego: SubleaseNegotiation = {
+      id: `SN-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+      vendorId: subleaseVendorId,
+      vendorName: vendor?.name || '협력사',
+      modelName: subleaseModelName,
+      quantity: Number(subleaseQuantity) || 1,
+      monthlyRate: Number(subleaseMonthlyRate) || 0,
+      dailyRate: Number(subleaseDailyRate) || 0,
+      startDate: subleaseStartDate,
+      endDate: subleaseEndDate,
+      transportPayer: subleaseTransportPayer,
+      status: 'NEGOTIATING',
+      targetCustomerId: subleaseCustomerId || undefined,
+      targetSiteName: subleaseSiteName || undefined,
+      memo: subleaseMemo,
+      createdAt: new Date().toISOString()
+    };
+
+    const currentList = db.subleaseNegotiations || [];
+    db.subleaseNegotiations = [newNego, ...currentList];
+    await db.awaitPendingWrites();
+    refreshAllData();
+    showToast(`[${vendor?.name || '원사'}] 전대 임차 협의 건이 등록되었습니다.`);
+    setSubleaseMemo('');
+    setSubleaseSiteName('');
+  };
+
+  // 협의 완료 건을 임차 자산 대장으로 원클릭 등록
+  const handleConvertSubleaseToAsset = async (nego: SubleaseNegotiation) => {
+    if (!nego.modelName) return;
+    const vendor = vendors.find(v => v.id === nego.vendorId);
+    const product = products.find(p => p.modelName === nego.modelName);
+
+    // 자산 대장에 임차 자산 등록
+    const newAsset: Partial<Asset> = {
+      assetNo: `R-${Math.floor(1000 + Math.random() * 9000)}`,
+      modelName: nego.modelName,
+      ownerType: 'RENTED',
+      vendorId: nego.vendorId,
+      renter: nego.vendorName,
+      monthlyRentFee: nego.monthlyRate,
+      dailyRentFee: nego.dailyRate,
+      rentStart: nego.startDate,
+      rentEnd: nego.endDate,
+      status: 'AVAILABLE',
+      manufactureYear: String(new Date().getFullYear())
+    };
+
+    await registerRentedAsset(newAsset as any);
+
+    // 협의 상태를 CONTRACTED(계약체결)로 변경
+    const updatedNegos = (db.subleaseNegotiations || []).map(n => {
+      if (n.id === nego.id) {
+        return {
+          ...n,
+          status: 'CONTRACTED' as const,
+          registeredAssetId: newAsset.assetNo,
+          updatedAt: new Date().toISOString()
+        };
+      }
+      return n;
+    });
+    db.subleaseNegotiations = updatedNegos;
+    await db.awaitPendingWrites();
+    refreshAllData();
+    showToast(`임차 자산 대장에 [${newAsset.assetNo} / ${nego.modelName}] 장비가 등록되었습니다.`);
+  };
 
   // 토스트 알림 상태
   const [toastMessage, setToastMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
@@ -955,7 +1049,7 @@ export const RentAssets: React.FC = () => {
         )}
       </div>
 
-      {/* 2. 상단 3대 메인 탭 */}
+      {/* 2. 상단 4대 메인 탭 (헌장 3.1 무수식어 건조 표준 준수) */}
       <div style={{ display: 'flex', borderBottom: '2px solid var(--border-color)', marginBottom: '20px', gap: '8px' }}>
         <button
           onClick={() => setActiveTab('CURRENT')}
@@ -975,7 +1069,36 @@ export const RentAssets: React.FC = () => {
             whiteSpace: 'nowrap'
           }}
         >
-          <Layers size={15} /> 📦 임차자산 대장 및 반납 관리
+          <Layers size={15} /> 임차자산 대장
+        </button>
+
+        <button
+          onClick={() => setActiveTab('NEGOTIATION')}
+          style={{
+            padding: '10px 18px',
+            fontSize: '13px',
+            fontWeight: '700',
+            border: 'none',
+            borderBottom: activeTab === 'NEGOTIATION' ? '3px solid var(--primary)' : '3px solid transparent',
+            backgroundColor: activeTab === 'NEGOTIATION' ? 'var(--primary-light)' : 'transparent',
+            color: activeTab === 'NEGOTIATION' ? 'var(--primary)' : 'var(--text-secondary)',
+            cursor: 'pointer',
+            borderRadius: '8px 8px 0 0',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '6px',
+            whiteSpace: 'nowrap'
+          }}
+        >
+          <Building size={15} /> 전대 임차 협의
+          {(subleaseNegotiations || []).filter(s => s.status === 'NEGOTIATING').length > 0 && (
+            <span style={{
+              backgroundColor: '#3b82f6', color: '#fff', fontSize: '11px', fontWeight: 800,
+              padding: '1px 6px', borderRadius: '10px', marginLeft: '2px'
+            }}>
+              {(subleaseNegotiations || []).filter(s => s.status === 'NEGOTIATING').length}
+            </span>
+          )}
         </button>
 
         <button
@@ -996,7 +1119,7 @@ export const RentAssets: React.FC = () => {
             whiteSpace: 'nowrap'
           }}
         >
-          <CreditCard size={15} /> ⚖️ 전대 손익 원장 (대차대조)
+          <CreditCard size={15} /> 전대 손익 원장
         </button>
 
         <button
@@ -1017,7 +1140,7 @@ export const RentAssets: React.FC = () => {
             whiteSpace: 'nowrap'
           }}
         >
-          <FileSpreadsheet size={15} /> 📄 임차처 거래명세서 대사 및 매입 정산
+          <FileSpreadsheet size={15} /> 거래명세서 대사
         </button>
       </div>
 
@@ -1422,12 +1545,399 @@ export const RentAssets: React.FC = () => {
               </span>
             </div>
           </div>
-
         </div>
       )}
 
       {/* ========================================================================= */}
-      {/* 탭 2: 전대 손익 원장 (대차대조) */}
+      {/* 탭 2: 전대 임차 협의 (마스터-디테일 조달 스튜디오, 헌장 3.1, 3.2, 3.4, 3.6 준수) */}
+      {/* ========================================================================= */}
+      {activeTab === 'NEGOTIATION' && (
+        <div style={{ display: 'flex', gap: '16px', minHeight: '650px', alignItems: 'flex-start' }}>
+          {/* ── 좌측 Master: 원사별 조달 협의 목록 (너비 420px 고정) ── */}
+          <div style={{
+            width: '420px', flexShrink: 0, display: 'flex', flexDirection: 'column', gap: '10px',
+            backgroundColor: 'var(--bg-card)', border: '1px solid var(--border-color)', borderRadius: '10px',
+            padding: '14px', boxSizing: 'border-box'
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <h3 style={{ fontSize: '14px', fontWeight: 800, margin: 0, display: 'flex', alignItems: 'center', gap: '6px', whiteSpace: 'nowrap' }}>
+                <Building size={16} /> 전대 임차 협의 목록
+              </h3>
+              <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: 700 }}>
+                총 {(subleaseNegotiations || []).length}건
+              </span>
+            </div>
+
+            {/* 필터 & 검색 */}
+            <div style={{ display: 'flex', gap: '6px' }}>
+              <select
+                value={subleaseFilterStatus}
+                onChange={e => setSubleaseFilterStatus(e.target.value as any)}
+                style={{
+                  padding: '6px 8px', borderRadius: '6px', border: '1px solid var(--border-color)',
+                  backgroundColor: 'var(--bg-body)', color: 'var(--text-primary)', fontSize: '12px', fontWeight: 700
+                }}
+              >
+                <option value="ALL">전체 상태</option>
+                <option value="INQUIRY">문의/견적</option>
+                <option value="NEGOTIATING">단가조율중</option>
+                <option value="CONTRACTED">계약체결</option>
+                <option value="CANCELLED">취소</option>
+              </select>
+              <input
+                type="text"
+                value={subleaseSearchQuery}
+                onChange={e => setSubleaseSearchQuery(e.target.value)}
+                placeholder="원사/모델/현장 검색..."
+                style={{
+                  flex: 1, padding: '6px 10px', borderRadius: '6px', border: '1px solid var(--border-color)',
+                  backgroundColor: 'var(--bg-body)', color: 'var(--text-primary)', fontSize: '12px'
+                }}
+              />
+            </div>
+
+            {/* 협의 건 리스트 */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '580px', overflowY: 'auto' }}>
+              {(() => {
+                const filtered = (subleaseNegotiations || []).filter(s => {
+                  if (subleaseFilterStatus !== 'ALL' && s.status !== subleaseFilterStatus) return false;
+                  if (subleaseSearchQuery) {
+                    const q = subleaseSearchQuery.toLowerCase();
+                    const match = s.vendorName.toLowerCase().includes(q) ||
+                                  s.modelName.toLowerCase().includes(q) ||
+                                  (s.targetSiteName || '').toLowerCase().includes(q);
+                    if (!match) return false;
+                  }
+                  return true;
+                });
+
+                if (filtered.length === 0) {
+                  return (
+                    <div style={{ textAlign: 'center', padding: '40px 10px', color: 'var(--text-muted)', fontSize: '12px' }}>
+                      등록된 전대 임차 협의 건이 없습니다.
+                    </div>
+                  );
+                }
+
+                return filtered.map(item => {
+                  const isSelected = selectedSubleaseId === item.id;
+                  const statusLabel = item.status === 'INQUIRY' ? '문의접수' : item.status === 'NEGOTIATING' ? '단가조율중' : item.status === 'CONTRACTED' ? '계약체결' : '취소';
+                  const statusColor = item.status === 'INQUIRY' ? '#d97706' : item.status === 'NEGOTIATING' ? '#2563eb' : item.status === 'CONTRACTED' ? '#10b981' : '#ef4444';
+
+                  return (
+                    <div
+                      key={item.id}
+                      onClick={() => setSelectedSubleaseId(item.id)}
+                      style={{
+                        padding: '10px 12px', borderRadius: '8px', cursor: 'pointer', transition: 'all 0.15s ease',
+                        backgroundColor: isSelected ? 'rgba(59,130,246,0.12)' : 'var(--bg-body)',
+                        border: isSelected ? '1.5px solid var(--primary)' : '1px solid var(--border-color)',
+                        display: 'flex', flexDirection: 'column', gap: '5px'
+                      }}
+                    >
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span style={{ fontSize: '13px', fontWeight: 800, color: 'var(--text-primary)' }}>
+                          {item.vendorName}
+                        </span>
+                        <span style={{
+                          padding: '2px 6px', borderRadius: '4px', fontSize: '10.5px', fontWeight: 800,
+                          backgroundColor: `${statusColor}20`, color: statusColor, border: `1px solid ${statusColor}40`, whiteSpace: 'nowrap'
+                        }}>
+                          {statusLabel}
+                        </span>
+                      </div>
+
+                      <div style={{ fontSize: '12px', color: 'var(--text-secondary)', display: 'flex', justifyContent: 'space-between' }}>
+                        <span>모델: <strong style={{ color: 'var(--text-primary)' }}>{item.modelName}</strong> ({item.quantity}대)</span>
+                        <span style={{ color: '#10b981', fontWeight: 800 }}>월 ₩{item.monthlyRate.toLocaleString()}</span>
+                      </div>
+
+                      <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+                        기간: {item.startDate} ~ {item.endDate || '미정'} {item.targetSiteName ? `| 투입: ${item.targetSiteName}` : ''}
+                      </div>
+
+                      {item.registeredAssetId && (
+                        <div style={{ fontSize: '10.5px', color: '#10b981', fontWeight: 700 }}>
+                          ✓ 자산등록 완료: #{item.registeredAssetId}
+                        </div>
+                      )}
+                    </div>
+                  );
+                });
+              })()}
+            </div>
+          </div>
+
+          {/* ── 우측 Detail: 선택 협의 상세 및 신규 등록 패널 ── */}
+          <div style={{
+            flex: 1, display: 'flex', flexDirection: 'column', gap: '14px',
+            backgroundColor: 'var(--bg-card)', border: '1px solid var(--border-color)', borderRadius: '10px',
+            padding: '16px', boxSizing: 'border-box', minWidth: 0
+          }}>
+            {/* 1. 선택된 협의 건 상세 카드 (선택된 경우만) */}
+            {(() => {
+              const selectedItem = (subleaseNegotiations || []).find(s => s.id === selectedSubleaseId);
+              if (!selectedItem) return null;
+              const isContracted = selectedItem.status === 'CONTRACTED';
+
+              return (
+                <div style={{
+                  backgroundColor: 'var(--bg-body)', border: '1.5px solid var(--primary)', borderRadius: '8px',
+                  padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: '8px'
+                }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: 700 }}>
+                      협의 번호 #{selectedItem.id.slice(-6)} · {selectedItem.createdAt.slice(0, 10)}
+                    </div>
+                    <span style={{
+                      fontSize: '11px', padding: '2px 8px', borderRadius: '4px', fontWeight: 800,
+                      backgroundColor: isContracted ? '#10b981' : '#2563eb', color: '#ffffff'
+                    }}>
+                      {isContracted ? '계약 체결 완료' : '협의 진행 중'}
+                    </span>
+                  </div>
+
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div style={{ fontSize: '16px', fontWeight: 800, color: 'var(--text-primary)' }}>
+                      {selectedItem.vendorName} — {selectedItem.modelName} ({selectedItem.quantity}대)
+                    </div>
+                    <div style={{ fontSize: '16px', fontWeight: 800, color: '#10b981' }}>
+                      월 ₩{selectedItem.monthlyRate.toLocaleString()} (일할 ₩{selectedItem.dailyRate ? selectedItem.dailyRate.toLocaleString() : '0'})
+                    </div>
+                  </div>
+
+                  <div style={{ fontSize: '12px', color: 'var(--text-secondary)', display: 'flex', gap: '16px', flexWrap: 'wrap' }}>
+                    <span><strong>임차 기간:</strong> {selectedItem.startDate} ~ {selectedItem.endDate || '미정'}</span>
+                    <span><strong>운송비 부담:</strong> {selectedItem.transportPayer === 'VENDOR' ? '원사부담' : selectedItem.transportPayer === 'OURS' ? '당사부담' : '반반분담'}</span>
+                    {selectedItem.targetSiteName && <span><strong>투입 예정:</strong> {selectedItem.targetSiteName}</span>}
+                  </div>
+
+                  {selectedItem.memo && (
+                    <div style={{ fontSize: '11.5px', color: 'var(--text-muted)', backgroundColor: 'var(--bg-card)', padding: '6px 10px', borderRadius: '4px' }}>
+                      메모: {selectedItem.memo}
+                    </div>
+                  )}
+
+                  {!isContracted && (
+                    <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '4px' }}>
+                      <button
+                        className="btn-primary"
+                        onClick={() => handleConvertSubleaseToAsset(selectedItem)}
+                        style={{ padding: '8px 16px', fontSize: '12px', fontWeight: 800, display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+                      >
+                        <Check size={14} /> 협의 완료 및 임차자산 대장에 등록
+                      </button>
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
+
+            {/* 2. 신규 전대 임차 협의 등록 폼 (헌장 3.4 상하 세로 스택) */}
+            <div style={{
+              backgroundColor: 'var(--bg-body)', border: '1px solid var(--border-color)', borderRadius: '8px',
+              padding: '16px', display: 'flex', flexDirection: 'column', gap: '12px'
+            }}>
+              <h4 style={{ fontSize: '14px', fontWeight: 800, margin: 0, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <Plus size={15} /> 신규 전대 임차 협의 등록
+              </h4>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px' }}>
+                {/* 원사(협력사) 선택 */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                  <label style={{ fontSize: '11.5px', fontWeight: 700, color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>임차 원사(협력사) *</label>
+                  <select
+                    value={subleaseVendorId}
+                    onChange={e => setSubleaseVendorId(e.target.value)}
+                    style={{
+                      padding: '8px', borderRadius: '6px', border: '1px solid var(--border-color)',
+                      backgroundColor: 'var(--bg-card)', color: 'var(--text-primary)', fontSize: '12px', fontWeight: 700
+                    }}
+                  >
+                    <option value="">협력사 선택</option>
+                    {vendors.map(v => (
+                      <option key={v.id} value={v.id}>{v.name} ({v.representative || '대표미상'})</option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* 요청 장비 모델 */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                  <label style={{ fontSize: '11.5px', fontWeight: 700, color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>요청 장비 모델 *</label>
+                  <select
+                    value={subleaseModelName}
+                    onChange={e => setSubleaseModelName(e.target.value)}
+                    style={{
+                      padding: '8px', borderRadius: '6px', border: '1px solid var(--border-color)',
+                      backgroundColor: 'var(--bg-card)', color: 'var(--text-primary)', fontSize: '12px', fontWeight: 700
+                    }}
+                  >
+                    <option value="">장비 모델 선택</option>
+                    {products.map(p => (
+                      <option key={p.id} value={p.modelName}>{p.modelName} ({p.feet ? `${p.feet}ft` : ''})</option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* 필요 대수 */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                  <label style={{ fontSize: '11.5px', fontWeight: 700, color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>필요 수량 (대)</label>
+                  <input
+                    type="number"
+                    min={1}
+                    value={subleaseQuantity}
+                    onChange={e => setSubleaseQuantity(Number(e.target.value))}
+                    style={{
+                      padding: '8px', borderRadius: '6px', border: '1px solid var(--border-color)',
+                      backgroundColor: 'var(--bg-card)', color: 'var(--text-primary)', fontSize: '12px', fontWeight: 700
+                    }}
+                  />
+                </div>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px' }}>
+                {/* 월 임차료 */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                  <label style={{ fontSize: '11.5px', fontWeight: 700, color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>협의 월 임차료 (원) *</label>
+                  <input
+                    type="number"
+                    value={subleaseMonthlyRate || ''}
+                    onChange={e => setSubleaseMonthlyRate(Number(e.target.value))}
+                    placeholder="예: 450000"
+                    style={{
+                      padding: '8px', borderRadius: '6px', border: '1px solid var(--border-color)',
+                      backgroundColor: 'var(--bg-card)', color: 'var(--text-primary)', fontSize: '12px', fontWeight: 700
+                    }}
+                  />
+                </div>
+
+                {/* 일할 단가 */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                  <label style={{ fontSize: '11.5px', fontWeight: 700, color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>일할 임차 단가 (원)</label>
+                  <input
+                    type="number"
+                    value={subleaseDailyRate || ''}
+                    onChange={e => setSubleaseDailyRate(Number(e.target.value))}
+                    placeholder="예: 15000"
+                    style={{
+                      padding: '8px', borderRadius: '6px', border: '1px solid var(--border-color)',
+                      backgroundColor: 'var(--bg-card)', color: 'var(--text-primary)', fontSize: '12px'
+                    }}
+                  />
+                </div>
+
+                {/* 운송비 부담 */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                  <label style={{ fontSize: '11.5px', fontWeight: 700, color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>운송비 부담 조건</label>
+                  <select
+                    value={subleaseTransportPayer}
+                    onChange={e => setSubleaseTransportPayer(e.target.value as any)}
+                    style={{
+                      padding: '8px', borderRadius: '6px', border: '1px solid var(--border-color)',
+                      backgroundColor: 'var(--bg-card)', color: 'var(--text-primary)', fontSize: '12px', fontWeight: 700
+                    }}
+                  >
+                    <option value="OURS">당사 부담</option>
+                    <option value="VENDOR">원사(협력사) 부담</option>
+                    <option value="SPLIT">편도 분담(반반)</option>
+                  </select>
+                </div>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '12px' }}>
+                {/* 개시일 */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                  <label style={{ fontSize: '11.5px', fontWeight: 700, color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>임차 개시 희망일 *</label>
+                  <input
+                    type="date"
+                    value={subleaseStartDate}
+                    onChange={e => setSubleaseStartDate(e.target.value)}
+                    style={{
+                      padding: '8px', borderRadius: '6px', border: '1px solid var(--border-color)',
+                      backgroundColor: 'var(--bg-card)', color: 'var(--text-primary)', fontSize: '12px'
+                    }}
+                  />
+                </div>
+
+                {/* 종료일 */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                  <label style={{ fontSize: '11.5px', fontWeight: 700, color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>임차 종료 예정일</label>
+                  <input
+                    type="date"
+                    value={subleaseEndDate}
+                    onChange={e => setSubleaseEndDate(e.target.value)}
+                    style={{
+                      padding: '8px', borderRadius: '6px', border: '1px solid var(--border-color)',
+                      backgroundColor: 'var(--bg-card)', color: 'var(--text-primary)', fontSize: '12px'
+                    }}
+                  />
+                </div>
+
+                {/* 투입 예정 고객사 */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                  <label style={{ fontSize: '11.5px', fontWeight: 700, color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>투입 예정 고객사</label>
+                  <select
+                    value={subleaseCustomerId}
+                    onChange={e => setSubleaseCustomerId(e.target.value)}
+                    style={{
+                      padding: '8px', borderRadius: '6px', border: '1px solid var(--border-color)',
+                      backgroundColor: 'var(--bg-card)', color: 'var(--text-primary)', fontSize: '12px'
+                    }}
+                  >
+                    <option value="">고객사 선택 (선택사항)</option>
+                    {customers.map(c => (
+                      <option key={c.id} value={c.id}>{c.name}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* 투입 현장명 */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                  <label style={{ fontSize: '11.5px', fontWeight: 700, color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>투입 현장명</label>
+                  <input
+                    type="text"
+                    value={subleaseSiteName}
+                    onChange={e => setSubleaseSiteName(e.target.value)}
+                    placeholder="예: 평택 고덕 P3 현장"
+                    style={{
+                      padding: '8px', borderRadius: '6px', border: '1px solid var(--border-color)',
+                      backgroundColor: 'var(--bg-card)', color: 'var(--text-primary)', fontSize: '12px'
+                    }}
+                  />
+                </div>
+              </div>
+
+              {/* 협의 메모 */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                <label style={{ fontSize: '11.5px', fontWeight: 700, color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>장비 상태 및 협의 메모</label>
+                <textarea
+                  value={subleaseMemo}
+                  onChange={e => setSubleaseMemo(e.target.value)}
+                  placeholder="예: 2022년식 이상 요구, 협착방지봉 부착 상태로 상차 요망..."
+                  style={{
+                    height: '65px', padding: '8px', borderRadius: '6px', border: '1px solid var(--border-color)',
+                    backgroundColor: 'var(--bg-card)', color: 'var(--text-primary)', fontSize: '12px', boxSizing: 'border-box'
+                  }}
+                />
+              </div>
+
+              {/* 완결 버튼 */}
+              <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '4px' }}>
+                <button
+                  className="btn-primary"
+                  onClick={handleSaveSubleaseNegotiation}
+                  style={{ padding: '8px 20px', fontSize: '12.5px', fontWeight: 800, display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+                >
+                  <Check size={14} /> 전대 임차 협의 등록
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* 탭 3: 전대 손익 원장 (대차대조) */}
       {/* ========================================================================= */}
       {activeTab === 'PROFIT_LEDGER' && (() => {
         const totalRev = subleaseContracts.reduce((sum, sc) => sum + sc.confirmedRevenue, 0);

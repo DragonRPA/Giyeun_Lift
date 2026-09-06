@@ -769,6 +769,46 @@ export interface TransportCompany {
   updatedAt?: string;
 }
 
+/** 운송사 배차 협의 모델 (물류배차부) */
+export interface TransportNegotiation {
+  id: string;
+  deliveryId?: string; // 대상 배차 ID
+  transportCompanyId: string; // 운송사 ID
+  transportCompanyName: string; // 운송사명
+  vehicleType: string; // 제안 차종 (1.4T, 5T 등)
+  proposedCost: number; // 운송사 제안가
+  targetCost: number; // 당사 목표/희망가
+  confirmedCost?: number; // 최종 합의 확정가
+  status: 'IN_NEGOTIATION' | 'CONFIRMED' | 'REJECTED'; // 협의중, 확정, 결렬
+  negotiatorName?: string; // 협의 담당자
+  callSummary?: string; // 통화 내용 요약
+  specialTerms?: string; // 특약 사항 (회차비, 대기료, 야간할증 등)
+  negotiatedAt: string; // 협의 일시
+  createdAt: string;
+  updatedAt?: string;
+}
+
+/** 전대 임차 협의 모델 (자산출고부) */
+export interface SubleaseNegotiation {
+  id: string;
+  vendorId: string; // 원사(협력사) ID
+  vendorName: string; // 원사 상호명
+  modelName: string; // 필요 장비 모델
+  quantity: number; // 필요 대수
+  monthlyRate: number; // 월 임차 단가
+  dailyRate?: number; // 일할 단가
+  startDate: string; // 임차 희망 시작일
+  endDate: string; // 임차 희망 종료일
+  transportPayer: 'VENDOR' | 'OURS' | 'SPLIT'; // 운송비 부담: 원사/당사/각자
+  status: 'INQUIRY' | 'NEGOTIATING' | 'CONTRACTED' | 'CANCELLED'; // 문의, 협의중, 계약체결, 취소
+  targetCustomerId?: string; // 투입 예정 고객사 ID
+  targetSiteName?: string; // 투입 예정 현장명
+  memo?: string; // 협의 메모 (연식, 스펙 요구 등)
+  registeredAssetId?: string; // 확정 시 등록된 자산 ID
+  createdAt: string;
+  updatedAt?: string;
+}
+
 export interface Vendor {
   id: string;
   name: string;
@@ -3592,6 +3632,12 @@ class LocalDB {
 
   get transportDrivers() { return this.get<TransportDriver>('transportDrivers', SEED_TRANSPORT_DRIVERS); }
   set transportDrivers(val: TransportDriver[]) { this.set('transportDrivers', val); }
+
+  get transportNegotiations() { return this.get<TransportNegotiation>('transportNegotiations', []); }
+  set transportNegotiations(val: TransportNegotiation[]) { this.set('transportNegotiations', val); }
+
+  get subleaseNegotiations() { return this.get<SubleaseNegotiation>('subleaseNegotiations', []); }
+  set subleaseNegotiations(val: SubleaseNegotiation[]) { this.set('subleaseNegotiations', val); }
 
   get billings() { return this.get<Billing>('billings', SEED_BILLINGS); }
   set billings(val: Billing[]) { this.set('billings', val); }

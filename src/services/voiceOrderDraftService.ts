@@ -1,6 +1,6 @@
 // src/services/voiceOrderDraftService.ts
 import { Customer, CustomerSite, Asset, Delivery } from './db';
-import { matchHangul, extractChosung } from '../utils/hangulSearch';
+import { matchHangul, extractChosung, decomposeComplexConsonants } from '../utils/hangulSearch';
 
 export interface EquipmentOrderItem {
   ft: string;
@@ -1237,7 +1237,7 @@ export function parseDateTimeVoiceInput(text: string, baseDate: Date = new Date(
 // 👤 6. 단계별 단답형 초정밀 파서 (Step-by-Step Parsers)
 // ─────────────────────────────────────────────────────────────
 export function parseCustomerVoiceInput(text: string, customers: Customer[]): Customer | null {
-  const clean = text.replace(/주식회사|\(주\)|\s/g, '').toLowerCase();
+  const clean = decomposeComplexConsonants(text).replace(/주식회사|\(주\)|\s/g, '').toLowerCase();
   if (!clean || clean.length < 1) return null;
 
   // 1. 정확 일치 (Exact Name Match)
@@ -1323,7 +1323,7 @@ export function parseSiteVoiceInput(
   sites: CustomerSite[],
   customerId?: string
 ): ParsedSiteVoiceResult | null {
-  const rawText = text.trim();
+  const rawText = decomposeComplexConsonants(text.trim());
   if (!rawText || rawText.length < 1) return null;
 
   // 1. 전화번호 추출

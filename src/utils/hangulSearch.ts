@@ -13,6 +13,38 @@ export const CHOSUNG_LIST: readonly string[] = [
   'ㅆ', 'ㅇ', 'ㅈ', 'ㅉ', 'ㅊ', 'ㅋ', 'ㅌ', 'ㅍ', 'ㅎ'
 ];
 
+/**
+ * 한글 복자음(겹받침) 11종 ➔ 기본 초성 자음 2자 분해 매핑 테이블
+ * 한글 IME(입력기) 조합기가 빠른 초성 연속 입력 시 'ㅂ'+'ㅅ'을 'ㅄ'으로 합성하는 현상을 원래 키스트로크 순서로 정규화
+ */
+export const COMPLEX_CONSONANT_MAP: Record<string, string> = {
+  'ㄳ': 'ㄱㅅ',
+  'ㄵ': 'ㄴㅈ',
+  'ㄶ': 'ㄴㅎ',
+  'ㄺ': 'ㄹㄱ',
+  'ㄻ': 'ㄹㅁ',
+  'ㄼ': 'ㄹㅂ',
+  'ㄽ': 'ㄹㅅ',
+  'ㄾ': 'ㄹㅌ',
+  'ㄿ': 'ㄹㅍ',
+  'ㅀ': 'ㄹㅎ',
+  'ㅄ': 'ㅂㅅ'
+};
+
+/**
+ * 텍스트 내의 모든 복자음을 기본 초성 자음 2자로 자동 분해 정규화
+ * 예: 'ㅄ' -> 'ㅂㅅ', 'ㅄㅇㅇ' -> 'ㅂㅅㅇㅇ', 'ㄳ' -> 'ㄱㅅ'
+ */
+export function decomposeComplexConsonants(text: string): string {
+  if (!text) return '';
+  let result = '';
+  for (let i = 0; i < text.length; i++) {
+    const char = text[i];
+    result += COMPLEX_CONSONANT_MAP[char] || char;
+  }
+  return result;
+}
+
 export const HANGUL_BASE = 0xAC00; // '가' (44032)
 export const HANGUL_END = 0xD7A3;  // '힣' (55203)
 
@@ -29,27 +61,28 @@ export function isHangulSyllable(char: string): boolean {
  * 단일 문자가 한글 초성 자음인지 검사 (ㄱ ~ ㅎ)
  */
 export function isChosungChar(char: string): boolean {
-  return CHOSUNG_LIST.includes(char);
+  return CHOSUNG_LIST.includes(char) || char in COMPLEX_CONSONANT_MAP;
 }
 
 /**
  * 단일 음절에서 초성 추출 (한글이 아니면 원래 문자 반환)
  */
 export function getChosung(char: string): string {
-  if (!isHangulSyllable(char)) return char;
+  if (!isHangulSyllable(char)) return COMPLEX_CONSONANT_MAP[char] || char;
   const code = char.charCodeAt(0);
   const chosungIndex = Math.floor((code - HANGUL_BASE) / (21 * 28));
   return CHOSUNG_LIST[chosungIndex] || char;
 }
 
 /**
- * 텍스트 전체에서 초성 문자열 추출 (예: '이정용' -> 'ㅇㅈㅇ', '기연리프트' -> 'ㄱㅇㄹㅍㅌ')
+ * 텍스트 전체에서 초성 문자열 추출 (예: '이정용' -> 'ㅇㅈㅇ', '기연리프트' -> 'ㄱㅇㄹㅍㅌ', 'ㅄ' -> 'ㅂㅅ')
  */
 export function extractChosung(text: string): string {
   if (!text) return '';
+  const decomposed = decomposeComplexConsonants(text);
   let res = '';
-  for (let i = 0; i < text.length; i++) {
-    res += getChosung(text[i]);
+  for (let i = 0; i < decomposed.length; i++) {
+    res += getChosung(decomposed[i]);
   }
   return res;
 }
@@ -58,7 +91,7 @@ export function extractChosung(text: string): string {
  * 검색어를 기반으로 초성과 완성형을 모두 포용하는 정규표현식(RegExp)을 동적 생성
  */
 export function createHangulSearchRegex(query: string): RegExp {
-  const cleanQuery = query.trim();
+  const cleanQuery = decomposeComplexConsonants(query.trim());
   if (!cleanQuery) return /(?:)/;
 
   let pattern = '';
@@ -92,7 +125,7 @@ export function matchHangul(target?: string | null, query?: string | null): bool
   if (!target || !target.trim()) return false;
 
   const cleanTarget = target.trim();
-  const cleanQuery = query.trim();
+  const cleanQuery = decomposeComplexConsonants(query.trim());
 
   // 1. 일반 대소문자 무시 포함 검색 (영문, 숫자, 한글 완성형)
   if (cleanTarget.toLowerCase().includes(cleanQuery.toLowerCase())) {

@@ -16,6 +16,7 @@ import {
   VoiceOrderDraft
 } from '../services/voiceOrderDraftService';
 import { Customer, CustomerSite } from '../services/db';
+import { decomposeComplexConsonants } from '../utils/hangulSearch';
 
 interface WttResult {
   scenarioId: string;
@@ -1192,6 +1193,57 @@ export function runWttSuite(): WttResult[] {
       passed: issues.length === 0,
       issues,
       details: { faultyStt, lastSttText, correctedInput: textInputValue, matched: correctedCust?.name }
+    });
+  }
+
+  // -------------------------------------------------------------
+  // 시나리오 45: 한글 11종 복자음(겹받침) 자동 분해 정규화 및 초성 연속 타이핑 무결성 검증
+  // 5대 축: 물리/맥락(IME 복자음 자동 분해 및 무오류 매칭)
+  // -------------------------------------------------------------
+  {
+    const issues: string[] = [];
+    // 1) 사용자가 'ㅂ'과 'ㅅ'을 빠르게 연속 입력하여 IME가 'ㅄ'으로 합성한 경우
+    const cust1 = parseCustomerVoiceInput('ㅄ', mockCustomers);
+    if (!cust1 || cust1.name !== '백산이엔씨') {
+      issues.push(`복자음 'ㅄ' 단독 분해 매칭 실패: ${cust1?.name}`);
+    }
+
+    // 2) 'ㅄㅇㅇ' 4글자 합성 초성 입력 -> '백산이엔씨' 매칭
+    const cust2 = parseCustomerVoiceInput('ㅄㅇㅇ', mockCustomers);
+    if (!cust2 || cust2.name !== '백산이엔씨') {
+      issues.push(`복자음 'ㅄㅇㅇ' 복합 분해 매칭 실패: ${cust2?.name}`);
+    }
+
+    // 3) 11종 전체 복자음 분해 매핑 정합성 검증
+    const testCases: Record<string, string> = {
+      'ㄳ': 'ㄱㅅ', 'ㄵ': 'ㄴㅈ', 'ㄶ': 'ㄴㅎ', 'ㄺ': 'ㄹㄱ',
+      'ㄻ': 'ㄹㅁ', 'ㄼ': 'ㄹㅂ', 'ㄽ': 'ㄹㅅ', 'ㄾ': 'ㄹㅌ',
+      'ㄿ': 'ㄹㅍ', 'ㅀ': 'ㄹㅎ', 'ㅄ': 'ㅂㅅ'
+    };
+    for (const [complex, expected] of Object.entries(testCases)) {
+      const decomposed = decomposeComplexConsonants(complex);
+      if (decomposed !== expected) {
+        issues.push(`복자음 [${complex}] 분해 실패: 실제 [${decomposed}] != 기대 [${expected}]`);
+      }
+    }
+
+    // 4) 복자음 'ㅄ'과 전혀 무관한 업체로의 오매칭 차단 검증
+    const wrongCust = parseCustomerVoiceInput('ㄵ', mockCustomers);
+    if (wrongCust !== null) {
+      issues.push(`미등록 복자음 'ㄵ' 오매칭 발생: ${wrongCust?.name}`);
+    }
+
+    results.push({
+      scenarioId: 'WTT-DISP-45',
+      name: '한글 11종 복자음(겹받침) 자동 분해 정규화 및 초성 연속 타이핑 무결성 검증 (ㅄ -> 백산이엔씨)',
+      axis: '물리/맥락(IME 복자음 자동 분해 및 무오류 매칭)',
+      passed: issues.length === 0,
+      issues,
+      details: {
+        cust1: cust1?.name,
+        cust2: cust2?.name,
+        decomposedSample: decomposeComplexConsonants('ㅄㅇㅇ')
+      }
     });
   }
 

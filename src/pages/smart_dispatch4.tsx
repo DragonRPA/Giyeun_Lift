@@ -29,6 +29,7 @@ import {
   Truck, Wrench, Shield
 } from 'lucide-react';
 import { CallAudioUploadModal } from '../components/CallAudioUploadModal';
+import './smart_dispatch4.css';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 타입 정의
@@ -848,14 +849,14 @@ export const SmartDispatch4: React.FC = () => {
       : (selectedSite?.address || newSiteAddress || '(주소 미등록)');
 
     return (
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-        {/* ── 좌측 입력 섹션 (7열 / 58%) ────────────────────────────── */}
-        <div className="lg:col-span-7 min-w-0 flex flex-col gap-4">
+      <div className="dispatch4-studio-row">
+        {/* ── 좌측 입력 섹션 (57% 마스터 스트림 / 독자 상하 스크롤) ────────────────── */}
+        <div className="dispatch4-left-pane dispatch4-scrollbar">
 
           {/* 텍스트 붙여넣기 파싱 */}
           <div className="bg-slate-900 border border-slate-700/80 rounded-xl overflow-hidden shadow-sm">
             <div
-              className="flex items-center justify-between px-4 py-3 bg-slate-800/60 cursor-pointer select-none hover:bg-slate-800 transition"
+              className="dispatch4-block-header bg-slate-800/60 hover:bg-slate-800 transition"
               onClick={() => setPasteZoneOpen(p => !p)}
             >
               <div className="flex items-center gap-2 text-sm font-bold text-slate-200">
@@ -892,11 +893,11 @@ export const SmartDispatch4: React.FC = () => {
           </div>
 
           {/* 업무 유형 선택 버튼군 (단일 선택 강제 & 건조한 명사 단일 표준) */}
-          <div className="bg-slate-900 border border-slate-800 rounded-xl p-4 shadow-sm">
-            <div className="flex items-center justify-between mb-2">
+          <div className="bg-slate-900 border border-slate-800 rounded-xl p-2.5 shadow-sm">
+            <div className="flex items-center justify-between mb-1.5">
               <label className="text-xs font-bold text-slate-300">업무 유형</label>
             </div>
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-wrap gap-1.5">
               {CONTEXT_OPTIONS.map(opt => {
                 const active = selectedContext === opt.id;
                 return (
@@ -904,7 +905,7 @@ export const SmartDispatch4: React.FC = () => {
                     key={opt.id}
                     type="button"
                     onClick={() => handleSelectContext(opt.id)}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition border ${
+                    className={`px-2.5 py-1 rounded-lg text-xs font-bold transition border ${
                       active
                         ? 'border-blue-500 bg-blue-600/40 text-blue-200 shadow-sm font-black'
                         : 'border-slate-800 bg-slate-950 text-slate-400 hover:border-slate-700 hover:text-slate-200'
@@ -920,7 +921,7 @@ export const SmartDispatch4: React.FC = () => {
 
           {/* 신규 고객 안내 배너 */}
           {isNewCustomerMode && (
-            <div className="bg-purple-950/40 border border-purple-500/40 rounded-xl p-3.5 flex items-start gap-2.5 text-xs text-purple-200">
+            <div className="bg-purple-950/40 border border-purple-500/40 rounded-xl p-2.5 flex items-start gap-2 text-xs text-purple-200">
               <Info className="w-4 h-4 text-purple-400 flex-shrink-0 mt-0.5" />
               <div>
                 <strong className="text-purple-300 font-bold block mb-0.5">신규 고객 2단계 승인 프로세스</strong>
@@ -932,21 +933,21 @@ export const SmartDispatch4: React.FC = () => {
           {/* WHO 블록 — 고객사 */}
           <div className="bg-slate-900 border border-slate-700/80 rounded-xl overflow-hidden shadow-sm">
             <div
-              className={`flex items-center justify-between px-4 py-3 cursor-pointer select-none transition ${
+              className={`dispatch4-block-header ${
                 openBlock === 'WHO' ? 'bg-blue-950/40 border-b border-blue-500/30' : 'bg-slate-800/50 hover:bg-slate-800'
               }`}
               onClick={() => toggleBlock('WHO')}
             >
-              <div className="flex items-center gap-2 text-sm font-bold text-slate-100">
+              <div className="flex items-center gap-2 text-xs font-bold text-slate-100">
                 <Building2 className="w-4 h-4 text-blue-400" />
                 <span>1. WHO — 거래처 (고객사)</span>
                 {!isNewCustomerMode && selectedCustomer && (
-                  <span className="text-xs font-semibold text-emerald-400 bg-emerald-950/50 px-2 py-0.5 rounded border border-emerald-500/30">
+                  <span className="text-[11px] font-semibold text-emerald-400 bg-emerald-950/50 px-2 py-0.5 rounded border border-emerald-500/30">
                     ✓ {selectedCustomer.name}
                   </span>
                 )}
                 {isNewCustomerMode && newCustomerName && (
-                  <span className="text-xs font-semibold text-purple-300 bg-purple-950/50 px-2 py-0.5 rounded border border-purple-500/30">
+                  <span className="text-[11px] font-semibold text-purple-300 bg-purple-950/50 px-2 py-0.5 rounded border border-purple-500/30">
                     ✓ {newCustomerName} (신규)
                   </span>
                 )}
@@ -955,7 +956,7 @@ export const SmartDispatch4: React.FC = () => {
             </div>
 
             {openBlock === 'WHO' && (
-              <div className="p-4 flex flex-col gap-3 bg-slate-900">
+              <div className="dispatch4-block-body">
                 {isNewCustomerMode ? (
                   <>
                     <div className="flex flex-col gap-1">
@@ -1060,21 +1061,21 @@ export const SmartDispatch4: React.FC = () => {
           {/* WHERE 블록 — 투입 현장 및 현장 담당자 */}
           <div className="bg-slate-900 border border-slate-700/80 rounded-xl overflow-hidden shadow-sm">
             <div
-              className={`flex items-center justify-between px-4 py-3 cursor-pointer select-none transition ${
+              className={`dispatch4-block-header ${
                 openBlock === 'WHERE' ? 'bg-blue-950/40 border-b border-blue-500/30' : 'bg-slate-800/50 hover:bg-slate-800'
               }`}
               onClick={() => toggleBlock('WHERE')}
             >
-              <div className="flex items-center gap-2 text-sm font-bold text-slate-100">
+              <div className="flex items-center gap-2 text-xs font-bold text-slate-100">
                 <MapPin className="w-4 h-4 text-cyan-400" />
                 <span>2. WHERE — 투입 현장 및 현장 담당자</span>
                 {!isNewCustomerMode && selectedSite && (
-                  <span className="text-xs font-semibold text-emerald-400 bg-emerald-950/50 px-2 py-0.5 rounded border border-emerald-500/30">
+                  <span className="text-[11px] font-semibold text-emerald-400 bg-emerald-950/50 px-2 py-0.5 rounded border border-emerald-500/30">
                     ✓ {selectedSite.name}{contactPerson ? ` (${contactPerson})` : ''}
                   </span>
                 )}
                 {isNewCustomerMode && newSiteName && (
-                  <span className="text-xs font-semibold text-purple-300 bg-purple-950/50 px-2 py-0.5 rounded border border-purple-500/30">
+                  <span className="text-[11px] font-semibold text-purple-300 bg-purple-950/50 px-2 py-0.5 rounded border border-purple-500/30">
                     ✓ {newSiteName}{contactPerson ? ` (${contactPerson})` : ''}
                   </span>
                 )}
@@ -1083,7 +1084,7 @@ export const SmartDispatch4: React.FC = () => {
             </div>
 
             {openBlock === 'WHERE' && (
-              <div className="p-4 flex flex-col gap-3 bg-slate-900">
+              <div className="dispatch4-block-body">
                 {isNewCustomerMode ? (
                   <>
                     <div className="flex flex-col gap-1">
@@ -1195,16 +1196,16 @@ export const SmartDispatch4: React.FC = () => {
           {/* WHAT 블록 — 출고 신청 장비 */}
           <div className="bg-slate-900 border border-slate-700/80 rounded-xl overflow-hidden shadow-sm">
             <div
-              className={`flex items-center justify-between px-4 py-3 cursor-pointer select-none transition ${
+              className={`dispatch4-block-header ${
                 openBlock === 'WHAT' ? 'bg-blue-950/40 border-b border-blue-500/30' : 'bg-slate-800/50 hover:bg-slate-800'
               }`}
               onClick={() => toggleBlock('WHAT')}
             >
-              <div className="flex items-center gap-2 text-sm font-bold text-slate-100">
+              <div className="flex items-center gap-2 text-xs font-bold text-slate-100">
                 <Package className="w-4 h-4 text-emerald-400" />
                 <span>3. WHAT — 출고 장비 규격</span>
                 {totalQty > 0 && (
-                  <span className="text-xs font-semibold text-emerald-400 bg-emerald-950/50 px-2 py-0.5 rounded border border-emerald-500/30">
+                  <span className="text-[11px] font-semibold text-emerald-400 bg-emerald-950/50 px-2 py-0.5 rounded border border-emerald-500/30">
                     ✓ 총 {totalQty}대 선택됨
                   </span>
                 )}
@@ -1213,13 +1214,13 @@ export const SmartDispatch4: React.FC = () => {
             </div>
 
             {openBlock === 'WHAT' && (
-              <div className="p-4 flex flex-col gap-3 bg-slate-900">
+              <div className="dispatch4-block-body">
                 <div className="flex gap-1.5 overflow-x-auto pb-1 border-b border-slate-800">
                   {FT_GROUPS.map(ft => (
                     <button
                       key={ft}
                       onClick={() => setActiveFt(ft)}
-                      className={`px-3 py-1.5 rounded-lg text-xs font-bold transition whitespace-nowrap ${
+                      className={`px-2.5 py-1 rounded-lg text-xs font-bold transition whitespace-nowrap ${
                         activeFt === ft
                           ? 'bg-emerald-600 text-white'
                           : 'bg-slate-800 text-slate-400 hover:text-white'
@@ -1237,7 +1238,7 @@ export const SmartDispatch4: React.FC = () => {
                       <button
                         key={m.modelName}
                         onClick={() => addModel(m.modelName)}
-                        className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition border ${
+                        className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition border ${
                           isPicked
                             ? 'bg-emerald-900/50 border-emerald-500 text-emerald-200'
                             : 'bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-700'
@@ -1250,51 +1251,51 @@ export const SmartDispatch4: React.FC = () => {
                 </div>
 
                 {equipments.length > 0 ? (
-                  <div className="mt-2 flex flex-col gap-2 p-2 bg-slate-950 rounded-lg border border-slate-800">
-                    <div className="text-xs font-bold text-slate-400 px-1">선택된 출고 장비 목록:</div>
+                  <div className="mt-1 flex flex-col gap-1.5 p-2 bg-slate-950 rounded-lg border border-slate-800">
+                    <div className="text-[11px] font-bold text-slate-400 px-1">선택된 출고 장비 목록:</div>
                     {equipments.map((eq, idx) => (
-                      <div key={idx} className="flex items-center justify-between bg-slate-900 px-3.5 py-2.5 rounded-lg border border-slate-700/80 shadow-sm">
+                      <div key={idx} className="flex items-center justify-between bg-slate-900 px-3 py-1.5 rounded-lg border border-slate-700/80 shadow-sm">
                         <div className="flex items-center gap-2">
-                          <Package className="w-4 h-4 text-emerald-400 flex-shrink-0" />
+                          <Package className="w-3.5 h-3.5 text-emerald-400 flex-shrink-0" />
                           <span className="text-xs font-black text-white">{eq.modelName}</span>
                         </div>
                         {/* 🌟 수량 조절 -, + 및 삭제(휴지통) 아이콘 버튼군 */}
-                        <div className="flex items-center gap-1.5 bg-slate-950 px-2 py-1 rounded-lg border border-slate-700">
+                        <div className="flex items-center gap-1.5 bg-slate-950 px-2 py-0.5 rounded-lg border border-slate-700">
                           <button
                             type="button"
                             onClick={() => changeQty(idx, -1)}
-                            className="w-7 h-7 rounded bg-slate-800 hover:bg-slate-700 active:bg-slate-600 border border-slate-600 flex items-center justify-center text-white font-bold text-base transition select-none shadow-sm"
+                            className="w-6 h-6 rounded bg-slate-800 hover:bg-slate-700 active:bg-slate-600 border border-slate-600 flex items-center justify-center text-white font-bold transition select-none shadow-sm"
                             title="수량 1대 감소"
                           >
-                            <Minus className="w-3.5 h-3.5 text-white stroke-[2.5]" />
+                            <Minus className="w-3 h-3 text-white stroke-[2.5]" />
                           </button>
-                          <div className="flex items-center justify-center min-w-[48px] px-1 font-mono">
-                            <span className="text-sm font-black text-emerald-400">{eq.qty}</span>
-                            <span className="text-xs text-slate-400 font-bold ml-0.5">대</span>
+                          <div className="flex items-center justify-center min-w-[40px] px-1 font-mono">
+                            <span className="text-xs font-black text-emerald-400">{eq.qty}</span>
+                            <span className="text-[10px] text-slate-400 font-bold ml-0.5">대</span>
                           </div>
                           <button
                             type="button"
                             onClick={() => changeQty(idx, 1)}
-                            className="w-7 h-7 rounded bg-slate-800 hover:bg-slate-700 active:bg-slate-600 border border-slate-600 flex items-center justify-center text-white font-bold text-base transition select-none shadow-sm"
+                            className="w-6 h-6 rounded bg-slate-800 hover:bg-slate-700 active:bg-slate-600 border border-slate-600 flex items-center justify-center text-white font-bold transition select-none shadow-sm"
                             title="수량 1대 증가"
                           >
-                            <Plus className="w-3.5 h-3.5 text-white stroke-[2.5]" />
+                            <Plus className="w-3 h-3 text-white stroke-[2.5]" />
                           </button>
-                          <div className="w-[1px] h-4 bg-slate-700 mx-1" />
+                          <div className="w-[1px] h-3.5 bg-slate-700 mx-0.5" />
                           <button
                             type="button"
                             onClick={() => removeEquipment(idx)}
-                            className="w-7 h-7 rounded bg-red-950/80 hover:bg-red-900 active:bg-red-800 border border-red-700/80 flex items-center justify-center text-red-300 transition select-none shadow-sm"
+                            className="w-6 h-6 rounded bg-red-950/80 hover:bg-red-900 active:bg-red-800 border border-red-700/80 flex items-center justify-center text-red-300 transition select-none shadow-sm"
                             title="장비 삭제"
                           >
-                            <Trash2 className="w-3.5 h-3.5 text-red-400 stroke-[2.5]" />
+                            <Trash2 className="w-3 h-3 text-red-400 stroke-[2.5]" />
                           </button>
                         </div>
                       </div>
                     ))}
                   </div>
                 ) : (
-                  <div className="text-center py-4 text-xs text-slate-500">
+                  <div className="text-center py-3 text-xs text-slate-500">
                     위에서 모델을 클릭해 출고 장비를 1대 이상 추가하세요.
                   </div>
                 )}
@@ -1305,16 +1306,16 @@ export const SmartDispatch4: React.FC = () => {
           {/* WHEN 블록 — 출고 일정 (건조한 명사 단일 표준) */}
           <div className="bg-slate-900 border border-slate-700/80 rounded-xl overflow-hidden shadow-sm">
             <div
-              className={`flex items-center justify-between px-4 py-3 cursor-pointer select-none transition ${
+              className={`dispatch4-block-header ${
                 openBlock === 'WHEN' ? 'bg-blue-950/40 border-b border-blue-500/30' : 'bg-slate-800/50 hover:bg-slate-800'
               }`}
               onClick={() => toggleBlock('WHEN')}
             >
-              <div className="flex items-center gap-2 text-sm font-bold text-slate-100">
+              <div className="flex items-center gap-2 text-xs font-bold text-slate-100">
                 <Calendar className="w-4 h-4 text-amber-400" />
                 <span>4. WHEN — 출고 일정</span>
                 {loadingDate && (
-                  <span className="text-xs font-semibold text-emerald-400 bg-emerald-950/50 px-2 py-0.5 rounded border border-emerald-500/30 font-mono">
+                  <span className="text-[11px] font-semibold text-emerald-400 bg-emerald-950/50 px-2 py-0.5 rounded border border-emerald-500/30 font-mono">
                     ✓ {loadingDate} {loadingTimeVal}
                   </span>
                 )}
@@ -1323,22 +1324,22 @@ export const SmartDispatch4: React.FC = () => {
             </div>
 
             {openBlock === 'WHEN' && (
-              <div className="p-4 flex flex-col gap-3 bg-slate-900">
+              <div className="dispatch4-block-body">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   <div className="flex flex-col gap-1">
-                    <label className="text-xs font-semibold text-slate-300">출고(상차) 희망일자 *</label>
+                    <label className="text-[11px] font-semibold text-slate-300">출고(상차) 희망일자 *</label>
                     <input
                       type="date"
-                      className="bg-slate-800 border border-slate-700 text-white rounded-lg p-2.5 text-xs focus:outline-none focus:border-blue-500 font-mono"
+                      className="bg-slate-800 border border-slate-700 text-white rounded-lg p-2 text-xs focus:outline-none focus:border-blue-500 font-mono"
                       value={loadingDate}
                       onChange={e => setLoadingDate(e.target.value)}
                     />
                   </div>
                   <div className="flex flex-col gap-1">
-                    <label className="text-xs font-semibold text-slate-300">상차 지정시간 *</label>
+                    <label className="text-[11px] font-semibold text-slate-300">상차 지정시간 *</label>
                     <input
                       type="time"
-                      className="bg-slate-800 border border-slate-700 text-white rounded-lg p-2.5 text-xs focus:outline-none focus:border-blue-500 font-mono"
+                      className="bg-slate-800 border border-slate-700 text-white rounded-lg p-2 text-xs focus:outline-none focus:border-blue-500 font-mono"
                       value={loadingTimeVal}
                       onChange={e => setLoadingTimeVal(e.target.value)}
                     />
@@ -1347,7 +1348,7 @@ export const SmartDispatch4: React.FC = () => {
 
                 {/* 다수 장비 시차 출고 메모 */}
                 <div className="flex flex-col gap-1 pt-2 border-t border-slate-800">
-                  <label className="text-xs font-semibold text-slate-400">다수 장비 시차 출고 분할 메모 (선택사항)</label>
+                  <label className="text-[11px] font-semibold text-slate-400">다수 장비 시차 출고 분할 메모 (선택사항)</label>
                   <input
                     className="bg-slate-800 border border-slate-700 text-white rounded-lg p-2 text-xs"
                     placeholder="예: 1호기 오전 08:00 상차 / 2호기 오후 14:00 상차"
@@ -1362,16 +1363,16 @@ export const SmartDispatch4: React.FC = () => {
           {/* 🌟 SAFETY & COST 블록 — 안전옵션, 대차회수, 운송비 귀속선 ───────────── */}
           <div className="bg-slate-900 border border-slate-700/80 rounded-xl overflow-hidden shadow-sm">
             <div
-              className={`flex items-center justify-between px-4 py-3 cursor-pointer select-none transition ${
+              className={`dispatch4-block-header ${
                 openBlock === 'SAFETY_COST' ? 'bg-blue-950/40 border-b border-blue-500/30' : 'bg-slate-800/50 hover:bg-slate-800'
               }`}
               onClick={() => toggleBlock('SAFETY_COST')}
             >
-              <div className="flex items-center gap-2 text-sm font-bold text-slate-100">
+              <div className="flex items-center gap-2 text-xs font-bold text-slate-100">
                 <Shield className="w-4 h-4 text-purple-400" />
                 <span>5. 안전옵션 · 대차회수 · 운송비 귀속선</span>
                 {isExchangeMode && (
-                  <span className={`text-xs font-semibold px-2 py-0.5 rounded border ${
+                  <span className={`text-[11px] font-semibold px-2 py-0.5 rounded border ${
                     retrievalAssetId ? 'bg-cyan-950 text-cyan-300 border-cyan-800' : 'bg-red-950 text-red-300 border-red-800'
                   }`}>
                     {retrievalAssetId ? `대차: #${retrievalAssetId}` : '회수전자산 미지정'}
@@ -1382,12 +1383,12 @@ export const SmartDispatch4: React.FC = () => {
             </div>
 
             {openBlock === 'SAFETY_COST' && (
-              <div className="p-4 flex flex-col gap-4 bg-slate-900">
+              <div className="dispatch4-block-body">
                 {/* 1. 대차(EXCHANGE) 시 회수 대상 전자산 1:1 매핑 (헌장 2.3, 4.2 준수) */}
                 {isExchangeMode && (
-                  <div className="p-3 bg-cyan-950/40 border border-cyan-500/40 rounded-xl flex flex-col gap-2">
+                  <div className="p-2.5 bg-cyan-950/40 border border-cyan-500/40 rounded-xl flex flex-col gap-1.5">
                     <div className="flex items-center justify-between">
-                      <label className="text-xs font-black text-cyan-200 flex items-center gap-1.5">
+                      <label className="text-[11px] font-black text-cyan-200 flex items-center gap-1.5">
                         <RotateCcw className="w-3.5 h-3.5" />
                         <span>회수 대상 전자산 선택 (대차 필수 매핑) *</span>
                       </label>
@@ -1396,7 +1397,7 @@ export const SmartDispatch4: React.FC = () => {
                     <select
                       value={retrievalAssetId}
                       onChange={e => setRetrievalAssetId(e.target.value)}
-                      className="w-full bg-slate-900 border border-cyan-600/60 text-white rounded-lg p-2.5 text-xs focus:outline-none focus:border-cyan-400 font-mono"
+                      className="w-full bg-slate-900 border border-cyan-600/60 text-white rounded-lg p-2 text-xs focus:outline-none focus:border-cyan-400 font-mono"
                     >
                       <option value="">-- 회수할 기존 대여 장비를 선택하세요 --</option>
                       {activeCustomerAssets.map(a => (
@@ -1405,15 +1406,15 @@ export const SmartDispatch4: React.FC = () => {
                         </option>
                       ))}
                     </select>
-                    <p className="text-[11px] text-cyan-300/80">
+                    <p className="text-[10px] text-cyan-300/80">
                       * 헌장 2.2 원칙: 선택된 전자산의 최초 계약 단가, 결제조건, 현장 속성이 신규 대차 장비로 100% 자동 상속됩니다.
                     </p>
                   </div>
                 )}
 
                 {/* 2. 운송비 부담 귀속선 (헌장 5.5 준수) */}
-                <div className="flex flex-col gap-1.5">
-                  <label className="text-xs font-bold text-slate-300 flex items-center gap-1.5">
+                <div className="flex flex-col gap-1">
+                  <label className="text-[11px] font-bold text-slate-300 flex items-center gap-1.5">
                     <Truck className="w-3.5 h-3.5 text-blue-400" />
                     <span>운송비 부담 귀속선 (회계 정산) *</span>
                   </label>
@@ -1427,7 +1428,7 @@ export const SmartDispatch4: React.FC = () => {
                         key={item.id}
                         type="button"
                         onClick={() => setPaidBy(item.id as PaidBy)}
-                        className={`p-2.5 rounded-lg border text-left transition flex flex-col gap-0.5 ${
+                        className={`p-2 rounded-lg border text-left transition flex flex-col gap-0.5 ${
                           paidBy === item.id
                             ? 'bg-blue-900/40 border-blue-500 text-white shadow-sm'
                             : 'bg-slate-800 border-slate-700 text-slate-400 hover:bg-slate-750'
@@ -1441,8 +1442,8 @@ export const SmartDispatch4: React.FC = () => {
                 </div>
 
                 {/* 3. 현장 안전옵션 & 보양작업 4종 선택기 */}
-                <div className="flex flex-col gap-1.5">
-                  <label className="text-xs font-bold text-slate-300 flex items-center gap-1.5">
+                <div className="flex flex-col gap-1">
+                  <label className="text-[11px] font-bold text-slate-300 flex items-center gap-1.5">
                     <Wrench className="w-3.5 h-3.5 text-amber-400" />
                     <span>현장 필수 안전옵션 및 보양작업</span>
                   </label>
@@ -1453,7 +1454,7 @@ export const SmartDispatch4: React.FC = () => {
                         <label
                           key={opt.id}
                           onClick={() => toggleSafetyOption(opt.id)}
-                          className={`flex items-center gap-2 p-2 rounded-lg border cursor-pointer select-none transition ${
+                          className={`flex items-center gap-2 p-1.5 rounded-lg border cursor-pointer select-none transition ${
                             isChecked
                               ? 'bg-amber-950/40 border-amber-500 text-amber-200'
                               : 'bg-slate-800 border-slate-700 text-slate-400 hover:bg-slate-750'
@@ -1476,10 +1477,10 @@ export const SmartDispatch4: React.FC = () => {
           </div>
 
           {/* 특이사항 / 메모 */}
-          <div className="bg-slate-900 border border-slate-800 rounded-xl p-4 flex flex-col gap-1 shadow-sm">
-            <label className="text-xs font-semibold text-slate-300">배차 및 특이사항 메모 (선택사항)</label>
+          <div className="bg-slate-900 border border-slate-800 rounded-xl p-2.5 flex flex-col gap-1 shadow-sm">
+            <label className="text-[11px] font-semibold text-slate-300">배차 및 특이사항 메모 (선택사항)</label>
             <textarea
-              className="w-full bg-slate-800 border border-slate-700 text-white rounded-lg p-2.5 text-xs focus:outline-none focus:border-blue-500 resize-none font-sans"
+              className="w-full bg-slate-800 border border-slate-700 text-white rounded-lg p-2 text-xs focus:outline-none focus:border-blue-500 resize-none font-sans"
               rows={2}
               value={note}
               onChange={e => setNote(e.target.value)}
@@ -1488,10 +1489,11 @@ export const SmartDispatch4: React.FC = () => {
           </div>
 
           {/* 하단 리셋 버튼 */}
-          <div className="flex justify-start">
+          <div className="flex justify-start pb-2">
             <button
+              type="button"
               onClick={resetForm}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white transition"
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white transition border border-slate-700"
             >
               <RotateCcw className="w-3.5 h-3.5" />
               <span>입력 초기화</span>
@@ -1499,8 +1501,9 @@ export const SmartDispatch4: React.FC = () => {
           </div>
         </div>
 
-        {/* ── 우측 정형화 표시 & 방어 차단 실드 섹션 (5열 / 42%) ────────── */}
-        <div className="lg:col-span-5 min-w-0 flex flex-col gap-4 sticky top-4">
+        {/* ── 우측 정형화 표시 & 방어 차단 실드 섹션 (43% / 뷰포트 고정 인스펙터) ─────── */}
+        <div className="dispatch4-right-pane">
+          <div className="dispatch4-right-scroll dispatch4-scrollbar">
 
           {/* 🛡️ [1] 9대 필수 스키마 유효성 검증 실드 */}
           <div className={`rounded-xl border p-4 shadow-lg transition-all ${
@@ -1535,8 +1538,8 @@ export const SmartDispatch4: React.FC = () => {
               </span>
             </div>
 
-            {/* 체크리스트 9종 실시간 표출 */}
-            <div className="mt-3 flex flex-col gap-1.5">
+            {/* 체크리스트 9종 실시간 표출 (2열 슬림 그리드) */}
+            <div className="dispatch4-shield-grid mt-2">
               {validationRules.map(rule => {
                 const isValid = rule.status === 'VALID';
                 const isWarn = rule.status === 'WARN';
@@ -1544,7 +1547,7 @@ export const SmartDispatch4: React.FC = () => {
                   <div
                     key={rule.id}
                     onClick={() => setOpenBlock(rule.targetBlock)}
-                    className={`flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs cursor-pointer transition border ${
+                    className={`flex items-center justify-between px-2 py-1 rounded-md text-xs cursor-pointer transition border ${
                       isValid
                         ? 'bg-slate-950/40 border-emerald-900/40 text-slate-300 hover:bg-slate-800'
                         : isWarn
@@ -1552,20 +1555,17 @@ export const SmartDispatch4: React.FC = () => {
                           : 'bg-red-950/30 border-red-800/50 text-red-200 hover:bg-red-950/50'
                     }`}
                   >
-                    <div className="flex items-center gap-2 min-w-0">
+                    <div className="flex items-center gap-1.5 min-w-0">
                       {isValid ? (
-                        <Check className="w-3.5 h-3.5 text-emerald-400 flex-shrink-0" />
+                        <Check className="w-3 h-3 text-emerald-400 flex-shrink-0" />
                       ) : isWarn ? (
-                        <AlertCircle className="w-3.5 h-3.5 text-amber-400 flex-shrink-0" />
+                        <AlertCircle className="w-3 h-3 text-amber-400 flex-shrink-0" />
                       ) : (
-                        <AlertTriangle className="w-3.5 h-3.5 text-red-400 flex-shrink-0" />
+                        <AlertTriangle className="w-3 h-3 text-red-400 flex-shrink-0" />
                       )}
-                      <span className="font-bold whitespace-nowrap text-[11px]">{rule.label}</span>
-                      <span className="text-[10px] text-slate-400 truncate max-w-[150px]">
-                        {rule.currentVal}
-                      </span>
+                      <span className="font-bold whitespace-nowrap text-[10.5px] truncate">{rule.label}</span>
                     </div>
-                    <span className={`text-[10px] font-bold px-1.5 py-0.2 rounded ${
+                    <span className={`text-[9.5px] font-bold px-1.5 py-0.2 rounded ml-1 flex-shrink-0 ${
                       isValid ? 'text-emerald-400 bg-emerald-950' : isWarn ? 'text-amber-400 bg-amber-950' : 'text-red-400 bg-red-950'
                     }`}>
                       {isValid ? '완료' : isWarn ? '확인' : '누락'}
@@ -1577,19 +1577,19 @@ export const SmartDispatch4: React.FC = () => {
           </div>
 
           {/* 📄 [2] 정형화된 출고의뢰서 실시간 요약 (Dossier Preview) */}
-          <div className="bg-slate-900 border border-slate-700/80 rounded-xl p-4 shadow-xl select-text flex flex-col gap-3">
+          <div className="bg-slate-900 border border-slate-700/80 rounded-xl p-3 shadow-lg select-text flex flex-col gap-2.5">
             {/* 서식 헤더 */}
-            <div className="flex items-center justify-between border-b border-slate-800 pb-2.5">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-2">
               <div>
-                <span className="text-[10px] font-bold text-blue-400 uppercase tracking-widest block font-mono">
+                <span className="text-[9.5px] font-bold text-blue-400 uppercase tracking-widest block font-mono">
                   KIYEUN LIFT ERP DISPATCH ORDER
                 </span>
-                <h3 className="text-sm font-black text-white tracking-tight">
+                <h3 className="text-xs font-black text-white tracking-tight">
                   출고 요청서 (실시간 정형화)
                 </h3>
               </div>
               <div className="text-right flex flex-col items-end gap-0.5">
-                <span className="text-[10px] text-slate-400 font-mono">
+                <span className="text-[9.5px] text-slate-400 font-mono">
                   {new Date().toLocaleDateString('ko-KR')}
                 </span>
                 <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-blue-950 text-blue-300 border border-blue-800">
@@ -1601,34 +1601,34 @@ export const SmartDispatch4: React.FC = () => {
             {/* 서식 테이블 1: 거래처 / 현장 정보 (담당자 포함) */}
             <div className="border border-slate-800 rounded-lg overflow-hidden text-xs">
               <div className="grid grid-cols-4 border-b border-slate-800">
-                <div className="col-span-1 bg-slate-950 p-2 font-bold text-slate-400 border-r border-slate-800 flex items-center">
+                <div className="col-span-1 bg-slate-950 p-1.5 font-bold text-slate-400 border-r border-slate-800 flex items-center text-[11px]">
                   고객사명
                 </div>
-                <div className="col-span-3 bg-slate-900/90 p-2 font-black text-white">
+                <div className="col-span-3 bg-slate-900/90 p-1.5 font-black text-white text-[11px]">
                   {custDisplay}
                 </div>
               </div>
               <div className="grid grid-cols-4 border-b border-slate-800">
-                <div className="col-span-1 bg-slate-950 p-2 font-bold text-slate-400 border-r border-slate-800 flex items-center">
+                <div className="col-span-1 bg-slate-950 p-1.5 font-bold text-slate-400 border-r border-slate-800 flex items-center text-[11px]">
                   투입현장
                 </div>
-                <div className="col-span-3 bg-slate-900/90 p-2 font-bold text-slate-200">
+                <div className="col-span-3 bg-slate-900/90 p-1.5 font-bold text-slate-200 text-[11px]">
                   {siteDisplay}
                 </div>
               </div>
               <div className="grid grid-cols-4 border-b border-slate-800">
-                <div className="col-span-1 bg-slate-950 p-2 font-bold text-slate-400 border-r border-slate-800 flex items-center">
+                <div className="col-span-1 bg-slate-950 p-1.5 font-bold text-slate-400 border-r border-slate-800 flex items-center text-[11px]">
                   현장주소
                 </div>
-                <div className="col-span-3 bg-slate-900/90 p-2 text-slate-300 break-all text-[11px]">
+                <div className="col-span-3 bg-slate-900/90 p-1.5 text-slate-300 break-all text-[10.5px]">
                   {addrDisplay}
                 </div>
               </div>
               <div className="grid grid-cols-4">
-                <div className="col-span-1 bg-slate-950 p-2 font-bold text-slate-400 border-r border-slate-800 flex items-center">
+                <div className="col-span-1 bg-slate-950 p-1.5 font-bold text-slate-400 border-r border-slate-800 flex items-center text-[11px]">
                   현장담당자
                 </div>
-                <div className="col-span-3 bg-slate-900/90 p-2 font-bold text-slate-100">
+                <div className="col-span-3 bg-slate-900/90 p-1.5 font-bold text-slate-100 text-[11px]">
                   {contactPerson ? `${contactPerson} (${contactPhone || '연락처 미등록'})` : '(담당자 미등록)'}
                 </div>
               </div>
@@ -1637,27 +1637,27 @@ export const SmartDispatch4: React.FC = () => {
             {/* 서식 테이블 2: 출고 일정 / 운송비 부담 */}
             <div className="border border-slate-800 rounded-lg overflow-hidden text-xs">
               <div className="grid grid-cols-4 border-b border-slate-800">
-                <div className="col-span-1 bg-slate-950 p-2 font-bold text-slate-400 border-r border-slate-800 flex items-center">
+                <div className="col-span-1 bg-slate-950 p-1.5 font-bold text-slate-400 border-r border-slate-800 flex items-center text-[11px]">
                   상차일시
                 </div>
-                <div className="col-span-3 bg-slate-900/90 p-2 font-bold text-blue-400 font-mono">
+                <div className="col-span-3 bg-slate-900/90 p-1.5 font-bold text-blue-400 font-mono text-[11px]">
                   {loadingDate ? `${loadingDate} ${loadingTimeVal}` : '(상차일시 미지정)'}
                 </div>
               </div>
               <div className={`grid grid-cols-4 ${staggeredMemo ? 'border-b border-slate-800' : ''}`}>
-                <div className="col-span-1 bg-slate-950 p-2 font-bold text-slate-400 border-r border-slate-800 flex items-center">
+                <div className="col-span-1 bg-slate-950 p-1.5 font-bold text-slate-400 border-r border-slate-800 flex items-center text-[11px]">
                   운송비부담
                 </div>
-                <div className="col-span-3 bg-slate-900/90 p-2 font-bold text-emerald-400">
+                <div className="col-span-3 bg-slate-900/90 p-1.5 font-bold text-emerald-400 text-[11px]">
                   {paidBy === 'CUSTOMER' ? '고객사 전액 청구' : paidBy === 'OURS' ? '당사 영업 부담(면제)' : '편도 지원'}
                 </div>
               </div>
               {staggeredMemo && (
                 <div className="grid grid-cols-4">
-                  <div className="col-span-1 bg-slate-950 p-2 font-bold text-slate-400 border-r border-slate-800 flex items-center">
+                  <div className="col-span-1 bg-slate-950 p-1.5 font-bold text-slate-400 border-r border-slate-800 flex items-center text-[11px]">
                     시차출고
                   </div>
-                  <div className="col-span-3 bg-slate-900/90 p-2 text-slate-300 text-[11px]">
+                  <div className="col-span-3 bg-slate-900/90 p-1.5 text-slate-300 text-[10.5px]">
                     {staggeredMemo}
                   </div>
                 </div>
@@ -1666,24 +1666,24 @@ export const SmartDispatch4: React.FC = () => {
 
             {/* 서식 테이블 3: 신청 장비 규격 */}
             <div>
-              <div className="text-[11px] font-bold text-slate-400 mb-1.5 flex items-center justify-between">
+              <div className="text-[10.5px] font-bold text-slate-400 mb-1 flex items-center justify-between">
                 <span>신청 장비 제원</span>
                 <span className="text-blue-400 font-mono font-bold">합계: {totalQty}대</span>
               </div>
               <div className="border border-slate-800 rounded-lg overflow-hidden text-xs">
-                <div className="grid grid-cols-4 bg-slate-950 border-b border-slate-800 p-2 font-bold text-slate-400">
+                <div className="grid grid-cols-4 bg-slate-950 border-b border-slate-800 p-1.5 font-bold text-slate-400 text-[11px]">
                   <div className="col-span-3">모델명</div>
                   <div className="col-span-1 text-right font-mono">수량</div>
                 </div>
                 {equipments.length > 0 ? (
                   equipments.map((eq, i) => (
-                    <div key={i} className="grid grid-cols-4 border-b border-slate-800/80 last:border-b-0 p-2 bg-slate-900/80 hover:bg-slate-850">
+                    <div key={i} className="grid grid-cols-4 border-b border-slate-800/80 last:border-b-0 p-1.5 bg-slate-900/80 hover:bg-slate-850 text-[11px]">
                       <div className="col-span-3 font-bold text-white">{eq.modelName}</div>
                       <div className="col-span-1 text-right font-mono font-bold text-blue-400">{eq.qty}대</div>
                     </div>
                   ))
                 ) : (
-                  <div className="p-3 text-center text-slate-500 italic bg-slate-900/60">
+                  <div className="p-2.5 text-center text-slate-500 italic bg-slate-900/60 text-[11px]">
                     선택된 장비가 없습니다.
                   </div>
                 )}
@@ -1692,7 +1692,7 @@ export const SmartDispatch4: React.FC = () => {
 
             {/* 특이사항 및 옵션 */}
             {(note || selectedSafetyOptions.size > 0 || isExchangeMode) && (
-              <div className="bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-[11px] text-slate-300 flex flex-col gap-1.5">
+              <div className="bg-slate-950 border border-slate-800 rounded-lg p-2 text-[10.5px] text-slate-300 flex flex-col gap-1">
                 {selectedSafetyOptions.size > 0 && (
                   <div>
                     <span className="font-bold text-amber-400">안전옵션: </span>
@@ -1716,41 +1716,43 @@ export const SmartDispatch4: React.FC = () => {
               </div>
             )}
           </div>
-
-          {/* 🚀 [3] Gutenberg Z-Pattern Terminal Action — 최종 출고지시 버튼 */}
-          <div className="bg-slate-900 border border-slate-800 rounded-xl p-4 flex flex-col gap-2 shadow-lg">
-            <button
-              onClick={handleSaveDraft}
-              disabled={!canSave}
-              className={`w-full py-3.5 px-4 rounded-xl font-black text-sm transition-all flex items-center justify-center gap-2 shadow-xl ${
-                isFormValid
-                  ? 'bg-blue-600 hover:bg-blue-500 text-white shadow-blue-900/40 cursor-pointer active:scale-98'
-                  : 'bg-slate-800 border border-red-500/40 text-red-300 hover:bg-slate-750'
-              }`}
-            >
-              {isFormValid ? (
-                <>
-                  <span>출고지시 발행 (검증 완료 9/9)</span>
-                  <ArrowRight className="w-4 h-4" />
-                </>
-              ) : (
-                <>
-                  <AlertTriangle className="w-4 h-4 text-red-400" />
-                  <span>출고지시 (미충족 {invalidRules.length}건 방어차단)</span>
-                </>
-              )}
-            </button>
-            <p className="text-[11px] text-slate-400 text-center">
-              {isFormValid
-                ? '확인 완료된 의뢰는 DB에 무누락 보존되며 처리 대기 큐로 전송됩니다.'
-                : '누락된 항목이 있으면 출고지시가 자동으로 방어 차단됩니다.'}
-            </p>
-          </div>
-
         </div>
+
+        {/* 🚀 [3] Gutenberg Z-Pattern Terminal Action — 최하단 영구 고정 완결 바 */}
+        <div className="dispatch4-terminal-bar">
+          <button
+            type="button"
+            onClick={handleSaveDraft}
+            disabled={!canSave}
+            className={`w-full py-2.5 px-3 rounded-xl font-black text-xs transition-all flex items-center justify-center gap-2 shadow-lg ${
+              isFormValid
+                ? 'bg-blue-600 hover:bg-blue-500 text-white shadow-blue-900/40 cursor-pointer active:scale-98'
+                : 'bg-slate-800 border border-red-500/40 text-red-300 hover:bg-slate-750'
+            }`}
+          >
+            {isFormValid ? (
+              <>
+                <span>출고지시 발행 (검증 완료 9/9)</span>
+                <ArrowRight className="w-4 h-4" />
+              </>
+            ) : (
+              <>
+                <AlertTriangle className="w-4 h-4 text-red-400" />
+                <span>출고지시 (미충족 {invalidRules.length}건 방어차단)</span>
+              </>
+            )}
+          </button>
+          <p className="text-[10px] text-slate-400 text-center m-0">
+            {isFormValid
+              ? '확인 완료된 의뢰는 DB에 무누락 보존되며 처리 대기 큐로 전송됩니다.'
+              : '누락된 항목이 있으면 출고지시가 자동으로 방어 차단됩니다.'}
+          </p>
+        </div>
+
       </div>
-    );
-  };
+    </div>
+  );
+};
 
   // ─────────────────────────────────────────────────────────────────────────
   // 렌더: 처리 대기 큐 탭 (실제 배차 대장 연동 액션 포함)
@@ -1899,57 +1901,52 @@ export const SmartDispatch4: React.FC = () => {
   // 최종 전체 페이지 렌더
   // ─────────────────────────────────────────────────────────────────────────
   return (
-    <div className="w-full max-w-7xl mx-auto px-4 py-5 font-sans text-slate-100">
-      {/* 최상단 헤더 */}
-      <div className="flex items-center justify-between flex-wrap gap-3 pb-4 mb-4 border-b border-slate-800">
-        <div>
-          <h2 className="text-xl font-black text-white tracking-tight">출고의뢰 관리 (통합 스튜디오)</h2>
-          <p className="text-xs text-slate-400 mt-0.5">
-            단일/복합 맥락 접수, 실시간 서식 정형화, 9대 필수 스키마 방어 차단, 배차 대장 실시간 연동
-          </p>
+    <div className="dispatch4-container">
+      {/* 최상단 컴팩트 툴바 (타이틀 + 탭 + 녹음 업로드 1줄 인라인) */}
+      <div className="dispatch4-toolbar">
+        <div className="dispatch4-toolbar-left">
+          <h2 className="dispatch4-title">출고의뢰 관리 (통합 스튜디오)</h2>
+          <div className="dispatch4-tab-group">
+            <button
+              type="button"
+              onClick={() => setActiveTab('NEW')}
+              className={`dispatch4-tab-btn ${activeTab === 'NEW' ? 'active' : ''}`}
+            >
+              새 의뢰 작성
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab('QUEUE')}
+              className={`dispatch4-tab-btn ${activeTab === 'QUEUE' ? 'active' : ''}`}
+            >
+              <span>처리 대기 큐</span>
+              {pendingCount > 0 && (
+                <span className="px-1.5 py-0.2 rounded-full bg-blue-600 text-white text-[10px] font-mono">
+                  {pendingCount}
+                </span>
+              )}
+            </button>
+          </div>
         </div>
-        <div className="flex items-center gap-2.5">
+
+        <div className="flex items-center gap-2">
           <button
+            type="button"
             onClick={() => setAudioUploadOpen(true)}
-            className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-blue-900/40 hover:bg-blue-900/60 border border-blue-500/50 text-blue-200 text-xs font-bold transition shadow-sm"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-900/40 hover:bg-blue-900/60 border border-blue-500/50 text-blue-200 text-xs font-bold transition shadow-sm"
           >
-            <UploadCloud className="w-4 h-4 text-blue-400" />
+            <UploadCloud className="w-3.5 h-3.5 text-blue-400" />
             <span>통화 녹음 파일 업로드</span>
           </button>
         </div>
       </div>
 
-      {/* 탭 바 */}
-      <div className="flex border-b border-slate-800 mb-6 gap-2">
-        <button
-          onClick={() => setActiveTab('NEW')}
-          className={`px-5 py-2.5 text-sm font-bold transition border-b-2 -mb-[2px] ${
-            activeTab === 'NEW'
-              ? 'border-blue-500 text-blue-400'
-              : 'border-transparent text-slate-400 hover:text-slate-200'
-          }`}
-        >
-          새 의뢰 작성
-        </button>
-        <button
-          onClick={() => setActiveTab('QUEUE')}
-          className={`flex items-center gap-2 px-5 py-2.5 text-sm font-bold transition border-b-2 -mb-[2px] ${
-            activeTab === 'QUEUE'
-              ? 'border-blue-500 text-blue-400'
-              : 'border-transparent text-slate-400 hover:text-slate-200'
-          }`}
-        >
-          <span>처리 대기 큐</span>
-          {pendingCount > 0 && (
-            <span className="px-2 py-0.5 text-xs font-bold rounded-full bg-blue-600 text-white font-mono">
-              {pendingCount}
-            </span>
-          )}
-        </button>
-      </div>
-
       {/* 본문 탭 전환 */}
-      {activeTab === 'NEW' ? renderNewTab() : renderQueueTab()}
+      {activeTab === 'NEW' ? renderNewTab() : (
+        <div className="flex-1 min-h-0 overflow-y-auto dispatch4-scrollbar p-1">
+          {renderQueueTab()}
+        </div>
+      )}
 
       {/* 통화 녹음 업로드 모달 */}
       <CallAudioUploadModal

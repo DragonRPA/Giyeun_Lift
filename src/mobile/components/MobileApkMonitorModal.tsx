@@ -152,7 +152,7 @@ export const MobileApkMonitorModal: React.FC<MobileApkMonitorModalProps> = ({
             <div className="text-[11px] text-slate-300 space-y-1 bg-slate-900/70 p-2.5 rounded-lg border border-slate-800">
               <div className="flex justify-between">
                 <span className="text-slate-400">파일명</span>
-                <span className="font-mono text-white">KiyeunCallCapture.apk</span>
+                <span className="font-mono text-white">CallTransfer.apk</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-slate-400">파일 크기</span>
@@ -166,8 +166,8 @@ export const MobileApkMonitorModal: React.FC<MobileApkMonitorModalProps> = ({
 
             {/* 다운로드 실행 링크 */}
             <a
-              href={`${release.downloadUrl || '/downloads/KiyeunCallCapture.apk'}?v=${encodeURIComponent(release.version || '1.0.0')}`}
-              download="KiyeunCallCapture.apk"
+              href={`${release.downloadUrl || '/downloads/CallTransfer.apk'}?v=${encodeURIComponent(release.version || '2.0.0')}`}
+              download="CallTransfer.apk"
               className="w-full py-2.5 px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-500 text-white shadow-lg shadow-blue-600/30 transition-all"
             >
               <Download className="w-4 h-4" />

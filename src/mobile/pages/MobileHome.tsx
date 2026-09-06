@@ -105,8 +105,8 @@ export const MobileHome: React.FC<MobileHomeProps> = ({
         {/* APK 다운로드 */}
         <div className="flex flex-col gap-2 w-[120px]">
           <a
-            href={apkRelease?.downloadUrl || '/downloads/KiyeunCallCapture.apk'}
-            download="KiyeunCallCapture.apk"
+            href={apkRelease?.downloadUrl || '/downloads/CallTransfer.apk'}
+            download="CallTransfer.apk"
             className="flex flex-col items-center justify-center gap-1 rounded-2xl py-3 border transition-all active:scale-95 bg-blue-900/50 border-blue-500/60 text-blue-300 hover:bg-blue-800/50"
           >
             <Download className="w-5 h-5" />

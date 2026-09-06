@@ -24,14 +24,14 @@ export interface ApkRelease {
 }
 
 export const FALLBACK_APK_RELEASE: ApkRelease = {
-  id:          'release-v1.0.0',
-  version:     'v1.0.0',
-  storagePath: '/downloads/KiyeunCallCapture.apk',
+  id:          'release-v2.0.0',
+  version:     'v2.0.0',
+  storagePath: '/downloads/CallTransfer.apk',
   fileSize:    25123,
-  releaseNote: '기연 통화 녹음 자동 캡처 및 출퇴근 동기화 모바일 패키지 (정규 네이티브 APK)',
+  releaseNote: '통화 감지 및 출퇴근 연동 모바일 패키지 (CallTransfer v2.0.0)',
   isLatest:    true,
   createdAt:   '2026-09-06T00:00:00.000Z',
-  downloadUrl: '/downloads/KiyeunCallCapture.apk',
+  downloadUrl: '/downloads/CallTransfer.apk',
 };
 
 const LOCAL_STORAGE_KEY_PREFIX = 'erp_user_work_status_';

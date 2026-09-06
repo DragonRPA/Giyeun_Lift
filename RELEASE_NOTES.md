@@ -1,4 +1,37 @@
+## [v1.9.4.Build.1] - 2026-09-06 20:12
+
+### 📱 [CallTransfer APK 범용화 + 통화 종료 알림 + 업로드 모달 전송 버튼 수정]
+
+#### APK 범용화 (com.calltransfer.app v2.0.0)
+- 패키지명 `com.kiyeun.callcapture` → `com.calltransfer.app` 전면 변경
+- 앱 표시명 `기연 통화캡처` → `CallTransfer` 변경
+- 알림 채널명 `기연 통화감지 서비스` → `CallTransfer Service` 변경
+- APK 파일명 `KiyeunCallCapture.apk` → `CallTransfer.apk` 변경
+
+#### Android 12+ Background Activity Launch 제한 우회
+- `PhoneStateReceiver.onReceive()` 내 `startActivity()` 직접 호출 제거
+- 통화 종료 감지 시 → `CallDetectionService`에 `CALL_ENDED_NOTIFY` Intent 전달
+- `CallDetectionService`가 별도 알림 채널(`calltransfer_call_end_channel`)로 "통화 종료 감지" 알림 표시
+- 사용자가 알림 탭 → `MainActivity` 포그라운드 진입 → `window.onNativeCallEnded()` 호출
+
+#### 웹앱 모달 전송 버튼 항상 노출 수정
+- **근본 원인**: `CallAudioUploadModal`의 z-index(50)이 `MobileBottomNav`(9000)보다 낮아 가려짐
+- **해결**: z-index `9100`으로 상향, 하단 시트(bottom sheet) 구조로 전면 재설계
+- 헤더/본문(flex-1 scroll)/푸터(flex-shrink:0) 3단 고정 구조로 전송 버튼 항상 표시
+- 웹앱 APK 파일명 일괄 교체: workStatusService.ts, MobileApkMonitorModal.tsx, MobileHome.tsx
+
+---
+
+## [v1.9.3.Build.6] - 2026-09-06 20:01
+
+### 🔧 [통화 녹음 업로드 모달 전송 버튼 항상 표시 1차 시도]
+- max-h-[75vh] → maxHeight:95dvh + flex-col 구조 변경 (z-index 문제로 미완료, Build.1에서 근본 해결)
+
+---
+
 ## [v1.9.3.Build.4] - 2026-09-06 19:45
+
+
 
 ### 📱 [APK 2차 설치 오류 근본 해결] "앱파일에 문제가 있습니다" — Vercel CDN 구형 Mock APK 서빙 차단, minSdk24·dataSync FGS·v1+v2+v3 3중 서명 정규 APK 재빌드, no-cache 강제 및 캐시버스터 URL 적용
 

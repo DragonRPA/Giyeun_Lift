@@ -64,8 +64,8 @@ console.log('\n📝 [2/8] 안드로이드 리소스 및 매니페스트 구축:'
 // strings.xml
 fs.writeFileSync(path.join(valuesDir, 'strings.xml'), `<?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">기연 통화캡처</string>
-    <string name="notification_channel_name">기연 통화감지 서비스</string>
+    <string name="app_name">CallTransfer</string>
+    <string name="notification_channel_name">CallTransfer Service</string>
     <string name="notification_channel_desc">통화 감지 및 출퇴근 상태 상시 실행</string>
 </resources>
 `, 'utf8');
@@ -129,9 +129,9 @@ fs.writeFileSync(path.join(layoutDir, 'activity_main.xml'), `<?xml version="1.0"
 const manifestPath = path.join(appDir, 'AndroidManifest.xml');
 fs.writeFileSync(manifestPath, `<?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    package="com.kiyeun.callcapture"
-    android:versionCode="1"
-    android:versionName="1.0.0">
+    package="com.calltransfer.app"
+    android:versionCode="2"
+    android:versionName="2.0.0">
 
     <uses-sdk android:minSdkVersion="24" android:targetSdkVersion="34" />
 
@@ -203,7 +203,7 @@ fs.writeFileSync(manifestPath, `<?xml version="1.0" encoding="utf-8"?>
 
 // Java 소스코드 작성
 // 1. NativeBridge.java
-fs.writeFileSync(path.join(javaDir, 'NativeBridge.java'), `package com.kiyeun.callcapture;
+fs.writeFileSync(path.join(javaDir, 'NativeBridge.java'), `package com.calltransfer.app;
 
 import android.content.Intent;
 import android.os.Build;
@@ -223,7 +223,7 @@ public class NativeBridge {
 
     @JavascriptInterface
     public String getAppVersion() {
-        return "v1.0.0";
+        return "v2.0.0";
     }
 
     @JavascriptInterface
@@ -253,7 +253,7 @@ public class NativeBridge {
 `, 'utf8');
 
 // 2. AppWebViewClient.java
-fs.writeFileSync(path.join(javaDir, 'AppWebViewClient.java'), `package com.kiyeun.callcapture;
+fs.writeFileSync(path.join(javaDir, 'AppWebViewClient.java'), `package com.calltransfer.app;
 
 import android.graphics.Bitmap;
 import android.view.View;
@@ -295,7 +295,7 @@ public class AppWebViewClient extends WebViewClient {
 `, 'utf8');
 
 // 3. AppWebChromeClient.java
-fs.writeFileSync(path.join(javaDir, 'AppWebChromeClient.java'), `package com.kiyeun.callcapture;
+fs.writeFileSync(path.join(javaDir, 'AppWebChromeClient.java'), `package com.calltransfer.app;
 
 import android.webkit.WebChromeClient;
 import android.webkit.WebView;
@@ -318,7 +318,7 @@ public class AppWebChromeClient extends WebChromeClient {
 `, 'utf8');
 
 // 4. MainActivity.java
-fs.writeFileSync(path.join(javaDir, 'MainActivity.java'), `package com.kiyeun.callcapture;
+fs.writeFileSync(path.join(javaDir, 'MainActivity.java'), `package com.calltransfer.app;
 
 import android.Manifest;
 import android.app.Activity;
@@ -442,7 +442,7 @@ public class MainActivity extends Activity {
 `, 'utf8');
 
 // 5. CallDetectionService.java
-fs.writeFileSync(path.join(javaDir, 'CallDetectionService.java'), `package com.kiyeun.callcapture;
+fs.writeFileSync(path.join(javaDir, 'CallDetectionService.java'), `package com.calltransfer.app;
 
 import android.app.Notification;
 import android.app.NotificationChannel;
@@ -456,8 +456,9 @@ import android.os.IBinder;
 import android.telephony.TelephonyManager;
 
 public class CallDetectionService extends Service {
-    private static final String CHANNEL_ID = "kiyeun_call_capture_channel";
+    public static final String CHANNEL_ID = "calltransfer_main_channel";
     private static final int NOTIF_ID = 1001;
+    private static final int CALL_ENDED_NOTIF_ID = 1002;
     private PhoneStateReceiver phoneReceiver;
     private boolean isWorking = false;
 
@@ -466,9 +467,10 @@ public class CallDetectionService extends Service {
         super.onCreate();
         createNotificationChannel();
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            startForeground(NOTIF_ID, buildNotification("대기 중", false), android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC);
+            startForeground(NOTIF_ID, buildStatusNotification("대기 중", false),
+                android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC);
         } else {
-            startForeground(NOTIF_ID, buildNotification("대기 중", false));
+            startForeground(NOTIF_ID, buildStatusNotification("대기 중", false));
         }
         registerPhoneReceiver();
     }
@@ -479,27 +481,26 @@ public class CallDetectionService extends Service {
             String action = intent.getStringExtra("action");
             if ("CLOCK_IN".equals(action)) {
                 isWorking = true;
-                updateNotification("출근 중 — 통화 감지 활성", true);
+                updateStatusNotification("출근 중 — 통화 감지 활성", true);
             } else if ("CLOCK_OUT".equals(action)) {
                 isWorking = false;
-                updateNotification("대기 중", false);
+                updateStatusNotification("대기 중", false);
+            } else if ("CALL_ENDED_NOTIFY".equals(action)) {
+                long endedAt = intent.getLongExtra("CALL_ENDED_AT", System.currentTimeMillis());
+                showCallEndedNotification(endedAt);
             }
         }
         return START_STICKY;
     }
 
     @Override
-    public IBinder onBind(Intent intent) {
-        return null;
-    }
+    public IBinder onBind(Intent intent) { return null; }
 
     @Override
     public void onDestroy() {
         super.onDestroy();
         if (phoneReceiver != null) {
-            try {
-                unregisterReceiver(phoneReceiver);
-            } catch (Exception ignored) {}
+            try { unregisterReceiver(phoneReceiver); } catch (Exception ignored) {}
         }
     }
 
@@ -515,61 +516,95 @@ public class CallDetectionService extends Service {
 
     private void createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            NotificationChannel channel = new NotificationChannel(
+            NotificationChannel statusChannel = new NotificationChannel(
                 CHANNEL_ID,
-                "기연 통화감지 서비스",
+                getString(R.string.notification_channel_name),
                 NotificationManager.IMPORTANCE_LOW
             );
-            channel.setDescription("통화 감지 및 출퇴근 상태 상시 실행 알림");
-            channel.setShowBadge(false);
+            statusChannel.setDescription(getString(R.string.notification_channel_desc));
+            statusChannel.setShowBadge(false);
+
+            NotificationChannel callEndChannel = new NotificationChannel(
+                "calltransfer_call_end_channel",
+                "통화 종료 알림",
+                NotificationManager.IMPORTANCE_DEFAULT
+            );
+            callEndChannel.setDescription("통화 종료 후 녹음 파일 업로드 안내");
+
             NotificationManager nm = getSystemService(NotificationManager.class);
             if (nm != null) {
-                nm.createNotificationChannel(channel);
+                nm.createNotificationChannel(statusChannel);
+                nm.createNotificationChannel(callEndChannel);
             }
         }
     }
 
-    private void updateNotification(String status, boolean working) {
+    private void updateStatusNotification(String status, boolean working) {
         NotificationManager nm = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
-        if (nm != null) {
-            nm.notify(NOTIF_ID, buildNotification(status, working));
-        }
+        if (nm != null) nm.notify(NOTIF_ID, buildStatusNotification(status, working));
     }
 
-    private Notification buildNotification(String status, boolean working) {
+    private Notification buildStatusNotification(String status, boolean working) {
         Intent tapIntent = new Intent(this, MainActivity.class);
         tapIntent.setFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_CLEAR_TOP);
         PendingIntent pendingIntent = PendingIntent.getActivity(
-            this,
-            0,
-            tapIntent,
-            PendingIntent.FLAG_UPDATE_CURRENT | (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M ? PendingIntent.FLAG_IMMUTABLE : 0)
+            this, 0, tapIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT |
+                (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M ? PendingIntent.FLAG_IMMUTABLE : 0)
         );
-
-        Notification.Builder builder;
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            builder = new Notification.Builder(this, CHANNEL_ID);
-        } else {
-            builder = new Notification.Builder(this);
-        }
-
-        builder.setContentTitle("기연 통화캡처")
+        Notification.Builder builder = Build.VERSION.SDK_INT >= Build.VERSION_CODES.O
+            ? new Notification.Builder(this, CHANNEL_ID)
+            : new Notification.Builder(this);
+        return builder
+            .setContentTitle("CallTransfer")
             .setContentText((working ? "🟢 " : "⚫ ") + status)
             .setSmallIcon(R.drawable.ic_launcher)
             .setContentIntent(pendingIntent)
-            .setOngoing(true);
+            .setOngoing(true)
+            .build();
+    }
 
-        return builder.build();
+    private void showCallEndedNotification(long endedAt) {
+        Intent mainIntent = new Intent(this, MainActivity.class);
+        mainIntent.setFlags(
+            Intent.FLAG_ACTIVITY_NEW_TASK |
+            Intent.FLAG_ACTIVITY_SINGLE_TOP |
+            Intent.FLAG_ACTIVITY_CLEAR_TOP
+        );
+        mainIntent.putExtra("CALL_ENDED", true);
+        mainIntent.putExtra("CALL_ENDED_AT", endedAt);
+
+        PendingIntent pendingIntent = PendingIntent.getActivity(
+            this, (int)(endedAt % Integer.MAX_VALUE), mainIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT |
+                (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M ? PendingIntent.FLAG_IMMUTABLE : 0)
+        );
+
+        Notification.Builder builder = Build.VERSION.SDK_INT >= Build.VERSION_CODES.O
+            ? new Notification.Builder(this, "calltransfer_call_end_channel")
+            : new Notification.Builder(this);
+
+        Notification notif = builder
+            .setContentTitle("통화 종료 감지")
+            .setContentText("탭하여 통화 녹음 파일을 업로드하세요")
+            .setSmallIcon(R.drawable.ic_launcher)
+            .setContentIntent(pendingIntent)
+            .setAutoCancel(true)
+            .build();
+
+        NotificationManager nm = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
+        if (nm != null) nm.notify(CALL_ENDED_NOTIF_ID, notif);
     }
 }
 `, 'utf8');
 
 // 6. PhoneStateReceiver.java
-fs.writeFileSync(path.join(javaDir, 'PhoneStateReceiver.java'), `package com.kiyeun.callcapture;
+fs.writeFileSync(path.join(javaDir, 'PhoneStateReceiver.java'), `package com.calltransfer.app;
 
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
+import android.os.Build;
 import android.telephony.TelephonyManager;
 
 public class PhoneStateReceiver extends BroadcastReceiver {
@@ -587,15 +622,14 @@ public class PhoneStateReceiver extends BroadcastReceiver {
             wasConnected = true;
         } else if (TelephonyManager.EXTRA_STATE_IDLE.equals(state)) {
             if (wasConnected) {
-                Intent mainIntent = new Intent(context, MainActivity.class);
-                mainIntent.setFlags(
-                    Intent.FLAG_ACTIVITY_NEW_TASK |
-                    Intent.FLAG_ACTIVITY_SINGLE_TOP |
-                    Intent.FLAG_ACTIVITY_CLEAR_TOP
-                );
-                mainIntent.putExtra("CALL_ENDED", true);
-                mainIntent.putExtra("CALL_ENDED_AT", System.currentTimeMillis());
-                context.startActivity(mainIntent);
+                Intent serviceIntent = new Intent(context, CallDetectionService.class);
+                serviceIntent.putExtra("action", "CALL_ENDED_NOTIFY");
+                serviceIntent.putExtra("CALL_ENDED_AT", System.currentTimeMillis());
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    context.startForegroundService(serviceIntent);
+                } else {
+                    context.startService(serviceIntent);
+                }
             }
             wasConnected = false;
         }
@@ -605,7 +639,7 @@ public class PhoneStateReceiver extends BroadcastReceiver {
 `, 'utf8');
 
 // 7. BootReceiver.java
-fs.writeFileSync(path.join(javaDir, 'BootReceiver.java'), `package com.kiyeun.callcapture;
+fs.writeFileSync(path.join(javaDir, 'BootReceiver.java'), `package com.calltransfer.app;
 
 import android.content.BroadcastReceiver;
 import android.content.Context;
@@ -650,7 +684,7 @@ console.log('\n☕ [5/8] 자바 소스코드 컴파일 (javac --release 8 -g:non
 const classesDir = path.join(buildDir, 'classes');
 fs.mkdirSync(classesDir, { recursive: true });
 
-const rJava = path.join(genDir, 'com', 'kiyeun', 'callcapture', 'R.java');
+const rJava = path.join(genDir, 'com', 'calltransfer', 'app', 'R.java');
 const javaFiles = [
   rJava,
   path.join(javaDir, 'MainActivity.java'),
@@ -704,7 +738,7 @@ if (!fs.existsSync(keystorePath)) {
   execSync(keygenCmd, { stdio: 'inherit' });
 }
 
-const finalApk = path.join(buildDir, 'KiyeunCallCapture.apk');
+const finalApk = path.join(buildDir, 'CallTransfer.apk');
 const signCmd = `java -jar "${apksignerJar}" sign --ks "${keystorePath}" --ks-pass pass:kiyeun1234 --key-pass pass:kiyeun1234 --min-sdk-version 24 --v1-signing-enabled true --v2-signing-enabled true --v3-signing-enabled true --out "${finalApk}" "${alignedApk}"`;
 console.log('  >', signCmd);
 execSync(signCmd, { stdio: 'inherit' });
@@ -723,8 +757,8 @@ console.log('📦 패키지 정보:');
 console.log(badgeLines);
 
 // 12. 웹앱 배포 폴더로 복사
-const publicApk = path.join(rootDir, 'public', 'downloads', 'KiyeunCallCapture.apk');
-const distApk = path.join(rootDir, 'dist', 'downloads', 'KiyeunCallCapture.apk');
+const publicApk = path.join(rootDir, 'public', 'downloads', 'CallTransfer.apk');
+const distApk = path.join(rootDir, 'dist', 'downloads', 'CallTransfer.apk');
 
 fs.copyFileSync(finalApk, publicApk);
 console.log('\n🚀 [완료] public/downloads 복사 완료:', publicApk, `(${fs.statSync(publicApk).size.toLocaleString()} bytes)`);

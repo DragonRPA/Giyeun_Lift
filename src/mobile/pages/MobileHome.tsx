@@ -71,7 +71,7 @@ export const MobileHome: React.FC<MobileHomeProps> = ({
   const pendingInspections = outboundInspections.filter((ins) => ins.status === 'PENDING');
   const activeContracts = contracts.filter(c => c.status === 'ACTIVE' || c.status === 'EXTENDED');
 
-  // ── 출근/퇴근 카드 (공통) ─────────────────────────────
+  // ── 근무 상태 카드 (공통) ─────────────────────────────
   const WorkStatusCard = () => {
     const isWorking = workStatus?.isWorking ?? false;
     const startedAt = workStatus?.workStartedAt
@@ -79,52 +79,37 @@ export const MobileHome: React.FC<MobileHomeProps> = ({
       : null;
 
     return (
-      <div className="flex gap-3">
-        {/* 출근/퇴근 토글 */}
-        <button
-          onClick={handleWorkToggle}
-          disabled={workLoading}
-          className={`flex-1 flex flex-col items-center justify-center gap-1.5 rounded-2xl py-4 border-2 transition-all active:scale-95 ${
-            isWorking
-              ? 'bg-emerald-900/60 border-emerald-500 shadow-[0_0_16px_rgba(34,197,94,0.3)]'
-              : 'bg-slate-800 border-slate-600'
-          }`}
-        >
-          <span className="text-3xl">{workLoading ? '⏳' : isWorking ? '🟢' : '⚫'}</span>
-          <span className={`text-sm font-black ${isWorking ? 'text-emerald-300' : 'text-slate-300'}`}>
-            {isWorking ? '출근 중' : '퇴근'}
-          </span>
-          {isWorking && startedAt && (
-            <span className="text-[10px] text-emerald-400 font-mono">since {startedAt}</span>
-          )}
-          {!isWorking && (
-            <span className="text-[10px] text-slate-500">탭하여 출근</span>
-          )}
-        </button>
-
-        {/* APK 다운로드 */}
-        <div className="flex flex-col gap-2 w-[120px]">
-          <a
-            href={apkRelease?.downloadUrl || '/downloads/CallTransfer.apk'}
-            download="CallTransfer.apk"
-            className="flex flex-col items-center justify-center gap-1 rounded-2xl py-3 border transition-all active:scale-95 bg-blue-900/50 border-blue-500/60 text-blue-300 hover:bg-blue-800/50"
-          >
-            <Download className="w-5 h-5" />
-            <span className="text-[11px] font-bold">통화캡처 APK</span>
-            <span className="text-[10px] opacity-70">
-              {apkRelease?.version || 'v1.0.0'}
-            </span>
-          </a>
-          <div className={`flex items-center justify-center gap-1 rounded-xl py-2 border text-[10px] font-bold ${
-            isWorking
-              ? 'bg-emerald-950 border-emerald-800/60 text-emerald-400'
-              : 'bg-slate-900 border-slate-700 text-slate-500'
-          }`}>
-            <Smartphone className="w-3 h-3" />
-            {isWorking ? 'APK 활성' : 'APK 대기'}
+      <button
+        onClick={handleWorkToggle}
+        disabled={workLoading}
+        className={`w-full flex items-center justify-between gap-3 rounded-2xl px-5 py-4 border-2 transition-all active:scale-95 ${
+          isWorking
+            ? 'bg-emerald-900/60 border-emerald-500 shadow-[0_0_16px_rgba(34,197,94,0.3)]'
+            : 'bg-slate-800 border-slate-600'
+        }`}
+      >
+        <div className="flex items-center gap-3">
+          <span className="text-2xl">{workLoading ? '⏳' : isWorking ? '🟢' : '⚫'}</span>
+          <div className="text-left">
+            <div className={`text-sm font-black ${isWorking ? 'text-emerald-300' : 'text-slate-300'}`}>
+              {isWorking ? '근무 중' : '퇴근 상태'}
+            </div>
+            {isWorking && startedAt && (
+              <div className="text-[11px] text-emerald-400 font-mono">since {startedAt}</div>
+            )}
+            {!isWorking && (
+              <div className="text-[11px] text-slate-500">탭하여 출근</div>
+            )}
           </div>
         </div>
-      </div>
+        <div className={`text-xs font-bold px-3 py-1.5 rounded-xl border ${
+          isWorking
+            ? 'bg-red-950/60 border-red-500/40 text-red-300'
+            : 'bg-emerald-900/60 border-emerald-500/40 text-emerald-300'
+        }`}>
+          {isWorking ? '퇴근' : '출근'}
+        </div>
+      </button>
     );
   };
 

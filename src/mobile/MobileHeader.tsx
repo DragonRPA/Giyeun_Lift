@@ -312,7 +312,7 @@ export const MobileHeader: React.FC<MobileHeaderProps> = ({
                       backgroundColor: isWorking ? '#10b981' : '#64748b',
                       boxShadow: isWorking ? '0 0 5px #10b981' : 'none'
                     }} />
-                    <span>{isWorkLoading ? '...' : isWorking ? '출근중' : '출근'}</span>
+                    <span>{isWorkLoading ? '...' : isWorking ? '근무중' : '출근'}</span>
                   </button>
                 )}
               </div>

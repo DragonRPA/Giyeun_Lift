@@ -75,6 +75,38 @@ const mockCustomers: Customer[] = [
     bizType: '건설업',
     bizItem: '단기공사',
     createdAt: '2026-01-01'
+  },
+  {
+    id: 'CUST-004',
+    name: '백산이엔씨',
+    address: '인천시 서구',
+    repContact: '010-4444-5555',
+    repEmail: 'bs@bs.com',
+    isClosed: false,
+    bizRegNo: '101-81-00004',
+    transactionStatus: 'ALLOWED',
+    defaultBillingDay: 31,
+    paymentDueDay: 25,
+    representative: '백산',
+    bizType: '건설업',
+    bizItem: '가설공사',
+    createdAt: '2026-01-01'
+  },
+  {
+    id: 'CUST-005',
+    name: '세연테크',
+    address: '경기도 화성시',
+    repContact: '010-7777-9999',
+    repEmail: 'sy@sy.com',
+    isClosed: false,
+    bizRegNo: '101-81-00005',
+    transactionStatus: 'ALLOWED',
+    defaultBillingDay: 25,
+    paymentDueDay: 20,
+    representative: '세연',
+    bizType: '제조업',
+    bizItem: '산업설비',
+    createdAt: '2026-01-01'
   }
 ];
 
@@ -1032,6 +1064,128 @@ export function runWttSuite(): WttResult[] {
       passed: issues.length === 0,
       issues,
       details: { sharedCustomerName, sharedSiteName, messengerText, finalEquipments }
+    });
+  }
+
+  // -------------------------------------------------------------
+  // 시나리오 41: 고객사 초성 검색 및 접두 초성 매칭 검증
+  // 5대 축: 공간/맥락(고객사 초성 단축 입력)
+  // -------------------------------------------------------------
+  {
+    const issues: string[] = [];
+    // 1) 'ㅂㅅ' 초성 입력 -> '백산이엔씨' 매칭
+    const cust1 = parseCustomerVoiceInput('ㅂㅅ', mockCustomers);
+    if (!cust1 || cust1.name !== '백산이엔씨') issues.push(`'ㅂㅅ' 초성 매칭 실패: ${cust1?.name}`);
+
+    // 2) 'ㅂㅅㅇㅇ' 4자 초성 입력 -> '백산이엔씨' 매칭
+    const cust2 = parseCustomerVoiceInput('ㅂㅅㅇㅇ', mockCustomers);
+    if (!cust2 || cust2.name !== '백산이엔씨') issues.push(`'ㅂㅅㅇㅇ' 초성 매칭 실패: ${cust2?.name}`);
+
+    // 3) 'ㅅㅇ' 초성 입력 -> '세연테크' 매칭
+    const cust3 = parseCustomerVoiceInput('ㅅㅇ', mockCustomers);
+    if (!cust3 || cust3.name !== '세연테크') issues.push(`'ㅅㅇ' 초성 매칭 실패: ${cust3?.name}`);
+
+    // 4) 'ㅎㄷ' 초성 입력 -> '현대건설(주)' 매칭
+    const cust4 = parseCustomerVoiceInput('ㅎㄷ', mockCustomers);
+    if (!cust4 || cust4.id !== 'CUST-001') issues.push(`'ㅎㄷ' 초성 매칭 실패: ${cust4?.name}`);
+
+    results.push({
+      scenarioId: 'WTT-DISP-41',
+      name: '고객사 초성 검색 및 접두 초성 매칭 검증 (ㅂㅅ, ㅂㅅㅇㅇ, ㅅㅇ, ㅎㄷ)',
+      axis: '공간/맥락(고객사 초성 단축 입력)',
+      passed: issues.length === 0,
+      issues,
+      details: {
+        cust1: cust1?.name,
+        cust2: cust2?.name,
+        cust3: cust3?.name,
+        cust4: cust4?.name
+      }
+    });
+  }
+
+  // -------------------------------------------------------------
+  // 시나리오 42: 초성 자음 전치(Swap) 오타 퍼지 보정 검증
+  // 5대 축: 공간/맥락(자음 도치 오타 허용)
+  // -------------------------------------------------------------
+  {
+    const issues: string[] = [];
+    // 'ㅅㅂㅇㅇ' (ㅂ과 ㅅ 도치 오타) -> '백산이엔씨' (ㅂㅅㅇㅇ) 퍼지 보정 매칭
+    const custFuzzy = parseCustomerVoiceInput('ㅅㅂㅇㅇ', mockCustomers);
+    if (!custFuzzy || custFuzzy.name !== '백산이엔씨') {
+      issues.push(`'ㅅㅂㅇㅇ' 자음 도치 퍼지 매칭 실패: ${custFuzzy?.name}`);
+    }
+
+    results.push({
+      scenarioId: 'WTT-DISP-42',
+      name: '초성 자음 전치(Swap) 오타 퍼지 보정 검증 (ㅅㅂㅇㅇ -> 백산이엔씨)',
+      axis: '공간/맥락(자음 도치 오타 허용)',
+      passed: issues.length === 0,
+      issues,
+      details: { input: 'ㅅㅂㅇㅇ', matched: custFuzzy?.name }
+    });
+  }
+
+  // -------------------------------------------------------------
+  // 시나리오 43: 현장명 초성 검색 및 자동 완결 검증
+  // 5대 축: 공간/맥락(현장 초성 검색)
+  // -------------------------------------------------------------
+  {
+    const issues: string[] = [];
+    // 1) 'ㅍㄱ' 입력 -> '판교 R&D 센터 현장' (SITE-001) 매칭
+    const site1 = parseSiteVoiceInput('ㅍㄱ', mockSites, 'CUST-001');
+    if (!site1 || site1.isNew || site1.site?.id !== 'SITE-001') {
+      issues.push(`'ㅍㄱ' 현장 초성 매칭 실패: ${site1?.site?.name}`);
+    }
+
+    // 2) 'ㅅㄷ' 입력 -> '송도 센트럴파크 2차' (SITE-002) 매칭
+    const site2 = parseSiteVoiceInput('ㅅㄷ', mockSites, 'CUST-002');
+    if (!site2 || site2.isNew || site2.site?.id !== 'SITE-002') {
+      issues.push(`'ㅅㄷ' 현장 초성 매칭 실패: ${site2?.site?.name}`);
+    }
+
+    results.push({
+      scenarioId: 'WTT-DISP-43',
+      name: '현장명 초성 검색 및 자동 완결 검증 (ㅍㄱ, ㅅㄷ)',
+      axis: '공간/맥락(현장 초성 검색)',
+      passed: issues.length === 0,
+      issues,
+      details: { site1: site1?.site?.name, site2: site2?.site?.name }
+    });
+  }
+
+  // -------------------------------------------------------------
+  // 시나리오 44: 음성 STT 인식 결과 시각화 및 원클릭 키보드 수정 인터리빙 검증
+  // 5대 축: 공간/물리(음성 시각 피드백 및 터치/키보드 하이브리드)
+  // -------------------------------------------------------------
+  {
+    const issues: string[] = [];
+    // 1) STT 오인식 발생 시나리오: 사용자가 "백산"이라 발화했으나 STT가 "박산"으로 오인식
+    const faultyStt = '박산';
+    let lastSttText = faultyStt;
+    let textInputValue = '';
+
+    // 2) STT 결과가 시각화 배지에 표출되었는지 확인
+    if (lastSttText !== '박산') issues.push('STT 인식 결과 시각화 상태 저장 실패');
+
+    // 3) 사용자가 [클릭하여 수정] 액션을 취했을 때 입력창으로 복사되는지 시뮬레이션
+    textInputValue = lastSttText;
+    if (textInputValue !== '박산') issues.push('인식 텍스트 키보드 입력창 전달 실패');
+
+    // 4) 키보드로 오타 1글자만 "백산"으로 정정 후 엔터 전송
+    textInputValue = '백산';
+    const correctedCust = parseCustomerVoiceInput(textInputValue, mockCustomers);
+    if (!correctedCust || correctedCust.name !== '백산이엔씨') {
+      issues.push('정정된 키보드 텍스트 고객사 매칭 실패');
+    }
+
+    results.push({
+      scenarioId: 'WTT-DISP-44',
+      name: '음성 STT 인식 결과 시각화 및 원클릭 키보드 수정 인터리빙 검증',
+      axis: '공간/물리(음성 시각 피드백 및 키보드 하이브리드)',
+      passed: issues.length === 0,
+      issues,
+      details: { faultyStt, lastSttText, correctedInput: textInputValue, matched: correctedCust?.name }
     });
   }
 

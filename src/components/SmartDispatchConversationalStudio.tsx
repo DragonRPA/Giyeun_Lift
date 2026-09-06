@@ -8,6 +8,7 @@ import {
 import { useApp } from '../context/AppContext';
 import { ttsService } from '../services/ttsService';
 import { Customer, CustomerSite } from '../services/db';
+import { matchHangulAny, matchHangulFuzzy } from '../utils/hangulSearch';
 import { 
   parseCustomerVoiceInput, 
   parseSiteVoiceInput, 
@@ -86,6 +87,7 @@ export const SmartDispatchConversationalStudio: React.FC<SmartDispatchConversati
 
   // 4. 입력창 및 음성 인식 상태
   const [textInput, setTextInput] = useState<string>('');
+  const [lastSttText, setLastSttText] = useState<string>('');
   const [assistantPrompt, setAssistantPrompt] = useState<string>('어느 고객사인가요? 고객사 이름을 입력하거나 말씀해주세요.');
   const [isRecording, setIsRecording] = useState<boolean>(false);
   const [customerSearchText, setCustomerSearchText] = useState<string>('');
@@ -114,13 +116,13 @@ export const SmartDispatchConversationalStudio: React.FC<SmartDispatchConversati
     return isOptionsChangedFromSite(targetSite, paidOptions, protection, checkedSpecs);
   }, [selectedSite, pendingSite, paidOptions, protection, checkedSpecs]);
 
-  // 고객사 필터
+  // 고객사 필터 (완성형, 초성 및 인접 자음 전치 퍼지 검색 완비)
   const filteredCustomers = useMemo(() => {
     if (!customerSearchText.trim()) return (customers || []).slice(0, 8);
-    const q = customerSearchText.trim().toLowerCase();
+    const q = customerSearchText.trim();
     return (customers || []).filter(c => 
-      c.name.toLowerCase().includes(q) || 
-      (c.representative && c.representative.toLowerCase().includes(q))
+      matchHangulAny([c.name, c.representative, c.bizRegNo], q) ||
+      matchHangulFuzzy(c.name, q)
     ).slice(0, 8);
   }, [customers, customerSearchText]);
 
@@ -167,6 +169,7 @@ export const SmartDispatchConversationalStudio: React.FC<SmartDispatchConversati
     setPaymentDay('');
     setSpecialMemo('');
     setTextInput('');
+    setLastSttText('');
     setCustomerSearchText('');
     setShowNewSiteForm(false);
     setSelectedFt('19ft');
@@ -386,8 +389,10 @@ export const SmartDispatchConversationalStudio: React.FC<SmartDispatchConversati
     if (currentStep === 'CUSTOMER') {
       const matched = parseCustomerVoiceInput(raw, customers || []);
       if (matched) {
+        setCustomerSearchText('');
         handleSelectCustomer(matched);
       } else {
+        setCustomerSearchText(raw);
         speakPrompt(`'${raw}' 거래처를 찾지 못했습니다. 목록에서 직접 선택하거나 다시 입력해주세요.`);
       }
       return;
@@ -520,6 +525,7 @@ export const SmartDispatchConversationalStudio: React.FC<SmartDispatchConversati
       recognition.onresult = (event: any) => {
         const text = event.results[0][0].transcript;
         if (text) {
+          setLastSttText(text);
           setTextInput(text);
           handleSendText(text);
         }
@@ -687,6 +693,45 @@ export const SmartDispatchConversationalStudio: React.FC<SmartDispatchConversati
           {assistantPrompt}
         </div>
       </div>
+
+      {/* 3-B. 음성인식(STT) 확인 및 클릭 수정 배지 */}
+      {lastSttText && (
+        <div style={{
+          padding: '6px 12px',
+          borderRadius: '6px',
+          backgroundColor: 'rgba(56, 189, 248, 0.1)',
+          border: '1px dashed rgba(56, 189, 248, 0.4)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: '8px'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', color: '#38bdf8' }}>
+            <Mic size={13} color="#38bdf8" />
+            <span>음성 인식: <strong style={{ color: '#ffffff' }}>"{lastSttText}"</strong></span>
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              setTextInput(lastSttText);
+            }}
+            style={{
+              padding: '2px 8px',
+              backgroundColor: 'rgba(56, 189, 248, 0.2)',
+              border: '1px solid #38bdf8',
+              borderRadius: '4px',
+              color: '#ffffff',
+              fontSize: '11px',
+              fontWeight: 600,
+              cursor: 'pointer',
+              whiteSpace: 'nowrap'
+            }}
+            title="인식된 텍스트를 입력창에 넣어 키보드로 수정"
+          >
+            클릭하여 수정
+          </button>
+        </div>
+      )}
 
       {/* 4. 입력 도구: 텍스트 입력창 + 음성 마이크 + 전송 버튼 (상하 스택 3.4 준수) */}
       <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>

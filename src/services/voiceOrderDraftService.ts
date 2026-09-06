@@ -1,5 +1,6 @@
 // src/services/voiceOrderDraftService.ts
 import { Customer, CustomerSite, Asset, Delivery } from './db';
+import { matchHangul, matchHangulFuzzy, extractChosung } from '../utils/hangulSearch';
 
 export interface EquipmentOrderItem {
   ft: string;
@@ -1237,22 +1238,78 @@ export function parseDateTimeVoiceInput(text: string, baseDate: Date = new Date(
 // ─────────────────────────────────────────────────────────────
 export function parseCustomerVoiceInput(text: string, customers: Customer[]): Customer | null {
   const clean = text.replace(/주식회사|\(주\)|\s/g, '').toLowerCase();
-  if (!clean || clean.length < 2) return null;
+  if (!clean || clean.length < 1) return null;
 
-  // 1. 정확 일치 또는 포함
+  // 1. 정확 일치 (Exact Name Match)
   for (const c of customers) {
     const sName = c.name.replace(/주식회사|\(주\)|\s/g, '').toLowerCase();
-    if (sName === clean || clean.includes(sName) || sName.includes(clean)) {
-      return c;
-    }
+    if (sName === clean) return c;
   }
 
-  // 2. 2글자 이상 부분 매칭
+  // 2. 완성형 접두 일치 (Prefix Full-name Match)
   for (const c of customers) {
     const sName = c.name.replace(/주식회사|\(주\)|\s/g, '').toLowerCase();
-    if (sName.length >= 2 && clean.startsWith(sName.slice(0, 2))) {
-      return c;
-    }
+    if (sName.startsWith(clean)) return c;
+  }
+
+  // 3. 초성 완전 일치 (Exact Chosung Match, e.g. 'ㅂㅅㅇㅇㅆ' === 'ㅂㅅㅇㅇㅆ')
+  for (const c of customers) {
+    const sName = c.name.replace(/주식회사|\(주\)|\s/g, '');
+    const chosung = extractChosung(sName);
+    if (chosung === clean) return c;
+  }
+
+  // 4. 초성 접두 일치 (Prefix Chosung Match - ALLOWED 고객사 우선)
+  // 예: 'ㅅㅇ' -> '세연테크' ('ㅅㅇㅌㅋ'.startsWith('ㅅㅇ') = true)
+  //     '백산이엔씨' ('ㅂㅅㅇㅇㅆ')는 'ㅅㅇ'로 시작하지 않으므로 걸러짐!
+  const prefixChosungAllowed = customers.filter(c => {
+    if (c.transactionStatus === 'BLOCKED') return false;
+    const sName = c.name.replace(/주식회사|\(주\)|\s/g, '');
+    return extractChosung(sName).startsWith(clean);
+  });
+  if (prefixChosungAllowed.length > 0) return prefixChosungAllowed[0];
+
+  const prefixChosungAny = customers.filter(c => {
+    const sName = c.name.replace(/주식회사|\(주\)|\s/g, '');
+    return extractChosung(sName).startsWith(clean);
+  });
+  if (prefixChosungAny.length > 0) return prefixChosungAny[0];
+
+  // 5. 완성형 포함 일치 (Name Contains)
+  for (const c of customers) {
+    const sName = c.name.replace(/주식회사|\(주\)|\s/g, '').toLowerCase();
+    if (clean.includes(sName) || sName.includes(clean)) return c;
+  }
+
+  // 6. 2글자 이상 부분 시작 매칭
+  for (const c of customers) {
+    const sName = c.name.replace(/주식회사|\(주\)|\s/g, '').toLowerCase();
+    if (sName.length >= 2 && clean.startsWith(sName.slice(0, 2))) return c;
+  }
+
+  // 7. 한글 초성 부분 매칭 (ALLOWED 우선)
+  const hangulMatchAllowed = customers.filter(c => {
+    if (c.transactionStatus === 'BLOCKED') return false;
+    const sName = c.name.replace(/주식회사|\(주\)|\s/g, '');
+    return matchHangul(sName, clean);
+  });
+  if (hangulMatchAllowed.length > 0) return hangulMatchAllowed[0];
+
+  const hangulMatchAny = customers.filter(c => {
+    const sName = c.name.replace(/주식회사|\(주\)|\s/g, '');
+    return matchHangul(sName, clean);
+  });
+  if (hangulMatchAny.length > 0) return hangulMatchAny[0];
+
+  // 8. 대표자명 매칭
+  for (const c of customers) {
+    if (c.representative && matchHangul(c.representative, clean)) return c;
+  }
+
+  // 9. 초성 자음 전치/오타 퍼지 매칭 (예: 'ㅅㅂㅇㅇ' -> '백산이엔씨')
+  for (const c of customers) {
+    const sName = c.name.replace(/주식회사|\(주\)|\s/g, '');
+    if (matchHangulFuzzy(sName, clean)) return c;
   }
 
   return null;
@@ -1273,7 +1330,7 @@ export function parseSiteVoiceInput(
   customerId?: string
 ): ParsedSiteVoiceResult | null {
   const rawText = text.trim();
-  if (!rawText || rawText.length < 2) return null;
+  if (!rawText || rawText.length < 1) return null;
 
   // 1. 전화번호 추출
   let extractedContactPhone: string | undefined = undefined;
@@ -1307,11 +1364,25 @@ export function parseSiteVoiceInput(
 
   const targetSites = customerId ? sites.filter(s => s.customerId === customerId) : sites;
 
-  // 5. 기존 현장 매칭
+  // 5. 기존 현장 완성형 매칭
   const cleanForMatch = (cleanCandidate || rawText).replace(/\s/g, '').toLowerCase();
   for (const s of targetSites) {
     const sName = s.name.replace(/\s/g, '').toLowerCase();
     if (sName === cleanForMatch || cleanForMatch.includes(sName) || sName.includes(cleanForMatch)) {
+      return {
+        site: s,
+        isNew: false,
+        extractedAddress: extractedAddress || s.address,
+        extractedContactName: extractedContactName || s.contactName,
+        extractedContactPhone: extractedContactPhone || s.contact
+      };
+    }
+  }
+
+  // 5-2. 기존 현장 초성 및 퍼지 매칭 (예: 'ㅍㅌ' -> '평택고덕', 'ㅍㄱ' -> '판교 R&D 센터 현장')
+  for (const s of targetSites) {
+    const sName = s.name.replace(/\s/g, '');
+    if (matchHangul(sName, cleanForMatch) || matchHangulFuzzy(sName, cleanForMatch)) {
       return {
         site: s,
         isNew: false,

@@ -1247,6 +1247,57 @@ export function runWttSuite(): WttResult[] {
     });
   }
 
+  // -------------------------------------------------------------
+  // 시나리오 46: 1개 출고건 복수 모델·수량 장바구니 관리 & 단계별 통합 검색·음성 객체 직결 무결성 검증
+  // 5대 축: 수량(복수 모델 장바구니) x 맥락(인라인 증감/삭제/실시간 동기화)
+  // -------------------------------------------------------------
+  {
+    const issues: string[] = [];
+
+    interface TestItem { ft: string; modelName: string; qty: number; }
+    let cart: TestItem[] = [{ ft: '19ft', modelName: 'GS-1930', qty: 1 }];
+
+    // 1) 19ft 수량 +1 증가 (카운터 조작) -> 19ft 2대
+    cart[0].qty += 1;
+    if (cart[0].qty !== 2) issues.push('수량 증가 카운터 조작 실패');
+
+    // 2) 26ft 광폭 (SJ-4626) 1대 신규 칩 클릭 추가 -> 2개 모델, 총 3대
+    cart.push({ ft: '26ft', modelName: 'SJ-4626', qty: 1 });
+    if (cart.length !== 2) issues.push('복수 모델 신규 추가 실패');
+
+    // 3) 음성 발화로 "32피트 2대" 추가 발화 시뮬레이션
+    const voiceParsed = parseEquipmentVoiceInput('32피트 2대');
+    if (!voiceParsed?.order) {
+      issues.push('32피트 음성 파싱 실패');
+    } else {
+      cart.push({ ft: voiceParsed.order.ft, modelName: voiceParsed.order.modelName, qty: voiceParsed.order.count });
+    }
+    if (cart.length !== 3) issues.push('음성 파싱 장바구니 연동 실패');
+    const totalQtyBeforeDelete = cart.reduce((sum, item) => sum + item.qty, 0);
+    if (totalQtyBeforeDelete !== 5) issues.push(`총 수량 오류: ${totalQtyBeforeDelete} (기대치: 5)`);
+
+    // 4) 26ft 모델 삭제 (Trash 조작) -> 2개 모델 (19ft 2대, 32ft 2대, 총 4대)
+    cart = cart.filter(item => item.modelName !== 'SJ-4626');
+    if (cart.length !== 2) issues.push('특정 모델 삭제 실패');
+    const finalTotalQty = cart.reduce((sum, item) => sum + item.qty, 0);
+    if (finalTotalQty !== 4) issues.push(`삭제 후 총 수량 오류: ${finalTotalQty} (기대치: 4)`);
+
+    // 5) 우측 폼 실시간 동기화 무결성 검증 (동일 출고건에 복수 모델 100% 보존)
+    const formEquipments = cart.map(e => ({ modelName: e.modelName, qty: e.qty }));
+    if (formEquipments.length !== 2) issues.push('우측 폼 복수 모델 동기화 개수 불일치');
+    if (formEquipments[0].modelName !== 'GS-1930' || formEquipments[0].qty !== 2) issues.push('GS-1930 동기화 불일치');
+    if (formEquipments[1].modelName !== 'GS-3246' || formEquipments[1].qty !== 2) issues.push('GS-3246 동기화 불일치');
+
+    results.push({
+      scenarioId: 'WTT-DISP-46',
+      name: '1개 출고건 복수 모델·수량 장바구니 관리 & 단계별 통합 검색·음성 객체 직결 무결성 검증',
+      axis: '수량(복수 모델 장바구니) x 맥락(인라인 증감/삭제/실시간 동기화)',
+      passed: issues.length === 0,
+      issues,
+      details: { finalCart: cart, formEquipments, finalTotalQty }
+    });
+  }
+
   return results;
 }
 

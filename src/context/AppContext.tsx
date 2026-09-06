@@ -565,6 +565,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     'smart_dispatch':       ['deliveries', 'contracts', 'assets', 'transportCompanies', 'transportDrivers'],
     'smart_dispatch2':      ['deliveries', 'contracts', 'assets', 'transportCompanies', 'transportDrivers'],
     'smart_dispatch3':      ['deliveries', 'contracts', 'assets', 'transportCompanies', 'transportDrivers'],
+    'smart_dispatch4':      ['customers', 'sites', 'contacts', 'contracts', 'deliveries', 'assets'],
     'smart_return':         ['deliveries', 'contracts', 'assets', 'transportCompanies', 'transportDrivers'],
     'asset_inout_history':  ['assetInOutLogs', 'assets', 'customers'],
     'dispatch_assign':      ['contracts', 'contractAssets', 'assets', 'outboundInspections'],

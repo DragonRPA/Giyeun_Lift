@@ -33,6 +33,7 @@ import { FieldAsManagement } from './pages/FieldAsManagement';
 import { SmartDispatch } from './pages/smart_dispatch';
 import { SmartDispatch2 } from './pages/smart_dispatch2';
 import { SmartDispatch3 } from './pages/smart_dispatch3';
+import { SmartDispatch4 } from './pages/smart_dispatch4';
 import { SmartReturn } from './pages/smart_return';
 import { AssetHistory } from './pages/asset_history';
 import { AssetAssignment } from './pages/asset_assignment';
@@ -203,6 +204,7 @@ const App: React.FC = () => {
         { id: 'smart_dispatch', name: '출고 요청', icon: <Zap size={16} />, component: <SmartDispatch /> },
         { id: 'smart_dispatch2', name: '출고 요청 (신설)', icon: <Zap size={16} />, component: <SmartDispatch2 /> },
         { id: 'smart_dispatch3', name: '출고 요청 (재설계)', icon: <Zap size={16} />, component: <SmartDispatch3 /> },
+        { id: 'smart_dispatch4', name: '출고의뢰 (통합)', icon: <Zap size={16} />, component: <SmartDispatch4 /> },
         { id: 'smart_return', name: '회수 요청', icon: <Zap size={16} />, component: <SmartReturn /> },
         { id: 'smart_as_request', name: 'AS 요청', icon: <Wrench size={16} />, component: <SmartAsRequest /> },
       ]

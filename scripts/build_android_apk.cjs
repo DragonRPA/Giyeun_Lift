@@ -1,6 +1,6 @@
 // scripts/build_android_apk.cjs
 // ============================================================
-// 기연 통화캡처 모바일 정규 안드로이드 APK 빌더
+// CallTransfer 모바일 정규 안드로이드 APK 빌더
 // aapt2 + javac + d8 + zipalign + apksigner 원스톱 빌드 파이프라인
 // ============================================================
 const fs = require('fs');
@@ -8,7 +8,7 @@ const path = require('path');
 const { execSync } = require('child_process');
 
 console.log('============================================================');
-console.log('📱 [KiyeunCallCapture] 정규 안드로이드 APK 빌드 시작');
+console.log('📱 [CallTransfer] 정규 안드로이드 APK 빌드 시작');
 console.log('============================================================\n');
 
 // 1. 도구 경로 탐색 (ASCII 경로 D:\\AndroidSdk 사용)
@@ -51,7 +51,7 @@ const resDir = path.join(appDir, 'res');
 const valuesDir = path.join(resDir, 'values');
 const drawableDir = path.join(resDir, 'drawable');
 const layoutDir = path.join(resDir, 'layout');
-const javaDir = path.join(appDir, 'java', 'com', 'kiyeun', 'callcapture');
+const javaDir = path.join(appDir, 'java', 'com', 'calltransfer', 'app');
 
 fs.mkdirSync(valuesDir, { recursive: true });
 fs.mkdirSync(drawableDir, { recursive: true });

@@ -109,10 +109,12 @@ export const CallAudioUploadModal: React.FC<CallAudioUploadModalProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4 overflow-y-auto">
-      <div className="bg-slate-900 border border-slate-700 w-full max-w-lg rounded-2xl shadow-2xl overflow-hidden flex flex-col my-auto text-slate-100 animate-in fade-in zoom-in-95 duration-200">
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/70 backdrop-blur-sm sm:items-center">
+      <div className="bg-slate-900 border border-slate-700 w-full max-w-lg rounded-t-2xl sm:rounded-2xl shadow-2xl flex flex-col text-slate-100 animate-in fade-in slide-in-from-bottom-4 sm:zoom-in-95 duration-200"
+        style={{ maxHeight: '95dvh' }}
+      >
         {/* 헤더 */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-slate-800 bg-slate-950/60">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-slate-800 bg-slate-950/60 flex-shrink-0 rounded-t-2xl">
           <div className="flex items-center gap-2.5">
             <div className="w-8 h-8 rounded-lg bg-blue-500/20 border border-blue-500/40 flex items-center justify-center">
               <FileAudio className="w-4 h-4 text-blue-400" />
@@ -131,8 +133,8 @@ export const CallAudioUploadModal: React.FC<CallAudioUploadModalProps> = ({
           </button>
         </div>
 
-        {/* 본문 */}
-        <div className="p-5 flex flex-col gap-4 max-h-[75vh] overflow-y-auto">
+        {/* 본문 — flex-1 + overflow-y:auto → 남은 높이 전부 사용, 스크롤 */}
+        <div className="p-5 flex flex-col gap-4 overflow-y-auto flex-1 min-h-0">
           {/* 1. 파일 선택 영역 */}
           <div>
             <label className="block text-xs font-bold text-slate-300 mb-1.5">
@@ -252,13 +254,13 @@ export const CallAudioUploadModal: React.FC<CallAudioUploadModalProps> = ({
           )}
         </div>
 
-        {/* 푸터 */}
-        <div className="flex items-center justify-end gap-2.5 px-5 py-3.5 border-t border-slate-800 bg-slate-950/60">
+        {/* 푸터 — flex-shrink:0 으로 항상 하단 고정 표시 */}
+        <div className="flex items-center justify-end gap-2.5 px-5 py-4 border-t border-slate-800 bg-slate-950/60 flex-shrink-0">
           <button
             type="button"
             onClick={onClose}
             disabled={uploading}
-            className="px-4 py-2 rounded-xl text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-300 transition"
+            className="px-4 py-2.5 rounded-xl text-sm font-semibold bg-slate-800 hover:bg-slate-700 text-slate-300 transition"
           >
             취소
           </button>
@@ -266,17 +268,17 @@ export const CallAudioUploadModal: React.FC<CallAudioUploadModalProps> = ({
             type="button"
             onClick={handleUpload}
             disabled={uploading || !file}
-            className="flex items-center gap-2 px-5 py-2 rounded-xl text-xs font-bold bg-blue-600 hover:bg-blue-500 disabled:opacity-50 disabled:pointer-events-none text-white transition shadow-lg shadow-blue-900/30"
+            className="flex items-center gap-2 px-6 py-2.5 rounded-xl text-sm font-bold bg-blue-600 hover:bg-blue-500 disabled:opacity-40 disabled:pointer-events-none text-white transition shadow-lg shadow-blue-900/30"
           >
             {uploading ? (
               <>
                 <Loader2 className="w-4 h-4 animate-spin" />
-                <span>업로드 & AI 분석 요청 중...</span>
+                <span>업로드 & AI 분석 중...</span>
               </>
             ) : (
               <>
                 <UploadCloud className="w-4 h-4" />
-                <span>업로드 및 초안 생성</span>
+                <span>전송</span>
               </>
             )}
           </button>

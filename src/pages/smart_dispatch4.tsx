@@ -57,14 +57,20 @@ interface EquipmentItem { modelName: string; qty: number; }
 
 export type PaidBy = 'CUSTOMER' | 'OURS' | 'SPLIT';
 
+export const VEHICLE_TYPE_OPTIONS = ['1.4T', '2.5T', '3.5T', '5T', '5T장축', '8.5T', '11T', '노배드', '셀프로더'];
+
 interface DraftOrder {
   id: string;
   context: CallContext[];
   customerName: ScoredField;
   siteName: ScoredField;
+  siteAddress?: string;
   equipments: EquipmentItem[];
   loadingDate: ScoredField;
   loadingTime: ScoredField;
+  unloadingDate?: string;
+  unloadingTimeType?: 'ASAP' | 'MORNING' | 'AFTERNOON' | 'EXACT' | null;
+  unloadingTimeVal?: string;
   contactPerson: ScoredField;
   contactPhone: ScoredField;
   note: string;
@@ -73,19 +79,19 @@ interface DraftOrder {
   customerRegistered: boolean;
   createdAt: string;
   urgency: 'HIGH' | 'MEDIUM' | 'LOW';
-  // 🌟 WTT 결함 해결 추가 필드
-  retrievalAssetId?: string; // 대차 시 회수 대상 전자산 ID
-  paidBy?: PaidBy;           // 운송비 귀속 주체
-  safetyOptions?: string[];  // 안전옵션/보양 목록
-  staggeredMemo?: string;    // 시차 출고 메모
+  retrievalAssetIds?: string[];
+  paidBy?: PaidBy | null;
+  safetyOptions?: string[];
+  staggeredMemo?: string;
+  vehicleType?: string;
 }
 
 type ActiveTab = 'NEW' | 'QUEUE';
 type BlockId = 'WHO' | 'WHERE' | 'WHAT' | 'WHEN' | 'SAFETY_COST';
 
 const CONTEXT_OPTIONS: { id: CallContext; label: string; color: string }[] = [
+  { id: 'ADDITIONAL',     label: '현장 출고',       color: '#2563eb' },
   { id: 'NEW_CUSTOMER',   label: '신규고객 출고',   color: '#7c3aed' },
-  { id: 'ADDITIONAL',     label: '추가 출고',       color: '#2563eb' },
   { id: 'EXCHANGE',       label: '교체(대차)',       color: '#0891b2' },
   { id: 'RETURN',         label: '회수 요청',       color: '#dc2626' },
   { id: 'FIELD_AS',       label: '현장 AS',         color: '#d97706' },
@@ -133,10 +139,10 @@ const makeScoredField = (value: string, source: ScoredField['source'] = 'MANUAL'
 export const SmartDispatch4: React.FC = () => {
   const {
     hasPermission, customers, sites, contacts, currentUser,
-    saveSmartDispatch, assets
+    saveSmartDispatch, assets, deliveries
   } = useApp();
 
-  const canSave = hasPermission('delivery', 'save');
+  const canSave = hasPermission('smart_dispatch', 'save') || hasPermission('delivery', 'save');
 
   // ── 탭 ──────────────────────────────────────────────────────────────────
   const [activeTab, setActiveTab] = useState<ActiveTab>('NEW');
@@ -153,31 +159,92 @@ export const SmartDispatch4: React.FC = () => {
   const [queue, setQueue] = useState<DraftOrder[]>([]);
   const [selectedQueueIds, setSelectedQueueIds] = useState<Set<string>>(new Set());
 
+  // 🌟 [메모 직렬화 파서] DB note 필드에 보존된 배차 핵심 파라미터 역직렬화
+  const parseNoteMeta = useCallback((noteText: string) => {
+    let siteAddress = '';
+    let unloadingDate = '';
+    let unloadingTimeVal = '';
+    let unloadingTimeType: 'ASAP' | 'MORNING' | 'AFTERNOON' | 'EXACT' | null = null;
+    let paidBy: PaidBy | undefined = undefined;
+    const retrievalAssetIds: string[] = [];
+    const safetyOptions: string[] = [];
+    let staggeredMemo = '';
+    let vehicleType = '';
+
+    const parts = (noteText || '').split(' | ');
+    parts.forEach(p => {
+      if (p.startsWith('[하차일정]')) {
+        const rest = p.replace('[하차일정]', '').trim();
+        const match = rest.match(/(\d{4}-\d{2}-\d{2})/);
+        if (match) unloadingDate = match[1];
+        if (rest.includes('ASAP')) unloadingTimeType = 'ASAP';
+        else if (rest.includes('오전')) unloadingTimeType = 'MORNING';
+        else if (rest.includes('오후')) unloadingTimeType = 'AFTERNOON';
+        else {
+          const timeMatch = rest.match(/(\d{1,2}:\d{2})/);
+          if (timeMatch) { unloadingTimeType = 'EXACT'; unloadingTimeVal = timeMatch[1]; }
+        }
+      } else if (p.startsWith('[운송비부담]')) {
+        if (p.includes('고객청구')) paidBy = 'CUSTOMER';
+        else if (p.includes('당사부담')) paidBy = 'OURS';
+        else if (p.includes('편도지원')) paidBy = 'SPLIT';
+      } else if (p.startsWith('[시차출고]')) {
+        staggeredMemo = p.replace('[시차출고]', '').trim();
+      } else if (p.startsWith('[대차회수대상]')) {
+        const ids = p.replace('[대차회수대상]', '').replace(/자산|#/g, '').split(',').map(s => s.trim()).filter(Boolean);
+        retrievalAssetIds.push(...ids);
+      } else if (p.startsWith('[차종]')) {
+        vehicleType = p.replace('[차종]', '').trim();
+      } else if (p.startsWith('[현장상세주소]')) {
+        siteAddress = p.replace('[현장상세주소]', '').trim();
+      } else if (p.startsWith('[안전옵션]')) {
+        const optStr = p.replace('[안전옵션]', '');
+        SAFETY_OPTION_LIST.forEach(s => {
+          if (optStr.includes(s.label)) safetyOptions.push(s.id);
+        });
+      }
+    });
+
+    return { siteAddress, unloadingDate, unloadingTimeType, unloadingTimeVal, paidBy, retrievalAssetIds, safetyOptions, staggeredMemo, vehicleType };
+  }, []);
+
   const loadDrafts = useCallback(async () => {
     try {
       const dbDrafts = await fetchMyDrafts();
-      const mapped: DraftOrder[] = dbDrafts.map(d => ({
-        id:                 d.id,
-        context:            d.context,
-        customerName:       { ...d.customerName, confirmed: false },
-        siteName:           { ...d.siteName,     confirmed: false },
-        equipments:         d.equipments,
-        loadingDate:        { ...d.loadingDate,  confirmed: false },
-        loadingTime:        { ...d.loadingTime,  confirmed: false },
-        contactPerson:      { ...d.contactPerson,confirmed: false },
-        contactPhone:       { value: d.contactPhone, confidence: d.contactPhone ? 'HIGH' : 'MISSING', confirmed: false },
-        note:               d.note,
-        status:             d.status as DraftOrder['status'],
-        isNewCustomer:      d.isNewCustomer,
-        customerRegistered: d.customerRegistered,
-        createdAt:          d.createdAt,
-        urgency:            d.urgency,
-      }));
+      const mapped: DraftOrder[] = dbDrafts.map(d => {
+        const meta = parseNoteMeta(d.note);
+        return {
+          id:                 d.id,
+          context:            d.context,
+          customerName:       { ...d.customerName, confirmed: false },
+          siteName:           { ...d.siteName,     confirmed: false },
+          siteAddress:        meta.siteAddress,
+          equipments:         d.equipments,
+          loadingDate:        { ...d.loadingDate,  confirmed: false },
+          loadingTime:        { ...d.loadingTime,  confirmed: false },
+          unloadingDate:      meta.unloadingDate,
+          unloadingTimeType:  meta.unloadingTimeType,
+          unloadingTimeVal:   meta.unloadingTimeVal,
+          contactPerson:      { ...d.contactPerson,confirmed: false },
+          contactPhone:       { value: d.contactPhone, confidence: d.contactPhone ? 'HIGH' : 'MISSING', confirmed: false },
+          note:               d.note,
+          status:             d.status as DraftOrder['status'],
+          isNewCustomer:      d.isNewCustomer,
+          customerRegistered: d.customerRegistered,
+          createdAt:          d.createdAt,
+          urgency:            d.urgency,
+          retrievalAssetIds:  meta.retrievalAssetIds,
+          paidBy:             meta.paidBy,
+          safetyOptions:      meta.safetyOptions,
+          staggeredMemo:      meta.staggeredMemo,
+          vehicleType:        meta.vehicleType,
+        };
+      });
       setQueue(mapped);
     } catch {
       // Supabase 미연결 시 로컬 유지
     }
-  }, []);
+  }, [parseNoteMeta]);
 
   useEffect(() => {
     loadDrafts();
@@ -186,14 +253,19 @@ export const SmartDispatch4: React.FC = () => {
       try {
         if (!currentUser?.id) return;
         unsubscribe = subscribeDraftUpdates(currentUser.id, (newDraft: DraftDispatchOrder) => {
+          const meta = parseNoteMeta(newDraft.note);
           const mapped: DraftOrder = {
             id:                 newDraft.id,
             context:            newDraft.context,
             customerName:       { ...newDraft.customerName, confirmed: false },
             siteName:           { ...newDraft.siteName,     confirmed: false },
+            siteAddress:        meta.siteAddress,
             equipments:         newDraft.equipments,
             loadingDate:        { ...newDraft.loadingDate,  confirmed: false },
             loadingTime:        { ...newDraft.loadingTime,  confirmed: false },
+            unloadingDate:      meta.unloadingDate,
+            unloadingTimeType:  meta.unloadingTimeType,
+            unloadingTimeVal:   meta.unloadingTimeVal,
             contactPerson:      { ...newDraft.contactPerson,confirmed: false },
             contactPhone:       { value: newDraft.contactPhone, confidence: newDraft.contactPhone ? 'HIGH' : 'MISSING', confirmed: false },
             note:               newDraft.note,
@@ -202,6 +274,11 @@ export const SmartDispatch4: React.FC = () => {
             customerRegistered: newDraft.customerRegistered,
             createdAt:          newDraft.createdAt,
             urgency:            newDraft.urgency,
+            retrievalAssetIds:  meta.retrievalAssetIds,
+            paidBy:             meta.paidBy,
+            safetyOptions:      meta.safetyOptions,
+            staggeredMemo:      meta.staggeredMemo,
+            vehicleType:        meta.vehicleType,
           };
           setQueue(prev => {
             if (prev.find(d => d.id === mapped.id)) return prev;
@@ -212,24 +289,45 @@ export const SmartDispatch4: React.FC = () => {
       } catch { /* 비로그인 시 무시 */ }
     })();
     return () => { unsubscribe?.(); };
-  }, [loadDrafts, currentUser?.id, showToast]);
+  }, [loadDrafts, currentUser?.id, showToast, parseNoteMeta]);
 
   const pendingCount = queue.filter(q => q.status === 'DRAFT').length;
 
-  // ── 업무 유형 (단일 맥락 선택) ─────────────────────────────────────────
-  const [selectedContext, setSelectedContext] = useState<CallContext>('ADDITIONAL');
+  // ── 업무 유형 (단일 맥락 선택, 🌟 기본값 null: 아무것도 자동 선택되지 않음) ──
+  const [selectedContext, setSelectedContext] = useState<CallContext | null>(null);
 
-  // 안전옵션 추출 헬퍼 (CustomerSite로부터 유상옵션 및 보양 추출)
-  const extractSafetyOptionsFromSite = useCallback((site: CustomerSite | null): Set<string> => {
-    const s = new Set<string>();
-    if (!site) return s;
-    const p = `${site.paidOptions || ''} ${site.protection || ''}`;
-    if (/협착|BAR_4EA/i.test(p)) s.add('BAR_4EA');
-    if (/소화기|FIRE_EXT/i.test(p)) s.add('FIRE_EXT');
-    if (/철망|망보양|MESH_4SIDE/i.test(p)) s.add('MESH_4SIDE');
-    if (/도색|비닐|커버|PAINT_COVER/i.test(p)) s.add('PAINT_COVER');
-    return s;
-  }, []);
+  // 🌟 [과거 기록 기반 옵션 자동 로드] 현장 마스터 + 과거 배차 대장에서 안전/보양 옵션 자동 승계
+  const inheritPastSafetyOptions = useCallback((cust: Customer | null, site: CustomerSite | null) => {
+    const inherited = new Set<string>();
+    if (site) {
+      const p = `${site.paidOptions || ''} ${site.protection || ''}`;
+      if (/협착|BAR_4EA/i.test(p)) inherited.add('BAR_4EA');
+      if (/소화기|FIRE_EXT/i.test(p)) inherited.add('FIRE_EXT');
+      if (/철망|망보양|MESH_4SIDE/i.test(p)) inherited.add('MESH_4SIDE');
+      if (/도색|비닐|커버|PAINT_COVER/i.test(p)) inherited.add('PAINT_COVER');
+    }
+    // 현장 마스터에 옵션이 없을 때 과거 배차(deliveries) 기록에서 자동 탐색
+    if (inherited.size === 0 && (site || cust)) {
+      const siteAddrs = site?.address?.trim();
+      const custId = cust?.id;
+      const pastDelivery = (deliveries || []).find(d => 
+        (siteAddrs && d.destinationAddress && d.destinationAddress.includes(siteAddrs)) ||
+        (custId && d.billableCustomerId === custId) ||
+        (site?.name && d.cargoItems && d.cargoItems.includes(site.name))
+      );
+      if (pastDelivery) {
+        const text = `${pastDelivery.cargoItems || ''} ${pastDelivery.destinationAddress || ''}`;
+        if (/협착|BAR_4EA/i.test(text)) inherited.add('BAR_4EA');
+        if (/소화기|FIRE_EXT/i.test(text)) inherited.add('FIRE_EXT');
+        if (/철망|망보양|MESH_4SIDE/i.test(text)) inherited.add('MESH_4SIDE');
+        if (/도색|비닐|커버|PAINT_COVER/i.test(text)) inherited.add('PAINT_COVER');
+      }
+    }
+    if (inherited.size > 0) {
+      setSelectedSafetyOptions(new Set(inherited));
+      setInitialSiteOptions(new Set(inherited));
+    }
+  }, [deliveries]);
 
   const isNewCustomerMode = selectedContext === 'NEW_CUSTOMER';
   const isExchangeMode = selectedContext === 'EXCHANGE';
@@ -238,9 +336,16 @@ export const SmartDispatch4: React.FC = () => {
   const [pasteZoneOpen, setPasteZoneOpen] = useState(false);
   const [pasteText, setPasteText] = useState('');
 
-  // ── 블록 열림 상태 ────────────────────────────────────────────────────────
-  const [openBlock, setOpenBlock] = useState<BlockId>('WHO');
-  const toggleBlock = (id: BlockId) => setOpenBlock(prev => prev === id ? 'WHO' : id);
+  // ── 블록 열림 상태 (전체 동시 열람 지원 & 개별 토글) ──────────────────────
+  const [openBlocks, setOpenBlocks] = useState<Set<BlockId>>(new Set<BlockId>(['WHO', 'WHERE', 'WHAT', 'WHEN', 'SAFETY_COST']));
+  const toggleBlock = (id: BlockId) => setOpenBlocks(prev => {
+    const n = new Set(prev);
+    if (n.has(id)) n.delete(id); else n.add(id);
+    return n;
+  });
+  const openSingleBlock = (id: BlockId) => setOpenBlocks(prev => new Set(prev).add(id));
+  const setOpenBlock = openSingleBlock;
+  const toggleAllBlocks = () => setOpenBlocks(prev => prev.size === 5 ? new Set() : new Set<BlockId>(['WHO', 'WHERE', 'WHAT', 'WHEN', 'SAFETY_COST']));
 
   // ── WHO 블록 — 고객 ───────────────────────────────────────────────────────
   const [customerQuery, setCustomerQuery] = useState('');
@@ -248,24 +353,6 @@ export const SmartDispatch4: React.FC = () => {
   const [newCustomerName, setNewCustomerName] = useState('');
   const [newCustomerPhone, setNewCustomerPhone] = useState('');
   const [newCustomerAddress, setNewCustomerAddress] = useState('');
-
-  // 🌟 검색어가 없을 때는 고객사를 일절 추천/제시하지 않음 (사용자 피드백 100% 반영)
-  const filteredCustomers = useMemo(() => {
-    if (!customerQuery.trim()) return [];
-    return customers.filter(c => matchHangul(c.name, customerQuery)).slice(0, 16);
-  }, [customers, customerQuery]);
-
-  // 중복 접수 감지
-  const duplicateAlert = useMemo(() => {
-    if (!selectedCustomer) return null;
-    const today = new Date().toISOString().split('T')[0];
-    const duplicates = queue.filter(d =>
-      d.customerName.value === selectedCustomer.name &&
-      d.createdAt.startsWith(today) &&
-      d.status === 'DRAFT'
-    );
-    return duplicates.length > 0 ? duplicates : null;
-  }, [selectedCustomer, queue]);
 
   // ── WHERE 블록 — 투입 현장 및 현장 담당자 ────────────────────────────────
   const [siteQuery, setSiteQuery] = useState('');
@@ -275,13 +362,59 @@ export const SmartDispatch4: React.FC = () => {
   const [contactPerson, setContactPerson] = useState('');
   const [contactPhone, setContactPhone] = useState('');
 
+  // ── 추가출고 옵션 첨삭 확인 모달 상태 ────────────────────────────────────
+  const [optionConfirmModalOpen, setOptionConfirmModalOpen] = useState(false);
+
+  // 🌟 검색어가 없을 때는 고객사를 일절 추천/제시하지 않음 (사용자 피드백 100% 반영)
+  const filteredCustomers = useMemo(() => {
+    if (!customerQuery.trim()) return [];
+    return customers.filter(c => matchHangul(c.name, customerQuery)).slice(0, 16);
+  }, [customers, customerQuery]);
+
+  // 🌟 [고객 지정 전 현장 노출 완전 차단] 고객사 미선택 시 현장 목록 일절 노출 금지!
   const filteredSites = useMemo(() => {
-    const base = selectedCustomer
-      ? sites.filter(s => s.customerId === selectedCustomer.id)
-      : sites;
+    if (!selectedCustomer) return [];
+    const base = sites.filter(s => s.customerId === selectedCustomer.id);
     if (!siteQuery.trim()) return base.slice(0, 16);
     return base.filter(s => matchHangul(s.name, siteQuery)).slice(0, 16);
   }, [sites, selectedCustomer, siteQuery]);
+
+  // 중복 접수 감지 (큐 + 배차 대장 동시 검사)
+  const duplicateAlert = useMemo(() => {
+    if (!selectedCustomer) return null;
+    const today = new Date().toISOString().split('T')[0];
+    const draftDups = queue.filter(d =>
+      d.customerName.value === selectedCustomer.name &&
+      d.createdAt.startsWith(today) &&
+      d.status === 'DRAFT'
+    );
+    if (draftDups.length > 0) return draftDups;
+
+    const deliveryDups = deliveries.filter(d =>
+      (d.requestDate?.startsWith(today) || d.createdAt?.startsWith(today)) &&
+      (d.destinationAddress?.includes(selectedCustomer.name) || (selectedSite && d.destinationAddress?.includes(selectedSite.name)))
+    );
+    if (deliveryDups.length > 0) {
+      return deliveryDups.map(del => ({
+        id: del.id,
+        context: ['ADDITIONAL' as CallContext],
+        customerName: { value: selectedCustomer.name, confidence: 'HIGH' as ConfidenceLevel, confirmed: true },
+        siteName: { value: del.destinationAddress || '', confidence: 'HIGH' as ConfidenceLevel, confirmed: true },
+        equipments: [],
+        loadingDate: { value: del.scheduledDate || today, confidence: 'HIGH' as ConfidenceLevel, confirmed: true },
+        loadingTime: { value: del.loadingTimeSlot || '오전', confidence: 'HIGH' as ConfidenceLevel, confirmed: true },
+        contactPerson: { value: del.driverName || '', confidence: 'HIGH' as ConfidenceLevel, confirmed: true },
+        contactPhone: { value: del.driverContact || '', confidence: 'HIGH' as ConfidenceLevel, confirmed: true },
+        note: del.memo || '',
+        status: 'SUBMITTED' as const,
+        isNewCustomer: false,
+        customerRegistered: true,
+        createdAt: del.createdAt || today,
+        urgency: 'LOW' as const,
+      }));
+    }
+    return null;
+  }, [selectedCustomer, selectedSite, queue, deliveries]);
 
   // ── WHAT 블록 — 장비 ──────────────────────────────────────────────────────
   const [equipments, setEquipments] = useState<EquipmentItem[]>([]);
@@ -303,32 +436,54 @@ export const SmartDispatch4: React.FC = () => {
       return u;
     });
   };
+  const setModelQty = (index: number, qty: number) => {
+    if (qty <= 0) return;
+    setEquipments(prev => {
+      const u = [...prev];
+      u[index] = { ...u[index], qty };
+      return u;
+    });
+  };
   const removeEquipment = (index: number) => {
     setEquipments(prev => prev.filter((_, i) => i !== index));
   };
   const totalQty = equipments.reduce((s, e) => s + e.qty, 0);
 
-  // ── WHEN 블록 — 출고 및 상차 일정 ─────────────────────────────────────────
+  // ── WHEN 블록 — 상차 vs 하차 일정 및 시간 구분 (ASAP/오전/오후/직접지정) ───
   const [loadingDate, setLoadingDate] = useState('');
-  const [loadingTimeVal, setLoadingTimeVal] = useState('08:00');
+  const [loadingTimeType, setLoadingTimeType] = useState<'ASAP' | 'MORNING' | 'AFTERNOON' | 'EXACT' | null>(null);
+  const [loadingTimeVal, setLoadingTimeVal] = useState('');
+
+  const [unloadingDate, setUnloadingDate] = useState('');
+  const [unloadingTimeType, setUnloadingTimeType] = useState<'ASAP' | 'MORNING' | 'AFTERNOON' | 'EXACT' | null>(null);
+  const [unloadingTimeVal, setUnloadingTimeVal] = useState('');
+
   const [note, setNote] = useState('');
 
-  // ── 🌟 [WTT 결함 해결 1] 대차(EXCHANGE) 회수 대상 전자산 1:1 매핑 ─────────
-  const [retrievalAssetId, setRetrievalAssetId] = useState<string>('');
+  // ── 🌟 [대차 회수 대상 전자산 다수 매핑 지원] ───────────────────────────
+  const [retrievalAssetIds, setRetrievalAssetIds] = useState<string[]>([]);
+  const retrievalAssetId = retrievalAssetIds[0] || '';
 
-  // 선택된 고객사의 현재 가동 중인 장비 목록 (대차 대상)
+  const toggleRetrievalAsset = (assetNo: string) => {
+    setRetrievalAssetIds(prev =>
+      prev.includes(assetNo) ? prev.filter(id => id !== assetNo) : [...prev, assetNo]
+    );
+  };
+
+  // 선택된 고객사의 현재 가동 중인 장비 목록 (대차 대상 - 멀티테넌시 고객 격리)
   const activeCustomerAssets = useMemo(() => {
     if (!selectedCustomer) return [];
-    return assets.filter(a => a.status === 'RENTED');
+    return assets.filter(a => a.status === 'RENTED' && a.currentCustomerId === selectedCustomer.id);
   }, [selectedCustomer, assets]);
 
-  // ── 🌟 [WTT 결함 해결 2] 운송비 귀속선 (paidBy) ─────────────────────────
-  const [paidBy, setPaidBy] = useState<PaidBy>('CUSTOMER');
+  // ── 🌟 [운송비 귀속선: 기본값 null, 사용자 직접 선택 강제] ───────────────
+  const [paidBy, setPaidBy] = useState<PaidBy | null>(null);
+  const [vehicleType, setVehicleType] = useState<string>('5T');
 
-  // ── 🌟 [추가출고 기본옵션 상속 및 첨삭 감지] 안전옵션 및 보양 ─────────────
+  // ── 🌟 [안전옵션 및 보양작업] ───────────────────────────────────────────
   const [selectedSafetyOptions, setSelectedSafetyOptions] = useState<Set<string>>(new Set());
   const [initialSiteOptions, setInitialSiteOptions] = useState<Set<string>>(new Set());
-  const [optionConfirmModalOpen, setOptionConfirmModalOpen] = useState(false);
+  const [saveOptionsToSite, setSaveOptionsToSite] = useState<boolean>(true);
 
   const toggleSafetyOption = (id: string) => {
     setSelectedSafetyOptions(prev => {
@@ -338,10 +493,9 @@ export const SmartDispatch4: React.FC = () => {
     });
   };
 
-  // 첨삭(변경) 발생 여부 계산: 추가출고이면서 현장 기존 옵션과 달라진 경우 true
+  // 첨삭(변경) 발생 여부 계산: 현장 기존 옵션과 달라진 경우 true
   const isOptionsModified = useMemo(() => {
-    if (selectedContext !== 'ADDITIONAL') return false;
-    if (!selectedSite) return false;
+    if (!selectedSite || selectedContext !== 'ADDITIONAL') return false;
     if (selectedSafetyOptions.size !== initialSiteOptions.size) return true;
     for (const opt of selectedSafetyOptions) {
       if (!initialSiteOptions.has(opt)) return true;
@@ -349,7 +503,7 @@ export const SmartDispatch4: React.FC = () => {
     return false;
   }, [selectedContext, selectedSite, selectedSafetyOptions, initialSiteOptions]);
 
-  // ── 🌟 [WTT 결함 해결 4] 시차 출고 메모 ────────────────────────────────
+  // ── 🌟 [다수 장비 시차 출고 메모] ───────────────────────────────────────
   const [staggeredMemo, setStaggeredMemo] = useState('');
 
   // DB 상속
@@ -374,6 +528,7 @@ export const SmartDispatch4: React.FC = () => {
     setSelectedSite(null);
     setSiteQuery('');
     applyInheritance(cust, null);
+    inheritPastSafetyOptions(cust, null);
     setOpenBlock('WHERE');
   };
 
@@ -382,24 +537,18 @@ export const SmartDispatch4: React.FC = () => {
     setSiteQuery('');
     applyInheritance(selectedCustomer, site);
 
-    // 🌟 추가출고인 경우 기존 옵션값을 디폴트로 자동 상속
-    if (selectedContext === 'ADDITIONAL') {
-      const defaultOpts = extractSafetyOptionsFromSite(site);
-      setSelectedSafetyOptions(new Set(defaultOpts));
-      setInitialSiteOptions(new Set(defaultOpts));
-    }
+    // 🌟 과거 기록(현장 마스터 또는 배차 대장)에서 옵션 자동 승계
+    inheritPastSafetyOptions(selectedCustomer, site);
     setOpenBlock('WHAT');
   };
 
   const handleSelectContext = (ctx: CallContext) => {
-    setSelectedContext(ctx);
-    // 추가출고로 전환 시 이미 선택된 현장이 있으면 옵션 자동 로드
-    if (ctx === 'ADDITIONAL' && selectedSite) {
-      const defaultOpts = extractSafetyOptionsFromSite(selectedSite);
-      setSelectedSafetyOptions(new Set(defaultOpts));
-      setInitialSiteOptions(new Set(defaultOpts));
+    setSelectedContext(prev => prev === ctx ? null : ctx);
+    if (selectedSite) {
+      inheritPastSafetyOptions(selectedCustomer, selectedSite);
     }
   };
+
 
   // ── 붙여넣기 파싱 ─────────────────────────────────────────────────────────
   const runParse = useCallback((text: string) => {
@@ -467,14 +616,16 @@ export const SmartDispatch4: React.FC = () => {
   const resetForm = () => {
     setSelectedCustomer(null); setSelectedSite(null);
     setCustomerQuery(''); setSiteQuery('');
-    setEquipments([]); setLoadingDate(''); setLoadingTimeVal('08:00');
+    setEquipments([]);
+    setLoadingDate(''); setLoadingTimeVal(''); setLoadingTimeType(null);
+    setUnloadingDate(''); setUnloadingTimeVal(''); setUnloadingTimeType(null);
     setContactPerson(''); setContactPhone(''); setNote('');
     setNewCustomerName(''); setNewCustomerPhone(''); setNewCustomerAddress('');
     setNewSiteName(''); setNewSiteAddress('');
-    setRetrievalAssetId(''); setPaidBy('CUSTOMER');
+    setRetrievalAssetIds([]); setPaidBy(null);
     setSelectedSafetyOptions(new Set()); setInitialSiteOptions(new Set());
     setStaggeredMemo('');
-    setSelectedContext('ADDITIONAL');
+    setSelectedContext(null);
     setOpenBlock('WHO');
   };
 
@@ -491,23 +642,41 @@ export const SmartDispatch4: React.FC = () => {
   }
 
   const validationRules = useMemo<ValidationRule[]>(() => {
+    const hasContext = selectedContext !== null;
     const skipEquip = selectedContext === 'RETURN' || selectedContext === 'FIELD_AS' ||
       selectedContext === 'TRANSPORT_NEGO' || selectedContext === 'SUBLEASE_NEGO';
 
     const custName = isNewCustomerMode ? newCustomerName.trim() : (selectedCustomer?.name || '');
-    const siteNameVal = isNewCustomerMode ? newSiteName.trim() : (selectedSite?.name || '');
-    const addrVal = isNewCustomerMode
-      ? (newSiteAddress.trim() || newCustomerAddress.trim())
-      : (selectedSite?.address || newSiteAddress.trim());
-    const hasEquip = skipEquip || (equipments.length > 0 && equipments.every(e => e.modelName && e.qty > 0));
+    const siteNameVal = (selectedSite?.name || newSiteName).trim();
+    const addrVal = (selectedSite?.address || newSiteAddress || (isNewCustomerMode ? newCustomerAddress : '')).trim();
+    const hasEquip = hasContext && (skipEquip || (equipments.length > 0 && equipments.every(e => e.modelName && e.qty > 0)));
     const hasDate = !!loadingDate.trim();
-    const hasTime = !!loadingTimeVal.trim();
+    const hasTime = loadingTimeType === 'ASAP' || loadingTimeType === 'MORNING' || loadingTimeType === 'AFTERNOON' || (loadingTimeType === 'EXACT' && !!loadingTimeVal.trim());
     const hasContactPerson = !!contactPerson.trim();
     const cleanPhone = contactPhone.replace(/[^0-9]/g, '');
     const hasContactPhone = cleanPhone.length >= 9;
 
     // 대차 시 전자산 선택 검증 (헌장 2.3)
-    const hasRetrieval = !isExchangeMode || !!retrievalAssetId;
+    // 1) 업무유형 미선택 시: INVALID (업무유형 지정 필요)
+    // 2) 대차(EXCHANGE) 시: retrievalAssetIds.length > 0 필수
+    // 3) 대차 외 일반출고: VALID (해당없음)
+    const hasRetrieval = !hasContext
+      ? false
+      : isExchangeMode
+        ? retrievalAssetIds.length > 0
+        : true;
+
+    const hasPaidBy = paidBy !== null;
+
+    const timeDisplay = !loadingTimeType
+      ? '(상차시간 미지정)'
+      : loadingTimeType === 'ASAP'
+        ? 'ASAP (최우선)'
+        : loadingTimeType === 'MORNING'
+          ? '오전'
+          : loadingTimeType === 'AFTERNOON'
+            ? '오후'
+            : loadingTimeVal || '(시간 직접입력 필요)';
 
     return [
       {
@@ -549,11 +718,13 @@ export const SmartDispatch4: React.FC = () => {
         label: '출고 신청 장비',
         targetBlock: 'WHAT',
         status: hasEquip ? 'VALID' : 'INVALID',
-        currentVal: skipEquip
-          ? '장비선택 생략 맥락'
-          : totalQty > 0
-            ? `${equipments.map(e => `${e.modelName}×${e.qty}`).join(', ')} (총 ${totalQty}대)`
-            : '(장비 미선택)',
+        currentVal: !hasContext
+          ? '(업무유형 먼저 선택)'
+          : skipEquip
+            ? '장비선택 생략 맥락'
+            : totalQty > 0
+              ? `${equipments.map(e => `${e.modelName}×${e.qty}`).join(', ')} (총 ${totalQty}대)`
+              : '(장비 미선택)',
         hint: '최소 1대 이상 규격 및 수량 선택',
       },
       {
@@ -569,32 +740,36 @@ export const SmartDispatch4: React.FC = () => {
         label: '상차 지정시간',
         targetBlock: 'WHEN',
         status: hasTime ? 'VALID' : 'INVALID',
-        currentVal: loadingTimeVal || '(상차시간 미지정)',
-        hint: '상차 예정 시간 (기본 08:00)',
+        currentVal: timeDisplay,
+        hint: '상차 예정 시간 (ASAP, 오전, 오후 또는 시간지정)',
       },
       {
         id: 'RETRIEVAL_ASSET',
         label: '회수 전자산 (대차전용)',
         targetBlock: 'SAFETY_COST',
         status: hasRetrieval ? 'VALID' : 'INVALID',
-        currentVal: isExchangeMode ? (retrievalAssetId ? `자산번호 #${retrievalAssetId}` : '(회수 대상 미지정)') : '해당없음(일반출고)',
-        hint: '대차(EXCHANGE) 시 회수할 전자산 1:1 필수 매핑',
+        currentVal: !hasContext
+          ? '(업무유형 미선택)'
+          : isExchangeMode
+            ? (retrievalAssetIds.length > 0 ? `자산 #${retrievalAssetIds.join(', #')} (총 ${retrievalAssetIds.length}대)` : '(회수 대상 미지정)')
+            : '해당없음(일반출고)',
+        hint: '대차(EXCHANGE) 시 회수할 전자산 필수 매핑',
       },
       {
         id: 'PAID_BY',
         label: '운송비 부담 귀속선',
         targetBlock: 'SAFETY_COST',
-        status: 'VALID',
-        currentVal: paidBy === 'CUSTOMER' ? '고객사 청구 (기본)' : paidBy === 'OURS' ? '당사 영업 부담(면제)' : '편도 지원',
-        hint: '운송비 정산 및 회계 귀속선',
+        status: hasPaidBy ? 'VALID' : 'INVALID',
+        currentVal: paidBy === 'CUSTOMER' ? '고객사 청구' : paidBy === 'OURS' ? '당사 영업 부담(면제)' : paidBy === 'SPLIT' ? '편도 지원' : '(운송비부담 미선택)',
+        hint: '운송비 정산 및 회계 귀속선 선택 필수',
       },
     ];
   }, [
     isNewCustomerMode, isExchangeMode, newCustomerName, selectedCustomer,
     newSiteName, selectedSite, newSiteAddress, newCustomerAddress,
     selectedContext, equipments, totalQty,
-    loadingDate, loadingTimeVal, contactPerson, contactPhone,
-    retrievalAssetId, paidBy
+    loadingDate, loadingTimeType, loadingTimeVal, contactPerson, contactPhone,
+    retrievalAssetIds, paidBy
   ]);
 
   const invalidRules = useMemo(() => validationRules.filter(r => r.status === 'INVALID'), [validationRules]);
@@ -648,20 +823,33 @@ export const SmartDispatch4: React.FC = () => {
       const siteConf: ConfidenceLevel = selectedSite ? 'HIGH' : 'MISSING';
       const siteSrc: ScoredField['source'] = selectedSite ? 'DB' : 'MANUAL';
       const loadConf: ConfidenceLevel = loadingDate ? 'HIGH' : 'MISSING';
-      const timeConf: ConfidenceLevel = loadingTimeVal ? 'HIGH' : 'MISSING';
+      const timeStr = loadingTimeType === 'ASAP'
+        ? 'ASAP'
+        : loadingTimeType === 'MORNING'
+          ? '오전'
+          : loadingTimeType === 'AFTERNOON'
+            ? '오후'
+            : loadingTimeVal || '08:00';
+      const timeConf: ConfidenceLevel = loadingTimeType ? 'HIGH' : 'MISSING';
+      const effectiveAddress = isNewCustomerMode
+        ? (newSiteAddress || newCustomerAddress || '').trim()
+        : (selectedSite?.address || newSiteAddress || '').trim();
 
       const fullNote = [
         note,
+        unloadingDate ? `[하차일정] ${unloadingDate} ${unloadingTimeType === 'ASAP' ? 'ASAP' : unloadingTimeType === 'MORNING' ? '오전' : unloadingTimeType === 'AFTERNOON' ? '오후' : unloadingTimeVal || ''}`.trim() : '',
         selectedSafetyOptions.size > 0 ? `[안전옵션] ${Array.from(selectedSafetyOptions).map(id => SAFETY_OPTION_LIST.find(s => s.id === id)?.label).join(', ')}` : '',
         staggeredMemo ? `[시차출고] ${staggeredMemo}` : '',
-        isExchangeMode && retrievalAssetId ? `[대차회수대상] 자산 #${retrievalAssetId}` : '',
-        `[운송비부담] ${paidBy === 'CUSTOMER' ? '고객청구' : paidBy === 'OURS' ? '당사부담' : '편도지원'}`
+        isExchangeMode && retrievalAssetIds.length > 0 ? `[대차회수대상] 자산 #${retrievalAssetIds.join(', #')}` : '',
+        paidBy ? `[운송비부담] ${paidBy === 'CUSTOMER' ? '고객청구' : paidBy === 'OURS' ? '당사부담' : '편도지원'}` : '',
+        effectiveAddress ? `[현장상세주소] ${effectiveAddress}` : '',
+        vehicleType ? `[차종] ${vehicleType}` : '',
       ].filter(Boolean).join(' | ');
 
       await createDraftOrder({
         ownerId: uploaderId,
         sourceCallIds: [],
-        context: [selectedContext],
+        context: selectedContext ? [selectedContext] : [],
         customerName: isNewCustomerMode
           ? { value: newCustomerName, confidence: 'LOW' as ConfidenceLevel, source: 'MANUAL' as const, confirmed: false }
           : { value: selectedCustomer!.name, confidence: 'HIGH' as ConfidenceLevel, source: 'DB' as const, confirmed: true },
@@ -670,7 +858,7 @@ export const SmartDispatch4: React.FC = () => {
           : { value: selectedSite?.name || '미정', confidence: siteConf, source: siteSrc, confirmed: !!selectedSite },
         equipments: [...equipments],
         loadingDate: { value: loadingDate, confidence: loadConf, source: 'MANUAL' as const, confirmed: !!loadingDate },
-        loadingTime: { value: loadingTimeVal, confidence: timeConf, source: 'MANUAL' as const, confirmed: !!loadingTimeVal },
+        loadingTime: { value: timeStr, confidence: timeConf, source: 'MANUAL' as const, confirmed: !!timeStr },
         contactPerson: makeScoredField(contactPerson),
         contactPhone: makeScoredField(contactPhone).value,
         note: fullNote,
@@ -696,12 +884,14 @@ export const SmartDispatch4: React.FC = () => {
     setSelectedContext(ctx);
 
     // 2. 고객사
+    let matchedCustomer: Customer | null = null;
     if (draft.isNewCustomer) {
       setSelectedCustomer(null);
       setNewCustomerName(draft.customerName.value || '');
     } else {
       const mc = customers.find(c => c.name === draft.customerName.value) || findCustomerByNormalizedName(customers, draft.customerName.value);
       if (mc) {
+        matchedCustomer = mc;
         setSelectedCustomer(mc);
         setCustomerQuery('');
       } else {
@@ -715,15 +905,14 @@ export const SmartDispatch4: React.FC = () => {
       if (ms) {
         setSelectedSite(ms);
         setSiteQuery('');
-        if (ctx === 'ADDITIONAL') {
-          const defaultOpts = extractSafetyOptionsFromSite(ms);
-          setSelectedSafetyOptions(new Set(defaultOpts));
-          setInitialSiteOptions(new Set(defaultOpts));
-        }
+        inheritPastSafetyOptions(matchedCustomer, ms);
       } else {
         setSelectedSite(null);
         setNewSiteName(draft.siteName.value);
       }
+    }
+    if (draft.siteAddress) {
+      setNewSiteAddress(draft.siteAddress);
     }
 
     // 4. 장비
@@ -731,22 +920,43 @@ export const SmartDispatch4: React.FC = () => {
 
     // 5. 현장 담당자
     setContactPerson(draft.contactPerson?.value || '');
-    setContactPhone(draft.contactPhone?.value || '');
+    const cPhone = typeof draft.contactPhone === 'string' ? draft.contactPhone : (draft.contactPhone as any)?.value || '';
+    setContactPhone(cPhone);
 
-    // 6. 상차일시
+    // 6. 상차일시 및 시간 구분
     setLoadingDate(draft.loadingDate?.value || '');
-    setLoadingTimeVal(draft.loadingTime?.value || '08:00');
+    const ltv = draft.loadingTime?.value || '';
+    if (ltv === 'ASAP') { setLoadingTimeType('ASAP'); setLoadingTimeVal(''); }
+    else if (ltv === '오전') { setLoadingTimeType('MORNING'); setLoadingTimeVal(''); }
+    else if (ltv === '오후') { setLoadingTimeType('AFTERNOON'); setLoadingTimeVal(''); }
+    else if (ltv) { setLoadingTimeType('EXACT'); setLoadingTimeVal(ltv); }
+    else { setLoadingTimeType(null); setLoadingTimeVal(''); }
+
+    // 6-2. 하차일시 및 시간 구분
+    setUnloadingDate(draft.unloadingDate || '');
+    setUnloadingTimeType(draft.unloadingTimeType || null);
+    setUnloadingTimeVal(draft.unloadingTimeVal || '');
+
+    // 6-3. 대차 회수장비, 운송비 귀속선, 차종, 시차출고
+    setRetrievalAssetIds(draft.retrievalAssetIds || []);
+    setPaidBy(draft.paidBy || null);
+    setStaggeredMemo(draft.staggeredMemo || '');
+    setVehicleType(draft.vehicleType || '5T');
 
     // 7. 메모 및 안전옵션 파싱
     const noteText = draft.note || '';
     setNote(noteText);
-    const parsedOpts = new Set<string>();
-    if (noteText.includes('협착방지봉')) parsedOpts.add('BAR_4EA');
-    if (noteText.includes('소화기')) parsedOpts.add('FIRE_EXT');
-    if (noteText.includes('철망')) parsedOpts.add('MESH_4SIDE');
-    if (noteText.includes('도색') || noteText.includes('비닐')) parsedOpts.add('PAINT_COVER');
-    if (parsedOpts.size > 0) {
-      setSelectedSafetyOptions(parsedOpts);
+    if (draft.safetyOptions && draft.safetyOptions.length > 0) {
+      setSelectedSafetyOptions(new Set(draft.safetyOptions));
+    } else {
+      const parsedOpts = new Set<string>();
+      if (noteText.includes('협착방지봉')) parsedOpts.add('BAR_4EA');
+      if (noteText.includes('소화기')) parsedOpts.add('FIRE_EXT');
+      if (noteText.includes('철망')) parsedOpts.add('MESH_4SIDE');
+      if (noteText.includes('도색') || noteText.includes('비닐')) parsedOpts.add('PAINT_COVER');
+      if (parsedOpts.size > 0) {
+        setSelectedSafetyOptions(parsedOpts);
+      }
     }
 
     setActiveTab('NEW');
@@ -758,14 +968,37 @@ export const SmartDispatch4: React.FC = () => {
   const handleMerge = () => {
     if (selectedQueueIds.size < 2) { showToast('2건 이상 선택하세요.', 'error'); return; }
     const selected = queue.filter(d => selectedQueueIds.has(d.id));
+
+    // 🛡️ [고객사 일치 검증 가드]
+    const firstCustomer = selected[0].customerName.value;
+    if (selected.some(d => d.customerName.value !== firstCustomer)) {
+      showToast('서로 다른 거래처(고객사)의 의뢰 초안은 하나로 병합할 수 없습니다.', 'error');
+      return;
+    }
+
+    // 🛡️ [동일 규격 장비 수량 합산 (SUM)]
+    const modelQtyMap = new Map<string, number>();
+    selected.flatMap(d => d.equipments || []).forEach(e => {
+      modelQtyMap.set(e.modelName, (modelQtyMap.get(e.modelName) || 0) + (Number(e.qty) || 1));
+    });
+    const mergedEquipments: EquipmentItem[] = Array.from(modelQtyMap.entries()).map(([modelName, qty]) => ({ modelName, qty }));
+
+    // 회수 대상 및 안전옵션 병합
+    const mergedRetrievalIds = Array.from(new Set(selected.flatMap(d => d.retrievalAssetIds || [])));
+    const mergedSafetyOptions = Array.from(new Set(selected.flatMap(d => d.safetyOptions || [])));
+
     const merged: DraftOrder = {
       id: `draft_${Date.now()}`,
       context: Array.from(new Set(selected.flatMap(d => d.context))),
       customerName: selected[0].customerName,
       siteName: selected[0].siteName,
-      equipments: selected.flatMap(d => d.equipments),
+      siteAddress: selected.map(d => d.siteAddress).filter(Boolean)[0] || '',
+      equipments: mergedEquipments,
       loadingDate: selected[0].loadingDate,
       loadingTime: selected[0].loadingTime,
+      unloadingDate: selected[0].unloadingDate,
+      unloadingTimeType: selected[0].unloadingTimeType,
+      unloadingTimeVal: selected[0].unloadingTimeVal,
       contactPerson: selected[0].contactPerson,
       contactPhone: selected[0].contactPhone,
       note: selected.map(d => d.note).filter(Boolean).join(' / '),
@@ -773,6 +1006,11 @@ export const SmartDispatch4: React.FC = () => {
       isNewCustomer: selected.some(d => d.isNewCustomer),
       customerRegistered: selected.every(d => d.customerRegistered),
       createdAt: new Date().toISOString(),
+      retrievalAssetIds: mergedRetrievalIds,
+      paidBy: selected.map(d => d.paidBy).filter(Boolean)[0] || null,
+      safetyOptions: mergedSafetyOptions,
+      staggeredMemo: selected.map(d => d.staggeredMemo).filter(Boolean).join(' / '),
+      vehicleType: selected[0].vehicleType || '5T',
       urgency: selected.reduce<DraftOrder['urgency']>((acc, d) => {
         if (d.urgency === 'HIGH' || acc === 'HIGH') return 'HIGH';
         if (d.urgency === 'MEDIUM' || acc === 'MEDIUM') return 'MEDIUM';
@@ -781,7 +1019,7 @@ export const SmartDispatch4: React.FC = () => {
     };
     setQueue(prev => [merged, ...prev.filter(d => !selectedQueueIds.has(d.id))]);
     setSelectedQueueIds(new Set());
-    showToast('병합 완료 — 새 의뢰로 통합됨');
+    showToast('병합 완료 — 동일 모델 수량 합산 및 단일 의뢰로 통합되었습니다.');
   };
 
   // ── 🌟 [WTT 결함 해결 2] 출고 확정 시 실제 배차 대장(deliveries) 실시간 생성 ──
@@ -791,25 +1029,58 @@ export const SmartDispatch4: React.FC = () => {
       return;
     }
 
+    if (!canSave) {
+      showToast('출고의뢰 및 배차 등록 권한이 없습니다.', 'error');
+      return;
+    }
+
+    // 🛡️ [현장 상세 주소 복원/해결]
+    const custObj = customers.find(c => c.name === draft.customerName.value);
+    const siteObj = custObj ? sites.find(s => s.customerId === custObj.id && (s.name === draft.siteName.value || s.name.includes(draft.siteName.value))) : null;
+    const resolvedAddress = (draft.siteAddress || siteObj?.address || '').trim();
+
+    if (!resolvedAddress) {
+      showToast('현장 상세주소가 누락되었습니다. [새의뢰 작성으로 가져오기]를 눌러 주소를 보완해주세요.', 'error');
+      return;
+    }
+
+    const contactPhoneVal = typeof draft.contactPhone === 'string' ? draft.contactPhone : (draft.contactPhone as any)?.value || '';
+    if (!contactPhoneVal) {
+      showToast('현장 담당자 연락처가 누락되었습니다. [새의뢰 작성으로 가져오기]를 눌러 연락처를 보완해주세요.', 'error');
+      return;
+    }
+
     try {
+      const unloadingStr = draft.unloadingDate
+        ? `${draft.unloadingDate} ${draft.unloadingTimeVal || (draft.unloadingTimeType === 'ASAP' ? 'ASAP' : draft.unloadingTimeType === 'MORNING' ? '오전' : draft.unloadingTimeType === 'AFTERNOON' ? '오후' : '')}`.trim()
+        : `${draft.loadingDate.value} ${draft.loadingTime.value}`.trim();
+
+      const isExchange = draft.context?.includes('EXCHANGE');
+
       // AppContext의 saveSmartDispatch 풀 파이프라인 호출
       const res = await saveSmartDispatch({
         customerName: draft.customerName.value,
         siteName: draft.siteName.value,
-        siteAddress: '',
+        siteAddress: resolvedAddress,
         siteContactName: draft.contactPerson.value,
-        siteContactPhone: draft.contactPhone.value,
+        siteContactPhone: contactPhoneVal,
         siteContactEmail: '',
         billingContactName: '',
         billingContactPhone: '',
         statementEmail: '',
         taxBillEmail: '',
-        loadingTime: `${draft.loadingDate.value} ${draft.loadingTime.value}`,
-        unloadingTime: '',
+        loadingTime: `${draft.loadingDate.value} ${draft.loadingTime.value}`.trim(),
+        unloadingTime: unloadingStr,
         equipments: draft.equipments,
         note: draft.note,
         rawText: `[출고의뢰통합 확정] ${draft.context.join(', ')}`,
-      }, true);
+        vehicleType: draft.vehicleType || '5T',
+        paidBy: draft.paidBy || 'CUSTOMER',
+        billableToCustomer: draft.paidBy === 'CUSTOMER',
+        type: isExchange ? 'EXCHANGE' : 'OUTBOUND',
+        retrievalAssetIds: draft.retrievalAssetIds || [],
+        paidOptions: draft.safetyOptions?.map(id => SAFETY_OPTION_LIST.find(s => s.id === id)?.label).join(', ') || '',
+      } as any, true);
 
       if (res && res.success) {
         // 초안 상태 업데이트
@@ -825,16 +1096,13 @@ export const SmartDispatch4: React.FC = () => {
   };
 
   const handleDiscardDraft = async (id: string) => {
-    if (!window.confirm(
-      '다음 항목을 삭제합니다:\n① 출고의뢰 초안\n\n언제든 새 의뢰로 재작성 가능합니다.\n삭제하시겠습니까?'
-    )) return;
-
     try {
       await discardDraft(id);
       await loadDrafts();
-      showToast('초안 폐기 완료');
+      showToast('초안이 폐기되었습니다.', 'info');
     } catch {
       setQueue(prev => prev.filter(d => d.id !== id));
+      showToast('초안이 큐에서 제거되었습니다.', 'info');
     }
   };
 
@@ -852,6 +1120,20 @@ export const SmartDispatch4: React.FC = () => {
       <div className="dispatch4-studio-row">
         {/* ── 좌측 입력 섹션 (57% 마스터 스트림 / 독자 상하 스크롤) ────────────────── */}
         <div className="dispatch4-left-pane dispatch4-scrollbar">
+
+          {/* 블록 제어 바 */}
+          <div className="flex items-center justify-between px-1 py-0.5 text-xs text-slate-400">
+            <span className="text-[11px] font-semibold text-slate-400">
+              5단계 의뢰 서식 ({openBlocks.size}/5 블록 열림)
+            </span>
+            <button
+              type="button"
+              onClick={toggleAllBlocks}
+              className="text-[11px] font-bold px-2.5 py-1 rounded-lg bg-slate-850 hover:bg-slate-750 text-slate-300 hover:text-white transition border border-slate-750 shadow-sm"
+            >
+              {openBlocks.size === 5 ? '전체 블록 접기' : '전체 블록 펼치기'}
+            </button>
+          </div>
 
           {/* 텍스트 붙여넣기 파싱 */}
           <div className="bg-slate-900 border border-slate-700/80 rounded-xl overflow-hidden shadow-sm">
@@ -934,7 +1216,7 @@ export const SmartDispatch4: React.FC = () => {
           <div className="bg-slate-900 border border-slate-700/80 rounded-xl overflow-hidden shadow-sm">
             <div
               className={`dispatch4-block-header ${
-                openBlock === 'WHO' ? 'bg-blue-950/40 border-b border-blue-500/30' : 'bg-slate-800/50 hover:bg-slate-800'
+                openBlocks.has('WHO') ? 'bg-blue-950/40 border-b border-blue-500/30' : 'bg-slate-800/50 hover:bg-slate-800'
               }`}
               onClick={() => toggleBlock('WHO')}
             >
@@ -952,10 +1234,10 @@ export const SmartDispatch4: React.FC = () => {
                   </span>
                 )}
               </div>
-              {openBlock === 'WHO' ? <ChevronUp className="w-4 h-4 text-slate-400" /> : <ChevronDown className="w-4 h-4 text-slate-400" />}
+              {openBlocks.has('WHO') ? <ChevronUp className="w-4 h-4 text-slate-400" /> : <ChevronDown className="w-4 h-4 text-slate-400" />}
             </div>
 
-            {openBlock === 'WHO' && (
+            {openBlocks.has('WHO') && (
               <div className="dispatch4-block-body">
                 {isNewCustomerMode ? (
                   <>
@@ -1062,7 +1344,7 @@ export const SmartDispatch4: React.FC = () => {
           <div className="bg-slate-900 border border-slate-700/80 rounded-xl overflow-hidden shadow-sm">
             <div
               className={`dispatch4-block-header ${
-                openBlock === 'WHERE' ? 'bg-blue-950/40 border-b border-blue-500/30' : 'bg-slate-800/50 hover:bg-slate-800'
+                openBlocks.has('WHERE') ? 'bg-blue-950/40 border-b border-blue-500/30' : 'bg-slate-800/50 hover:bg-slate-800'
               }`}
               onClick={() => toggleBlock('WHERE')}
             >
@@ -1080,10 +1362,10 @@ export const SmartDispatch4: React.FC = () => {
                   </span>
                 )}
               </div>
-              {openBlock === 'WHERE' ? <ChevronUp className="w-4 h-4 text-slate-400" /> : <ChevronDown className="w-4 h-4 text-slate-400" />}
+              {openBlocks.has('WHERE') ? <ChevronUp className="w-4 h-4 text-slate-400" /> : <ChevronDown className="w-4 h-4 text-slate-400" />}
             </div>
 
-            {openBlock === 'WHERE' && (
+            {openBlocks.has('WHERE') && (
               <div className="dispatch4-block-body">
                 {isNewCustomerMode ? (
                   <>
@@ -1106,6 +1388,12 @@ export const SmartDispatch4: React.FC = () => {
                       />
                     </div>
                   </>
+                ) : !selectedCustomer ? (
+                  <div className="p-5 bg-slate-950/60 border border-slate-800 rounded-xl text-center flex flex-col items-center justify-center gap-2 text-xs text-slate-400">
+                    <MapPin className="w-5 h-5 text-slate-500" />
+                    <span className="font-bold text-slate-300">고객사를 먼저 선택하십시오</span>
+                    <span className="text-[11px] text-slate-500">1. WHO 블록에서 거래처(고객사)를 지정하면 해당 고객사의 등록 현장 목록이 표시됩니다.</span>
+                  </div>
                 ) : (
                   <>
                     <div className="flex flex-col gap-1">
@@ -1114,8 +1402,7 @@ export const SmartDispatch4: React.FC = () => {
                         className="bg-slate-800 border border-slate-700 text-white rounded-lg p-2.5 text-xs focus:outline-none focus:border-blue-500"
                         value={siteQuery}
                         onChange={e => setSiteQuery(e.target.value)}
-                        placeholder={selectedCustomer ? `${selectedCustomer.name} 등록 현장 검색...` : '고객사를 먼저 선택하세요'}
-                        disabled={!selectedCustomer}
+                        placeholder={`${selectedCustomer.name} 등록 현장 검색...`}
                       />
                     </div>
                     <div className="flex flex-wrap gap-1.5 max-h-36 overflow-y-auto p-1 bg-slate-950/60 rounded-lg border border-slate-800">
@@ -1135,7 +1422,7 @@ export const SmartDispatch4: React.FC = () => {
                           </button>
                         );
                       })}
-                      {selectedCustomer && filteredSites.length === 0 && (
+                      {filteredSites.length === 0 && (
                         <div className="text-xs text-slate-500 py-2 px-3">
                           등록된 기존 현장이 없습니다. 아래에서 직접 현장명을 입력할 수 있습니다.
                         </div>
@@ -1158,37 +1445,37 @@ export const SmartDispatch4: React.FC = () => {
                         />
                       </div>
                     </div>
+
+                    {/* 🌟 현장 담당자 성명 및 연락처 */}
+                    <div className="pt-3 border-t border-slate-800 flex flex-col gap-2">
+                      <div className="text-xs font-bold text-cyan-300 flex items-center gap-1.5">
+                        <User className="w-3.5 h-3.5" />
+                        <span>현장 담당자 정보 *</span>
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <div className="flex flex-col gap-1">
+                          <label className="text-xs font-semibold text-slate-300">현장 담당자 성명 *</label>
+                          <input
+                            className="bg-slate-800 border border-slate-700 text-white rounded-lg p-2.5 text-xs focus:outline-none focus:border-cyan-500"
+                            value={contactPerson}
+                            onChange={e => setContactPerson(e.target.value)}
+                            placeholder="현장 인수 소장/담당자명"
+                          />
+                        </div>
+                        <div className="flex flex-col gap-1">
+                          <label className="text-xs font-semibold text-slate-300">인수 담당자 연락처 *</label>
+                          <input
+                            className="bg-slate-800 border border-slate-700 text-white rounded-lg p-2.5 text-xs focus:outline-none focus:border-cyan-500"
+                            value={contactPhone}
+                            onChange={e => setContactPhone(e.target.value)}
+                            placeholder="010-0000-0000"
+                            inputMode="tel"
+                          />
+                        </div>
+                      </div>
+                    </div>
                   </>
                 )}
-
-                {/* 🌟 현장 담당자 성명 및 연락처 (WHEN에서 WHERE로 이동) */}
-                <div className="pt-3 border-t border-slate-800 flex flex-col gap-2">
-                  <div className="text-xs font-bold text-cyan-300 flex items-center gap-1.5">
-                    <User className="w-3.5 h-3.5" />
-                    <span>현장 담당자 정보 *</span>
-                  </div>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    <div className="flex flex-col gap-1">
-                      <label className="text-xs font-semibold text-slate-300">현장 담당자 성명 *</label>
-                      <input
-                        className="bg-slate-800 border border-slate-700 text-white rounded-lg p-2.5 text-xs focus:outline-none focus:border-cyan-500"
-                        value={contactPerson}
-                        onChange={e => setContactPerson(e.target.value)}
-                        placeholder="현장 인수 소장/담당자명"
-                      />
-                    </div>
-                    <div className="flex flex-col gap-1">
-                      <label className="text-xs font-semibold text-slate-300">인수 담당자 연락처 *</label>
-                      <input
-                        className="bg-slate-800 border border-slate-700 text-white rounded-lg p-2.5 text-xs focus:outline-none focus:border-cyan-500"
-                        value={contactPhone}
-                        onChange={e => setContactPhone(e.target.value)}
-                        placeholder="010-0000-0000"
-                        inputMode="tel"
-                      />
-                    </div>
-                  </div>
-                </div>
               </div>
             )}
           </div>
@@ -1197,7 +1484,7 @@ export const SmartDispatch4: React.FC = () => {
           <div className="bg-slate-900 border border-slate-700/80 rounded-xl overflow-hidden shadow-sm">
             <div
               className={`dispatch4-block-header ${
-                openBlock === 'WHAT' ? 'bg-blue-950/40 border-b border-blue-500/30' : 'bg-slate-800/50 hover:bg-slate-800'
+                openBlocks.has('WHAT') ? 'bg-blue-950/40 border-b border-blue-500/30' : 'bg-slate-800/50 hover:bg-slate-800'
               }`}
               onClick={() => toggleBlock('WHAT')}
             >
@@ -1210,10 +1497,10 @@ export const SmartDispatch4: React.FC = () => {
                   </span>
                 )}
               </div>
-              {openBlock === 'WHAT' ? <ChevronUp className="w-4 h-4 text-slate-400" /> : <ChevronDown className="w-4 h-4 text-slate-400" />}
+              {openBlocks.has('WHAT') ? <ChevronUp className="w-4 h-4 text-slate-400" /> : <ChevronDown className="w-4 h-4 text-slate-400" />}
             </div>
 
-            {openBlock === 'WHAT' && (
+            {openBlocks.has('WHAT') && (
               <div className="dispatch4-block-body">
                 <div className="flex gap-1.5 overflow-x-auto pb-1 border-b border-slate-800">
                   {FT_GROUPS.map(ft => (
@@ -1259,7 +1546,7 @@ export const SmartDispatch4: React.FC = () => {
                           <Package className="w-3.5 h-3.5 text-emerald-400 flex-shrink-0" />
                           <span className="text-xs font-black text-white">{eq.modelName}</span>
                         </div>
-                        {/* 🌟 수량 조절 -, + 및 삭제(휴지통) 아이콘 버튼군 */}
+                        {/* 🌟 수량 조절 -, + 및 직접 숫자 입력 및 삭제(휴지통) 아이콘 버튼군 */}
                         <div className="flex items-center gap-1.5 bg-slate-950 px-2 py-0.5 rounded-lg border border-slate-700">
                           <button
                             type="button"
@@ -1269,8 +1556,14 @@ export const SmartDispatch4: React.FC = () => {
                           >
                             <Minus className="w-3 h-3 text-white stroke-[2.5]" />
                           </button>
-                          <div className="flex items-center justify-center min-w-[40px] px-1 font-mono">
-                            <span className="text-xs font-black text-emerald-400">{eq.qty}</span>
+                          <div className="flex items-center justify-center min-w-[48px] px-1 font-mono">
+                            <input
+                              type="number"
+                              min={1}
+                              value={eq.qty}
+                              onChange={e => setModelQty(idx, parseInt(e.target.value) || 1)}
+                              className="w-10 bg-slate-900 border border-slate-700 rounded px-1 py-0.5 text-xs text-center font-mono font-bold text-emerald-400 focus:outline-none focus:border-emerald-500"
+                            />
                             <span className="text-[10px] text-slate-400 font-bold ml-0.5">대</span>
                           </div>
                           <button
@@ -1303,46 +1596,135 @@ export const SmartDispatch4: React.FC = () => {
             )}
           </div>
 
-          {/* WHEN 블록 — 출고 일정 (건조한 명사 단일 표준) */}
+          {/* WHEN 블록 — 상차 vs 하차 일정 및 시간 구분 (ASAP/오전/오후/직접지정) */}
           <div className="bg-slate-900 border border-slate-700/80 rounded-xl overflow-hidden shadow-sm">
             <div
               className={`dispatch4-block-header ${
-                openBlock === 'WHEN' ? 'bg-blue-950/40 border-b border-blue-500/30' : 'bg-slate-800/50 hover:bg-slate-800'
+                openBlocks.has('WHEN') ? 'bg-blue-950/40 border-b border-blue-500/30' : 'bg-slate-800/50 hover:bg-slate-800'
               }`}
               onClick={() => toggleBlock('WHEN')}
             >
               <div className="flex items-center gap-2 text-xs font-bold text-slate-100">
                 <Calendar className="w-4 h-4 text-amber-400" />
-                <span>4. WHEN — 출고 일정</span>
+                <span>4. WHEN — 출고 및 하차 일정</span>
                 {loadingDate && (
                   <span className="text-[11px] font-semibold text-emerald-400 bg-emerald-950/50 px-2 py-0.5 rounded border border-emerald-500/30 font-mono">
-                    ✓ {loadingDate} {loadingTimeVal}
+                    ✓ 상차: {loadingDate} {loadingTimeType === 'ASAP' ? '[ASAP]' : loadingTimeType === 'MORNING' ? '[오전]' : loadingTimeType === 'AFTERNOON' ? '[오후]' : loadingTimeVal || ''}
                   </span>
                 )}
               </div>
-              {openBlock === 'WHEN' ? <ChevronUp className="w-4 h-4 text-slate-400" /> : <ChevronDown className="w-4 h-4 text-slate-400" />}
+              {openBlocks.has('WHEN') ? <ChevronUp className="w-4 h-4 text-slate-400" /> : <ChevronDown className="w-4 h-4 text-slate-400" />}
             </div>
 
-            {openBlock === 'WHEN' && (
+            {openBlocks.has('WHEN') && (
               <div className="dispatch4-block-body">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  <div className="flex flex-col gap-1">
-                    <label className="text-[11px] font-semibold text-slate-300">출고(상차) 희망일자 *</label>
-                    <input
-                      type="date"
-                      className="bg-slate-800 border border-slate-700 text-white rounded-lg p-2 text-xs focus:outline-none focus:border-blue-500 font-mono"
-                      value={loadingDate}
-                      onChange={e => setLoadingDate(e.target.value)}
-                    />
+                {/* 상차 일정 */}
+                <div className="p-2.5 bg-slate-950/60 rounded-xl border border-slate-800 flex flex-col gap-2">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-bold text-amber-300 flex items-center gap-1.5">
+                      <Truck className="w-3.5 h-3.5" />
+                      <span>상차 (출고) 희망일시 *</span>
+                    </label>
                   </div>
-                  <div className="flex flex-col gap-1">
-                    <label className="text-[11px] font-semibold text-slate-300">상차 지정시간 *</label>
-                    <input
-                      type="time"
-                      className="bg-slate-800 border border-slate-700 text-white rounded-lg p-2 text-xs focus:outline-none focus:border-blue-500 font-mono"
-                      value={loadingTimeVal}
-                      onChange={e => setLoadingTimeVal(e.target.value)}
-                    />
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                    <div className="flex flex-col gap-1">
+                      <label className="text-[11px] font-semibold text-slate-300">상차 희망일자 *</label>
+                      <input
+                        type="date"
+                        className="bg-slate-800 border border-slate-700 text-white rounded-lg p-2 text-xs focus:outline-none focus:border-blue-500 font-mono"
+                        value={loadingDate}
+                        onChange={e => {
+                          setLoadingDate(e.target.value);
+                          if (!unloadingDate) setUnloadingDate(e.target.value);
+                        }}
+                      />
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <label className="text-[11px] font-semibold text-slate-300">상차 시간 구분 *</label>
+                      <div className="dispatch4-slot-group">
+                        {[
+                          { id: 'ASAP', label: '⚡ ASAP (최우선)' },
+                          { id: 'MORNING', label: '🌅 오전' },
+                          { id: 'AFTERNOON', label: '🌇 오후' },
+                          { id: 'EXACT', label: '⏰ 시간지정' },
+                        ].map(slot => (
+                          <button
+                            key={slot.id}
+                            type="button"
+                            onClick={() => {
+                              setLoadingTimeType(slot.id as any);
+                              if (slot.id !== 'EXACT') setLoadingTimeVal('');
+                              else if (!loadingTimeVal) setLoadingTimeVal('08:00');
+                            }}
+                            className={`dispatch4-slot-btn ${loadingTimeType === slot.id ? 'active' : ''}`}
+                          >
+                            {slot.label}
+                          </button>
+                        ))}
+                      </div>
+                      {loadingTimeType === 'EXACT' && (
+                        <input
+                          type="time"
+                          className="bg-slate-800 border border-blue-500 text-white rounded-lg p-1.5 text-xs font-mono mt-1"
+                          value={loadingTimeVal}
+                          onChange={e => setLoadingTimeVal(e.target.value)}
+                        />
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* 하차 일정 */}
+                <div className="p-2.5 bg-slate-950/60 rounded-xl border border-slate-800 flex flex-col gap-2">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-bold text-cyan-300 flex items-center gap-1.5">
+                      <MapPin className="w-3.5 h-3.5" />
+                      <span>하차 (현장 도착) 희망일시</span>
+                    </label>
+                    <span className="text-[10px] text-slate-500">미지정 시 상차 직송으로 간주</span>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                    <div className="flex flex-col gap-1">
+                      <label className="text-[11px] font-semibold text-slate-300">하차 희망일자</label>
+                      <input
+                        type="date"
+                        className="bg-slate-800 border border-slate-700 text-white rounded-lg p-2 text-xs focus:outline-none focus:border-cyan-500 font-mono"
+                        value={unloadingDate}
+                        onChange={e => setUnloadingDate(e.target.value)}
+                      />
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <label className="text-[11px] font-semibold text-slate-300">하차 시간 구분</label>
+                      <div className="dispatch4-slot-group">
+                        {[
+                          { id: 'ASAP', label: '⚡ ASAP' },
+                          { id: 'MORNING', label: '🌅 오전' },
+                          { id: 'AFTERNOON', label: '🌇 오후' },
+                          { id: 'EXACT', label: '⏰ 시간지정' },
+                        ].map(slot => (
+                          <button
+                            key={slot.id}
+                            type="button"
+                            onClick={() => {
+                              setUnloadingTimeType(slot.id as any);
+                              if (slot.id !== 'EXACT') setUnloadingTimeVal('');
+                              else if (!unloadingTimeVal) setUnloadingTimeVal('13:00');
+                            }}
+                            className={`dispatch4-slot-btn ${unloadingTimeType === slot.id ? 'active' : ''}`}
+                          >
+                            {slot.label}
+                          </button>
+                        ))}
+                      </div>
+                      {unloadingTimeType === 'EXACT' && (
+                        <input
+                          type="time"
+                          className="bg-slate-800 border border-cyan-500 text-white rounded-lg p-1.5 text-xs font-mono mt-1"
+                          value={unloadingTimeVal}
+                          onChange={e => setUnloadingTimeVal(e.target.value)}
+                        />
+                      )}
+                    </div>
                   </div>
                 </div>
 
@@ -1364,7 +1746,7 @@ export const SmartDispatch4: React.FC = () => {
           <div className="bg-slate-900 border border-slate-700/80 rounded-xl overflow-hidden shadow-sm">
             <div
               className={`dispatch4-block-header ${
-                openBlock === 'SAFETY_COST' ? 'bg-blue-950/40 border-b border-blue-500/30' : 'bg-slate-800/50 hover:bg-slate-800'
+                openBlocks.has('SAFETY_COST') ? 'bg-blue-950/40 border-b border-blue-500/30' : 'bg-slate-800/50 hover:bg-slate-800'
               }`}
               onClick={() => toggleBlock('SAFETY_COST')}
             >
@@ -1373,56 +1755,82 @@ export const SmartDispatch4: React.FC = () => {
                 <span>5. 안전옵션 · 대차회수 · 운송비 귀속선</span>
                 {isExchangeMode && (
                   <span className={`text-[11px] font-semibold px-2 py-0.5 rounded border ${
-                    retrievalAssetId ? 'bg-cyan-950 text-cyan-300 border-cyan-800' : 'bg-red-950 text-red-300 border-red-800'
+                    retrievalAssetIds.length > 0 ? 'bg-cyan-950 text-cyan-300 border-cyan-800' : 'bg-red-950 text-red-300 border-red-800'
                   }`}>
-                    {retrievalAssetId ? `대차: #${retrievalAssetId}` : '회수전자산 미지정'}
+                    {retrievalAssetIds.length > 0 ? `대차: ${retrievalAssetIds.length}대` : '회수전자산 미지정'}
                   </span>
                 )}
               </div>
-              {openBlock === 'SAFETY_COST' ? <ChevronUp className="w-4 h-4 text-slate-400" /> : <ChevronDown className="w-4 h-4 text-slate-400" />}
+              {openBlocks.has('SAFETY_COST') ? <ChevronUp className="w-4 h-4 text-slate-400" /> : <ChevronDown className="w-4 h-4 text-slate-400" />}
             </div>
 
-            {openBlock === 'SAFETY_COST' && (
+            {openBlocks.has('SAFETY_COST') && (
               <div className="dispatch4-block-body">
-                {/* 1. 대차(EXCHANGE) 시 회수 대상 전자산 1:1 매핑 (헌장 2.3, 4.2 준수) */}
+                {/* 1. 대차(EXCHANGE) 시 회수 대상 전자산 다수 매핑 지원 */}
                 {isExchangeMode && (
-                  <div className="p-2.5 bg-cyan-950/40 border border-cyan-500/40 rounded-xl flex flex-col gap-1.5">
+                  <div className="p-2.5 bg-cyan-950/40 border border-cyan-500/40 rounded-xl flex flex-col gap-2">
                     <div className="flex items-center justify-between">
                       <label className="text-[11px] font-black text-cyan-200 flex items-center gap-1.5">
                         <RotateCcw className="w-3.5 h-3.5" />
-                        <span>회수 대상 전자산 선택 (대차 필수 매핑) *</span>
+                        <span>회수 대상 전자산 선택 (복수 선택 가능) *</span>
                       </label>
-                      <span className="text-[10px] text-cyan-400 font-medium">단일 EXCHANGE 1건 발행</span>
+                      {retrievalAssetIds.length > 0 && (
+                        <span className="text-[10px] text-cyan-300 font-mono font-bold">
+                          {retrievalAssetIds.length}대 선택됨
+                        </span>
+                      )}
                     </div>
-                    <select
-                      value={retrievalAssetId}
-                      onChange={e => setRetrievalAssetId(e.target.value)}
-                      className="w-full bg-slate-900 border border-cyan-600/60 text-white rounded-lg p-2 text-xs focus:outline-none focus:border-cyan-400 font-mono"
-                    >
-                      <option value="">-- 회수할 기존 대여 장비를 선택하세요 --</option>
-                      {activeCustomerAssets.map(a => (
-                        <option key={a.id} value={a.assetNo}>
-                          {a.assetNo} — {a.modelName} (현재 대여중)
-                        </option>
-                      ))}
-                    </select>
-                    <p className="text-[10px] text-cyan-300/80">
-                      * 헌장 2.2 원칙: 선택된 전자산의 최초 계약 단가, 결제조건, 현장 속성이 신규 대차 장비로 100% 자동 상속됩니다.
-                    </p>
+
+                    {activeCustomerAssets.length > 0 ? (
+                      <div className="dispatch4-exchange-list">
+                        {activeCustomerAssets.map(a => {
+                          const isChecked = retrievalAssetIds.includes(a.assetNo);
+                          return (
+                            <label
+                              key={a.id}
+                              className={`flex items-center justify-between p-2 rounded-lg border cursor-pointer select-none transition ${
+                                isChecked
+                                  ? 'bg-cyan-950/70 border-cyan-400 text-cyan-100'
+                                  : 'bg-slate-900 border-slate-800 text-slate-400 hover:bg-slate-850 hover:text-slate-200'
+                              }`}
+                            >
+                              <div className="flex items-center gap-2">
+                                <input
+                                  type="checkbox"
+                                  checked={isChecked}
+                                  onChange={() => toggleRetrievalAsset(a.assetNo)}
+                                  className="w-4 h-4 rounded bg-slate-950 border-slate-700 text-cyan-500 focus:ring-0"
+                                />
+                                <span className="font-mono font-bold text-xs text-white">#{a.assetNo}</span>
+                                <span className="text-xs">{a.modelName}</span>
+                              </div>
+                              <span className="text-[10px] text-cyan-400/80 font-mono">현재 대여중</span>
+                            </label>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <div className="text-xs text-slate-500 py-3 text-center bg-slate-950/60 rounded-lg border border-slate-850">
+                        {selectedCustomer ? '선택된 고객사에 현재 대여 중인 장비가 없습니다.' : '고객사를 먼저 선택하십시오.'}
+                      </div>
+                    )}
                   </div>
                 )}
 
-                {/* 2. 운송비 부담 귀속선 (헌장 5.5 준수) */}
+                {/* 2. 운송비 부담 귀속선 선택기 */}
                 <div className="flex flex-col gap-1">
-                  <label className="text-[11px] font-bold text-slate-300 flex items-center gap-1.5">
-                    <Truck className="w-3.5 h-3.5 text-blue-400" />
-                    <span>운송비 부담 귀속선 (회계 정산) *</span>
-                  </label>
+                  <div className="flex items-center justify-between">
+                    <label className="text-[11px] font-bold text-slate-300 flex items-center gap-1.5">
+                      <Truck className="w-3.5 h-3.5 text-blue-400" />
+                      <span>운송비 부담 귀속선 (정규 회계 연동) *</span>
+                    </label>
+                    <span className="text-[10px] text-slate-500">배차 및 청구서에 자동 반영</span>
+                  </div>
                   <div className="grid grid-cols-3 gap-2">
                     {[
-                      { id: 'CUSTOMER', label: '고객사 청구', desc: '기본 운반비 청구' },
-                      { id: 'OURS',     label: '당사 영업부담', desc: '영업 할인/면제' },
-                      { id: 'SPLIT',    label: '편도 지원',     desc: '왕복 할인 정산' },
+                      { id: 'CUSTOMER', label: '고객사 전액 청구', desc: '고객사 청구서에 운송비 포함' },
+                      { id: 'OURS', label: '당사 영업 부담 (면제)', desc: '영업 특약 무료 배차 (매출 제외)' },
+                      { id: 'SPLIT', label: '편도 지원 (절반)', desc: '50% 당사 지원 / 50% 고객 청구' },
                     ].map(item => (
                       <button
                         key={item.id}
@@ -1430,7 +1838,7 @@ export const SmartDispatch4: React.FC = () => {
                         onClick={() => setPaidBy(item.id as PaidBy)}
                         className={`p-2 rounded-lg border text-left transition flex flex-col gap-0.5 ${
                           paidBy === item.id
-                            ? 'bg-blue-900/40 border-blue-500 text-white shadow-sm'
+                            ? 'bg-blue-900/40 border-blue-500 text-white shadow-sm font-bold'
                             : 'bg-slate-800 border-slate-700 text-slate-400 hover:bg-slate-750'
                         }`}
                       >
@@ -1443,17 +1851,23 @@ export const SmartDispatch4: React.FC = () => {
 
                 {/* 3. 현장 안전옵션 & 보양작업 4종 선택기 */}
                 <div className="flex flex-col gap-1">
-                  <label className="text-[11px] font-bold text-slate-300 flex items-center gap-1.5">
-                    <Wrench className="w-3.5 h-3.5 text-amber-400" />
-                    <span>현장 필수 안전옵션 및 보양작업</span>
-                  </label>
+                  <div className="flex items-center justify-between">
+                    <label className="text-[11px] font-bold text-slate-300 flex items-center gap-1.5">
+                      <Wrench className="w-3.5 h-3.5 text-amber-400" />
+                      <span>현장 필수 안전옵션 및 보양작업</span>
+                    </label>
+                    {selectedSafetyOptions.size > 0 && (
+                      <span className="text-[10px] text-amber-400 font-bold">
+                        {selectedSafetyOptions.size}종 선택됨
+                      </span>
+                    )}
+                  </div>
                   <div className="grid grid-cols-2 gap-2">
                     {SAFETY_OPTION_LIST.map(opt => {
                       const isChecked = selectedSafetyOptions.has(opt.id);
                       return (
                         <label
                           key={opt.id}
-                          onClick={() => toggleSafetyOption(opt.id)}
                           className={`flex items-center gap-2 p-1.5 rounded-lg border cursor-pointer select-none transition ${
                             isChecked
                               ? 'bg-amber-950/40 border-amber-500 text-amber-200'
@@ -1463,7 +1877,7 @@ export const SmartDispatch4: React.FC = () => {
                           <input
                             type="checkbox"
                             checked={isChecked}
-                            onChange={() => {}}
+                            onChange={() => toggleSafetyOption(opt.id)}
                             className="rounded bg-slate-900 border-slate-700 text-amber-500"
                           />
                           <span className="text-xs font-bold">{opt.label}</span>
@@ -1488,14 +1902,34 @@ export const SmartDispatch4: React.FC = () => {
             />
           </div>
 
-          {/* 하단 리셋 버튼 */}
-          <div className="flex justify-start pb-2">
+          {/* 🌟 Gutenberg Z-Pattern 왼쪽 하단 집계 및 감사 요약 바 */}
+          <div className="bg-slate-950 border border-slate-800 rounded-xl p-2.5 flex items-center justify-between text-xs mt-1">
+            <div className="flex items-center gap-2.5">
+              <div>
+                <span className="text-slate-500 text-[10px] block">출고 신청</span>
+                <span className="font-bold text-emerald-400 font-mono text-xs">{totalQty}대</span>
+              </div>
+              <div className="w-px h-5 bg-slate-800" />
+              <div>
+                <span className="text-slate-500 text-[10px] block">회수 대상</span>
+                <span className="font-bold text-cyan-400 font-mono text-xs">
+                  {isExchangeMode ? `${retrievalAssetIds.length}대` : '-'}
+                </span>
+              </div>
+              <div className="w-px h-5 bg-slate-800" />
+              <div>
+                <span className="text-slate-500 text-[10px] block">운송비</span>
+                <span className="font-bold text-slate-300 text-[11px]">
+                  {paidBy === 'CUSTOMER' ? '고객청구' : paidBy === 'OURS' ? '당사부담' : paidBy === 'SPLIT' ? '편도지원' : '미선택'}
+                </span>
+              </div>
+            </div>
             <button
               type="button"
               onClick={resetForm}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white transition border border-slate-700"
+              className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-semibold bg-slate-850 hover:bg-slate-750 text-slate-400 hover:text-white transition border border-slate-750"
             >
-              <RotateCcw className="w-3.5 h-3.5" />
+              <RotateCcw className="w-3 h-3" />
               <span>입력 초기화</span>
             </button>
           </div>
@@ -1593,7 +2027,7 @@ export const SmartDispatch4: React.FC = () => {
                   {new Date().toLocaleDateString('ko-KR')}
                 </span>
                 <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-blue-950 text-blue-300 border border-blue-800">
-                  {CONTEXT_OPTIONS.find(o => o.id === selectedContext)?.label}
+                  {CONTEXT_OPTIONS.find(o => o.id === selectedContext)?.label || '의뢰목적 미선택'}
                 </span>
               </div>
             </div>
@@ -1641,7 +2075,19 @@ export const SmartDispatch4: React.FC = () => {
                   상차일시
                 </div>
                 <div className="col-span-3 bg-slate-900/90 p-1.5 font-bold text-blue-400 font-mono text-[11px]">
-                  {loadingDate ? `${loadingDate} ${loadingTimeVal}` : '(상차일시 미지정)'}
+                  {loadingDate
+                    ? `${loadingDate} ${loadingTimeType === 'ASAP' ? '[ASAP]' : loadingTimeType === 'MORNING' ? '[오전]' : loadingTimeType === 'AFTERNOON' ? '[오후]' : loadingTimeVal || ''}`
+                    : '(상차일시 미지정)'}
+                </div>
+              </div>
+              <div className="grid grid-cols-4 border-b border-slate-800">
+                <div className="col-span-1 bg-slate-950 p-1.5 font-bold text-slate-400 border-r border-slate-800 flex items-center text-[11px]">
+                  하차일시
+                </div>
+                <div className="col-span-3 bg-slate-900/90 p-1.5 font-bold text-cyan-400 font-mono text-[11px]">
+                  {unloadingDate || loadingDate
+                    ? `${unloadingDate || loadingDate} ${unloadingTimeType === 'ASAP' ? '[ASAP]' : unloadingTimeType === 'MORNING' ? '[오전]' : unloadingTimeType === 'AFTERNOON' ? '[오후]' : unloadingTimeVal || '(상차직송)'}`
+                    : '(하차일시 미지정)'}
                 </div>
               </div>
               <div className={`grid grid-cols-4 ${staggeredMemo ? 'border-b border-slate-800' : ''}`}>
@@ -1649,7 +2095,7 @@ export const SmartDispatch4: React.FC = () => {
                   운송비부담
                 </div>
                 <div className="col-span-3 bg-slate-900/90 p-1.5 font-bold text-emerald-400 text-[11px]">
-                  {paidBy === 'CUSTOMER' ? '고객사 전액 청구' : paidBy === 'OURS' ? '당사 영업 부담(면제)' : '편도 지원'}
+                  {paidBy === 'CUSTOMER' ? '고객사 전액 청구' : paidBy === 'OURS' ? '당사 영업 부담(면제)' : paidBy === 'SPLIT' ? '편도 지원' : '(운송비부담 미선택)'}
                 </div>
               </div>
               {staggeredMemo && (
@@ -1691,7 +2137,7 @@ export const SmartDispatch4: React.FC = () => {
             </div>
 
             {/* 특이사항 및 옵션 */}
-            {(note || selectedSafetyOptions.size > 0 || isExchangeMode) && (
+            {(note || selectedSafetyOptions.size > 0 || (isExchangeMode && retrievalAssetIds.length > 0)) && (
               <div className="bg-slate-950 border border-slate-800 rounded-lg p-2 text-[10.5px] text-slate-300 flex flex-col gap-1">
                 {selectedSafetyOptions.size > 0 && (
                   <div>
@@ -1701,10 +2147,12 @@ export const SmartDispatch4: React.FC = () => {
                     </span>
                   </div>
                 )}
-                {isExchangeMode && retrievalAssetId && (
+                {isExchangeMode && retrievalAssetIds.length > 0 && (
                   <div>
                     <span className="font-bold text-cyan-400">대차 회수장비: </span>
-                    <span className="text-slate-200">자산 #{retrievalAssetId} (입고검수 자동연계)</span>
+                    <span className="text-slate-200">
+                      자산 #{retrievalAssetIds.join(', #')} (총 {retrievalAssetIds.length}대, 회수연계)
+                    </span>
                   </div>
                 )}
                 {note && (

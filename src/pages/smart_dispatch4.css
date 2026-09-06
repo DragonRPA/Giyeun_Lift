@@ -246,3 +246,56 @@
   gap: 8px;
   background-color: #0f172a;
 }
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   상차/하차 시간 구분 슬롯 버튼군 & 대차 다수 회수 자산 스타일
+   ───────────────────────────────────────────────────────────────────────────── */
+.dispatch4-slot-group {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.dispatch4-slot-btn {
+  padding: 4px 8px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 700;
+  border: 1px solid #334155;
+  background-color: #1e293b;
+  color: #94a3b8;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+
+.dispatch4-slot-btn:hover {
+  background-color: #334155;
+  color: #f1f5f9;
+}
+
+.dispatch4-slot-btn.active {
+  background-color: rgba(59, 130, 246, 0.25);
+  border-color: #3b82f6;
+  color: #60a5fa;
+  font-weight: 800;
+}
+
+.dispatch4-slot-btn.active-amber {
+  background-color: rgba(245, 158, 11, 0.25);
+  border-color: #f59e0b;
+  color: #fbbf24;
+  font-weight: 800;
+}
+
+.dispatch4-exchange-list {
+  max-height: 180px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 4px;
+  background-color: #020617;
+  border: 1px solid #1e293b;
+  border-radius: 8px;
+}

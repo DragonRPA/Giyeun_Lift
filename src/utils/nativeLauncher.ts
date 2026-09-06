@@ -340,6 +340,7 @@ export interface DispatchSmsParams {
     finalCost?: number;
     cargoItems?: string;
     memo?: string;
+    closingMemo?: string;
   };
   siteName?: string;
   siteAddress?: string;
@@ -423,6 +424,7 @@ export function buildDispatchSmsText(params: DispatchSmsParams): string {
     `- 연락처: ${originContact}`,
     ``,
     `[2. 하차지 (도착지)]`,
+    `- 일시: ${delivery.unloadingDate || loadingDate} ${delivery.unloadingTimeSlot || ''}`.trim(),
     `- 현장명: ${siteName}`,
     `- 위치: ${destination}`,
     `- 현장연락처: ${destContact || '도착 전 확인'}`,
@@ -438,6 +440,10 @@ export function buildDispatchSmsText(params: DispatchSmsParams): string {
 
   if (delivery.memo && delivery.memo.trim()) {
     lines.push(``, `[특이사항]`, `- ${delivery.memo.trim()}`);
+  }
+
+  if (delivery.closingMemo && delivery.closingMemo.trim()) {
+    lines.push(``, `[옵션 및 보양]`, `- ${delivery.closingMemo.trim()}`);
   }
 
   lines.push(``, `※ 현장 도착 30분 전 인수자에게 사전 연락 부탁드립니다.`);

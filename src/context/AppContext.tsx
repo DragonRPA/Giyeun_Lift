@@ -1494,14 +1494,32 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const cargoItems = JSON.stringify(data.equipments.map(e => ({ modelName: e.modelName, count: Number(e.qty) || 1 })));
     const dData = data as any;
     const loadingDateStr = extractDate(data.loadingTime) || contract.startDate;
-    const loadingTimeSlotStr = (data.loadingTime && data.loadingTime.includes(':')) ? data.loadingTime.split(' ')[1] : '오전';
+    const getTimeSlot = (tStr: string | undefined) => {
+      if (!tStr) return '오전';
+      if (tStr.includes('ASAP')) return 'ASAP';
+      if (tStr.includes('오전')) return '오전';
+      if (tStr.includes('오후')) return '오후';
+      const m = tStr.match(/\d{1,2}:\d{2}/);
+      return m ? m[0] : (tStr.includes(' ') ? tStr.split(' ')[1] : '오전');
+    };
+    const loadingTimeSlotStr = getTimeSlot(data.loadingTime);
     const unloadingDateStr = extractDate(data.unloadingTime) || contract.startDate;
-    const unloadingTimeSlotStr = (data.unloadingTime && data.unloadingTime.includes(':')) ? data.unloadingTime.split(' ')[1] : '오전';
+    const unloadingTimeSlotStr = getTimeSlot(data.unloadingTime);
+
+    const isExchangeDelivery = dData.type === 'EXCHANGE' || dData.context?.includes('EXCHANGE') || dData.rawText?.includes('교환');
+    const isCustomerPaid = dData.paidBy === 'CUSTOMER' || !!dData.billableToCustomer;
+
+    const retrievalMemo = dData.retrievalAssetIds && dData.retrievalAssetIds.length > 0
+      ? ` | [대차회수대상] 자산 #${dData.retrievalAssetIds.join(', #')}`
+      : '';
+    const paidByMemo = dData.paidBy
+      ? ` | [운송비부담] ${dData.paidBy === 'CUSTOMER' ? '고객청구' : dData.paidBy === 'OURS' ? '당사부담' : '편도지원'}`
+      : '';
 
     const createdDelivery = db.insertRow<Delivery>('deliveries', {
       contractId: contract.id,
-      type: 'OUTBOUND',
-      dispatchCategory: '출고',
+      type: isExchangeDelivery ? 'EXCHANGE' : 'OUTBOUND',
+      dispatchCategory: isExchangeDelivery ? '교환' : '출고',
       status: 'REQUESTED',
       requestDate: contract.startDate,
       scheduledDate: loadingDateStr,
@@ -1512,20 +1530,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       originAddress: '당사 보관소',
       destinationAddress: `${finalCustomer.name} (${finalSite.name} - ${finalSite.address || ''})`,
       transportCompany: '',
-      vehicleType: dData.vehicleType || '5톤 렉카',
+      vehicleType: dData.vehicleType || '5T',
       vehicleNo: '',
       driverName: '',
       driverContact: '',
       deliveryCost: 0,
       expectedCost: 0,
       finalCost: 0,
-      billableToCustomer: !!dData.billableToCustomer,
-      billableCustomerId: dData.billableToCustomer ? finalCustomer.id : undefined,
+      billableToCustomer: isCustomerPaid,
+      billableCustomerId: isCustomerPaid ? finalCustomer.id : undefined,
       reconciliationStatus: 'PENDING',
       cargoItems,
       isCostSettled: false,
       rawText: (data as any).prompt || (data as any).rawText || data.note || '',
-      memo: `[스마트출고] 현장담당: ${data.siteContactName || '-'} (${data.siteContactPhone || '-'}) | 상차: ${data.loadingTime || '-'} / 하차: ${data.unloadingTime || '-'} | 청구담당: ${data.billingContactName || '-'} (${data.billingContactPhone || '-'}) | 계산서: ${data.taxBillEmail || '-'} | 특이사항: ${data.note || '없음'}`,
+      memo: `[스마트출고] 현장담당: ${data.siteContactName || '-'} (${data.siteContactPhone || '-'}) | 상차: ${data.loadingTime || '-'} / 하차: ${data.unloadingTime || '-'}${retrievalMemo}${paidByMemo} | 청구담당: ${data.billingContactName || '-'} (${data.billingContactPhone || '-'}) | 계산서: ${data.taxBillEmail || '-'} | 특이사항: ${data.note || '없음'}`,
       closingMemo: `[마감조건] 마감일: ${dData.closingDay || '-'} / 결제일: ${dData.paymentDay || '-'} | 유상옵션: ${dData.paidOptions || '없음'} | 보양: ${dData.protection || '없음'}`,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString()

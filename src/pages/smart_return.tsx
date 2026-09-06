@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
-import { Zap, Clipboard, FileText, Check, Search, ArrowUpDown, Shield, AlertTriangle, Printer, RotateCcw, Copy } from 'lucide-react';
+import { Zap, Clipboard, FileText, Check, Search, ArrowUpDown, Shield, AlertTriangle, Printer, RotateCcw, Copy, PhoneCall, Sparkles } from 'lucide-react';
 import { SmartReturnData } from '../context/AppContext';
+import { fetchMyDrafts, DraftDispatchOrder, discardDraft } from '../services/callUploadService';
 
 export const SmartReturn: React.FC = () => {
   const { hasPermission, saveSmartReturn, contracts, customers, sites, contacts, deliveries, contractAssets, assets, repairs, vendors, currentUser, users } = useApp();
@@ -108,6 +109,88 @@ export const SmartReturn: React.FC = () => {
     if (defaultContactPhone) setContactPhone(defaultContactPhone);
   }, [selectedContractId, contracts, deliveries, sites, contacts]);
 
+  // 통화 녹음 회수 초안 대기 큐
+  const [returnDrafts, setReturnDrafts] = useState<DraftDispatchOrder[]>([]);
+  const [selectedDraftId, setSelectedDraftId] = useState<string | null>(null);
+
+  const loadReturnDrafts = async () => {
+    try {
+      const list = await fetchMyDrafts();
+      const filtered = list.filter(d => 
+        d.status === 'DRAFT' && 
+        (
+          d.context?.includes('RETURN') ||
+          d.note?.toLowerCase().includes('회수') ||
+          d.note?.toLowerCase().includes('반납') ||
+          d.note?.toLowerCase().includes('철수') ||
+          d.note?.toLowerCase().includes('빼가')
+        )
+      );
+      setReturnDrafts(filtered);
+    } catch (e) {
+      // non-blocking
+    }
+  };
+
+  useEffect(() => {
+    loadReturnDrafts();
+  }, []);
+
+  const handleApplyReturnDraft = (d: DraftDispatchOrder) => {
+    setSelectedDraftId(d.id);
+
+    const custQuery = (d.customerName?.value || '').trim().toLowerCase();
+    const siteQuery = (d.siteName?.value || '').trim().toLowerCase();
+
+    // 1) 고객사 매칭
+    const matchedCust = customers.find(c =>
+      c.name.toLowerCase().includes(custQuery) || (custQuery && custQuery.includes(c.name.toLowerCase()))
+    );
+
+    // 2) 계약 매칭
+    let matchedContractId = '';
+    if (matchedCust) {
+      const custContracts = contracts.filter(c => c.customerId === matchedCust.id && c.status !== 'COMPLETED');
+      if (siteQuery) {
+        const matchedSite = sites.find(s => s.name.toLowerCase().includes(siteQuery) || siteQuery.includes(s.name.toLowerCase()));
+        if (matchedSite) {
+          const c = custContracts.find(con => con.siteId === matchedSite.id);
+          if (c) matchedContractId = c.id;
+        }
+      }
+      if (!matchedContractId && custContracts.length === 1) {
+        matchedContractId = custContracts[0].id;
+      }
+    }
+
+    if (matchedContractId) {
+      setSelectedContractId(matchedContractId);
+      const assetsForContract = contractAssets.filter(ca => ca.contractId === matchedContractId && ca.assetId);
+      setSelectedAssetIds(assetsForContract.map(ca => ca.assetId!));
+    } else if (custQuery) {
+      setSalesSearch(d.customerName?.value || '');
+    }
+
+    // 3) 회수 정보 자동 꽂아넣기
+    if (d.loadingDate?.value) {
+      setReturnDate(d.loadingDate.value);
+    }
+    if (d.loadingTime?.value) {
+      setLoadingTime(d.loadingTime.value);
+    }
+    if (d.contactPerson?.value) {
+      setContactName(d.contactPerson.value);
+    }
+    if (d.contactPhone) {
+      setContactPhone(d.contactPhone);
+    }
+    if (d.note) {
+      setNote(d.note);
+    }
+
+    showToast(`[${d.customerName?.value || '고객'}] 통화 내용이 회수 의뢰 폼에 자동 입력되었습니다.`);
+  };
+
 
   // ==========================================
   // [2] 정비직원 모드 (MAINTENANCE) 상태
@@ -210,6 +293,17 @@ export const SmartReturn: React.FC = () => {
         contactPhone,
         note
       });
+
+      // 통화 초안 연동 처리 (헌장 1.2 무누락, 5.2)
+      if (selectedDraftId) {
+        try {
+          await discardDraft(selectedDraftId);
+          setReturnDrafts(prev => prev.filter(x => x.id !== selectedDraftId));
+          setSelectedDraftId(null);
+        } catch (draftErr) {
+          console.error('Failed to discard return draft:', draftErr);
+        }
+      }
 
       showToast('회수 의뢰 등록이 완료되었습니다. 배차 대기열에 회수(INBOUND) 건이 추가되었습니다.');
       setSelectedContractId('');
@@ -510,6 +604,72 @@ export const SmartReturn: React.FC = () => {
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                 
+                {/* 📞 통화 접수 회수 대기 큐 (헌장 3.1 무수식어 건조 표준) */}
+                {returnDrafts.length > 0 && (
+                  <div style={{
+                    backgroundColor: 'var(--bg-app)',
+                    border: '1px solid var(--border-color)',
+                    borderRadius: '6px',
+                    padding: '10px'
+                  }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                      <span style={{ fontSize: '12.5px', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <PhoneCall size={14} color="var(--primary)" />
+                        통화 접수 회수 대기 ({returnDrafts.length}건)
+                      </span>
+                      <button
+                        type="button"
+                        onClick={loadReturnDrafts}
+                        style={{ fontSize: '11px', color: 'var(--primary)', background: 'transparent', border: 'none', cursor: 'pointer', fontWeight: 700 }}
+                      >
+                        새로고침
+                      </button>
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '180px', overflowY: 'auto' }}>
+                      {returnDrafts.map(d => {
+                        const isSelected = selectedDraftId === d.id;
+                        return (
+                          <div
+                            key={d.id}
+                            onClick={() => handleApplyReturnDraft(d)}
+                            style={{
+                              padding: '8px 10px',
+                              borderRadius: '6px',
+                              cursor: 'pointer',
+                              backgroundColor: isSelected ? 'rgba(59,130,246,0.12)' : 'var(--bg-card)',
+                              border: isSelected ? '1.5px solid var(--primary)' : '1px solid var(--border-color)',
+                              display: 'flex',
+                              flexDirection: 'column',
+                              gap: '3px'
+                            }}
+                          >
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                              <span style={{ fontSize: '12px', fontWeight: 800 }}>{d.customerName?.value || '고객사 미상'}</span>
+                              <span style={{ fontSize: '10px', padding: '1px 5px', borderRadius: '4px', fontWeight: 700, backgroundColor: 'rgba(239,68,68,0.15)', color: '#ef4444' }}>
+                                회수 요청
+                              </span>
+                            </div>
+                            <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
+                              현장: {d.siteName?.value || '현장 미상'} {d.contactPerson?.value ? `· ${d.contactPerson.value}` : ''}
+                            </div>
+                            {d.note && (
+                              <div style={{ fontSize: '11px', color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                {d.note}
+                              </div>
+                            )}
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '2px', fontSize: '10px', color: 'var(--text-muted)' }}>
+                              <span>{d.createdAt?.slice(5, 16) || ''}</span>
+                              <span style={{ color: 'var(--primary)', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: '2px' }}>
+                                <Sparkles size={11} /> 1-클릭 꽂아넣기 ➔
+                              </span>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
                 {/* 검색 필터 */}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                   <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
@@ -657,6 +817,30 @@ export const SmartReturn: React.FC = () => {
                 회수 지시 세부 설정
               </h4>
             </div>
+
+            {selectedDraftId && (
+              <div style={{
+                backgroundColor: 'rgba(59,130,246,0.08)',
+                border: '1px solid rgba(59,130,246,0.25)',
+                borderRadius: '6px',
+                padding: '8px 12px',
+                marginBottom: '12px',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center'
+              }}>
+                <span style={{ fontSize: '12px', color: '#2563eb', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <Sparkles size={14} /> 선택된 통화 회수 내용이 자동 입력되었습니다. 회수 장비 및 일자를 확인 후 등록하십시오.
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setSelectedDraftId(null)}
+                  style={{ fontSize: '11px', color: 'var(--text-muted)', background: 'transparent', border: 'none', cursor: 'pointer', textDecoration: 'underline' }}
+                >
+                  선택 해제
+                </button>
+              </div>
+            )}
 
             {selectedContractId ? (
               <form onSubmit={handleSalesSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
@@ -851,9 +1035,16 @@ export const SmartReturn: React.FC = () => {
 
               </form>
             ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '360px', color: 'var(--text-muted)' }}>
-                <Shield size={48} style={{ strokeWidth: 1.2, marginBottom: '12px' }} />
-                <span>왼쪽 계약 목록에서 회수 요청 대상을 선택해 주세요.</span>
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '360px', color: 'var(--text-muted)', textAlign: 'center', gap: '8px' }}>
+                <Shield size={48} style={{ strokeWidth: 1.2, marginBottom: '8px', color: selectedDraftId ? 'var(--primary)' : 'var(--text-muted)' }} />
+                <span style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-main)' }}>
+                  {selectedDraftId ? '통화 회수 초안이 선택되었습니다.' : '왼쪽 계약 목록에서 회수 요청 대상을 선택해 주세요.'}
+                </span>
+                {selectedDraftId && (
+                  <span style={{ fontSize: '12px', color: 'var(--primary)', fontWeight: 600 }}>
+                    왼쪽 계약 목록에서 일치하는 공사 현장 계약을 클릭하면 세부 설정이 즉시 완성됩니다.
+                  </span>
+                )}
               </div>
             )}
           </div>

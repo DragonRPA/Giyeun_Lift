@@ -1,8 +1,9 @@
 // src/pages/SmartAsRequest.tsx
-import React, { useState, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useApp } from '../context/AppContext';
 import { db } from '../services/db';
-import { Wrench, Send, AlertTriangle, CheckCircle2, Search, Building2, MapPin, Phone, User, Tag, HelpCircle } from 'lucide-react';
+import { fetchMyDrafts, DraftDispatchOrder, discardDraft } from '../services/callUploadService';
+import { Wrench, Send, AlertTriangle, CheckCircle2, Search, Building2, MapPin, Phone, User, Tag, HelpCircle, PhoneCall, Sparkles, Clock, Check } from 'lucide-react';
 
 const QUICK_ISSUE_PRESETS = [
   '협착 방지봉 단선 및 파손',
@@ -40,6 +41,88 @@ export const SmartAsRequest: React.FC = () => {
   const showToast = (text: string, type: 'success' | 'error' = 'success') => {
     setToastMessage({ type, text });
     setTimeout(() => setToastMessage(null), 3500);
+  };
+
+  // ── 통화 녹음 초안 수신 큐 상태 ──
+  const [asDrafts, setAsDrafts] = useState<DraftDispatchOrder[]>([]);
+  const [selectedDraftId, setSelectedDraftId] = useState<string | null>(null);
+
+  // 통화 초안 로드
+  const loadAsDrafts = async () => {
+    try {
+      const list = await fetchMyDrafts();
+      const asFiltered = list.filter(d => {
+        const isAsContext = (d.context || []).some(c => (c as any) === 'FIELD_AS');
+        const hasAsKeywords = /고장|as|수리|안됨|안 됨|멈춤|누유|에러|점검|파손|부저|레버|오작동|작동불가|스위치|단선/i.test(d.note || '');
+        return isAsContext || hasAsKeywords;
+      });
+      setAsDrafts(asFiltered);
+    } catch {
+      // 로컬/오프라인 무음 방어
+    }
+  };
+
+  useEffect(() => {
+    loadAsDrafts();
+  }, []);
+
+  // 통화 초안 클릭 시 폼에 100% 자동 주입 (Auto Injection)
+  const handleApplyDraft = (draft: DraftDispatchOrder) => {
+    setSelectedDraftId(draft.id);
+
+    // 1. 고객사 매핑
+    const custRaw = draft.customerName?.value?.trim() || '';
+    if (custRaw) {
+      const matchedCustomer = customers.find(c => 
+        c.name.toLowerCase().includes(custRaw.toLowerCase()) ||
+        custRaw.toLowerCase().includes(c.name.toLowerCase())
+      );
+      if (matchedCustomer) {
+        setSelectedCustomerId(matchedCustomer.id);
+
+        // 2. 현장 매핑
+        const siteRaw = draft.siteName?.value?.trim() || '';
+        const customerSites = sites.filter(s => s.customerId === matchedCustomer.id);
+        const matchedSite = customerSites.find(s => 
+          s.name.toLowerCase().includes(siteRaw.toLowerCase()) ||
+          siteRaw.toLowerCase().includes(s.name.toLowerCase())
+        );
+        if (matchedSite) {
+          setSelectedSiteId(matchedSite.id);
+        }
+      }
+    }
+
+    // 3. 연락처 & 접수자 매핑
+    if (draft.contactPerson?.value) setReporterName(draft.contactPerson.value);
+    if (draft.contactPhone) setReporterContact(draft.contactPhone);
+
+    // 4. 고장 증상 및 에러코드 파싱
+    const noteText = draft.note || '';
+    setIssueDescription(noteText);
+
+    // 에러코드 정규식 추출 (예: LD, U038 등)
+    const errMatch = noteText.match(/\b([A-Z]{1,3}\s*[-_]?\s*\d{2,4})\b/i);
+    if (errMatch) {
+      setErrorCode(errMatch[1].toUpperCase());
+      setSelectedCategory('에러코드');
+    } else if (/방지봉|감지봉|협착/i.test(noteText)) {
+      setSelectedCategory('방지봉/협착');
+    } else if (/상승|하강/i.test(noteText)) {
+      setSelectedCategory('상하강불량');
+    } else if (/배터리|충전/i.test(noteText)) {
+      setSelectedCategory('충전/전원');
+    } else if (/오일|누유/i.test(noteText)) {
+      setSelectedCategory('오일누유');
+    } else if (/키박스|스위치/i.test(noteText)) {
+      setSelectedCategory('키박스/스위치');
+    }
+
+    if (draft.urgency === 'HIGH') {
+      setPriority('URGENT');
+    }
+
+    showToast(`[${draft.customerName?.value || '통화'}] 내용이 AS 접수 폼에 자동 입력되었습니다.`);
   };
 
   // ─── [Gutenberg Z-패턴 4단계 최하단 현장 AS 접수 현황 대차대조식 검증] ───
@@ -127,6 +210,16 @@ export const SmartAsRequest: React.FC = () => {
       });
       await db.awaitPendingWrites();
 
+      if (selectedDraftId) {
+        try {
+          await discardDraft(selectedDraftId);
+          setAsDrafts(prev => prev.filter(d => d.id !== selectedDraftId));
+          setSelectedDraftId(null);
+        } catch {
+          // 조용히 방어
+        }
+      }
+
       setSubmitSuccessTicket(ticket);
       showToast(`[${finalAssetNo}] 현장 AS 의뢰가 접수되었습니다.`);
     } catch (err: any) {
@@ -146,10 +239,11 @@ export const SmartAsRequest: React.FC = () => {
     setErrorCode('');
     setPriority('NORMAL');
     setSubmitSuccessTicket(null);
+    setSelectedDraftId(null);
   };
 
   return (
-    <div style={{ padding: '24px', maxWidth: '1000px', margin: '0 auto', position: 'relative' }}>
+    <div style={{ padding: '20px 24px', maxWidth: '1440px', margin: '0 auto', position: 'relative' }}>
       {/* 🔔 인앱 토스트 알림 (헌장 5.2) */}
       {toastMessage && (
         <div style={{
@@ -168,32 +262,34 @@ export const SmartAsRequest: React.FC = () => {
           {toastMessage.text}
         </div>
       )}
-      {/* 타이틀 및 헤더 */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '24px', borderBottom: '2px solid #e2e8f0', paddingBottom: '16px' }}>
+      {/* 타이틀 및 헤더 (헌장 3.1 무수식어 건조 표준) */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px', borderBottom: '2px solid #e2e8f0', paddingBottom: '14px' }}>
         <div>
-          <h1 style={{ fontSize: '20px', fontWeight: 'bold', color: 'var(--text-main)', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <Wrench size={22} color="var(--primary)" />
-            현장 AS 접수
+          <h1 style={{ fontSize: '18px', fontWeight: 'bold', color: 'var(--text-main)', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <Wrench size={20} color="var(--primary)" />
+            AS 요청 접수
           </h1>
           <p style={{ margin: '4px 0 0 0', fontSize: '12px', color: 'var(--text-secondary)' }}>
-            영업사원 및 고객 유선 접수 건 AS팀 신속 의뢰 대장
+            통화 녹음 AI 파싱 및 현장 고장 접수 전용 스튜디오
           </p>
         </div>
-        <button
-          onClick={() => setActiveTab('field_as')}
-          style={{
-            padding: '8px 14px',
-            backgroundColor: 'var(--bg-secondary)',
-            border: '1px solid var(--border-color)',
-            borderRadius: '6px',
-            fontSize: '13px',
-            color: 'var(--text-secondary)',
-            cursor: 'pointer',
-            fontWeight: 600
-          }}
-        >
-          AS 현황 대장 이동 ➔
-        </button>
+        <div style={{ display: 'flex', gap: '8px' }}>
+          <button
+            onClick={() => setActiveTab('field_as')}
+            style={{
+              padding: '7px 14px',
+              backgroundColor: 'var(--bg-secondary)',
+              border: '1px solid var(--border-color)',
+              borderRadius: '6px',
+              fontSize: '12.5px',
+              color: 'var(--text-secondary)',
+              cursor: 'pointer',
+              fontWeight: 700
+            }}
+          >
+            현장 AS 관리 이동 ➔
+          </button>
+        </div>
       </div>
 
       {submitSuccessTicket ? (
@@ -219,13 +315,13 @@ export const SmartAsRequest: React.FC = () => {
                 cursor: 'pointer'
               }}
             >
-              추가 AS 의뢰 작성
+              추가 AS 접수하기
             </button>
             <button
               onClick={() => setActiveTab('field_as')}
               style={{
                 padding: '10px 20px',
-                backgroundColor: '#2563eb',
+                backgroundColor: 'var(--primary)',
                 border: 'none',
                 borderRadius: '6px',
                 fontSize: '14px',
@@ -234,12 +330,110 @@ export const SmartAsRequest: React.FC = () => {
                 cursor: 'pointer'
               }}
             >
-              AS 출동 스튜디오에서 확인
+              현장 AS 관리 대장 이동
             </button>
           </div>
         </div>
       ) : (
-        <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+        /* ── 헌장 3.6 마스터-디테일 스튜디오 레이아웃 ── */
+        <div style={{ display: 'flex', gap: '18px', alignItems: 'flex-start' }}>
+          {/* 좌측 Master: 통화 접수 AS 대기 큐 (너비 360px 고정) */}
+          <div style={{
+            width: '360px', flexShrink: 0, display: 'flex', flexDirection: 'column', gap: '10px',
+            backgroundColor: 'var(--bg-card)', border: '1px solid var(--border-color)', borderRadius: '10px',
+            padding: '14px', boxSizing: 'border-box'
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <h3 style={{ fontSize: '13px', fontWeight: 800, margin: 0, display: 'flex', alignItems: 'center', gap: '6px', whiteSpace: 'nowrap' }}>
+                <PhoneCall size={15} /> 통화 접수 대기 ({asDrafts.length}건)
+              </h3>
+              <button
+                onClick={loadAsDrafts}
+                style={{ fontSize: '11px', color: 'var(--primary)', background: 'transparent', border: 'none', cursor: 'pointer', fontWeight: 700 }}
+              >
+                새로고침
+              </button>
+            </div>
+
+            {asDrafts.length === 0 ? (
+              <div style={{ padding: '30px 10px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '12px' }}>
+                대기 중인 통화 AS 초안이 없습니다.<br />
+                우측 폼에서 직접 수동 접수하십시오.
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '620px', overflowY: 'auto' }}>
+                {asDrafts.map(d => {
+                  const isSelected = selectedDraftId === d.id;
+                  return (
+                    <div
+                      key={d.id}
+                      onClick={() => handleApplyDraft(d)}
+                      style={{
+                        padding: '10px 12px', borderRadius: '8px', cursor: 'pointer', transition: 'all 0.15s ease',
+                        backgroundColor: isSelected ? 'rgba(59,130,246,0.12)' : 'var(--bg-body)',
+                        border: isSelected ? '1.5px solid var(--primary)' : '1px solid var(--border-color)',
+                        display: 'flex', flexDirection: 'column', gap: '4px'
+                      }}
+                    >
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span style={{ fontSize: '12.5px', fontWeight: 800, color: 'var(--text-primary)' }}>
+                          {d.customerName?.value || '고객사 미상'}
+                        </span>
+                        <span style={{
+                          fontSize: '10px', padding: '1px 5px', borderRadius: '4px', fontWeight: 800,
+                          backgroundColor: d.urgency === 'HIGH' ? 'rgba(239,68,68,0.15)' : 'rgba(59,130,246,0.15)',
+                          color: d.urgency === 'HIGH' ? '#ef4444' : '#2563eb'
+                        }}>
+                          {d.urgency === 'HIGH' ? '🚨 긴급' : '일반'}
+                        </span>
+                      </div>
+
+                      <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
+                        현장: {d.siteName?.value || '현장 미상'} {d.contactPerson?.value ? `· ${d.contactPerson.value}` : ''}
+                      </div>
+
+                      {d.note && (
+                        <div style={{
+                          fontSize: '11.5px', color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis',
+                          display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', lineHeight: '1.4'
+                        }}>
+                          {d.note}
+                        </div>
+                      )}
+
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '4px', fontSize: '10.5px', color: 'var(--text-muted)' }}>
+                        <span>{d.createdAt?.slice(5, 16) || ''}</span>
+                        <span style={{ color: 'var(--primary)', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: '2px' }}>
+                          <Sparkles size={11} /> 1-클릭 꽂아넣기 ➔
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* 우측 Detail: AS 접수 및 상세 검토 폼 (flex: 1) */}
+          <div style={{ flex: 1, minWidth: 0 }}>
+            {selectedDraftId && (
+              <div style={{
+                backgroundColor: 'rgba(59,130,246,0.08)', border: '1px solid rgba(59,130,246,0.25)', borderRadius: '8px',
+                padding: '8px 14px', marginBottom: '14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center'
+              }}>
+                <span style={{ fontSize: '12px', color: '#2563eb', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <Sparkles size={14} /> 선택된 통화 내용이 폼에 자동 입력되었습니다. 미비한 점을 확인 후 접수 확정하십시오.
+                </span>
+                <button
+                  onClick={handleReset}
+                  style={{ fontSize: '11px', color: 'var(--text-muted)', background: 'transparent', border: 'none', cursor: 'pointer', textDecoration: 'underline' }}
+                >
+                  초기화
+                </button>
+              </div>
+            )}
+
+            <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
           {/* 1. 현장 및 대상 장비 스코핑 카드 */}
           <div style={{ backgroundColor: 'var(--bg-card)', border: '1px solid var(--border-color)', borderRadius: '10px', padding: '20px', boxShadow: 'var(--shadow-sm)' }}>
             <h3 style={{ fontSize: '15px', fontWeight: 'bold', color: 'var(--text-main)', margin: '0 0 16px 0', display: 'flex', alignItems: 'center', gap: '6px' }}>
@@ -618,6 +812,8 @@ export const SmartAsRequest: React.FC = () => {
             </button>
           </div>
         </form>
+          </div>
+        </div>
       )}
       {/* ⚖️ Gutenberg Z-패턴 4단계 최하단 현장 AS 접수 대차대조식 검증 바 (헌장 3.5) */}
       <div style={{

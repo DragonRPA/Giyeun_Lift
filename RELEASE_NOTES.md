@@ -1,3 +1,42 @@
+## [v1.9.5.Build.2] - 2026-09-06 20:55
+
+### 🎙️ [도메인 본질 목적 재정립: 통화 녹음 초안 1:1 라우팅 꽂아넣기 파이프라인 완성]
+
+#### 1. 개편 배경 및 6대 에이전트(PM·영업·배차·UIUX·엔지니어·감사) 생각의 사슬(CoT) 결론
+- **단일 UI 만능주의 폐기**: 한 화면(`smart_dispatch4.tsx`)에 출고, 대차, 회수, 현장 AS를 모두 우겨넣었던 구조적 모순 전수 검수 및 폐기
+- **통화 파일의 본질 목표 정의**: "30초~1분의 통화 녹음으로 번거로운 타이핑 없이 고객사, 현장, 대상장비, 고장증상/회수요청, 일자, 연락처가 각 업무 화면의 대기 큐에 꽂혀 즉시 조치되도록 하는 것"
+- **5대 도메인 1:1 완벽 격리**:
+  1. 출고의뢰 (`smart_dispatch4`): 순수 출고 및 교체(대차) 배차의뢰 전용
+  2. 현장 AS (`SmartAsRequest`): 고장 접수 및 정비 출동 티켓 발행 전용
+  3. 회수 관리 (`smart_return`): 현장 장비 회수(INBOUND) 배차의뢰 발행 전용
+  4. 배차 관리 (`TruckDispatch`): 배차 협의 및 운송료 정산 전용
+  5. 전대/임차 (`rent_assets`): 원사 장비 조달 협의 전용
+
+#### 2. `smart_dispatch4.tsx` — 순수 출고/대차 전용화 및 찌꺼기 로직 전수 폐기
+- `CallContext`에서 `FIELD_AS`(현장 AS) 및 `RETURN`(회수 요청) 태그 영구 제거
+- `CONTEXT_OPTIONS`를 순수 3종(`NEW_CUSTOMER`, `ADDITIONAL`, `EXCHANGE`)으로 정예화
+- `skipEquip` 분기 및 임시 우회 로직 완전 삭제 (출고 장비 선택 필수 원칙 100% 강제)
+- 통화 초안 수신 큐에서 순수 3종 외 타 도메인 의뢰 자동 차단 격리
+
+#### 3. `SmartAsRequest.tsx` — 통화 접수 AS 대기 큐 & 마스터-디테일 스튜디오 완성
+- `fetchMyDrafts`, `DraftDispatchOrder`, `discardDraft` 파이프라인 연동
+- 좌측 360px 마스터: 통화 접수 AS 대기 큐 탑재 (고객사명, 긴급도 뱃지, 현장명, 연락처, 통화요약)
+- **1-클릭 꽂아넣기(`handleApplyDraft`)**:
+  - 고객사/현장 자동 매칭 및 폼 입력
+  - 장비번호 자동 인식 또는 해당 현장 자산 선택지 포커싱
+  - 고장 증상 및 에러코드, 긴급도 자동 꽂아넣기
+- 티켓 발행 완료 시 `discardDraft(selectedDraftId)`로 초안 자동 처리 및 큐 정리
+
+#### 4. `smart_return.tsx` — 통화 접수 회수 대기 큐 & 자동 매핑 체계 완성
+- 좌측 검색 패널 상단에 `통화 접수 회수 대기 큐` 탑재
+- **1-클릭 꽂아넣기(`handleApplyReturnDraft`)**:
+  - 고객사/현장 일치 계약 자동 선택(`selectedContractId`)
+  - 계약 체결 자산 전체 자동 선택(`selectedAssetIds`)
+  - 회수 예정일자(`returnDate`), 희망시간(`loadingTime`), 현장 연락처(`contactName`, `contactPhone`), 비고(`note`) 자동 꽂아넣기
+- 회수 의뢰 등록 확정 시 `discardDraft(selectedDraftId)`로 초안 자동 처리 및 큐 정리
+
+---
+
 ## [v1.9.5.Build.1] - 2026-09-06 20:40
 
 ### 🚚 [배차협의 & 전대임차협의 본래 메뉴 이동 및 도메인 전용 UI 완전 재구성]

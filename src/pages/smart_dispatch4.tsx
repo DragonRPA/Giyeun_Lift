@@ -38,9 +38,7 @@ import './smart_dispatch4.css';
 type CallContext =
   | 'NEW_CUSTOMER'
   | 'ADDITIONAL'
-  | 'EXCHANGE'
-  | 'RETURN'
-  | 'FIELD_AS';
+  | 'EXCHANGE';
 
 type ConfidenceLevel = 'HIGH' | 'MEDIUM' | 'LOW' | 'MISSING';
 
@@ -91,8 +89,6 @@ const CONTEXT_OPTIONS: { id: CallContext; label: string; color: string }[] = [
   { id: 'ADDITIONAL',     label: '현장 출고',       color: '#2563eb' },
   { id: 'NEW_CUSTOMER',   label: '신규고객 출고',   color: '#7c3aed' },
   { id: 'EXCHANGE',       label: '교체(대차)',       color: '#0891b2' },
-  { id: 'RETURN',         label: '회수 요청',       color: '#dc2626' },
-  { id: 'FIELD_AS',       label: '현장 AS',         color: '#d97706' },
 ];
 
 const FT_GROUPS = ['19ft', '26ft', '32ft', '33ft', '40ft', '특수/기타'];
@@ -209,7 +205,7 @@ export const SmartDispatch4: React.FC = () => {
         const meta = parseNoteMeta(d.note);
         return {
           id:                 d.id,
-          context:            (d.context || []).filter(c => c !== 'TRANSPORT_NEGO' && c !== 'SUBLEASE_NEGO') as CallContext[],
+          context:            (d.context || []).filter(c => c === 'ADDITIONAL' || c === 'NEW_CUSTOMER' || c === 'EXCHANGE') as CallContext[],
           customerName:       { ...d.customerName, confirmed: false },
           siteName:           { ...d.siteName,     confirmed: false },
           siteAddress:        meta.siteAddress,
@@ -250,7 +246,7 @@ export const SmartDispatch4: React.FC = () => {
           const meta = parseNoteMeta(newDraft.note);
           const mapped: DraftOrder = {
             id:                 newDraft.id,
-            context:            (newDraft.context || []).filter(c => c !== 'TRANSPORT_NEGO' && c !== 'SUBLEASE_NEGO') as CallContext[],
+            context:            (newDraft.context || []).filter(c => c === 'ADDITIONAL' || c === 'NEW_CUSTOMER' || c === 'EXCHANGE') as CallContext[],
             customerName:       { ...newDraft.customerName, confirmed: false },
             siteName:           { ...newDraft.siteName,     confirmed: false },
             siteAddress:        meta.siteAddress,
@@ -637,12 +633,11 @@ export const SmartDispatch4: React.FC = () => {
 
   const validationRules = useMemo<ValidationRule[]>(() => {
     const hasContext = selectedContext !== null;
-    const skipEquip = selectedContext === 'RETURN' || selectedContext === 'FIELD_AS';
 
     const custName = isNewCustomerMode ? newCustomerName.trim() : (selectedCustomer?.name || '');
     const siteNameVal = (selectedSite?.name || newSiteName).trim();
     const addrVal = (selectedSite?.address || newSiteAddress || (isNewCustomerMode ? newCustomerAddress : '')).trim();
-    const hasEquip = hasContext && (skipEquip || (equipments.length > 0 && equipments.every(e => e.modelName && e.qty > 0)));
+    const hasEquip = hasContext && (equipments.length > 0 && equipments.every(e => e.modelName && e.qty > 0));
     const hasDate = !!loadingDate.trim();
     const hasTime = loadingTimeType === 'ASAP' || loadingTimeType === 'MORNING' || loadingTimeType === 'AFTERNOON' || (loadingTimeType === 'EXACT' && !!loadingTimeVal.trim());
     const hasContactPerson = !!contactPerson.trim();
@@ -713,11 +708,9 @@ export const SmartDispatch4: React.FC = () => {
         status: hasEquip ? 'VALID' : 'INVALID',
         currentVal: !hasContext
           ? '(업무유형 먼저 선택)'
-          : skipEquip
-            ? '장비선택 생략 맥락'
-            : totalQty > 0
-              ? `${equipments.map(e => `${e.modelName}×${e.qty}`).join(', ')} (총 ${totalQty}대)`
-              : '(장비 미선택)',
+          : totalQty > 0
+            ? `${equipments.map(e => `${e.modelName}×${e.qty}`).join(', ')} (총 ${totalQty}대)`
+            : '(장비 미선택)',
         hint: '최소 1대 이상 규격 및 수량 선택',
       },
       {

@@ -110,12 +110,10 @@ const SAFETY_OPTION_LIST = [
 
 const getModelsByFt = (ft: string) => {
   return EQUIPMENT_SPEC_MATRIX.filter(m => {
-    if (ft === '19ft') return m.modelName.includes('19');
-    if (ft === '26ft') return m.modelName.includes('26');
-    if (ft === '32ft') return m.modelName.includes('32');
-    if (ft === '33ft') return m.modelName.includes('33');
-    if (ft === '40ft') return m.modelName.includes('40');
-    return !m.modelName.match(/19|26|32|33|40/);
+    if (ft === '특수/기타') {
+      return !['19ft', '26ft', '32ft', '33ft', '40ft'].includes(m.ft);
+    }
+    return m.ft === ft;
   });
 };
 
@@ -336,8 +334,8 @@ export const SmartDispatch4: React.FC = () => {
   const [pasteZoneOpen, setPasteZoneOpen] = useState(false);
   const [pasteText, setPasteText] = useState('');
 
-  // ── 블록 열림 상태 (전체 동시 열람 지원 & 개별 토글) ──────────────────────
-  const [openBlocks, setOpenBlocks] = useState<Set<BlockId>>(new Set<BlockId>(['WHO', 'WHERE', 'WHAT', 'WHEN', 'SAFETY_COST']));
+  // ── 블록 열림 상태 (기본 접힘 & 개별 토글 & 전체 펼치기/접기) ──────────
+  const [openBlocks, setOpenBlocks] = useState<Set<BlockId>>(new Set<BlockId>([]));
   const toggleBlock = (id: BlockId) => setOpenBlocks(prev => {
     const n = new Set(prev);
     if (n.has(id)) n.delete(id); else n.add(id);

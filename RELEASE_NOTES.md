@@ -1,3 +1,93 @@
+## [v1.9.3.Build.4] - 2026-09-06 19:45
+
+### 📱 [APK 2차 설치 오류 근본 해결] "앱파일에 문제가 있습니다" — Vercel CDN 구형 Mock APK 서빙 차단, minSdk24·dataSync FGS·v1+v2+v3 3중 서명 정규 APK 재빌드, no-cache 강제 및 캐시버스터 URL 적용
+
+#### 개발 배경
+- 사용자 피드백: "apk 다운로드 후 설치, 또다시 실패 '앱파일에 문제가 있습니다'"
+- 원인 규명:
+  1. v1.9.3.Build.2에서 정규 APK를 로컬 재빌드(`25,123 bytes`)했으나 `git push`가 이루어지지 않아 Vercel CDN이 구형 Mock APK(`24,701 bytes`)를 그대로 캐시 서빙 중이었음.
+  2. `vercel.json`에 APK Cache-Control 헤더가 `public, max-age=31536000, immutable`로 설정되어 있어 Vercel CDN이 구형 파일을 1년간 캐시하도록 지시된 상태였음.
+  3. 다운로드 URL에 캐시버스터 쿼리 파라미터가 없어 브라우저 캐시도 구형 파일을 재사용.
+
+#### 조치 및 구현 내역
+1. **Vercel CDN 캐시 무효화**:
+   - `vercel.json` APK Cache-Control을 `no-cache, no-store, must-revalidate`로 전면 변경하여 Vercel CDN이 매 요청마다 최신 파일을 서빙하도록 강제.
+2. **다운로드 URL 캐시버스터 추가**:
+   - `src/mobile/components/MobileApkMonitorModal.tsx` 다운로드 href에 `?v=${release.version}` 쿼리 추가하여 버전 변경 시 브라우저 캐시 자동 무효화.
+3. **APK 재빌드 — minSdk24·dataSync FGS·v1+v2+v3 3중 서명**:
+   - `scripts/build_android_apk.cjs`: `minSdkVersion 24`, `foregroundServiceType: dataSync`, `--v1-signing-enabled true --min-sdk-version 24` 명시 추가.
+   - 빌드 결과: `v1 JAR signing true, v2 scheme true, v3 scheme true, Number of signers: 1` 3중 서명 완료.
+4. **서빙 메타데이터 갱신**:
+   - `src/services/workStatusService.ts`: `FALLBACK_APK_RELEASE.fileSize` → `25123`으로 갱신.
+
+#### 검증 결과
+- `apksigner verify --verbose`: v1/v2/v3 3중 서명 확인, `Number of signers: 1` 정규 패키지 검증 통과.
+- `scripts/wtt_webapp_apk_attendance_10.cjs`: 10/10 PASS (100%).
+- `npm run build`: 0 Error 클린 번들 완료.
+
+---
+
+## [v1.9.3.Build.3] - 2026-09-06 19:25
+
+### 🖥️ [출고의뢰 통합 스튜디오 UI/UX 전면 개선] 메뉴 진입 시 5대 블록 기본 접힘(0/5) 전환, 한 화면 강제 압축 해제, 고밀도 무압축 상하스크롤바(10px) 탑재, 높이 반응형 대응 및 장비 모델 스펙 매트릭스 필터 정합성 확보
+
+#### 개발 배경
+- 사용자 피드백: "메뉴가 열릴 때 모든 항목이 접혀있지 않고 열려 있어. 한 화면에 모두 집어넣으려고 하다가 보여져야 할 객체마저 안보여. UI 더 유심히 확인하고 상하스크롤을 추가해."
+- 원인 분석:
+  1. 기존 `openBlocks` 상태가 5대 블록 전수 열림(`['WHO', 'WHERE', 'WHAT', 'WHEN', 'SAFETY_COST']`)으로 초기화되어 메뉴 진입 즉시 모든 블록이 화면을 가득 채움.
+  2. 한 화면(100vh)에 억지로 끼워 넣기 위해 컨테이너 강제 `overflow: hidden`, 입력창 높이 32px 축소 및 슬림 스크롤바(6px, 어두운 색상) 적용으로 인해 사용자가 스크롤의 존재를 인지하기 어렵고, 하차 희망일시/안전옵션 체크박스 등 필수 객체가 화면 아래로 밀려 시각적으로 보이지 않는 현상 발생.
+  3. `getModelsByFt`가 모델명의 단순 문자열 포함(`includes('19')`) 검사로 구현되어 있어 19ft 규격의 `JCPT0608`이 누락되거나 `SJ-3219`가 32ft로 오인되는 문제 내재.
+
+#### 조치 및 구현 내역
+1. **메뉴 진입 시 블록 기본 접힘(0/5) 전환**:
+   - `openBlocks` 초기값을 `new Set<BlockId>()`(빈 Set)으로 설정하여 메뉴 진입 시 5대 블록이 깔끔하게 모두 접힌 상태(`5단계 의뢰 서식 (0/5 블록 열림) [전체 블록 펼치기]`)로 시작.
+   - 사용자가 필요한 블록만 개별 클릭하여 단계별로 펼쳐 작성할 수 있으며, 거래처 선택 시 `WHERE`, 현장 선택 시 `WHAT` 블록이 자동 확장되는 직관 동선 유지.
+2. **고밀도 무압축 상하 스크롤바(10px) 탑재 및 강제 압축 해제**:
+   - `.dispatch4-left-pane` 및 직계 자식 요소에 `flex-shrink: 0`을 명시하여 여러 블록을 동시에 펼쳐도 내부 입력 필드가 찌그러지거나 숨겨지지 않고 본래 규격을 100% 보존.
+   - 슬림 6px 스크롤바를 **시인성이 극대화된 10px 표준 스크롤바**(`.dispatch4-scrollbar`)로 전면 교체 (배경 `#0f172a`, 썸 `#475569`, 호버 `#3b82f6`, `scrollbar-width: thin; scroll-behavior: smooth`).
+   - 입력 필드 높이를 32px에서 **표준 36px**로 복원하여 타이핑 가독성 및 클릭 편의성 향상.
+   - 블록 헤더 높이 42px 확보 및 `flex-shrink: 0` 적용으로 접힘/열림 토글 클릭 영역 강화.
+3. **낮은 화면 높이(노트북/태블릿) 반응형 적응 지원**:
+   - `@media (max-height: 720px)` 미디어 쿼리를 신설하여 1366x768 등 낮은 해상도 환경에서도 컨테이너가 잘리지 않고 메인 뷰포트와 함께 자연스러운 상하 스크롤 동작 보장.
+4. **출고 장비 스펙 매트릭스 필터 정합성 확보**:
+   - `getModelsByFt(ft)`를 `EQUIPMENT_SPEC_MATRIX`의 실제 `m.ft === ft` 속성 기반 1:1 정밀 필터링으로 개선하여 `19ft` 클릭 시 Genie `GS-1930`, Skyjack `SJ-3219`, Dingli `JCPT0608` 3개 모델이 완벽 노출되도록 보장.
+
+#### 검증 결과
+- `WTT 100회 도메인 관통 스트레스 테스트`: 100/100 PASS (100% 무결점).
+- `tsc -b && vite build`: 0 Error 클린 번들 확인.
+
+---
+
+## [v1.9.3.Build.2] - 2026-09-06 19:15
+
+### 📱 [모바일 정규 APK 배포] 웹앱 다운로드 APK 설치 오류('패키지 파싱 오류') 근본 원인 해결 및 안드로이드 공식 SDK 툴체인(aapt2+javac+d8+zipalign+apksigner) 기반 정규 네이티브 안드로이드 패키지(KiyeunCallCapture.apk) 원스톱 빌드·서빙 파이프라인 완비
+
+#### 개발 배경
+- 사용자가 모바일 웹앱에서 `KiyeunCallCapture.apk` 다운로드 후 안드로이드 폰에 설치를 실행할 때 "패키지를 파싱하는 중 문제가 발생했습니다"(`INSTALL_PARSE_FAILED_BAD_MANIFEST`) 오류가 발생하여 설치가 차단됨.
+- 원인 규명: 기존 파일이 파일 존재 검증용으로 텍스트 파일들을 단순 압축한 모의(Mock) 파일이었음. 안드로이드 OS `PackageInstaller`는 바이너리 AXML, Dalvik 실행 바이트코드, 디지털 서명이 결여된 파일을 즉시 거부함.
+
+#### 조치 및 구현 내역
+1. **정규 네이티브 안드로이드 앱 아키텍처 완성 (`KiyeunCallCapture/android/`)**:
+   - `AndroidManifest.xml`: 바이너리 AXML 규격(API 26~34 호환), 통화 상태 감지(`READ_PHONE_STATE`, `READ_CALL_LOG`), 오디오 접근, 알림(`POST_NOTIFICATIONS`), 포그라운드 서비스 권한 완비.
+   - `MainActivity.java`: 고성능 하드웨어 가속 웹뷰 기반으로 ERP 모바일 웹앱(`https://kiyuen-lift.vercel.app`) 자동 로딩 및 통화 종료 인텐트 처리.
+   - `NativeBridge.java`: 웹앱 ↔ 네이티브 JavaScript Interface (`window.KiyeunNative.isInstalled()`, `clockIn()`, `clockOut()`).
+   - `AppWebViewClient.java` & `AppWebChromeClient.java`: 최상위 클래스 분리로 Dalvik 바이트코드 변환 완벽 호환.
+   - `CallDetectionService.java`: 안드로이드 8~14 알림 채널 규격 준수 상시 포그라운드 서비스 (`🟢 출근 중 — 통화 감지 활성` / `⚫ 대기 중`).
+   - `PhoneStateReceiver.java` & `BootReceiver.java`: 통화 연결 후 종료(`IDLE`) 감지 시 ERP 자동 연동 및 부팅 시 자동 재시작.
+2. **공식 SDK 툴체인 기반 원스톱 빌드 파이프라인 (`scripts/build_android_apk.cjs`)**:
+   - `aapt2 compile & link` ➔ `javac --release 8 -g:none` ➔ `d8.jar` Dalvik 바이트코드 변환 (`classes.dex`: 11,248 bytes) ➔ `zipalign -p 4` 4바이트 정렬 ➔ `apksigner.jar` 2048-bit RSA keystore 생성 및 v2+v3 전자서명.
+3. **웹앱 서빙 산출물 및 메타데이터 정합성 갱신**:
+   - `public/downloads/KiyeunCallCapture.apk` 및 `dist/downloads/KiyeunCallCapture.apk`를 정규 패키지(`25,123 bytes`)로 100% 교체.
+   - `src/services/workStatusService.ts`: `FALLBACK_APK_RELEASE.fileSize`를 `25123`으로 정규 갱신.
+
+#### 검증 결과
+- `apksigner verify --verbose`: `Verified using v2 scheme: true, v3 scheme: true, 1 signer` 정규 서명 검증 통과.
+- `aapt2 dump badging`: 패키지 `com.kiyeun.callcapture`, targetSdkVersion 34, application-label '기연 통화캡처', 0 Error 파싱 확인.
+- `scripts/wtt_webapp_apk_attendance_10.cjs`: 10/10 PASS (100%).
+- `npm run build`: 0 Error 클린 번들 완료.
+
+---
+
 ## [v1.9.3.Build.1] - 2026-09-06 19:05
 
 ### 🛡️ [출고의뢰 통합 스튜디오] 6대 전문 역할군(PM, 영업, 엔지니어, 감사, UI/UX, 배차) 89대 결함 발굴 및 전수 개편, 현장주소 누락 방어가드 해결, 하차시간 정상화, 대차 단일 배차 헌장 2.3 준수, 장비수량 직접입력, 체크박스 버블링 제거, window.confirm 팝업 영구 퇴출

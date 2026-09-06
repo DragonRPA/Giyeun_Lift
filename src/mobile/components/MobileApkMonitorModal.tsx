@@ -166,7 +166,7 @@ export const MobileApkMonitorModal: React.FC<MobileApkMonitorModalProps> = ({
 
             {/* 다운로드 실행 링크 */}
             <a
-              href={release.downloadUrl || '/downloads/KiyeunCallCapture.apk'}
+              href={`${release.downloadUrl || '/downloads/KiyeunCallCapture.apk'}?v=${encodeURIComponent(release.version || '1.0.0')}`}
               download="KiyeunCallCapture.apk"
               className="w-full py-2.5 px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-500 text-white shadow-lg shadow-blue-600/30 transition-all"
             >

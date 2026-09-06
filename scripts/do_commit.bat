@@ -1,3 +1,4 @@
+@echo off
 git add -A
-git commit -m "v0.7.0.Build.11: fix customer parsing mapping (BizRegNo vs Name) and skip header rows (2026-09-01 17:04)"
+git commit -m "v1.9.3.Build.3+Build.4: UI improvement and APK triple-signing no-cache deployment 2026-09-06"
 git push origin main

@@ -1,6 +1,51 @@
 # 개발 요구사항 임시 기록 (dev_temp.md)
 
 
+## [완료] 출고의뢰(통합) 메뉴 진입 시 5대 블록 기본 접힘(0/5) 전환, 한 화면 강제 압축 해제, 고밀도 무압축 상하스크롤바(10px) 탑재 및 높이 반응형 대응 (v1.9.3.Build.3)
+- **요구사항**:
+  - "메뉴가 열릴 때 모든 항목이 접혀있지 않고 열려 있어. 한 화면에 모두 집어넣으려고 하다가 보여져야 할 객체마저 안보여. UI 더 유심히 확인하고 상하스크롤을 추가해."
+- **근본 원인 분석**:
+  1. `openBlocks` 상태가 5대 블록 전체 열림(`['WHO', 'WHERE', 'WHAT', 'WHEN', 'SAFETY_COST']`)으로 설정되어 메뉴 열람 시 5개 블록이 일제히 펼쳐져 화면을 압도함.
+  2. 100vh 뷰포트 내에 강제로 모든 요소를 담기 위해 `.dispatch4-container`에 `overflow: hidden`, 입력 필드 32px 축소, 6px 미세 스크롤바가 적용되어 하차일정, 안전옵션 체크박스 등 핵심 컴포넌트가 화면 아래로 밀려 보이지 않는 현상 발생.
+- **조치 내역**:
+  1. `openBlocks` 기본값을 `new Set<BlockId>()`(빈 Set)으로 전환하여 메뉴 진입 시 깔끔하게 5대 블록이 접힌 상태(`5단계 의뢰 서식 (0/5 블록 열림) [전체 블록 펼치기]`)로 시작.
+  2. `.dispatch4-left-pane` 및 자식 블록 요소에 `flex-shrink: 0`을 적용하여 복수 블록 전개 시에도 내부 필드가 찌그러지지 않고 본래 높이 유지.
+  3. 좌측 폼에 시인성이 도드라지는 10px 표준 상하 스크롤바(`.dispatch4-scrollbar`, thumb: `#475569`, hover: `#3b82f6`) 탑재.
+  4. 입력창 높이를 표준 36px로 복원하고, 블록 헤더 42px 확보.
+  5. `@media (max-height: 720px)` 미디어 쿼리로 노트북/저해상도 화면에서의 자연스러운 상하 스크롤 보장.
+  6. `getModelsByFt`를 `EQUIPMENT_SPEC_MATRIX`의 실제 `ft` 속성 기반 1:1 매칭으로 전환하여 19ft 등 모든 규격별 장비 모델 목록 정상 표출.
+- **검증 결과**:
+  - `WTT 100회 도메인 관통 스트레스 테스트`: 100/100 PASS (100%).
+  - `npm run build`: 0 Error 성공.
+
+---
+
+## [완료] 모바일 웹앱 다운로드 APK 설치 오류('패키지 파싱 오류') 근본 원인 해결 및 정규 네이티브 안드로이드 APK (KiyeunCallCapture.apk) 원스톱 빌드·서빙 체계 완비 (v1.9.3.Build.2)
+- **요구사항**:
+  - "웹앱에서 다운받은 APK 설치시 오류발생"
+- **근본 원인 분석**:
+  1. 기존 `public/downloads/KiyeunCallCapture.apk` (24,701 bytes)는 텍스트 XML과 더미 바이트를 단순 압축한 모의(Mock) 파일로, 정규 안드로이드 바이너리(AXML 및 Dalvik bytecode)와 디지털 서명이 결여되어 있어 안드로이드 OS `PackageInstaller`에서 "패키지 파싱 오류"로 즉시 설치 차단됨.
+- **조치 내역**:
+  1. **정규 안드로이드 네이티브 소스 및 리소스 완성 (`d:\01.AntiGravity\KiyeunCallCapture\`)**:
+     - `AndroidManifest.xml`: 바이너리 AXML 규격 준수 (API 26~34 호환, `READ_PHONE_STATE`, `READ_CALL_LOG`, `POST_NOTIFICATIONS` 등).
+     - `MainActivity.java`: 고성능 하드웨어 가속 웹뷰 + JS 브릿지(`window.KiyeunNative.isInstalled()`, `clockIn()`, `clockOut()`).
+     - `AppWebViewClient.java` & `AppWebChromeClient.java`: 최상위 클래스 분리로 Dalvik 바이트코드 변환 무결성 보장.
+     - `CallDetectionService.java`: 안드로이드 8~14 알림 채널 규격 준수 상시 포그라운드 서비스 ("🟢 출근 중 — 통화 감지 활성").
+     - `PhoneStateReceiver.java` & `BootReceiver.java`: 통화 종료(`IDLE`) 감지 시 ERP 자동 연동 및 부팅 시 자동 재시작.
+  2. **SDK 공식 툴체인 기반 원스톱 빌드 파이프라인 구축 (`scripts/build_android_apk.cjs`)**:
+     - `aapt2 compile & link` ➔ `javac --release 8 -g:none` ➔ `d8` (Dalvik 바이트코드 변환, `classes.dex`: 11,248 bytes) ➔ `zipalign -p 4` (4바이트 정렬) ➔ `apksigner` (2048-bit RSA keystore, v2+v3 전자서명).
+     - `apksigner verify --verbose`: `Verified using v2 scheme: true, v3 scheme: true, 1 signer` 정규 인증 통과.
+     - `aapt2 dump badging`: `com.kiyeun.callcapture`, `sdkVersion: 26, targetSdkVersion: 34`, `application-label: '기연 통화캡처'` 0 에러 파싱 확인.
+  3. **웹앱 서빙 산출물 갱신**:
+     - `public/downloads/KiyeunCallCapture.apk` 및 `dist/downloads/KiyeunCallCapture.apk` 교체 완료 (25,123 bytes).
+     - `src/services/workStatusService.ts`: `FALLBACK_APK_RELEASE.fileSize` 25,123 bytes 정합성 갱신.
+  4. **WTT 10회 도메인 관통 스트레스 테스트 100% 전수 통과**:
+     - `scripts/wtt_webapp_apk_attendance_10.cjs`: 10/10 PASS (100%).
+  5. **Vite 프로덕션 빌드 0 Error 확인**:
+     - `cmd /c "npm run build"`: 성공.
+
+---
+
 ## [완료] 6대 전문 역할군(PM, 영업, 엔지니어, 감사, UI/UX, 배차) 89대 결함 발굴 및 출고의뢰(통합) 전수 개편 (v1.9.3.Build.1)
 - **요구사항**:
   - "이번엔 진상고객 배제하고, PM, 영업사원, 엔지니어, 감사(auditor), UIUX, 영업담당자, 배차담당자 투입해서 출고의뢰(통합) 메뉴의 실제 입력절차를 논의해보고, 논리오류와 기능오류 또는 충돌의 관점에거 각자 10개 이상의 문제점을 발굴한 후에 전수 명세서 작성. 전수 개편후 완료여부를 재검토하여 보고."

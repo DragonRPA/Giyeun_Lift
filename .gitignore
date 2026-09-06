@@ -36,3 +36,6 @@ agent/*bundle.js
 # public/downloads/ 내 대용량 바이너리만 제외, 소형 파일은 추적
 public/downloads/*.exe
 public/downloads/*.zip
+
+# Android 서명 키스토어 — 민감 정보, 절대 커밋 금지
+*.keystore

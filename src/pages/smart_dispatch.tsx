@@ -2,7 +2,8 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useApp } from '../context/AppContext';
 import { findCustomerByNormalizedName, STANDARD_SPECS, SpecItem } from '../services/db';
 import { isOptionsChangedFromSite } from '../services/voiceOrderDraftService';
-import { Zap, Clipboard, FileText, Copy, Printer, Braces, Plus, Trash2, RefreshCw, CheckCircle2, AlertTriangle, Settings, ShieldCheck } from 'lucide-react';
+import { SmartDispatchConversationalStudio, StudioSyncData } from '../components/SmartDispatchConversationalStudio';
+import { Zap, Clipboard, FileText, Copy, Printer, Braces, Plus, Trash2, RefreshCw, CheckCircle2, AlertTriangle, Settings, ShieldCheck, Sparkles } from 'lucide-react';
 
 interface EquipmentItem {
   modelName: string;
@@ -1097,6 +1098,85 @@ ${activeSpecs.map((s, idx) => `  ${idx + 1}. [적용] ${s.label}`).join('\n') ||
     }
   };
 
+  // 폼 전체 초기화 핸들러
+  const handleResetForm = () => {
+    setRawText('');
+    setContractNo('');
+    setCustomerName('');
+    setDispatchOverdueAcknowledged(false);
+    setSiteName('');
+    setSiteAddress('');
+    setSalespersonName('');
+    setSalespersonPhone('');
+    setSiteContactName('');
+    setSiteContactPhone('');
+    setSiteContactEmail('');
+    setBillingContactName('');
+    setBillingContactPhone('');
+    setStatementEmail('');
+    setTaxBillEmail('');
+    setLoadingTime('');
+    setUnloadingTime('');
+    setEquipments([{ modelName: '', qty: 1 }]);
+    setPaidOptions('');
+    setProtection('');
+    setCheckedSpecs({});
+    setInheritedFieldList([]);
+    setSaveOptionsToSite(true);
+    showToast('입력 폼이 초기화되었습니다.');
+  };
+
+  // 🎙️ 대화형 의뢰작성 스튜디오 실시간 동기화 핸들러 (Live Sync)
+  const handleStudioSync = (data: Partial<StudioSyncData>) => {
+    if (data.customerName !== undefined) setCustomerName(data.customerName);
+    if (data.siteName !== undefined) setSiteName(data.siteName);
+    if (data.siteAddress !== undefined) setSiteAddress(data.siteAddress);
+    if (data.siteContactName !== undefined) setSiteContactName(data.siteContactName);
+    if (data.siteContactPhone !== undefined) setSiteContactPhone(data.siteContactPhone);
+    if (data.equipments !== undefined && data.equipments.length > 0) setEquipments(data.equipments);
+    if (data.unloadingTime !== undefined) setUnloadingTime(data.unloadingTime);
+    if (data.paidOptions !== undefined) setPaidOptions(data.paidOptions);
+    if (data.protection !== undefined) setProtection(data.protection);
+    if (data.checkedSpecs !== undefined) setCheckedSpecs(prev => ({ ...prev, ...data.checkedSpecs }));
+    if (data.saveOptionsToSite !== undefined) setSaveOptionsToSite(data.saveOptionsToSite);
+
+    // 자동 상속 적용 (고객사명 / 현장명 기준)
+    if (data.customerName) {
+      const inherited = applyAutoInheritance(data.customerName, data.siteName || siteName, {
+        address: data.siteAddress || siteAddress,
+        salespersonName,
+        salespersonPhone,
+        siteContactName: data.siteContactName || siteContactName,
+        siteContactPhone: data.siteContactPhone || siteContactPhone,
+        siteContactEmail,
+        billingContactName,
+        billingContactPhone,
+        statementEmail,
+        taxBillEmail,
+        paidOptions: data.paidOptions || paidOptions,
+        protection: data.protection || protection,
+        checkedSpecs: data.checkedSpecs || checkedSpecs,
+        closing: data.closingDay || '',
+        payment: data.paymentDay || ''
+      });
+
+      if (inherited.address && !data.siteAddress) setSiteAddress(inherited.address);
+      if (inherited.salespersonName && !salespersonName) {
+        setSalespersonName(inherited.salespersonName);
+        setSalespersonPhone(inherited.salespersonPhone);
+      }
+      if (inherited.billingContactName && !billingContactName) {
+        setBillingContactName(inherited.billingContactName);
+        setBillingContactPhone(inherited.billingContactPhone);
+      }
+      if (inherited.taxBillEmail && !taxBillEmail) setTaxBillEmail(inherited.taxBillEmail);
+      if (inherited.statementEmail && !statementEmail) setStatementEmail(inherited.statementEmail);
+      if (inherited.inherited && inherited.inherited.length > 0) {
+        setInheritedFieldList(inherited.inherited);
+      }
+    }
+  };
+
   return (
     <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '20px' }}>
       
@@ -1201,46 +1281,66 @@ ${activeSpecs.map((s, idx) => `  ${idx + 1}. [적용] ${s.label}`).join('\n') ||
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '20px', alignItems: 'start' }}>
         
-        {/* 1단계: 레거시 통텍스트 입력 및 스마트 변환 */}
-        <div className="card" style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
-          <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', minHeight: '62px', flexWrap: 'wrap', gap: '8px' }}>
-            <h3 className="card-title" style={{ display: 'flex', alignItems: 'center', gap: '6px', margin: 0 }}>
-              <Clipboard size={16} className="text-primary" /> 1단계: 메신저 줄글 텍스트 복사/붙여넣기
-            </h3>
-            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-              <input
-                type="file"
-                ref={txtFileInputRef}
-                style={{ display: 'none' }}
-                accept=".txt,.log,.csv"
-                onChange={handleTextFileChange}
+        {/* 좌측 컬럼: 상단(대화형 의뢰작성) + 하단(메신저 줄글 텍스트 추출) 수직 2단 분할 */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+          
+          {/* [상단] 1-A단계: 대화형 의뢰작성 스튜디오 (음성·키보드 인터뷰 및 스마트 컨트롤러) */}
+          <div className="card">
+            <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', minHeight: '52px' }}>
+              <h3 className="card-title" style={{ display: 'flex', alignItems: 'center', gap: '6px', margin: 0 }}>
+                <Sparkles size={16} className="text-primary" /> 1-A단계: 대화형 의뢰작성 (음성·키보드 인터뷰)
+              </h3>
+            </div>
+            <div style={{ padding: '16px' }}>
+              <SmartDispatchConversationalStudio
+                onSyncToForm={handleStudioSync}
+                onResetAll={handleResetForm}
               />
-              <button
-                type="button"
-                className="btn-secondary"
-                onClick={() => txtFileInputRef.current?.click()}
-                style={{ display: 'flex', alignItems: 'center', gap: '4px', padding: '6px 12px', fontSize: '12.5px' }}
-              >
-                📂 텍스트 파일 불러오기
-              </button>
-              <button
-                type="button"
-                className="btn-primary"
-                onClick={handleParse}
-                style={{ display: 'flex', alignItems: 'center', gap: '4px', padding: '6px 12px', fontSize: '13px', fontWeight: 'bold' }}
-              >
-                <Zap size={14} /> 폼 데이터로 변환 (추출)
-              </button>
             </div>
           </div>
-          <div style={{ display: 'flex', flexDirection: 'column', flex: 1, gap: '12px' }}>
-            <textarea
-              style={{ flex: 1, minHeight: '380px', fontFamily: 'monospace', fontSize: '13px', lineHeight: '1.6', padding: '12px', resize: 'vertical' }}
-              value={rawText}
-              onChange={e => setRawText(e.target.value)}
-              placeholder="여기에 메신저로 복사한 출고 줄글 텍스트를 그대로 붙여넣으세요..."
-            />
+
+          {/* [하단] 1-B단계: 메신저 줄글 텍스트 복사/붙여넣기 (빠른 추출) */}
+          <div className="card" style={{ display: 'flex', flexDirection: 'column' }}>
+            <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', minHeight: '52px', flexWrap: 'wrap', gap: '8px' }}>
+              <h3 className="card-title" style={{ display: 'flex', alignItems: 'center', gap: '6px', margin: 0 }}>
+                <Clipboard size={16} className="text-primary" /> 1-B단계: 메신저 줄글 텍스트 복사/붙여넣기
+              </h3>
+              <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                <input
+                  type="file"
+                  ref={txtFileInputRef}
+                  style={{ display: 'none' }}
+                  accept=".txt,.log,.csv"
+                  onChange={handleTextFileChange}
+                />
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  onClick={() => txtFileInputRef.current?.click()}
+                  style={{ display: 'flex', alignItems: 'center', gap: '4px', padding: '5px 10px', fontSize: '12px' }}
+                >
+                  📂 파일 불러오기
+                </button>
+                <button
+                  type="button"
+                  className="btn-primary"
+                  onClick={handleParse}
+                  style={{ display: 'flex', alignItems: 'center', gap: '4px', padding: '5px 10px', fontSize: '12px', fontWeight: 'bold' }}
+                >
+                  <Zap size={14} /> 폼 데이터로 변환 (추출)
+                </button>
+              </div>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', flex: 1, gap: '12px', padding: '16px' }}>
+              <textarea
+                style={{ minHeight: '160px', fontFamily: 'monospace', fontSize: '12.5px', lineHeight: '1.5', padding: '10px', resize: 'vertical' }}
+                value={rawText}
+                onChange={e => setRawText(e.target.value)}
+                placeholder="여기에 메신저로 복사한 출고 줄글 텍스트를 그대로 붙여넣으세요..."
+              />
+            </div>
           </div>
+
         </div>
 
         {/* 2단계: 구조화 개별 입력 및 편집 폼 */}
@@ -1248,7 +1348,7 @@ ${activeSpecs.map((s, idx) => `  ${idx + 1}. [적용] ${s.label}`).join('\n') ||
           <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', minHeight: '62px' }}>
             <h3 className="card-title" style={{ margin: 0 }}>2단계: 개별 세부 정보 확인 및 보정 폼</h3>
             <div style={{ display: 'flex', gap: '8px' }}>
-              <button type="button" className="btn-secondary" onClick={() => setRawText('')} style={{ padding: '6px 12px', fontSize: '13px' }}>
+              <button type="button" className="btn-secondary" onClick={handleResetForm} style={{ padding: '6px 12px', fontSize: '13px' }}>
                 초기화
               </button>
               {canSave && (

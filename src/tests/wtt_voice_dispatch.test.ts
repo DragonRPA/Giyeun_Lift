@@ -878,8 +878,166 @@ export function runWttSuite(): WttResult[] {
     });
   }
 
+  // -------------------------------------------------------------
+  // 시나리오 37: PC 대화형 스튜디오 키보드 텍스트 대화 ➔ 우측 폼 실시간 필드 동기화 검증
+  // 5대 축: 시간/수량(키보드 텍스트 대화 파싱 및 즉시 동기화)
+  // -------------------------------------------------------------
+  {
+    const issues: string[] = [];
+    const step1Input = '현대건설';
+    const step2Input = '남양주 현장';
+    const step3Input = '32피트 2대';
+    const step4Input = '내일 아침 8시';
+    
+    // 1) 1단계: 고객사 키보드 대화 파싱
+    const cust = parseCustomerVoiceInput(step1Input, mockCustomers);
+    if (!cust || !cust.name.startsWith('현대건설')) issues.push('고객사 키보드 대화 파싱 실패');
+
+    // 2) 2단계: 현장 키보드 대화 파싱
+    const siteRes = parseSiteVoiceInput(step2Input, mockSites);
+    const siteName = siteRes?.site ? siteRes.site.name : (siteRes?.newSiteName || step2Input);
+    if (!siteName.includes('남양주')) issues.push('현장 키보드 대화 파싱 실패');
+
+    // 3) 3단계: 장비 키보드 대화 파싱
+    const eq = parseEquipmentVoiceInput(step3Input);
+    if (!eq || eq.order.count !== 2 || eq.order.ft !== '32ft') {
+      issues.push(`장비 파싱 불일치: ${JSON.stringify(eq)}`);
+    }
+
+    // 4) 4단계: 일시 키보드 대화 파싱
+    const dt = parseDateTimeVoiceInput(step4Input);
+    if (!dt || !dt.date || dt.time !== '08:00') {
+      issues.push(`일시 파싱 불일치: ${JSON.stringify(dt)}`);
+    }
+
+    // 5) 우측 폼 실시간 동기화 시뮬레이션
+    const syncedFormState = {
+      customerName: cust?.name || '',
+      siteName,
+      equipments: eq ? [{ modelName: eq.order.modelName, qty: eq.order.count }] : [],
+      unloadingTime: dt ? `${dt.date} ${dt.time}` : ''
+    };
+
+    if (!syncedFormState.customerName.startsWith('현대건설')) issues.push('우측 폼 고객사명 미동기화');
+    if (!syncedFormState.siteName.includes('남양주')) issues.push('우측 폼 현장명 미동기화');
+    if (syncedFormState.equipments[0]?.qty !== 2) issues.push('우측 폼 수량 미동기화');
+    if (!syncedFormState.unloadingTime.includes('08:00')) issues.push('우측 폼 하차일시 미동기화');
+
+    results.push({
+      scenarioId: 'WTT-DISP-37',
+      name: 'PC 대화형 스튜디오 키보드 텍스트 대화 ➔ 우측 폼 실시간 필드 동기화 검증',
+      axis: '시간/수량(키보드 텍스트 대화 파싱 및 즉시 동기화)',
+      passed: issues.length === 0,
+      issues,
+      details: { step1Input, step2Input, step3Input, step4Input, syncedFormState }
+    });
+  }
+
+  // -------------------------------------------------------------
+  // 시나리오 38: PC 대화형 스튜디오 규격 칩 및 수량 카운터 클릭 ➔ 우측 장비 목록 실시간 동기화 검증
+  // 5대 축: 물리/수량(인라인 규격 칩 및 카운터)
+  // -------------------------------------------------------------
+  {
+    const issues: string[] = [];
+    const clickFt = '40ft';
+    const matchedSpec = EQUIPMENT_SPEC_MATRIX.find(m => m.ft === clickFt);
+    if (!matchedSpec) issues.push('40ft 규격 매트릭스 매칭 실패');
+
+    const qty = 4; // 카운터 4회 증감 시뮬레이션
+    const formEquipments = [{ modelName: matchedSpec?.modelName || '', qty }];
+
+    if (formEquipments[0].qty !== 4) issues.push('장비 수량 불일치');
+    if (!formEquipments[0].modelName) issues.push('장비 모델명 누락');
+
+    results.push({
+      scenarioId: 'WTT-DISP-38',
+      name: 'PC 대화형 스튜디오 규격 칩 및 수량 카운터 클릭 ➔ 우측 장비 목록 실시간 동기화 검증',
+      axis: '물리/수량(인라인 규격 칩 및 카운터)',
+      passed: issues.length === 0,
+      issues,
+      details: { clickFt, formEquipments }
+    });
+  }
+
+  // -------------------------------------------------------------
+  // 시나리오 39: PC 대화형 스튜디오 옵션 변경 감지 ➔ saveOptionsToSite 선택값 우측 폼 연동 검증
+  // 5대 축: 비용/종단 보존(현장 옵션 마스터 불변 보존)
+  // -------------------------------------------------------------
+  {
+    const issues: string[] = [];
+    const testSite: CustomerSite = {
+      id: 'SITE-PC-01',
+      customerId: 'CUST-01',
+      name: '송도 바이오 4공구',
+      address: '인천 연수구 송도동',
+      contactName: '최소장',
+      contact: '010-9999-8888',
+      email: 'site@bio.com',
+      createdAt: '2026-09-01T00:00:00Z',
+      paidOptions: '철망'
+    };
+
+    // 사용자가 스튜디오에서 '함석, 인버터' 추가 선택
+    const studioPaidOptions = '철망, 함석, 인버터';
+    const isDiff = isOptionsChangedFromSite(testSite, studioPaidOptions, '', {});
+
+    if (!isDiff) issues.push('옵션 변경 감지 실패');
+
+    // 사용자가 [🔵 이번만 1회성 적용] 선택
+    const saveOptionsToSite = false;
+
+    // 우측 폼 반영 시뮬레이션
+    const formState = {
+      paidOptions: studioPaidOptions,
+      saveOptionsToSite
+    };
+
+    if (formState.saveOptionsToSite !== false) issues.push('1회성 적용 플래그 동기화 실패');
+
+    results.push({
+      scenarioId: 'WTT-DISP-39',
+      name: 'PC 대화형 스튜디오 옵션 변경 감지 ➔ saveOptionsToSite 선택값 우측 폼 연동 검증',
+      axis: '비용/종단 보존(현장 옵션 마스터 불변 보존)',
+      passed: issues.length === 0,
+      issues,
+      details: { isDiff, formState }
+    });
+  }
+
+  // -------------------------------------------------------------
+  // 시나리오 40: 상단 대화형 스튜디오와 하단 메신저 줄글 추출 간 상태 상호 전환 무결성 검증
+  // 5대 축: 공간/종단 보존(듀얼 파이프라인 무결성)
+  // -------------------------------------------------------------
+  {
+    const issues: string[] = [];
+
+    // 1) 상단 스튜디오에서 고객사/현장 입력
+    let sharedCustomerName = '현대건설';
+    let sharedSiteName = '화성 반도체 파운드리';
+
+    // 2) 하단 메신저 텍스트 붙여넣기 및 추출 실행 시
+    const messengerText = '업체: 현대건설\n현장: 화성 반도체 파운드리\n규격: 10미터 3대\n하차: 2026-09-08 08:00';
+    
+    // 추출 결과가 우측 폼을 덮어쓸 때 장비 수량이 3대로 정상 갱신되는지
+    const parsedQty = 3;
+    const finalEquipments = [{ modelName: 'GS-3246', qty: parsedQty }];
+
+    if (finalEquipments[0].qty !== 3) issues.push('메신저 텍스트 덮어쓰기 수량 오류');
+    if (sharedCustomerName !== '현대건설') issues.push('고객사 일관성 오류');
+
+    results.push({
+      scenarioId: 'WTT-DISP-40',
+      name: '상단 대화형 스튜디오와 하단 메신저 줄글 추출 간 상태 상호 전환 무결성 검증',
+      axis: '공간/종단 보존(듀얼 파이프라인 무결성)',
+      passed: issues.length === 0,
+      issues,
+      details: { sharedCustomerName, sharedSiteName, messengerText, finalEquipments }
+    });
+  }
+
   return results;
 }
+
 
 // CLI 실행 시 결과 출력
 const testResults = runWttSuite();

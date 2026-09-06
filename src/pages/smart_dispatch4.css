@@ -9,7 +9,7 @@
 
 .dispatch4-container {
   width: 100%;
-  height: 100%;
+  /* height 고정 제거 → 부모 main 의 overflow-y:auto 스크롤에 위임 */
   min-height: 0;
   display: flex;
   flex-direction: column;
@@ -79,7 +79,7 @@
   font-weight: 800;
 }
 
-/* 메인 스튜디오 2열 바디 */
+/* 메인 스튜디오 2열 바디 — overflow:hidden 제거, 자연 높이 */
 .dispatch4-studio-row {
   flex: 1;
   min-height: 0;
@@ -87,16 +87,16 @@
   display: flex;
   flex-direction: row;
   gap: 12px;
-  overflow: hidden;
+  /* overflow: hidden 제거 → 콘텐츠 잘림 방지 */
   box-sizing: border-box;
+  align-items: flex-start; /* 좌우 패널이 서로 독립 높이 */
 }
 
-/* 좌측 마스터 입력 폼 (독자 상하 스크롤 & 고밀도 무압축) */
+/* 좌측 마스터 입력 폼 — 고정 height 제거, 자연 높이로 늘어남 */
 .dispatch4-left-pane {
   flex: 5.7;
   min-width: 0;
-  height: 100%;
-  overflow-y: auto;
+  /* height: 100% 제거 */
   overflow-x: hidden;
   padding-right: 8px;
   display: flex;
@@ -109,12 +109,15 @@
   flex-shrink: 0;
 }
 
-/* 우측 디테일 & 터미널 인스펙터 (뷰포트 고정) */
+/* 우측 디테일 & 터미널 인스펙터 — sticky 고정으로 뷰포트 내 상시 노출 */
 .dispatch4-right-pane {
   flex: 4.3;
   min-width: 440px;
   max-width: 580px;
-  height: 100%;
+  /* height: 100% → sticky 로 대체 */
+  position: sticky;
+  top: 0;
+  max-height: 100vh;
   display: flex;
   flex-direction: column;
   min-height: 0;
@@ -195,43 +198,28 @@
 @media (max-width: 1023px) {
   .dispatch4-studio-row {
     flex-direction: column;
-    overflow-y: auto;
   }
   .dispatch4-left-pane {
-    height: auto;
-    overflow-y: visible;
     padding-right: 0;
   }
   .dispatch4-right-pane {
+    position: static;
     min-width: 100%;
     max-width: 100%;
-    height: auto;
+    max-height: none;
   }
   .dispatch4-right-scroll {
     overflow-y: visible;
   }
 }
 
-/* 화면 높이가 낮은 환경 (노트북/태블릿 가로모드) 대응: 전체 상하 스크롤 보장 */
+/* 화면 높이가 낮은 환경 대응 */
 @media (max-height: 720px) {
-  .dispatch4-container {
-    height: auto;
-    min-height: 100%;
-  }
-  .dispatch4-studio-row {
-    height: auto;
-    min-height: 550px;
-    overflow-y: visible;
-  }
-  .dispatch4-left-pane {
-    height: auto;
-    overflow-y: visible;
-  }
   .dispatch4-right-pane {
-    height: auto;
-    min-height: 500px;
+    max-height: calc(100vh - 80px);
   }
 }
+
 
 /* ─────────────────────────────────────────────────────────────────────────────
    고밀도 입력 폼 전용 규격

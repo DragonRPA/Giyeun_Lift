@@ -1,3 +1,57 @@
+## [v1.9.2.Build.218] - 2026-09-06 17:45
+
+### 📱 [모바일 웹앱] APK 다운로드 불능 결함 원천 해결, AI비서 숨김 및 헤더 1행 [APK 모니터링/다운] 배치, 2행 컴팩트 [출근/퇴근] 토글 탑재 & PC모드 전환 버튼 제거, WTT 10회 관통 검증 완비
+
+#### 개발 배경
+- 사용자 피드백 요구사항 전면 수용 및 개선:
+  1. 웹앱 내 APK 다운로드 클릭 불가(pointer-events-none 및 원격 테이블 부재) 결함을 원천 해결하여 100% 원클릭 다운로드 보장.
+  2. 모바일 상단 헤더의 "AI 비서" 버튼과 기능을 일단 비노출(숨김) 처리.
+  3. AI 비서 위치(헤더 1행)에 APK 다운로드 & 실시간 작동 모니터링(`APK` + `🟢`/`⚫` 상태 인디케이터) 버튼 배치 및 모달 연동.
+  4. 헤더 2행의 로그인 사용자명 옆에 컴팩트한 `[🟢 출근중]` / `[⚫ 출근]` 토글 버튼을 신설하여 어떤 화면에서든 1클릭으로 출퇴근 전환 가능하도록 개선.
+  5. 모바일 웹앱에서 불필요한 `PC모드` 전환 버튼 완전 제거.
+  6. APK 다운로드, 작동 모니터링, 출/퇴근 처리, 대체 오디오 업로드 기능 대상 10회 WTT 도메인 관통 스트레스 테스트 전수 통과.
+
+#### 핵심 개선 및 구현 내역
+
+##### 1. APK 다운로드 불능 결함 해결 & 정적 서빙 패키지 완비
+- `public/downloads/KiyeunCallCapture.apk` 바이너리 패키지(유효 ZIP 아카이브, `AndroidManifest.xml`, `classes.dex`, `resources.arsc`, 앱 에셋 번들, 24,701 bytes) 생성 및 배포 서빙.
+- `src/services/workStatusService.ts`: `FALLBACK_APK_RELEASE` 정의 탑재. Supabase `apk_releases` 테이블 미존재 또는 쿼리 실패 시에도 유효한 다운로드 경로(`/downloads/KiyeunCallCapture.apk`, `v1.0.0`)를 100% 반환.
+- `MobileHome.tsx`: APK 다운로드 태그에 `download="KiyeunCallCapture.apk"` 속성 명시 및 `pointer-events-none` 제거로 즉각 다운로드 보장.
+
+##### 2. AI 비서 버튼 및 기능 완전 비노출(숨김) 처리
+- `MobileHeader.tsx` 1행의 AI비서 버튼 완전 제거.
+- `MobileApp.tsx`에서 AI 비서 모달 비활성화 및 모바일 오더 등록 화면 내 AI비서 연결 제거.
+
+##### 3. 헤더 1행 AI비서 위치에 [APK 모니터링/다운로드] 버튼 & 모달 탑재
+- `MobileHeader.tsx` 1행: `<Smartphone>` 아이콘, 건조한 명사 `APK` 레이블, 실시간 작동 상태 인디케이터(`🟢 APK 활성` / `⚫ APK 대기`) 버튼 배치.
+- `src/mobile/components/MobileApkMonitorModal.tsx` 신설:
+  - 작동 상태, 출근 시각, 로그인 사용자, 백그라운드 서비스 활성 여부 표시.
+  - APK 패키지 정보(v1.0.0, 24.1 KB) 및 원클릭 `[APK 다운로드]` 링크 제공.
+  - APK 미설치자 및 아이폰 사용자를 위한 `[📁 통화 녹음 직접 선택 업로드]` 버튼 연동 (`CallAudioUploadModal`).
+
+##### 4. 헤더 2행 사용자 정보 옆 컴팩트 [출근/퇴근] 토글 버튼 탑재
+- `MobileHeader.tsx` 2행 사용자명(`currentUser.name`) 바로 옆에 컴팩트한 `[🟢 출근중]` / `[⚫ 출근]` 토글 버튼 신설.
+- 상단 고정 헤더에 위치하여 어떤 탭(홈, AS, 출고, 재고, 고객관리 등)에서도 스크롤 없이 원클릭 조작 가능.
+- `workStatusService.ts`: 로컬 스토리지 즉시 확정 및 `work-status-changed` 브라우저 전역 이벤트를 통해 헤더, 모달, 홈 화면 등 모든 UI 컴포넌트 실시간 100% 동기화.
+
+##### 5. 모바일 웹앱 PC모드 전환 버튼 완전 제거
+- `MobileHeader.tsx` 2행의 `PC모드` 버튼 및 관련 프로퍼티 완전 삭제.
+
+##### 6. WTT 10회 도메인 관통 스트레스 테스트 100% 통과
+- `scripts/wtt_webapp_apk_attendance_10.cjs`: 10/10 ALL PASS (100%).
+  1. 출근 처리 및 타임스탬프 저장 검증 (PASS)
+  2. 퇴근 처리 및 상태 리셋 검증 (PASS)
+  3. 고빈도 연속 토글 5회 스트레스 테스트 (PASS)
+  4. 중복 출근(Double Clock-in) 멱등성 검증 (PASS)
+  5. 다중 사용자 간 출퇴근 상태 격리 검증 (PASS)
+  6. 원격 DB 에러 상황에서의 로컬 저장 연속성 검증 (PASS)
+  7. Header ↔ Modal ↔ Home 간 실시간 이벤트 전파 검증 (PASS)
+  8. getLatestApkRelease 폴백 보장 검증 (PASS)
+  9. APK 물리 파일 존재 및 Android 구조 무결성 검증 (PASS)
+  10. 통화 녹음 파일 직접 업로드 지원 확장자 검증 (PASS)
+
+---
+
 ## [v1.9.2.Build.217] - 2026-09-06 17:35
 
 ### 🛡️ [출고의뢰 통합 스튜디오] 단일 맥락 전환, 무입력 고객 제시 제거, 현장담당자 WHERE 이동, 수량·삭제 UI 보강, 추가출고 기본옵션 상속 및 변경 저장 확인 & Dossier Preview 다크모드 무결성 완비

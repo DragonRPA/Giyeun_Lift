@@ -23,17 +23,22 @@ import { MobileVehicleLog } from './pages/MobileVehicleLog';
 import { MobileManualViewer } from './pages/MobileManualViewer';
 import { PwaInstallBanner } from './components/PwaInstallBanner';
 import { MobileWalkieTalkieModal } from './components/MobileWalkieTalkieModal';
-import { MobileGemsAgentModal } from './components/MobileGemsAgentModal';
+import { MobileApkMonitorModal } from './components/MobileApkMonitorModal';
+import { CallAudioUploadModal } from '../components/CallAudioUploadModal';
 import { walkieService } from '../services/walkieTalkieService';
 import { initWorkNotificationListener } from '../utils/workNotificationService';
+import { 
+  getMyWorkStatus, clockIn, clockOut, subscribeWorkStatus, 
+  getLatestApkRelease, WorkStatus, ApkRelease 
+} from '../services/workStatusService';
 import { ErrorBoundary } from '../components/ErrorBoundary';
 import './mobile.css';
 
 interface MobileAppProps {
-  onSwitchToPc: () => void;
+  onSwitchToPc?: () => void;
 }
 
-export const MobileApp: React.FC<MobileAppProps> = ({ onSwitchToPc }) => {
+export const MobileApp: React.FC<MobileAppProps> = ({ onSwitchToPc: _onSwitchToPc }) => {
   const { fieldAsTickets, deliveries, outboundInspections, currentUser, assets, customers, billings } = useApp();
 
   // 전대 장비 주기장 유휴 누수 위험 건수
@@ -118,8 +123,41 @@ export const MobileApp: React.FC<MobileAppProps> = ({ onSwitchToPc }) => {
   const [isWalkieModalOpen, setIsWalkieModalOpen] = useState(false);
   const [isWalkieOn, setIsWalkieOn] = useState(() => walkieService.getIsPowerOn());
 
-  // ✨ 기연 렌탈 GEMS AI 비서 모달 상태
-  const [isGemsModalOpen, setIsGemsModalOpen] = useState(false);
+  // 📱 통화캡처 APK 모니터링 & 출퇴근 상태
+  const [isApkMonitorOpen, setIsApkMonitorOpen] = useState(false);
+  const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
+  const [workStatus, setWorkStatus] = useState<WorkStatus | null>(null);
+  const [workLoading, setWorkLoading] = useState(false);
+  const [apkRelease, setApkRelease] = useState<ApkRelease | null>(null);
+
+  // 출퇴근 및 APK 릴리즈 자동 동기화
+  useEffect(() => {
+    getMyWorkStatus(currentUser?.id).then(s => setWorkStatus(s));
+    getLatestApkRelease().then(r => setApkRelease(r));
+    if (!currentUser?.id) return;
+    const unsub = subscribeWorkStatus(currentUser.id, s => setWorkStatus(s));
+    return unsub;
+  }, [currentUser?.id]);
+
+  // 상단 헤더 & 모니터링 모달 공용 출퇴근 토글 핸들러
+  const handleWorkToggle = async () => {
+    const targetUserId = currentUser?.id || 'current_user';
+    if (workLoading) return;
+    setWorkLoading(true);
+    try {
+      if (workStatus?.isWorking) {
+        const updated = await clockOut(targetUserId);
+        setWorkStatus(updated);
+      } else {
+        const updated = await clockIn(targetUserId);
+        setWorkStatus(updated);
+      }
+    } catch (e) {
+      console.error('출퇴근 토글 오류:', e);
+    } finally {
+      setWorkLoading(false);
+    }
+  };
 
   // 무전기 서비스 자동 구독 (백그라운드 수신 대기) 및 모바일 오디오 락 해제
   useEffect(() => {
@@ -198,7 +236,6 @@ export const MobileApp: React.FC<MobileAppProps> = ({ onSwitchToPc }) => {
     <div className="mobile-app-root min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans selection:bg-blue-500 selection:text-white w-full max-w-full overflow-x-hidden">
       {/* 상단 모바일 헤더 + 부서 퀵 체인저 + 무전기 버튼 */}
       <MobileHeader 
-        onSwitchToPc={onSwitchToPc}
         deptMode={deptMode}
         onChangeDeptMode={handleDeptModeChange}
         isWalkieOn={isWalkieOn}
@@ -206,8 +243,11 @@ export const MobileApp: React.FC<MobileAppProps> = ({ onSwitchToPc }) => {
           walkieService.unlockAudio();
           setIsWalkieModalOpen(true);
         }}
-        onOpenGems={() => setIsGemsModalOpen(true)}
+        onOpenApkMonitor={() => setIsApkMonitorOpen(true)}
         onOpenVehicleLog={() => handleTabChange('vehicle_log')}
+        isWorking={workStatus?.isWorking ?? false}
+        isWorkLoading={workLoading}
+        onToggleWork={handleWorkToggle}
       />
 
       {/* 홈 화면 PWA 설치 안내 배너 */}
@@ -254,7 +294,6 @@ export const MobileApp: React.FC<MobileAppProps> = ({ onSwitchToPc }) => {
             initialSpecFt={orderInitialParams?.specFt}
             onBack={() => handleTabChange('home')}
             onSuccess={() => handleTabChange('my_contracts')}
-            onOpenGems={() => setIsGemsModalOpen(true)}
           />
         ) : activeTab === 'my_contracts' ? (
           <MobileMyContracts
@@ -340,13 +379,22 @@ export const MobileApp: React.FC<MobileAppProps> = ({ onSwitchToPc }) => {
         />
       </ErrorBoundary>
 
-      {/* ✨ 기연 렌탈 GEMS AI 비서 모달 */}
-      <ErrorBoundary fallbackTitle="AI 비서 오류 복구" isModal onClose={() => setIsGemsModalOpen(false)}>
-        <MobileGemsAgentModal
-          isOpen={isGemsModalOpen}
-          onClose={() => setIsGemsModalOpen(false)}
-        />
-      </ErrorBoundary>
+      {/* 📱 통화 녹음 APK 다운로드 및 모니터링 모달 */}
+      <MobileApkMonitorModal
+        isOpen={isApkMonitorOpen}
+        onClose={() => setIsApkMonitorOpen(false)}
+        workStatus={workStatus}
+        isWorkLoading={workLoading}
+        onToggleWork={handleWorkToggle}
+        onOpenAudioUpload={() => setIsUploadModalOpen(true)}
+        apkRelease={apkRelease}
+      />
+
+      {/* 📁 통화 녹음 파일 직접 업로드 모달 (아이폰/미설치자 대응) */}
+      <CallAudioUploadModal
+        isOpen={isUploadModalOpen}
+        onClose={() => setIsUploadModalOpen(false)}
+      />
     </div>
   );
 };

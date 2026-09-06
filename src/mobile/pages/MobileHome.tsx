@@ -34,7 +34,7 @@ export const MobileHome: React.FC<MobileHomeProps> = ({
 
   useEffect(() => {
     if (deptMode !== 'SALES') return;
-    getMyWorkStatus().then(s => setWorkStatus(s));
+    getMyWorkStatus(currentUser?.id).then(s => setWorkStatus(s));
     getLatestApkRelease().then(r => setApkRelease(r));
     if (!currentUser?.id) return;
     const unsub = subscribeWorkStatus(currentUser.id, s => setWorkStatus(s));
@@ -42,13 +42,16 @@ export const MobileHome: React.FC<MobileHomeProps> = ({
   }, [deptMode, currentUser?.id]);
 
   const handleWorkToggle = useCallback(async () => {
-    if (!currentUser?.id || workLoading) return;
+    const targetUserId = currentUser?.id || 'current_user';
+    if (workLoading) return;
     setWorkLoading(true);
     try {
       if (workStatus?.isWorking) {
-        await clockOut(currentUser.id);
+        const updated = await clockOut(targetUserId);
+        setWorkStatus(updated);
       } else {
-        await clockIn(currentUser.id);
+        const updated = await clockIn(targetUserId);
+        setWorkStatus(updated);
       }
     } catch (e) {
       alert((e as Error).message);
@@ -102,19 +105,14 @@ export const MobileHome: React.FC<MobileHomeProps> = ({
         {/* APK 다운로드 */}
         <div className="flex flex-col gap-2 w-[120px]">
           <a
-            href={apkRelease?.downloadUrl ?? '#'}
-            target="_blank"
-            rel="noopener noreferrer"
-            className={`flex flex-col items-center justify-center gap-1 rounded-2xl py-3 border transition-all active:scale-95 ${
-              apkRelease?.downloadUrl
-                ? 'bg-blue-900/50 border-blue-500/60 text-blue-300'
-                : 'bg-slate-800 border-slate-700 text-slate-500 pointer-events-none'
-            }`}
+            href={apkRelease?.downloadUrl || '/downloads/KiyeunCallCapture.apk'}
+            download="KiyeunCallCapture.apk"
+            className="flex flex-col items-center justify-center gap-1 rounded-2xl py-3 border transition-all active:scale-95 bg-blue-900/50 border-blue-500/60 text-blue-300 hover:bg-blue-800/50"
           >
             <Download className="w-5 h-5" />
             <span className="text-[11px] font-bold">통화캡처 APK</span>
             <span className="text-[10px] opacity-70">
-              {apkRelease?.version ?? '준비중'}
+              {apkRelease?.version || 'v1.0.0'}
             </span>
           </a>
           <div className={`flex items-center justify-center gap-1 rounded-xl py-2 border text-[10px] font-bold ${

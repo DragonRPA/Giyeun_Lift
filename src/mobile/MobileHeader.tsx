@@ -1,28 +1,32 @@
 import React, { useState } from 'react';
-import { LogOut, Wrench, Crown, Radio, RotateCw, Sparkles, Monitor, Car } from 'lucide-react';
+import { LogOut, Wrench, Crown, Radio, RotateCw, Car, Smartphone } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { WeatherWidget } from '../components/WeatherWidget';
 
 export type MobileDeptMode = 'SALES' | 'AS' | 'OUTBOUND' | 'EXECUTIVE' | 'ADMIN';
 
 interface MobileHeaderProps {
-  onSwitchToPc?: () => void;
   deptMode: MobileDeptMode;
   onChangeDeptMode: (mode: MobileDeptMode) => void;
   isWalkieOn?: boolean;
   onOpenWalkieTalkie?: () => void;
-  onOpenGems?: () => void;
+  onOpenApkMonitor?: () => void;
   onOpenVehicleLog?: () => void;
+  isWorking?: boolean;
+  isWorkLoading?: boolean;
+  onToggleWork?: () => void;
 }
 
 export const MobileHeader: React.FC<MobileHeaderProps> = ({ 
-  onSwitchToPc: _onSwitchToPc, 
   deptMode, 
   onChangeDeptMode,
   isWalkieOn = false,
   onOpenWalkieTalkie,
-  onOpenGems,
-  onOpenVehicleLog
+  onOpenApkMonitor,
+  onOpenVehicleLog,
+  isWorking = false,
+  isWorkLoading = false,
+  onToggleWork
 }) => {
   const { currentUser, logout } = useApp();
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -159,10 +163,10 @@ export const MobileHeader: React.FC<MobileHeaderProps> = ({
               )}
             </button>
 
-            {/* ✨ 기연 렌탈 GEMS AI 음성비서 버튼 */}
+            {/* 📱 통화캡처 APK 다운로드 & 모니터링 버튼 (헌장 3.1 무수식어 건조 표준) */}
             <button
               type="button"
-              onClick={onOpenGems}
+              onClick={onOpenApkMonitor}
               style={{
                 display: 'flex',
                 alignItems: 'center',
@@ -171,16 +175,23 @@ export const MobileHeader: React.FC<MobileHeaderProps> = ({
                 fontWeight: '800',
                 padding: '5px 7px',
                 borderRadius: '8px',
-                backgroundColor: 'rgba(2, 132, 199, 0.25)',
-                border: '1px solid #38bdf8',
-                color: '#38bdf8',
+                backgroundColor: isWorking ? 'rgba(16, 185, 129, 0.25)' : 'rgba(2, 132, 199, 0.25)',
+                border: isWorking ? '1px solid #10b981' : '1px solid #38bdf8',
+                color: isWorking ? '#34d399' : '#38bdf8',
                 cursor: 'pointer',
                 flexShrink: 0
               }}
-              title="GEMS AI 음성 비서"
+              title="APK 다운로드 및 작동 모니터링"
             >
-              <Sparkles size={12} color="#38bdf8" />
-              <span>AI비서</span>
+              <Smartphone size={12} color={isWorking ? '#34d399' : '#38bdf8'} />
+              <span>APK</span>
+              <span style={{
+                width: '5px',
+                height: '5px',
+                borderRadius: '9999px',
+                backgroundColor: isWorking ? '#10b981' : '#64748b',
+                boxShadow: isWorking ? '0 0 5px #10b981' : 'none'
+              }} />
             </button>
 
             {/* 🚗 전사 공용 차량운행일지/주유일지 버튼 */}
@@ -231,9 +242,9 @@ export const MobileHeader: React.FC<MobileHeaderProps> = ({
           </div>
         </div>
 
-        {/* ── 2행: 기연리프트 로고 & 사용자 정보 & PC전환 ── */}
+        {/* ── 2행: 기연리프트 로고 & 사용자 정보 & 출퇴근 토글 ── */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', minWidth: 0 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0, flex: 1 }}>
             <div style={{
               width: '28px',
               height: '28px',
@@ -251,7 +262,7 @@ export const MobileHeader: React.FC<MobileHeaderProps> = ({
                 <Wrench size={14} color="#ffffff" />
               )}
             </div>
-            <div style={{ minWidth: 0, overflow: 'hidden' }}>
+            <div style={{ minWidth: 0, overflow: 'hidden', flex: 1 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '5px', whiteSpace: 'nowrap' }}>
                 <span style={{ fontSize: '13px', fontWeight: '800', color: '#ffffff', letterSpacing: '-0.02em' }}>기연리프트</span>
                 <span style={{
@@ -267,36 +278,46 @@ export const MobileHeader: React.FC<MobileHeaderProps> = ({
                   FIELD
                 </span>
               </div>
-              <div style={{ fontSize: '10px', color: '#94a3b8', marginTop: '0.5px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                {currentUser?.name || '담당자'} ({currentUser?.role === 'ADMIN' ? '최고관리자' : currentUser?.role === 'MECHANIC' ? '정비기사' : '임직원'})
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '0.5px', whiteSpace: 'nowrap', overflow: 'hidden' }}>
+                <span style={{ fontSize: '10px', color: '#94a3b8', overflow: 'hidden', textOverflow: 'ellipsis', flexShrink: 1 }}>
+                  {currentUser?.name || '담당자'} ({currentUser?.role === 'ADMIN' ? '최고관리자' : currentUser?.role === 'MECHANIC' ? '정비기사' : '임직원'})
+                </span>
+                {/* 🌟 컴팩트 출근/퇴근 토글 버튼 (헌장 3.1 무수식어 건조 표준) */}
+                {onToggleWork && (
+                  <button
+                    type="button"
+                    onClick={onToggleWork}
+                    disabled={isWorkLoading}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '3px',
+                      padding: '1px 6px',
+                      borderRadius: '6px',
+                      fontSize: '10px',
+                      fontWeight: '800',
+                      border: isWorking ? '1px solid #10b981' : '1px solid #475569',
+                      backgroundColor: isWorking ? 'rgba(16, 185, 129, 0.25)' : '#1e293b',
+                      color: isWorking ? '#34d399' : '#cbd5e1',
+                      cursor: 'pointer',
+                      flexShrink: 0,
+                      transition: 'all 0.15s ease'
+                    }}
+                    title={isWorking ? '퇴근 처리' : '출근 처리'}
+                  >
+                    <span style={{
+                      width: '5px',
+                      height: '5px',
+                      borderRadius: '9999px',
+                      backgroundColor: isWorking ? '#10b981' : '#64748b',
+                      boxShadow: isWorking ? '0 0 5px #10b981' : 'none'
+                    }} />
+                    <span>{isWorkLoading ? '...' : isWorking ? '출근중' : '출근'}</span>
+                  </button>
+                )}
               </div>
             </div>
           </div>
-
-          {_onSwitchToPc && (
-            <button
-              type="button"
-              onClick={_onSwitchToPc}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '4px',
-                fontSize: '11px',
-                fontWeight: '600',
-                padding: '4px 8px',
-                borderRadius: '8px',
-                backgroundColor: '#1e293b',
-                border: '1px solid #334155',
-                color: '#94a3b8',
-                cursor: 'pointer',
-                flexShrink: 0
-              }}
-              title="PC 화면으로 전환"
-            >
-              <Monitor size={12} />
-              <span>PC모드</span>
-            </button>
-          )}
         </div>
       </header>
 

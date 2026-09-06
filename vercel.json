@@ -22,6 +22,14 @@
       "headers": [
         { "key": "Cache-Control", "value": "no-cache, no-store, must-revalidate" }
       ]
+    },
+    {
+      "source": "/downloads/(.*)\\.apk",
+      "headers": [
+        { "key": "Content-Type", "value": "application/vnd.android.package-archive" },
+        { "key": "Content-Disposition", "value": "attachment; filename=\"KiyeunCallCapture.apk\"" },
+        { "key": "Cache-Control", "value": "public, max-age=3600" }
+      ]
     }
   ],
   "rewrites": [
@@ -30,7 +38,11 @@
       "destination": "/api/$1"
     },
     {
-      "source": "/(.*)",
+      "source": "/downloads/(.*)",
+      "destination": "/downloads/$1"
+    },
+    {
+      "source": "/((?!downloads/|assets/|images/|templates/|favicon\\.svg|manifest\\.json|sw\\.js).*)",
       "destination": "/index.html"
     }
   ]

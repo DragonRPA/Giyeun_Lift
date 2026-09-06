@@ -16,6 +16,7 @@
 ##### 1. APK 다운로드 불능 결함 해결 & 정적 서빙 패키지 완비
 - `public/downloads/KiyeunCallCapture.apk` 바이너리 패키지(유효 ZIP 아카이브, `AndroidManifest.xml`, `classes.dex`, `resources.arsc`, 앱 에셋 번들, 24,701 bytes) 생성 및 배포 서빙.
 - `src/services/workStatusService.ts`: `FALLBACK_APK_RELEASE` 정의 탑재. Supabase `apk_releases` 테이블 미존재 또는 쿼리 실패 시에도 유효한 다운로드 경로(`/downloads/KiyeunCallCapture.apk`, `v1.0.0`)를 100% 반환.
+- `vercel.json`: Vercel SPA 와일드카드 리라이트(`/(.*) ➔ /index.html`)가 `/downloads/` 경로를 가로채 HTML을 반환하던 결함을 전면 수정. `/downloads/(.*)` 바이패스 및 `.apk`에 `application/vnd.android.package-archive` Content-Type 헤더 탑재.
 - `MobileHome.tsx`: APK 다운로드 태그에 `download="KiyeunCallCapture.apk"` 속성 명시 및 `pointer-events-none` 제거로 즉각 다운로드 보장.
 
 ##### 2. AI 비서 버튼 및 기능 완전 비노출(숨김) 처리

@@ -12,7 +12,7 @@ import { broadcastWorkNotification } from '../../utils/workNotificationService';
 
 export const MobileDispatchList: React.FC = () => {
   const { 
-    deliveries, contracts, customers, sites, users, 
+    deliveries, contracts, customers, sites, users, currentTenant,
     refreshAllData, showErrorModal, completeDelivery, completeInboundDelivery 
   } = useApp();
   const [filter, setFilter] = useState<'PENDING' | 'DISPATCHED' | 'DELIVERED' | 'CANCELLED'>('PENDING');
@@ -162,6 +162,11 @@ export const MobileDispatchList: React.FC = () => {
     const customer = customers.find(c => c.id === contract?.customerId || c.name === d.destinationAddress);
     const site = sites.find(s => s.id === contract?.siteId || s.name === d.destinationAddress);
 
+    const defaultYard = currentTenant?.yards?.find((y: any) => y.isDefault) || currentTenant?.yards?.[0];
+    const hqYardAddress = defaultYard?.address || currentTenant?.mainYardAddress || currentTenant?.businessAddress || '본사 주기장';
+    const hqYardPhone = currentTenant?.tel || '배차/출고팀';
+    const companyName = currentTenant?.displayName || currentTenant?.tradeName || currentTenant?.corporateName || '기연리프트';
+
     const smsBody = buildDispatchSmsText({
       delivery: d,
       siteName: site?.name || d.destinationAddress,
@@ -169,6 +174,9 @@ export const MobileDispatchList: React.FC = () => {
       siteContactName: site?.contactName,
       siteContactPhone: site?.contact,
       customerName: customer?.name,
+      companyName,
+      hqYardAddress,
+      hqYardPhone,
     });
 
     launchDispatchSms({

@@ -166,7 +166,7 @@ export const MobileApp: React.FC<MobileAppProps> = ({ onSwitchToPc: _onSwitchToP
         id: currentUser.id,
         name: currentUser.name,
         role: currentUser.role,
-        deptName: currentUser.department || currentTenant?.tradeName || 'eBro'
+        deptName: currentUser.department || currentTenant?.displayName || currentTenant?.tradeName || 'eBro'
       });
       initWorkNotificationListener(currentUser);
     }
@@ -190,7 +190,7 @@ export const MobileApp: React.FC<MobileAppProps> = ({ onSwitchToPc: _onSwitchToP
       window.removeEventListener('touchstart', handleFirstGesture);
       window.removeEventListener('click', handleFirstGesture);
     };
-  }, [currentUser]);
+  }, [currentUser, currentTenant]);
 
   // 부서 모드 변경 핸들러
   const handleDeptModeChange = (mode: MobileDeptMode) => {

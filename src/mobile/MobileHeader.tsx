@@ -264,7 +264,7 @@ export const MobileHeader: React.FC<MobileHeaderProps> = ({
             </div>
             <div style={{ minWidth: 0, overflow: 'hidden', flex: 1 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '5px', whiteSpace: 'nowrap' }}>
-                <span style={{ fontSize: '13px', fontWeight: '800', color: '#ffffff', letterSpacing: '-0.02em' }}>{currentTenant?.displayName || 'e-Bro ERP'}</span>
+                <span style={{ fontSize: '13px', fontWeight: '800', color: '#ffffff', letterSpacing: '-0.02em' }}>{currentTenant?.displayName || currentTenant?.tradeName || currentTenant?.corporateName || 'e-Bro ERP'}</span>
                 <span style={{
                   fontSize: '9px',
                   fontWeight: '700',

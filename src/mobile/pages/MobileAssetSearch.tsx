@@ -68,12 +68,15 @@ interface MobileAssetSearchProps {
 }
 
 export const MobileAssetSearch: React.FC<MobileAssetSearchProps> = ({ deptMode, onNavigateToOrder }) => {
-  const { assets, contracts, contractAssets, sites, refreshAllData, fullRefreshFromServer } = useApp();
+  const { assets, contracts, contractAssets, sites, refreshAllData, fullRefreshFromServer, currentTenant } = useApp();
+
+  const defaultYard = currentTenant?.yards?.find((y: any) => y.isDefault) || currentTenant?.yards?.[0];
+  const defaultYardName = defaultYard?.name || (currentTenant?.tradeName ? `${currentTenant.tradeName} 주기장` : '본사 주기장');
 
   // 검색 및 필터 상태
   const [searchTerm, setSearchTerm] = useState('');
   // 자사 보유 자산 전용 집계 (타사 재고 배제)
-  const [yardFilter, setYardFilter] = useState<'ALL' | 'MOHYEON'>('ALL');
+  const [yardFilter, setYardFilter] = useState<'ALL' | 'MAIN'>('ALL');
   const [isSyncing, setIsSyncing] = useState(false);
   const [lastSyncTime, setLastSyncTime] = useState(() => new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
 
@@ -260,7 +263,7 @@ export const MobileAssetSearch: React.FC<MobileAssetSearchProps> = ({ deptMode, 
         <div className="flex items-center justify-between px-2.5 py-1.5 bg-slate-900/90 rounded-xl border border-slate-800 text-[11px] text-slate-400">
           <span className="flex items-center gap-1.5">
             <MapPin className="w-3.5 h-3.5 text-emerald-400" />
-            <span>본사 모현 주기장 (자사 보유 자산)</span>
+            <span>{defaultYardName} (자사 보유 자산)</span>
           </span>
           <span className="text-emerald-400 font-bold">출고가능 {totalAvailableCount}대</span>
         </div>
@@ -297,7 +300,7 @@ export const MobileAssetSearch: React.FC<MobileAssetSearchProps> = ({ deptMode, 
                         </span>
                       </div>
                       <div className="text-[11px] text-slate-400 mt-0.5">
-                        본사 모현 주기장
+                        {defaultYardName}
                       </div>
                     </div>
                     <span className={`px-2 py-0.5 rounded-full text-[10.5px] font-bold border flex-shrink-0 ${
@@ -462,7 +465,7 @@ export const MobileAssetSearch: React.FC<MobileAssetSearchProps> = ({ deptMode, 
                                 </span>
                               </div>
                               <div className="text-[11px] text-slate-400 mt-1 flex items-center gap-2">
-                                <span>위치: <strong className="text-slate-300">본사 모현 주기장</strong></span>
+                                <span>위치: <strong className="text-slate-300">{defaultYardName}</strong></span>
                                 <span>•</span>
                                 <span>상태: <strong className="text-emerald-400">출고검수 합격</strong></span>
                               </div>

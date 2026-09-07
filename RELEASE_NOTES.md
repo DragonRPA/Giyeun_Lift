@@ -1,3 +1,45 @@
+## [v1.10.0.Build.8] - 2026-09-07 14:00
+
+### 📱 [모바일 웹앱 및 배차 파이프라인 테넌트(Tenant) 정보 기반 100% 동적화 개편]
+- **요구사항**: "웹앱 에서도 테넌트 정보 기준으로 작동하는지 점검하고 발견사항은 즉시 개편하여 ㄹㅇ"
+- **구현 조치**:
+  1. **기사 배차 안내 문자 전문 조립기(`src/utils/nativeLauncher.ts`) 동적화**:
+     - `hqAddress`, `hqPhone`, `companyName`의 고정 문자열(모현읍 등) 제거.
+     - `db.currentTenant`의 기본 주기장(`yards.find(y => y.isDefault) || yards[0]`), 대표 전화(`tel`), 상호(`displayName || tradeName`)를 1순위로 자동 바인딩.
+     - 교환 배차 주의사항 내 복귀 주기장 명칭(`defaultYardName`) 동적 치환.
+  2. **모바일 배차 현황(`src/mobile/pages/MobileDispatchList.tsx`)**:
+     - `useApp()`에 `currentTenant` 연동.
+     - `handleSendDriverSms` 호출 시 테넌트의 상호, 기본 주기장 주소, 대표 전화를 `buildDispatchSmsText` 파라미터로 명시 주입.
+  3. **PC 배차 관리(`src/pages/TruckDispatch.tsx`)**:
+     - PC 버전에서도 `buildDispatchSmsText` 호출 시 `currentTenant` 속성을 100% 주입하여 SMS 발신 일관성 확보.
+  4. **모바일 헤더(`src/mobile/MobileHeader.tsx`) & 모바일 앱(`src/mobile/MobileApp.tsx`)**:
+     - 모바일 헤더 타이틀을 `{currentTenant?.displayName || currentTenant?.tradeName || currentTenant?.corporateName || 'e-Bro ERP'}` 체인으로 보강.
+     - 무전기 자동 구독 `useEffect` 의존성 배열에 `currentTenant`를 추가하고 발신 부서명 폴백 강화.
+  5. **모바일 장비 재고 검색(`src/mobile/pages/MobileAssetSearch.tsx`) & 모바일 홈(`src/mobile/pages/MobileHome.tsx`)**:
+     - 상단 주기장 배지, 검색 결과 카드, 하단 상세 바텀시트, 홈 화면 가용재고 카드의 하드코딩된 '본사 모현 주기장'을 테넌트 기본 주기장 명칭(`defaultYardName`)으로 100% 동적 바인딩.
+  6. **스마트 출고 및 현장 AS 대차 배차(`src/context/AppContext.tsx`)**:
+     - `saveSmartDispatch` 배차 레코드 생성 시 출발지(`originAddress`)를 테넌트 기본 주기장 주소로 동적 연결.
+     - 현장 AS 수리불능 대차 제안 시 단일 'EXCHANGE' 배차 레코드의 출발지(`originAddress`)를 테넌트 기본 주기장명 및 주소로 동적 바인딩.
+  7. **무전기 전송 모달(`src/mobile/components/MobileWalkieTalkieModal.tsx`)**:
+     - 발언 시작/송신 시 테넌트 상호(`displayName || tradeName`) 기반 부서명 폴백 적용.
+- **검증 결과**:
+  - `npm run build`: **0 Error 통과** (`built in 1.09s`).
+
+---
+
+## [v1.10.0.Build.7] - 2026-09-07 13:48
+
+### 🏢 [로그인 페이지 헤더 테넌트 상호 1열 표출 및 2열 e-Bro ERP System 표준화]
+- **요구사항**: "로그인 페이지에서, 첫줄에 "기연리프트" (테넌트에서 가져와서- 다른 회사에서는 그회사 이름이 뜨도록) 아랫줄에 "e-Bro ERP System" 이라고 표시 변경"
+- **구현 조치**:
+  1. `src/App.tsx`: 비로그인 로그인 카드 상단 헤더 개편:
+     - 1열: `{currentTenant?.displayName || currentTenant?.tradeName || currentTenant?.corporateName || '기연리프트'}` (테넌트 상호 동적 연동, 타사 테넌트 접속 시 해당 회사명 자동 렌더링)
+     - 2열: `e-Bro ERP System` (시스템 고유 브랜드명 정식 표기)
+- **검증 결과**:
+  - `npm run build`: **0 Error 통과** (`built in 1.05s`).
+
+---
+
 ## [v1.10.0.Build.6] - 2026-09-07 13:36
 
 ### 🚀 [로컬 에이전트 C:\eBroAgent 이전/파일명 eBroAgent 개편 및 테넌트 기반 회사정보 동적화 & 외부 노출 브랜드 e-Bro 단일화]

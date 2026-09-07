@@ -1873,6 +1873,11 @@ export const TruckDispatch: React.FC = () => {
       memo: closingMemo || targetDelivery.memo
     };
 
+    const defaultYard = currentTenant?.yards?.find(y => y.isDefault) || currentTenant?.yards?.[0];
+    const hqYardAddress = defaultYard?.address || currentTenant?.mainYardAddress || currentTenant?.businessAddress || '본사 주기장';
+    const hqYardPhone = currentTenant?.tel || '배차/출고팀';
+    const companyName = currentTenant?.displayName || currentTenant?.tradeName || currentTenant?.corporateName || '기연리프트';
+
     const smsBody = buildDispatchSmsText({
       delivery: dObj,
       siteName: site?.name || targetDelivery.destinationAddress,
@@ -1880,6 +1885,9 @@ export const TruckDispatch: React.FC = () => {
       siteContactName: site?.contactName,
       siteContactPhone: site?.contact,
       customerName: customer?.name,
+      companyName,
+      hqYardAddress,
+      hqYardPhone,
     });
 
     launchDispatchSms({

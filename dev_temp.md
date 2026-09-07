@@ -1,5 +1,27 @@
 # 개발 요구사항 임시 기록 (dev_temp.md)
 
+## [완료] 모바일 웹앱 및 배차 파이프라인 테넌트(Tenant) 정보 기반 100% 동적화 개편 (v1.10.0.Build.8)
+- **요구사항**: "웹앱 에서도 테넌트 정보 기준으로 작동하는지 점검하고 발견사항은 즉시 개편하여 ㄹㅇ"
+- **조치 내역**:
+  1. `src/utils/nativeLauncher.ts`: 기사 배차 SMS 발송 시 고정된 주기장 주소/전화번호를 제거하고 `db.currentTenant`의 기본 주기장(`yards`), 대표 전화(`tel`), 상호(`displayName || tradeName`)를 1순위로 자동 바인딩. 교환 배차 복귀 주기장 명칭 동적화.
+  2. `src/mobile/pages/MobileDispatchList.tsx`: `useApp()`에 `currentTenant` 연동, `handleSendDriverSms` 호출 시 테넌트 상호, 기본 주기장 주소, 대표 전화를 `buildDispatchSmsText` 파라미터로 명시 주입.
+  3. `src/pages/TruckDispatch.tsx`: PC 배차 화면에서도 `buildDispatchSmsText` 호출 시 `currentTenant` 속성을 주입하여 모바일/PC 간 SMS 서식 100% 통일.
+  4. `src/mobile/MobileHeader.tsx` & `src/mobile/MobileApp.tsx`: 모바일 헤더 브랜드 상호 체인 보강(`displayName || tradeName || corporateName || 'e-Bro ERP'`), 무전기 자동 구독 `useEffect` 의존성에 `currentTenant` 추가.
+  5. `src/mobile/pages/MobileAssetSearch.tsx` & `src/mobile/pages/MobileHome.tsx`: 상단 주기장 안내 배지, 검색 결과 목록, 하단 상세 바텀시트, 홈 화면 가용재고 카드의 하드코딩된 '본사 모현 주기장'을 테넌트 기본 주기장 명칭(`defaultYardName`)으로 100% 동적 바인딩.
+  6. `src/context/AppContext.tsx`: 스마트 출고(`saveSmartDispatch`) 및 현장 AS 수리불능 대차 제안(`EXCHANGE`) 시 자동 생성되는 배차 레코드의 출발지(`originAddress`)를 테넌트 기본 주기장명 및 주소로 동적 연결.
+  7. `src/mobile/components/MobileWalkieTalkieModal.tsx`: 무전기 발언 시작/송신 시 테넌트 상호(`displayName || tradeName`) 기반 부서명 폴백 적용.
+- **검증 결과**:
+  - `npm run build`: **0 Error 통과** (`built in 1.09s`).
+
+## [완료] 로그인 페이지 헤더 테넌트 상호 1열 표출 및 2열 e-Bro ERP System 표준화 (v1.10.0.Build.7)
+- **요구사항**: "로그인 페이지에서, 첫줄에 "기연리프트" (테넌트에서 가져와서- 다른 회사에서는 그회사 이름이 뜨도록) 아랫줄에 "e-Bro ERP System" 이라고 표시 변경"
+- **조치 내역**:
+  1. `src/App.tsx`: 비로그인 로그인 카드 상단 헤더 개편:
+     - 1열: `{currentTenant?.displayName || currentTenant?.tradeName || currentTenant?.corporateName || '기연리프트'}` (테넌트 상호 동적 연동, 타사 테넌트 접속 시 해당 회사명 자동 렌더링)
+     - 2열: `e-Bro ERP System` (시스템 고유 브랜드명 정식 표기)
+- **검증 결과**:
+  - `npm run build`: **0 Error 통과** (`built in 1.05s`).
+
 ## [완료] 로컬 에이전트 C:\eBroAgent 이전/파일명 eBroAgent 개편 및 테넌트 기반 회사정보 동적화 & 외부 노출 브랜드 e-Bro 단일화 (v1.10.0.Build.6)
 - **요구사항**: "에이전트가 작동하는 로컬 위치도 C:\eBroAgent 로 변경. 에이전트 파일명도 eBroAgent로 변경. 관련 코드 전부 개편. 사용자회사에 대한 정보는 모두 테넌트에서 관리하고, 외부에 보여지는 모든 이름에 특정회사명은 노출되지 않도록 수정"
 - **조치 내역**:

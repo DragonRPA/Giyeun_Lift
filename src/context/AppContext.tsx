@@ -1633,6 +1633,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       ? ` | [운송비부담] ${dData.paidBy === 'CUSTOMER' ? '고객청구' : dData.paidBy === 'OURS' ? '당사부담' : '편도지원'}`
       : '';
 
+    const defaultYard = currentTenant?.yards?.find((y: any) => y.isDefault) || currentTenant?.yards?.[0];
+    const defaultYardAddress = defaultYard?.address || currentTenant?.mainYardAddress || currentTenant?.businessAddress || '당사 보관소';
+
     const createdDelivery = db.insertRow<Delivery>('deliveries', {
       contractId: contract.id,
       type: isExchangeDelivery ? 'EXCHANGE' : 'OUTBOUND',
@@ -1644,7 +1647,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       loadingTimeSlot: loadingTimeSlotStr,
       unloadingDate: unloadingDateStr,
       unloadingTimeSlot: unloadingTimeSlotStr,
-      originAddress: '당사 보관소',
+      originAddress: dData.originAddress || defaultYardAddress,
       destinationAddress: `${finalCustomer.name} (${finalSite.name} - ${finalSite.address || ''})`,
       transportCompany: '',
       vehicleType: dData.vehicleType || '5T',
@@ -3518,6 +3521,9 @@ ${currentTenant?.corporateName || tenantCorp} 배상
 
       // 🌟 [헌장 2.3 준수] 현장 수리 불능 대차 제안 시 단일 'EXCHANGE' 왕복 배차 의뢰 1건 자동 발행
       if (data.exchangeSuggested) {
+        const defaultYard = currentTenant?.yards?.find((y: any) => y.isDefault) || currentTenant?.yards?.[0];
+        const originYardAddress = defaultYard ? `${defaultYard.name} (${defaultYard.address || ''})` : (currentTenant?.mainYardAddress || '본사 주기장');
+
         const deliveryId = db.generateNextId('deliveries', db.deliveries);
         db.insertRow<Delivery>('deliveries', {
           id: deliveryId,
@@ -3526,7 +3532,7 @@ ${currentTenant?.corporateName || tenantCorp} 배상
           dispatchCategory: '교환',
           status: 'PENDING',
           requestDate: new Date().toISOString().split('T')[0],
-          originAddress: '본사 주기장 (경기 용인시 모현읍)',
+          originAddress: originYardAddress,
           pickupType: 'HQ_YARD',
           destinationAddress: ticket.locationDetail || ticket.siteName || '현장',
           dropoffType: 'CUSTOMER_SITE',

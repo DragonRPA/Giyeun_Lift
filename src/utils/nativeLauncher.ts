@@ -1,6 +1,8 @@
 // src/utils/nativeLauncher.ts
 // 스마트폰(Android / iOS) 앱 딥링크, 클립보드 복사 및 전화걸기 안전 실행 유틸리티
 
+import { db } from '../services/db';
+
 export type NavAppType = 'TMAP' | 'KAKAO' | 'NAVER' | 'WEB';
 
 // 🌟 연속 클릭으로 인한 OS 액티비티 충돌 및 데드락 방지 락 (2초)
@@ -357,8 +359,15 @@ export interface DispatchSmsParams {
  */
 export function buildDispatchSmsText(params: DispatchSmsParams): string {
   const { delivery } = params;
-  const hqAddress = params.hqYardAddress || '경기도 용인시 처인구 모현읍 백옥대로 2420 (본사주기장)';
-  const hqPhone = params.hqYardPhone || '배차/출고팀';
+  const defaultYard = db.currentTenant?.yards?.find(y => y.isDefault) || db.currentTenant?.yards?.[0];
+  const defaultYardAddress = defaultYard?.address || db.currentTenant?.mainYardAddress || db.currentTenant?.businessAddress || '본사 주기장';
+  const defaultYardName = defaultYard?.name || '본사 주기장';
+  const defaultCompany = db.currentTenant?.displayName || db.currentTenant?.tradeName || db.currentTenant?.corporateName || '기연리프트';
+  const defaultPhone = db.currentTenant?.tel || '배차/출고팀';
+
+  const hqAddress = params.hqYardAddress || defaultYardAddress;
+  const hqPhone = params.hqYardPhone || defaultPhone;
+  const companyName = params.companyName || defaultCompany;
 
   const type = delivery.type || 'OUTBOUND';
   const typeLabel = 
@@ -412,7 +421,7 @@ export function buildDispatchSmsText(params: DispatchSmsParams): string {
     destContact = hqPhone;
   }
 
-  const headerTitle = params.companyName ? `[${params.companyName} 배차안내]` : '[배차안내]';
+  const headerTitle = `[${companyName} 배차안내]`;
   const lines = [
     headerTitle,
     `■ 배차유형: ${typeLabel} (${category})`,
@@ -437,7 +446,7 @@ export function buildDispatchSmsText(params: DispatchSmsParams): string {
   }
 
   if (type === 'EXCHANGE') {
-    lines.push(``, `※ [교환 배차 주의사항]`, `- 신규 장비 하차 후, 현장 회수 장비를 상차하여 모현 주기장으로 복귀하는 왕복 배차입니다.`);
+    lines.push(``, `※ [교환 배차 주의사항]`, `- 신규 장비 하차 후, 현장 회수 장비를 상차하여 ${defaultYardName}(으)로 복귀하는 왕복 배차입니다.`);
   }
 
   if (delivery.memo && delivery.memo.trim()) {

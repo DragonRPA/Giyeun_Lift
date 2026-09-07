@@ -24,7 +24,10 @@ export const MobileHome: React.FC<MobileHomeProps> = ({
   onOpenAsDetail,
   onOpenCreateAs,
 }) => {
-  const { fieldAsTickets, deliveries, outboundInspections, currentUser, assets, contracts, mechanicConsumableStocks, customers } = useApp();
+  const { fieldAsTickets, deliveries, outboundInspections, currentUser, assets, contracts, mechanicConsumableStocks, customers, currentTenant } = useApp();
+
+  const defaultYard = currentTenant?.yards?.find((y: any) => y.isDefault) || currentTenant?.yards?.[0];
+  const defaultYardName = defaultYard?.name || (currentTenant?.tradeName ? `${currentTenant.tradeName} 주기장` : '본사 주기장');
 
   // ── 출퇴근 상태 ────────────────────────────────────────
   const [workStatus, setWorkStatus] = useState<WorkStatus | null>(null);
@@ -172,7 +175,7 @@ export const MobileHome: React.FC<MobileHomeProps> = ({
               <div className="text-sm font-black text-white flex items-center gap-1.5">
                 <span>자사 가용 재고 현황</span>
                 <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 font-bold">
-                  본사 모현
+                  {defaultYardName}
                 </span>
               </div>
               <div className="text-xs text-slate-400 mt-0.5">

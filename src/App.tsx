@@ -416,10 +416,10 @@ const App: React.FC = () => {
         <div className="card" style={{ width: '100%', maxWidth: '380px', padding: '24px', boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.3)' }}>
           <div style={{ textAlign: 'center', marginBottom: '20px' }}>
             <h1 style={{ fontSize: '24px', fontWeight: '800', color: 'var(--primary)', letterSpacing: '-0.5px' }}>
-              e-Bro LIFT ERP
+              {currentTenant?.displayName || currentTenant?.tradeName || currentTenant?.corporateName || '기연리프트'}
             </h1>
-            <p style={{ fontSize: '13px', color: 'var(--text-secondary)', marginTop: '4px' }}>
-              스마트 고소작업대 렌탈 관리 시스템
+            <p style={{ fontSize: '13px', color: 'var(--text-secondary)', marginTop: '4px', fontWeight: '600', letterSpacing: '0.3px' }}>
+              e-Bro ERP System
             </p>
           </div>
 

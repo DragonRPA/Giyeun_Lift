@@ -1,0 +1,519 @@
+{
+  "executedAt": "2026-09-06T12:29:55.780Z",
+  "totalScenarios": 30,
+  "passedCount": 30,
+  "failedCount": 0,
+  "passRate": "100.0%",
+  "results": [
+    {
+      "id": "WTT-ADD-01",
+      "type": "ADDITIONAL",
+      "title": "삼성전자 평택 고덕 P3 복합동 추가 출고 (기존 현장 선택 & 게이트 주소 인라인 보정)",
+      "stressAxis": {
+        "spatial": "DIRECT",
+        "physical": "BOLTED_SAFETY",
+        "temporal": "MORNING",
+        "cost": "CUSTOMER_100",
+        "qty": "SINGLE_2"
+      },
+      "ruleCount": "8/8",
+      "effectiveAddress": "경기도 평택시 고덕면 첨단산단로 100 (동문 3번 게이트)",
+      "effectiveSite": "평택 고덕 P3 복합동",
+      "passed": true,
+      "errors": []
+    },
+    {
+      "id": "WTT-ADD-02",
+      "type": "ADDITIONAL",
+      "title": "현대차 남양연구소 긴급 결품 대응 당사부담 추가 출고 (ASAP 시간 & 당사영업면제)",
+      "stressAxis": {
+        "spatial": "HQ_DEPOT",
+        "physical": "STANDARD",
+        "temporal": "ASAP",
+        "cost": "OURS_WAIVED",
+        "qty": "SINGLE_1"
+      },
+      "ruleCount": "8/8",
+      "effectiveAddress": "경기도 화성시 남양읍 현대연구소로 150",
+      "effectiveSite": "남양연구소 신축동",
+      "passed": true,
+      "errors": []
+    },
+    {
+      "id": "WTT-ADD-03",
+      "type": "ADDITIONAL",
+      "title": "인천 송도 바이오로직스 신규 공구 신설 ([+ 신규현장 등록] 퀵모드 분기 & 편도지원)",
+      "stressAxis": {
+        "spatial": "DIRECT",
+        "physical": "SHEET_PROTECTION",
+        "temporal": "EXACT",
+        "cost": "SPLIT_50",
+        "qty": "SINGLE_1"
+      },
+      "ruleCount": "8/8",
+      "effectiveAddress": "인천광역시 연수구 송도바이오대로 200",
+      "effectiveSite": "송도 바이오 5공구 신축공사",
+      "passed": true,
+      "errors": []
+    },
+    {
+      "id": "WTT-ADD-04",
+      "type": "ADDITIONAL",
+      "title": "SK하이닉스 이천 M16 3대 시차 분할 출고 (시차 메모 분할 & 논마킹/소화기)",
+      "stressAxis": {
+        "spatial": "DIRECT",
+        "physical": "BOLTED_SAFETY",
+        "temporal": "STAGGERED",
+        "cost": "CUSTOMER_100",
+        "qty": "MULTI_3"
+      },
+      "ruleCount": "8/8",
+      "effectiveAddress": "경기도 이천시 부발읍 경충대로 2091",
+      "effectiveSite": "이천 M16 Phase2",
+      "passed": true,
+      "errors": []
+    },
+    {
+      "id": "WTT-ADD-05",
+      "type": "ADDITIONAL",
+      "title": "세종시 정부종합청사 증축 현장 주소 인라인 보정 후 현장 마스터 영구 동기화",
+      "stressAxis": {
+        "spatial": "HQ_DEPOT",
+        "physical": "STANDARD",
+        "temporal": "AFTERNOON",
+        "cost": "CUSTOMER_100",
+        "qty": "SINGLE_1"
+      },
+      "ruleCount": "8/8",
+      "effectiveAddress": "세종특별자치시 정부2청사로 10 (신도로명 정정)",
+      "effectiveSite": "세종청사 중앙동",
+      "passed": true,
+      "errors": []
+    },
+    {
+      "id": "WTT-ADD-06",
+      "type": "ADDITIONAL",
+      "title": "부산 에코델타시티 현장 즉석 커스텀 옵션(방폭커버) 추가 및 마스터 영구 저장",
+      "stressAxis": {
+        "spatial": "REMOTE",
+        "physical": "CUSTOM_EXPLOSION_PROOF",
+        "temporal": "MORNING",
+        "cost": "CUSTOMER_100",
+        "qty": "SINGLE_1"
+      },
+      "ruleCount": "8/8",
+      "effectiveAddress": "부산광역시 강서구 강동동 100-1",
+      "effectiveSite": "에코델타 12BL",
+      "passed": true,
+      "errors": []
+    },
+    {
+      "id": "WTT-ADD-07",
+      "type": "ADDITIONAL",
+      "title": "청주 오창 LG엔솔 배터리 2공장 월말 임박 출고 (익일 오전 하차 지정)",
+      "stressAxis": {
+        "spatial": "DIRECT",
+        "physical": "SHEET_PROTECTION",
+        "temporal": "NEXT_DAY",
+        "cost": "CUSTOMER_100",
+        "qty": "SINGLE_2"
+      },
+      "ruleCount": "8/8",
+      "effectiveAddress": "충청북도 청주시 청원구 오창읍 2산단로 15",
+      "effectiveSite": "오창 배터리 2공장",
+      "passed": true,
+      "errors": []
+    },
+    {
+      "id": "WTT-ADD-08",
+      "type": "ADDITIONAL",
+      "title": "마곡 LG사이언스파크 주말 철야 투입 (수동입력창 은폐 및 전화번호 방어 차단 검증)",
+      "stressAxis": {
+        "spatial": "DIRECT",
+        "physical": "BOLTED_SAFETY",
+        "temporal": "NIGHT_EXACT",
+        "cost": "OURS_WAIVED",
+        "qty": "SINGLE_1"
+      },
+      "ruleCount": "8/8",
+      "effectiveAddress": "서울특별시 강서구 마곡중앙10로 30",
+      "effectiveSite": "사이언스파크 E동",
+      "passed": true,
+      "errors": []
+    },
+    {
+      "id": "WTT-ADD-09",
+      "type": "ADDITIONAL",
+      "title": "판교 알파돔시티 과거 배차대장 안전옵션 자동 승계 및 [현장옵션 불러오기] 검증",
+      "stressAxis": {
+        "spatial": "HQ_DEPOT",
+        "physical": "INHERITED_DELIVERY",
+        "temporal": "MORNING",
+        "cost": "CUSTOMER_100",
+        "qty": "SINGLE_1"
+      },
+      "ruleCount": "8/8",
+      "effectiveAddress": "경기도 성남시 분당구 판교역로 146",
+      "effectiveSite": "알파돔 6-3블록",
+      "passed": true,
+      "errors": []
+    },
+    {
+      "id": "WTT-ADD-10",
+      "type": "ADDITIONAL",
+      "title": "울산 온산공단 에쓰오일 샤힌 프로젝트 2대 출고 (5T 장축 지정 & 편도지원 50%)",
+      "stressAxis": {
+        "spatial": "REMOTE",
+        "physical": "BOLTED_SAFETY",
+        "temporal": "MORNING",
+        "cost": "SPLIT_50",
+        "qty": "MULTI_2"
+      },
+      "ruleCount": "8/8",
+      "effectiveAddress": "울산광역시 울주군 온산읍 산암로 123",
+      "effectiveSite": "온산 샤힌 PKG-1",
+      "passed": true,
+      "errors": []
+    },
+    {
+      "id": "WTT-NEW-01",
+      "type": "NEW_CUSTOMER",
+      "title": "(주)동화건설 첫 거래 개시 (안양 지식산업센터 신축, 8대 스키마 완결)",
+      "stressAxis": {
+        "spatial": "DIRECT",
+        "physical": "STANDARD",
+        "temporal": "MORNING",
+        "cost": "CUSTOMER_100",
+        "qty": "SINGLE_2"
+      },
+      "ruleCount": "8/8",
+      "effectiveAddress": "경기도 안양시 동안구 시민대로 180",
+      "effectiveSite": "안양 디오밸리 신축",
+      "passed": true,
+      "errors": []
+    },
+    {
+      "id": "WTT-NEW-02",
+      "type": "NEW_CUSTOMER",
+      "title": "대일전기 신규 고객 긴급 야간 투입 (상세주소 미입력 시 WARN 실드 방어 및 보완)",
+      "stressAxis": {
+        "spatial": "DIRECT",
+        "physical": "BOLTED_SAFETY",
+        "temporal": "ASAP",
+        "cost": "OURS_WAIVED",
+        "qty": "SINGLE_1"
+      },
+      "ruleCount": "8/8",
+      "effectiveAddress": "서울특별시 구로구 디지털로34길 55",
+      "effectiveSite": "구로 데이터센터 리뉴얼",
+      "passed": true,
+      "errors": []
+    },
+    {
+      "id": "WTT-NEW-03",
+      "type": "NEW_CUSTOMER",
+      "title": "신라종합건설 여의도 오피스 (정식 고객 등록 전 배차 확정 차단 방어 검증)",
+      "stressAxis": {
+        "spatial": "DIRECT",
+        "physical": "STANDARD",
+        "temporal": "MORNING",
+        "cost": "CUSTOMER_100",
+        "qty": "SINGLE_1"
+      },
+      "ruleCount": "8/8",
+      "effectiveAddress": "서울특별시 영등포구 여의대로 10",
+      "effectiveSite": "여의도 국제금융센터 리모델링",
+      "passed": true,
+      "errors": []
+    },
+    {
+      "id": "WTT-NEW-04",
+      "type": "NEW_CUSTOMER",
+      "title": "삼우인테리어 강남 백화점 리뉴얼 (야간 22:00 상차 직송 & 러버패드/소화기)",
+      "stressAxis": {
+        "spatial": "DIRECT",
+        "physical": "SHEET_PROTECTION",
+        "temporal": "NIGHT_EXACT",
+        "cost": "CUSTOMER_100",
+        "qty": "SINGLE_1"
+      },
+      "ruleCount": "8/8",
+      "effectiveAddress": "서울특별시 강남구 테헤란로 517",
+      "effectiveSite": "현대백화점 무역센터점 B1F",
+      "passed": true,
+      "errors": []
+    },
+    {
+      "id": "WTT-NEW-05",
+      "type": "NEW_CUSTOMER",
+      "title": "세원플랜트 광양제철소 신규 (성명 누락 시 CONTACT 실드 차단 후 보완 통과)",
+      "stressAxis": {
+        "spatial": "REMOTE",
+        "physical": "BOLTED_SAFETY",
+        "temporal": "MORNING",
+        "cost": "CUSTOMER_100",
+        "qty": "SINGLE_1"
+      },
+      "ruleCount": "8/8",
+      "effectiveAddress": "전라남도 광양시 제철로 2145",
+      "effectiveSite": "광양제철소 4고로 정비공사",
+      "passed": true,
+      "errors": []
+    },
+    {
+      "id": "WTT-NEW-06",
+      "type": "NEW_CUSTOMER",
+      "title": "미래이엔지 파주 디스플레이 공장 (커스텀 무분진 바퀴커버 추가 및 8대 실드 완결)",
+      "stressAxis": {
+        "spatial": "DIRECT",
+        "physical": "CUSTOM_CLEANROOM",
+        "temporal": "AFTERNOON",
+        "cost": "CUSTOMER_100",
+        "qty": "SINGLE_2"
+      },
+      "ruleCount": "8/8",
+      "effectiveAddress": "경기도 파주시 월롱면 엘지로 245",
+      "effectiveSite": "LG디스플레이 P10",
+      "passed": true,
+      "errors": []
+    },
+    {
+      "id": "WTT-NEW-07",
+      "type": "NEW_CUSTOMER",
+      "title": "한양토건 제주 신화월드 리조트 신규 (도서지역, 8.5T 트럭 & 이틀 시차 하차)",
+      "stressAxis": {
+        "spatial": "REMOTE_ISLAND",
+        "physical": "BOLTED_SAFETY",
+        "temporal": "MULTI_DAY",
+        "cost": "CUSTOMER_100",
+        "qty": "MULTI_2"
+      },
+      "ruleCount": "8/8",
+      "effectiveAddress": "제주특별자치도 서귀포시 안덕면 신화역사로 304번길 38",
+      "effectiveSite": "신화월드 빌라단지 증축",
+      "passed": true,
+      "errors": []
+    },
+    {
+      "id": "WTT-NEW-08",
+      "type": "NEW_CUSTOMER",
+      "title": "서진건설 대전 유성 물류센터 (인수 담당자 전화번호 8자리 차단 ➔ 정규화 통과)",
+      "stressAxis": {
+        "spatial": "DIRECT",
+        "physical": "STANDARD",
+        "temporal": "MORNING",
+        "cost": "SPLIT_50",
+        "qty": "SINGLE_1"
+      },
+      "ruleCount": "8/8",
+      "effectiveAddress": "대전광역시 유성구 테크노2로 187",
+      "effectiveSite": "유성 복합물류센터 신축",
+      "passed": true,
+      "errors": []
+    },
+    {
+      "id": "WTT-NEW-09",
+      "type": "NEW_CUSTOMER",
+      "title": "영진설비 구미 국가산단 공장 (장비 미선택 WHAT 실드 차단 검증 ➔ 선택 후 통과)",
+      "stressAxis": {
+        "spatial": "DIRECT",
+        "physical": "STANDARD",
+        "temporal": "ASAP",
+        "cost": "CUSTOMER_100",
+        "qty": "SINGLE_1"
+      },
+      "ruleCount": "8/8",
+      "effectiveAddress": "경상북도 구미시 산동면 첨단기업로 100",
+      "effectiveSite": "구미산단 4공구 배관공사",
+      "passed": true,
+      "errors": []
+    },
+    {
+      "id": "WTT-NEW-10",
+      "type": "NEW_CUSTOMER",
+      "title": "(주)태양전기 용인 원삼 반도체 클러스터 (신규 고객/현장 32ft 2대, 8대 실드 100%)",
+      "stressAxis": {
+        "spatial": "DIRECT",
+        "physical": "BOLTED_SAFETY",
+        "temporal": "MORNING",
+        "cost": "CUSTOMER_100",
+        "qty": "MULTI_2"
+      },
+      "ruleCount": "8/8",
+      "effectiveAddress": "경기도 용인시 처인구 원삼면 죽능리 100",
+      "effectiveSite": "용인 반도체 클러스터 1차 변전소",
+      "passed": true,
+      "errors": []
+    },
+    {
+      "id": "WTT-EXC-01",
+      "type": "EXCHANGE",
+      "title": "백산이앤씨 분당 현장 모터 소손 단일 대차 (전자산 #101 매핑, 왕복 1건 발행, 당사부담)",
+      "stressAxis": {
+        "spatial": "DIRECT",
+        "physical": "MOTOR_BURNED",
+        "temporal": "ASAP",
+        "cost": "OURS_WAIVED",
+        "qty": "EXCHANGE_1"
+      },
+      "ruleCount": "9/9",
+      "effectiveAddress": "경기도 성남시 분당구 정자동 88",
+      "effectiveSite": "분당 느티마을4단지 리모델링",
+      "passed": true,
+      "errors": []
+    },
+    {
+      "id": "WTT-EXC-02",
+      "type": "EXCHANGE",
+      "title": "현대건설 평택 현장 유압 누유 긴급 대차 (전자산 미선택 시 출고 방어 차단 검증)",
+      "stressAxis": {
+        "spatial": "DIRECT",
+        "physical": "HYDRAULIC_LEAK",
+        "temporal": "MORNING",
+        "cost": "OURS_WAIVED",
+        "qty": "EXCHANGE_1"
+      },
+      "ruleCount": "9/9",
+      "effectiveAddress": "경기도 평택시 고덕면 첨단산단로 100",
+      "effectiveSite": "평택 고덕 P3 복합동",
+      "passed": true,
+      "errors": []
+    },
+    {
+      "id": "WTT-EXC-03",
+      "type": "EXCHANGE",
+      "title": "GS건설 청라 아파트 복수 2대 동시 대차 (#108, #109 다수 회수 매핑, 단일 왕복)",
+      "stressAxis": {
+        "spatial": "DIRECT",
+        "physical": "MULTI_BREAKDOWN",
+        "temporal": "MORNING",
+        "cost": "OURS_WAIVED",
+        "qty": "EXCHANGE_MULTI_2"
+      },
+      "ruleCount": "9/9",
+      "effectiveAddress": "인천광역시 서구 청라동 50",
+      "effectiveSite": "청라 자이 그랜드",
+      "passed": true,
+      "errors": []
+    },
+    {
+      "id": "WTT-EXC-04",
+      "type": "EXCHANGE",
+      "title": "포스코이앤씨 광양 현장 고객 과실(장비 충돌) 파손 대차 (운송비 고객사 전액 청구)",
+      "stressAxis": {
+        "spatial": "REMOTE",
+        "physical": "CUSTOMER_FAULT_COLLISION",
+        "temporal": "AFTERNOON",
+        "cost": "CUSTOMER_100",
+        "qty": "EXCHANGE_1"
+      },
+      "ruleCount": "9/9",
+      "effectiveAddress": "전라남도 광양시 제철로 100",
+      "effectiveSite": "광양제철소 3제강",
+      "passed": true,
+      "errors": []
+    },
+    {
+      "id": "WTT-EXC-05",
+      "type": "EXCHANGE",
+      "title": "대우건설 화성 봉담 배터리 조기 방전 대차 (편도지원 50% & 현장주소 인라인 보정)",
+      "stressAxis": {
+        "spatial": "DIRECT",
+        "physical": "BATTERY_DISCHARGE",
+        "temporal": "MORNING",
+        "cost": "SPLIT_50",
+        "qty": "EXCHANGE_1"
+      },
+      "ruleCount": "9/9",
+      "effectiveAddress": "경기도 화성시 봉담읍 동화리 50 (정문 상차장)",
+      "effectiveSite": "봉담 센트럴힐",
+      "passed": true,
+      "errors": []
+    },
+    {
+      "id": "WTT-EXC-06",
+      "type": "EXCHANGE",
+      "title": "한화건설 대전 현장 안전옵션 상속 대차 (전자산 협착+경광등 100% 자동 계승)",
+      "stressAxis": {
+        "spatial": "HQ_DEPOT",
+        "physical": "OPTION_INHERITANCE",
+        "temporal": "MORNING",
+        "cost": "OURS_WAIVED",
+        "qty": "EXCHANGE_1"
+      },
+      "ruleCount": "9/9",
+      "effectiveAddress": "대전광역시 유성구 가정로 120",
+      "effectiveSite": "대전 대덕 데이터센터",
+      "passed": true,
+      "errors": []
+    },
+    {
+      "id": "WTT-EXC-07",
+      "type": "EXCHANGE",
+      "title": "롯데건설 마곡 현장 반납 장비 관리번호 미확인 대차 (\"모름\" 선택으로 실드 9/9 통과 및 현장확인 회수)",
+      "stressAxis": {
+        "spatial": "DIRECT",
+        "physical": "UNKNOWN_ASSET_RETURN",
+        "temporal": "EXACT_MATCH",
+        "cost": "OURS_WAIVED",
+        "qty": "EXCHANGE_1"
+      },
+      "ruleCount": "9/9",
+      "effectiveAddress": "서울특별시 강서구 마곡동 767",
+      "effectiveSite": "마곡 르웨스트",
+      "passed": true,
+      "errors": []
+    },
+    {
+      "id": "WTT-EXC-08",
+      "type": "EXCHANGE",
+      "title": "SK에코플랜트 울산 현장 3대 중 1대만 부분 대차 (나머지 2대 계약 가동 보존)",
+      "stressAxis": {
+        "spatial": "REMOTE",
+        "physical": "PARTIAL_1_OF_3",
+        "temporal": "MORNING",
+        "cost": "OURS_WAIVED",
+        "qty": "PARTIAL_EXCHANGE"
+      },
+      "ruleCount": "9/9",
+      "effectiveAddress": "울산광역시 남구 용연로 200",
+      "effectiveSite": "울산 GPS 발전소",
+      "passed": true,
+      "errors": []
+    },
+    {
+      "id": "WTT-EXC-09",
+      "type": "EXCHANGE",
+      "title": "두산에너빌리티 창원공장 당사자산 부족 외부 임차(전대) 조달 연동 대차",
+      "stressAxis": {
+        "spatial": "THIRD_PARTY_YARD",
+        "physical": "SUBLEASE_EQUIP",
+        "temporal": "MORNING",
+        "cost": "OURS_WAIVED",
+        "qty": "EXCHANGE_1"
+      },
+      "ruleCount": "9/9",
+      "effectiveAddress": "경상남도 창원시 성산구 두산볼보로 22",
+      "effectiveSite": "창원 단조공장",
+      "passed": true,
+      "errors": []
+    },
+    {
+      "id": "WTT-EXC-10",
+      "type": "EXCHANGE",
+      "title": "현대엔지니어링 새만금 현장 월말 28일 대차 (일할 정산 마감 ➔ 후장비 승계 보존)",
+      "stressAxis": {
+        "spatial": "REMOTE",
+        "physical": "MONTH_END_PRORATA",
+        "temporal": "MONTH_END_28",
+        "cost": "CUSTOMER_100",
+        "qty": "EXCHANGE_1"
+      },
+      "ruleCount": "9/9",
+      "effectiveAddress": "전북 군산시 새만금북로 500",
+      "effectiveSite": "새만금 수소단지 2공구",
+      "passed": true,
+      "errors": []
+    }
+  ]
+}

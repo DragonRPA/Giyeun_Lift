@@ -27,7 +27,7 @@
       "source": "/downloads/(.*)\\.apk",
       "headers": [
         { "key": "Content-Type", "value": "application/vnd.android.package-archive" },
-        { "key": "Content-Disposition", "value": "attachment; filename=\"KiyeunCallCapture.apk\"" },
+        { "key": "Content-Disposition", "value": "attachment; filename=\"CallTransfer.apk\"" },
         { "key": "Cache-Control", "value": "no-cache, no-store, must-revalidate" },
         { "key": "Pragma", "value": "no-cache" },
         { "key": "Expires", "value": "0" }

@@ -65,20 +65,20 @@ let totalCount = 10;
 
 async function runWTT() {
   const rootDir = path.resolve(__dirname, '..');
-  const apkPath = path.join(rootDir, 'public', 'downloads', 'KiyeunCallCapture.apk');
-  const distApkPath = path.join(rootDir, 'dist', 'downloads', 'KiyeunCallCapture.apk');
+  const apkPath = path.join(rootDir, 'public', 'downloads', 'CallTransfer.apk');
+  const distApkPath = path.join(rootDir, 'dist', 'downloads', 'CallTransfer.apk');
 
   // Load workStatusService simulation using the exact logic implemented
   const LOCAL_STORAGE_KEY_PREFIX = 'erp_user_work_status_';
   const FALLBACK_APK_RELEASE = {
-    id:          'release-v1.0.0',
-    version:     'v1.0.0',
-    storagePath: '/downloads/KiyeunCallCapture.apk',
-    fileSize:    24701,
-    releaseNote: '기연 통화 녹음 자동 캡처 및 출퇴근 동기화 모바일 패키지',
+    id:          'release-v2.0.0',
+    version:     'v2.0.0',
+    storagePath: '/downloads/CallTransfer.apk',
+    fileSize:    25123,
+    releaseNote: '통화 감지 및 출퇴근 연동 모바일 패키지 (CallTransfer v2.0.0)',
     isLatest:    true,
     createdAt:   '2026-09-06T00:00:00.000Z',
-    downloadUrl: '/downloads/KiyeunCallCapture.apk',
+    downloadUrl: '/downloads/CallTransfer.apk',
   };
 
   function getLocalWorkStatus(userId) {
@@ -277,10 +277,10 @@ async function runWTT() {
   try {
     console.log('▶ [WTT 8/10] getLatestApkRelease 폴백 보장 검증...');
     const release = FALLBACK_APK_RELEASE;
-    if (!release.downloadUrl || release.downloadUrl !== '/downloads/KiyeunCallCapture.apk') {
+    if (!release.downloadUrl || release.downloadUrl !== '/downloads/CallTransfer.apk') {
       throw new Error('유효한 downloadUrl이 보장되지 않았습니다.');
     }
-    if (!release.version || release.version !== 'v1.0.0') {
+    if (!release.version || release.version !== 'v2.0.0') {
       throw new Error('버전 표기가 누락되었습니다.');
     }
     console.log('   ✅ PASS: downloadUrl: ' + release.downloadUrl + ' 및 버전: ' + release.version + ' 100% 반환 확인');
@@ -295,7 +295,7 @@ async function runWTT() {
   try {
     console.log('▶ [WTT 9/10] APK 물리 파일 존재 및 Android 구조 무결성 검증...');
     if (!fs.existsSync(apkPath)) {
-      throw new Error(`public/downloads/KiyeunCallCapture.apk 파일이 존재하지 않습니다: ${apkPath}`);
+      throw new Error(`public/downloads/CallTransfer.apk 파일이 존재하지 않습니다: ${apkPath}`);
     }
     const stat = fs.statSync(apkPath);
     if (stat.size < 1000) {

@@ -136,11 +136,13 @@ function parseClosingDay(dayStr) {
 function extractSiteNameAndMemo(rawSite) {
   if (!rawSite) return { cleanSiteName: '기본현장', dispatchMemo: '' };
   const str = String(rawSite).trim();
-  const memoMatch = str.match(/\((.*?)\)/);
-  let dispatchMemo = memoMatch ? memoMatch[1] : '';
-  let cleanSiteName = str.replace(/\(.*?\)/g, '').trim();
-  if (!cleanSiteName) cleanSiteName = str;
-  return { cleanSiteName, dispatchMemo };
+  const dateDeliveryRe = /\(([^)]*(?:\d{1,2}[\/\.]\d{1,2}|하차|상차|입고|출고|회수|배송|당착|연장|마감|종료)[^)]*)\)/gi;
+  let dispatchMemo = '';
+  const cleanSiteName = str.replace(dateDeliveryRe, (_, memo) => {
+    if (!dispatchMemo) dispatchMemo = memo.trim();
+    return '';
+  }).trim();
+  return { cleanSiteName: cleanSiteName || str, dispatchMemo };
 }
 
 function extractContactPosition(rawName) {
@@ -435,8 +437,32 @@ async function executeMigration() {
     }
   });
 
+  // 2-2. 업체별마감일자 비고 및 옵션 연동
+  const wsClose = wb.Sheets['업체별마감일자'];
+  if (wsClose) {
+    const rawCloseRows = xlsx.utils.sheet_to_json(wsClose, { header: 1, defval: null }).slice(2);
+    rawCloseRows.forEach(r => {
+      if (!r || !r[1] || typeof r[1] === 'number') return;
+      const custName = normalizeCustomerName(r[1]);
+      if (!custName || custName === '거래처명' || custName === '고객사명' || custName === '업체명') return;
+      const memo = r[4] ? String(r[4]).trim() : '';
+      const cust = customerMap.get(custName);
+      if (cust && memo && memo !== 'nan' && memo !== '비고') {
+        cust.specialNotes = cust.specialNotes ? `${cust.specialNotes} | ${memo}` : memo;
+        const optMatch = memo.match(/(협착\s*난간대[^\),]*)/);
+        if (optMatch) {
+          const opt = optMatch[1].trim();
+          if (!cust.defaultPaidOptions) cust.defaultPaidOptions = [];
+          if (Array.isArray(cust.defaultPaidOptions) && !cust.defaultPaidOptions.includes(opt)) {
+            cust.defaultPaidOptions.push(opt);
+          }
+        }
+      }
+    });
+  }
+
   // 3. 202608 계약 대장 및 풀 체인 빌드
-  const wsBill = wb.Sheets['202608'];
+  const wsBill = wb.Sheets['202608'] || wb.Sheets['계약현황'];
   const rawBillRows = wsBill ? xlsx.utils.sheet_to_json(wsBill, { header: 1, defval: null }).slice(3) : [];
   
   const contracts = [];

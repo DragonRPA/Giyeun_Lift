@@ -26,7 +26,7 @@ import {
   ClipboardPaste, ArrowRight, Info, Merge,
   UploadCloud, ShieldCheck, ShieldAlert,
   AlertTriangle, Check, AlertCircle, RotateCcw,
-  Truck, Wrench, Shield
+  Truck, Wrench, Shield, RefreshCw, Save, X, Search
 } from 'lucide-react';
 import { CallAudioUploadModal } from '../components/CallAudioUploadModal';
 import './smart_dispatch4.css';
@@ -93,11 +93,8 @@ const CONTEXT_OPTIONS: { id: CallContext; label: string; color: string }[] = [
 
 const FT_GROUPS = ['19ft', '26ft', '32ft', '33ft', '40ft', '특수/기타'];
 
-const SAFETY_OPTION_LIST = [
-  { id: 'BAR_4EA',      label: '협착방지봉 4EA' },
-  { id: 'FIRE_EXT',     label: '소화기함 장착' },
-  { id: 'MESH_4SIDE',   label: '4면 철망 보양' },
-  { id: 'PAINT_COVER',  label: '도색방지 비닐 커버' },
+export const QUICK_OPTION_SUGGESTIONS = [
+  '협착방지', '상부센서', '경광등', '소화기', '논마킹', '비닐보양'
 ];
 
 const getModelsByFt = (ft: string) => {
@@ -181,17 +178,20 @@ export const SmartDispatch4: React.FC = () => {
       } else if (p.startsWith('[시차출고]')) {
         staggeredMemo = p.replace('[시차출고]', '').trim();
       } else if (p.startsWith('[대차회수대상]')) {
-        const ids = p.replace('[대차회수대상]', '').replace(/자산|#/g, '').split(',').map(s => s.trim()).filter(Boolean);
-        retrievalAssetIds.push(...ids);
+        if (p.includes('모름')) {
+          retrievalAssetIds.push('UNKNOWN');
+        } else {
+          const ids = p.replace('[대차회수대상]', '').replace(/자산|#/g, '').split(',').map(s => s.trim()).filter(Boolean);
+          retrievalAssetIds.push(...ids);
+        }
       } else if (p.startsWith('[차종]')) {
         vehicleType = p.replace('[차종]', '').trim();
       } else if (p.startsWith('[현장상세주소]')) {
         siteAddress = p.replace('[현장상세주소]', '').trim();
-      } else if (p.startsWith('[안전옵션]')) {
-        const optStr = p.replace('[안전옵션]', '');
-        SAFETY_OPTION_LIST.forEach(s => {
-          if (optStr.includes(s.label)) safetyOptions.push(s.id);
-        });
+      } else if (p.startsWith('[옵션]') || p.startsWith('[안전옵션]')) {
+        const optStr = p.replace(/^\[(?:옵션|안전옵션)\]/, '').trim();
+        const items = optStr.split(/[,/|]/).map(s => s.trim()).filter(Boolean);
+        safetyOptions.push(...items);
       }
     });
 
@@ -286,17 +286,20 @@ export const SmartDispatch4: React.FC = () => {
   // ── 업무 유형 (단일 맥락 선택, 🌟 기본값 null: 아무것도 자동 선택되지 않음) ──
   const [selectedContext, setSelectedContext] = useState<CallContext | null>(null);
 
-  // 🌟 [과거 기록 기반 옵션 자동 로드] 현장 마스터 + 과거 배차 대장에서 안전/보양 옵션 자동 승계
-  const inheritPastSafetyOptions = useCallback((cust: Customer | null, site: CustomerSite | null) => {
+  // 🌟 [현장 마스터 + 과거 기록 기반 옵션 자동 로드] 현장 및 배차 대장에서 안전/보양 옵션 자동 로드
+  const loadSiteSafetyOptions = useCallback((site: CustomerSite | null, cust: Customer | null) => {
     const inherited = new Set<string>();
+
     if (site) {
-      const p = `${site.paidOptions || ''} ${site.protection || ''}`;
-      if (/협착|BAR_4EA/i.test(p)) inherited.add('BAR_4EA');
-      if (/소화기|FIRE_EXT/i.test(p)) inherited.add('FIRE_EXT');
-      if (/철망|망보양|MESH_4SIDE/i.test(p)) inherited.add('MESH_4SIDE');
-      if (/도색|비닐|커버|PAINT_COVER/i.test(p)) inherited.add('PAINT_COVER');
+      const rawText = `${site.paidOptions || ''} ${site.protection || ''}`.trim();
+      if (rawText) {
+        rawText.split(/[,/|]/).map(t => t.trim()).filter(Boolean).forEach(token => {
+          inherited.add(token);
+        });
+      }
     }
-    // 현장 마스터에 옵션이 없을 때 과거 배차(deliveries) 기록에서 자동 탐색
+
+    // 현장 마스터에 옵션이 비어있으면 과거 배차(deliveries) 이력에서 자동 탐색
     if (inherited.size === 0 && (site || cust)) {
       const siteAddrs = site?.address?.trim();
       const custId = cust?.id;
@@ -306,18 +309,22 @@ export const SmartDispatch4: React.FC = () => {
         (site?.name && d.cargoItems && d.cargoItems.includes(site.name))
       );
       if (pastDelivery) {
-        const text = `${pastDelivery.cargoItems || ''} ${pastDelivery.destinationAddress || ''}`;
-        if (/협착|BAR_4EA/i.test(text)) inherited.add('BAR_4EA');
-        if (/소화기|FIRE_EXT/i.test(text)) inherited.add('FIRE_EXT');
-        if (/철망|망보양|MESH_4SIDE/i.test(text)) inherited.add('MESH_4SIDE');
-        if (/도색|비닐|커버|PAINT_COVER/i.test(text)) inherited.add('PAINT_COVER');
+        const text = `${pastDelivery.cargoItems || ''} ${pastDelivery.closingMemo || ''} ${pastDelivery.memo || ''}`;
+        const match = text.match(/\[(?:옵션|안전옵션)\]\s*([^|\]]+)/);
+        if (match && match[1]) {
+          match[1].split(/[,/|]/).map(t => t.trim()).filter(Boolean).forEach(item => {
+            inherited.add(item);
+          });
+        }
       }
     }
-    if (inherited.size > 0) {
-      setSelectedSafetyOptions(new Set(inherited));
-      setInitialSiteOptions(new Set(inherited));
-    }
+
+    setSelectedSafetyOptions(new Set(inherited));
+    setInitialSiteOptions(new Set(inherited));
+    return inherited;
   }, [deliveries]);
+
+  const inheritPastSafetyOptions = loadSiteSafetyOptions;
 
   const isNewCustomerMode = selectedContext === 'NEW_CUSTOMER';
   const isExchangeMode = selectedContext === 'EXCHANGE';
@@ -347,6 +354,8 @@ export const SmartDispatch4: React.FC = () => {
   // ── WHERE 블록 — 투입 현장 및 현장 담당자 ────────────────────────────────
   const [siteQuery, setSiteQuery] = useState('');
   const [selectedSite, setSelectedSite] = useState<CustomerSite | null>(null);
+  const [selectedSiteAddress, setSelectedSiteAddress] = useState('');
+  const [isRegisteringNewSite, setIsRegisteringNewSite] = useState(false);
   const [newSiteName, setNewSiteName] = useState('');
   const [newSiteAddress, setNewSiteAddress] = useState('');
   const [contactPerson, setContactPerson] = useState('');
@@ -450,14 +459,29 @@ export const SmartDispatch4: React.FC = () => {
 
   const [note, setNote] = useState('');
 
-  // ── 🌟 [대차 회수 대상 전자산 다수 매핑 지원] ───────────────────────────
+  // ── 🌟 [대차 회수 대상 전자산 다수 매핑 및 "모름" 지원] ────────────────────
   const [retrievalAssetIds, setRetrievalAssetIds] = useState<string[]>([]);
   const retrievalAssetId = retrievalAssetIds[0] || '';
 
+  const isUnknownRetrieval = useMemo(() => {
+    return retrievalAssetIds.includes('UNKNOWN') || retrievalAssetIds.includes('모름');
+  }, [retrievalAssetIds]);
+
+  const toggleUnknownRetrieval = () => {
+    setRetrievalAssetIds(prev => {
+      const isAlready = prev.includes('UNKNOWN') || prev.includes('모름');
+      if (isAlready) return [];
+      return ['UNKNOWN'];
+    });
+  };
+
   const toggleRetrievalAsset = (assetNo: string) => {
-    setRetrievalAssetIds(prev =>
-      prev.includes(assetNo) ? prev.filter(id => id !== assetNo) : [...prev, assetNo]
-    );
+    setRetrievalAssetIds(prev => {
+      const withoutUnknown = prev.filter(id => id !== 'UNKNOWN' && id !== '모름');
+      return withoutUnknown.includes(assetNo)
+        ? withoutUnknown.filter(id => id !== assetNo)
+        : [...withoutUnknown, assetNo];
+    });
   };
 
   // 선택된 고객사의 현재 가동 중인 장비 목록 (대차 대상 - 멀티테넌시 고객 격리)
@@ -470,17 +494,67 @@ export const SmartDispatch4: React.FC = () => {
   const [paidBy, setPaidBy] = useState<PaidBy | null>(null);
   const [vehicleType, setVehicleType] = useState<string>('5T');
 
-  // ── 🌟 [안전옵션 및 보양작업] ───────────────────────────────────────────
+  // ── 🌟 [고객 요청 옵션: 있는 그대로 기록하는 자유 태그 + 현장 연동] ───────
+  const [newOptionInput, setNewOptionInput] = useState<string>('');
   const [selectedSafetyOptions, setSelectedSafetyOptions] = useState<Set<string>>(new Set());
   const [initialSiteOptions, setInitialSiteOptions] = useState<Set<string>>(new Set());
   const [saveOptionsToSite, setSaveOptionsToSite] = useState<boolean>(true);
 
-  const toggleSafetyOption = (id: string) => {
+  const toggleOptionTag = (tag: string) => {
     setSelectedSafetyOptions(prev => {
-      const n = new Set(prev);
-      if (n.has(id)) n.delete(id); else n.add(id);
-      return n;
+      const next = new Set(prev);
+      if (next.has(tag)) next.delete(tag);
+      else next.add(tag);
+      return next;
     });
+  };
+
+  const handleAddOption = (customVal?: string) => {
+    const val = (customVal || newOptionInput).trim();
+    if (!val) return;
+    setSelectedSafetyOptions(prev => new Set(prev).add(val));
+    if (!customVal) setNewOptionInput('');
+  };
+
+  const handleRemoveOption = (tag: string) => {
+    setSelectedSafetyOptions(prev => {
+      const next = new Set(prev);
+      next.delete(tag);
+      return next;
+    });
+  };
+
+  const handleReloadSiteOptions = () => {
+    if (!selectedSite) {
+      showToast('선택된 현장이 없습니다.', 'error');
+      return;
+    }
+    loadSiteSafetyOptions(selectedSite, selectedCustomer);
+    showToast(`현장 '${selectedSite.name}'의 기본 옵션을 다시 불러왔습니다.`, 'info');
+  };
+
+  const handleSaveOptionsToCurrentSite = async () => {
+    if (!selectedSite) {
+      showToast('선택된 현장이 없습니다.', 'error');
+      return;
+    }
+    const optionLabels = Array.from(selectedSafetyOptions);
+    const paidOpts = optionLabels.filter(label => !/보양|비닐|커버/i.test(label)).join(', ');
+    const protOpts = optionLabels.filter(label => /보양|비닐|커버/i.test(label)).join(', ');
+
+    try {
+      db.updateRow<CustomerSite>('sites', selectedSite.id, {
+        paidOptions: paidOpts,
+        protection: protOpts,
+        address: selectedSiteAddress || selectedSite.address,
+        updatedAt: new Date().toISOString(),
+      });
+      await db.awaitPendingWrites();
+      setInitialSiteOptions(new Set(selectedSafetyOptions));
+      showToast(`[${selectedSite.name}] 현장 옵션 및 주소가 성공적으로 저장되었습니다.`, 'success');
+    } catch (e: any) {
+      showToast(`현장 옵션 저장 실패: ${e?.message}`, 'error');
+    }
   };
 
   // 첨삭(변경) 발생 여부 계산: 현장 기존 옵션과 달라진 경우 true
@@ -496,46 +570,75 @@ export const SmartDispatch4: React.FC = () => {
   // ── 🌟 [다수 장비 시차 출고 메모] ───────────────────────────────────────
   const [staggeredMemo, setStaggeredMemo] = useState('');
 
-  // DB 상속
+  // DB 상속 (현장/고객 변경 시 담당자 및 연락처 100% 자동 동기화)
   const applyInheritance = useCallback((cust: Customer | null, site: CustomerSite | null) => {
-    if (!cust) return;
-    if (site) {
-      if (site.contactName && !contactPerson) setContactPerson(site.contactName);
-      if (site.contact && !contactPhone) setContactPhone(site.contact);
+    if (!cust) {
+      setContactPerson('');
+      setContactPhone('');
       return;
     }
     const custContacts = contacts.filter(c => c.customerId === cust.id);
     const primary = custContacts[0];
-    if (primary) {
-      if (!contactPerson) setContactPerson(primary.name);
-      if (!contactPhone) setContactPhone(primary.contact || '');
+
+    if (site) {
+      // 1순위: 현장 마스터 등록 담당자 및 연락처
+      // 2순위: 거래처 기본 담당자 및 연락처
+      const targetName = site.contactName || (primary ? primary.name : '');
+      const targetPhone = site.contact || (primary ? primary.contact || '' : '');
+      setContactPerson(targetName);
+      setContactPhone(targetPhone);
+      return;
     }
-  }, [contacts, contactPerson, contactPhone]);
+
+    // 현장 미선택 시 거래처 기본 담당자로 설정
+    if (primary) {
+      setContactPerson(primary.name || '');
+      setContactPhone(primary.contact || '');
+    } else {
+      setContactPerson('');
+      setContactPhone('');
+    }
+  }, [contacts]);
 
   const handleSelectCustomer = (cust: Customer) => {
     setSelectedCustomer(cust);
     setCustomerQuery('');
     setSelectedSite(null);
+    setSelectedSiteAddress('');
+    setIsRegisteringNewSite(false);
     setSiteQuery('');
     applyInheritance(cust, null);
-    inheritPastSafetyOptions(cust, null);
+    loadSiteSafetyOptions(null, cust);
     setOpenBlock('WHERE');
   };
 
   const handleSelectSite = (site: CustomerSite) => {
     setSelectedSite(site);
+    setSelectedSiteAddress(site.address || '');
+    setIsRegisteringNewSite(false);
     setSiteQuery('');
     applyInheritance(selectedCustomer, site);
 
     // 🌟 과거 기록(현장 마스터 또는 배차 대장)에서 옵션 자동 승계
-    inheritPastSafetyOptions(selectedCustomer, site);
+    loadSiteSafetyOptions(site, selectedCustomer);
     setOpenBlock('WHAT');
   };
 
   const handleSelectContext = (ctx: CallContext) => {
-    setSelectedContext(prev => prev === ctx ? null : ctx);
+    setSelectedContext(prev => {
+      const next = prev === ctx ? null : ctx;
+      if (next === 'NEW_CUSTOMER') {
+        setSelectedCustomer(null);
+        setSelectedSite(null);
+        setSelectedSiteAddress('');
+        setIsRegisteringNewSite(false);
+        setContactPerson('');
+        setContactPhone('');
+      }
+      return next;
+    });
     if (selectedSite) {
-      inheritPastSafetyOptions(selectedCustomer, selectedSite);
+      loadSiteSafetyOptions(selectedSite, selectedCustomer);
     }
   };
 
@@ -605,6 +708,7 @@ export const SmartDispatch4: React.FC = () => {
   // ── 폼 초기화 ─────────────────────────────────────────────────────────────
   const resetForm = () => {
     setSelectedCustomer(null); setSelectedSite(null);
+    setSelectedSiteAddress(''); setIsRegisteringNewSite(false);
     setCustomerQuery(''); setSiteQuery('');
     setEquipments([]);
     setLoadingDate(''); setLoadingTimeVal(''); setLoadingTimeType(null);
@@ -614,6 +718,7 @@ export const SmartDispatch4: React.FC = () => {
     setNewSiteName(''); setNewSiteAddress('');
     setRetrievalAssetIds([]); setPaidBy(null);
     setSelectedSafetyOptions(new Set()); setInitialSiteOptions(new Set());
+    setNewOptionInput('');
     setStaggeredMemo('');
     setSelectedContext(null);
     setOpenBlock('WHO');
@@ -635,24 +740,18 @@ export const SmartDispatch4: React.FC = () => {
     const hasContext = selectedContext !== null;
 
     const custName = isNewCustomerMode ? newCustomerName.trim() : (selectedCustomer?.name || '');
-    const siteNameVal = (selectedSite?.name || newSiteName).trim();
-    const addrVal = (selectedSite?.address || newSiteAddress || (isNewCustomerMode ? newCustomerAddress : '')).trim();
+    const siteNameVal = (isNewCustomerMode || isRegisteringNewSite ? newSiteName : (selectedSite?.name || '')).trim();
+    const addrVal = isNewCustomerMode
+      ? (newSiteAddress || newCustomerAddress || '').trim()
+      : isRegisteringNewSite
+        ? newSiteAddress.trim()
+        : (selectedSiteAddress || selectedSite?.address || '').trim();
     const hasEquip = hasContext && (equipments.length > 0 && equipments.every(e => e.modelName && e.qty > 0));
     const hasDate = !!loadingDate.trim();
     const hasTime = loadingTimeType === 'ASAP' || loadingTimeType === 'MORNING' || loadingTimeType === 'AFTERNOON' || (loadingTimeType === 'EXACT' && !!loadingTimeVal.trim());
     const hasContactPerson = !!contactPerson.trim();
     const cleanPhone = contactPhone.replace(/[^0-9]/g, '');
     const hasContactPhone = cleanPhone.length >= 9;
-
-    // 대차 시 전자산 선택 검증 (헌장 2.3)
-    // 1) 업무유형 미선택 시: INVALID (업무유형 지정 필요)
-    // 2) 대차(EXCHANGE) 시: retrievalAssetIds.length > 0 필수
-    // 3) 대차 외 일반출고: VALID (해당없음)
-    const hasRetrieval = !hasContext
-      ? false
-      : isExchangeMode
-        ? retrievalAssetIds.length > 0
-        : true;
 
     const hasPaidBy = paidBy !== null;
 
@@ -666,7 +765,7 @@ export const SmartDispatch4: React.FC = () => {
             ? '오후'
             : loadingTimeVal || '(시간 직접입력 필요)';
 
-    return [
+    const rules: ValidationRule[] = [
       {
         id: 'CUSTOMER',
         label: '고객사 지정',
@@ -694,7 +793,7 @@ export const SmartDispatch4: React.FC = () => {
       {
         id: 'CONTACT',
         label: '현장 인수자/연락처',
-        targetBlock: 'WHERE', // 🌟 현장 블록으로 이동
+        targetBlock: 'WHERE',
         status: (hasContactPerson && hasContactPhone) ? 'VALID' : 'INVALID',
         currentVal: (hasContactPerson || hasContactPhone)
           ? `${contactPerson || '(성명누락)'} / ${contactPhone || '(전화누락)'}`
@@ -729,30 +828,35 @@ export const SmartDispatch4: React.FC = () => {
         currentVal: timeDisplay,
         hint: '상차 예정 시간 (ASAP, 오전, 오후 또는 시간지정)',
       },
-      {
+    ];
+
+    // 🌟 대차(EXCHANGE) 업무일 때만 회수 전자산 검증 항목 추가 (일반 출고 시 거짓 녹색불 방지)
+    if (isExchangeMode) {
+      rules.push({
         id: 'RETRIEVAL_ASSET',
         label: '회수 전자산 (대차전용)',
         targetBlock: 'SAFETY_COST',
-        status: hasRetrieval ? 'VALID' : 'INVALID',
-        currentVal: !hasContext
-          ? '(업무유형 미선택)'
-          : isExchangeMode
-            ? (retrievalAssetIds.length > 0 ? `자산 #${retrievalAssetIds.join(', #')} (총 ${retrievalAssetIds.length}대)` : '(회수 대상 미지정)')
-            : '해당없음(일반출고)',
-        hint: '대차(EXCHANGE) 시 회수할 전자산 필수 매핑',
-      },
-      {
-        id: 'PAID_BY',
-        label: '운송비 부담 귀속선',
-        targetBlock: 'SAFETY_COST',
-        status: hasPaidBy ? 'VALID' : 'INVALID',
-        currentVal: paidBy === 'CUSTOMER' ? '고객사 청구' : paidBy === 'OURS' ? '당사 영업 부담(면제)' : paidBy === 'SPLIT' ? '편도 지원' : '(운송비부담 미선택)',
-        hint: '운송비 정산 및 회계 귀속선 선택 필수',
-      },
-    ];
+        status: retrievalAssetIds.length > 0 ? 'VALID' : 'INVALID',
+        currentVal: retrievalAssetIds.length > 0
+          ? (isUnknownRetrieval ? '모름 (현장 확인 후 회수)' : `자산 #${retrievalAssetIds.join(', #')} (총 ${retrievalAssetIds.length}대)`)
+          : '(회수 대상 미지정)',
+        hint: '대차(EXCHANGE) 시 회수할 전자산 (관리번호 모를 시 "모름" 선택 가능)',
+      });
+    }
+
+    rules.push({
+      id: 'PAID_BY',
+      label: '운송비 부담 귀속선',
+      targetBlock: 'SAFETY_COST',
+      status: hasPaidBy ? 'VALID' : 'INVALID',
+      currentVal: paidBy === 'CUSTOMER' ? '고객사 청구' : paidBy === 'OURS' ? '당사 영업 부담(면제)' : paidBy === 'SPLIT' ? '편도 지원' : '(운송비부담 미선택)',
+      hint: '운송비 정산 및 회계 귀속선 선택 필수',
+    });
+
+    return rules;
   }, [
-    isNewCustomerMode, isExchangeMode, newCustomerName, selectedCustomer,
-    newSiteName, selectedSite, newSiteAddress, newCustomerAddress,
+    isNewCustomerMode, isExchangeMode, isRegisteringNewSite, newCustomerName, selectedCustomer,
+    newSiteName, selectedSite, selectedSiteAddress, newSiteAddress, newCustomerAddress,
     selectedContext, equipments, totalQty,
     loadingDate, loadingTimeType, loadingTimeVal, contactPerson, contactPhone,
     retrievalAssetIds, paidBy
@@ -789,20 +893,17 @@ export const SmartDispatch4: React.FC = () => {
 
       // 🌟 [첨삭 저장 확인] 현장 기본값으로 저장 선택 시 CustomerSite DB 업데이트
       if (saveToSite && selectedSite) {
-        const paidOpts = Array.from(selectedSafetyOptions)
-          .filter(id => id === 'BAR_4EA' || id === 'FIRE_EXT')
-          .map(id => SAFETY_OPTION_LIST.find(s => s.id === id)?.label)
-          .join(', ');
-        const protOpts = Array.from(selectedSafetyOptions)
-          .filter(id => id === 'MESH_4SIDE' || id === 'PAINT_COVER')
-          .map(id => SAFETY_OPTION_LIST.find(s => s.id === id)?.label)
-          .join(', ');
+        const optionLabels = Array.from(selectedSafetyOptions);
+        const paidOpts = optionLabels.filter(label => !/보양|비닐|커버/i.test(label)).join(', ');
+        const protOpts = optionLabels.filter(label => /보양|비닐|커버/i.test(label)).join(', ');
 
         db.updateRow<CustomerSite>('sites', selectedSite.id, {
           paidOptions: paidOpts,
           protection: protOpts,
+          address: selectedSiteAddress || selectedSite.address,
           updatedAt: new Date().toISOString(),
         });
+        await db.awaitPendingWrites();
         showToast(`현장 '${selectedSite.name}'의 기본 옵션이 갱신 저장되었습니다.`, 'info');
       }
 
@@ -819,14 +920,18 @@ export const SmartDispatch4: React.FC = () => {
       const timeConf: ConfidenceLevel = loadingTimeType ? 'HIGH' : 'MISSING';
       const effectiveAddress = isNewCustomerMode
         ? (newSiteAddress || newCustomerAddress || '').trim()
-        : (selectedSite?.address || newSiteAddress || '').trim();
+        : isRegisteringNewSite
+          ? newSiteAddress.trim()
+          : (selectedSiteAddress || selectedSite?.address || '').trim();
 
       const fullNote = [
         note,
         unloadingDate ? `[하차일정] ${unloadingDate} ${unloadingTimeType === 'ASAP' ? 'ASAP' : unloadingTimeType === 'MORNING' ? '오전' : unloadingTimeType === 'AFTERNOON' ? '오후' : unloadingTimeVal || ''}`.trim() : '',
-        selectedSafetyOptions.size > 0 ? `[안전옵션] ${Array.from(selectedSafetyOptions).map(id => SAFETY_OPTION_LIST.find(s => s.id === id)?.label).join(', ')}` : '',
+        selectedSafetyOptions.size > 0 ? `[옵션] ${Array.from(selectedSafetyOptions).join(', ')}` : '',
         staggeredMemo ? `[시차출고] ${staggeredMemo}` : '',
-        isExchangeMode && retrievalAssetIds.length > 0 ? `[대차회수대상] 자산 #${retrievalAssetIds.join(', #')}` : '',
+        isExchangeMode && retrievalAssetIds.length > 0
+          ? (isUnknownRetrieval ? '[대차회수대상] 모름 (현장 확인 후 회수)' : `[대차회수대상] 자산 #${retrievalAssetIds.join(', #')}`)
+          : '',
         paidBy ? `[운송비부담] ${paidBy === 'CUSTOMER' ? '고객청구' : paidBy === 'OURS' ? '당사부담' : '편도지원'}` : '',
         effectiveAddress ? `[현장상세주소] ${effectiveAddress}` : '',
         vehicleType ? `[차종] ${vehicleType}` : '',
@@ -839,7 +944,7 @@ export const SmartDispatch4: React.FC = () => {
         customerName: isNewCustomerMode
           ? { value: newCustomerName, confidence: 'LOW' as ConfidenceLevel, source: 'MANUAL' as const, confirmed: false }
           : { value: selectedCustomer!.name, confidence: 'HIGH' as ConfidenceLevel, source: 'DB' as const, confirmed: true },
-        siteName: isNewCustomerMode
+        siteName: isNewCustomerMode || isRegisteringNewSite
           ? { value: newSiteName || '미정', confidence: 'LOW' as ConfidenceLevel, source: 'MANUAL' as const, confirmed: false }
           : { value: selectedSite?.name || '미정', confidence: siteConf, source: siteSrc, confirmed: !!selectedSite },
         equipments: [...equipments],
@@ -890,14 +995,23 @@ export const SmartDispatch4: React.FC = () => {
       const ms = sites.find(s => s.name === draft.siteName.value);
       if (ms) {
         setSelectedSite(ms);
+        setSelectedSiteAddress(draft.siteAddress || ms.address || '');
+        setIsRegisteringNewSite(false);
         setSiteQuery('');
-        inheritPastSafetyOptions(matchedCustomer, ms);
+        loadSiteSafetyOptions(ms, matchedCustomer);
       } else {
         setSelectedSite(null);
+        setSelectedSiteAddress('');
+        setIsRegisteringNewSite(true);
         setNewSiteName(draft.siteName.value);
+        setNewSiteAddress(draft.siteAddress || '');
       }
+    } else {
+      setSelectedSite(null);
+      setSelectedSiteAddress('');
+      setIsRegisteringNewSite(false);
     }
-    if (draft.siteAddress) {
+    if (draft.siteAddress && !draft.siteName?.value) {
       setNewSiteAddress(draft.siteAddress);
     }
 
@@ -1065,7 +1179,7 @@ export const SmartDispatch4: React.FC = () => {
         billableToCustomer: draft.paidBy === 'CUSTOMER',
         type: isExchange ? 'EXCHANGE' : 'OUTBOUND',
         retrievalAssetIds: draft.retrievalAssetIds || [],
-        paidOptions: draft.safetyOptions?.map(id => SAFETY_OPTION_LIST.find(s => s.id === id)?.label).join(', ') || '',
+        paidOptions: draft.safetyOptions?.join(', ') || '',
       } as any, true);
 
       if (res && res.success) {
@@ -1097,10 +1211,16 @@ export const SmartDispatch4: React.FC = () => {
   // ─────────────────────────────────────────────────────────────────────────
   const renderNewTab = () => {
     const custDisplay = isNewCustomerMode ? (newCustomerName || '(신규 고객명 미입력)') : (selectedCustomer?.name || '(고객사 미선택)');
-    const siteDisplay = isNewCustomerMode ? (newSiteName || '(현장명 미입력)') : (selectedSite?.name || '(현장 미선택)');
+    const siteDisplay = isNewCustomerMode
+      ? (newSiteName || '(신규 현장명 미입력)')
+      : isRegisteringNewSite
+        ? (newSiteName || '(신규 현장명 미입력)')
+        : (selectedSite?.name || '(현장 미선택)');
     const addrDisplay = isNewCustomerMode
       ? (newSiteAddress || newCustomerAddress || '(주소 미입력)')
-      : (selectedSite?.address || newSiteAddress || '(주소 미등록)');
+      : isRegisteringNewSite
+        ? (newSiteAddress || '(신규 현장주소 미입력)')
+        : (selectedSiteAddress || selectedSite?.address || '(주소 미등록)');
 
     return (
       <div className="dispatch4-studio-row">
@@ -1271,7 +1391,11 @@ export const SmartDispatch4: React.FC = () => {
                           onClick={() => {
                             setSelectedCustomer(null);
                             setSelectedSite(null);
+                            setSelectedSiteAddress('');
+                            setContactPerson('');
+                            setContactPhone('');
                             setCustomerQuery('');
+                            setSiteQuery('');
                           }}
                           className="text-xs text-slate-300 hover:text-white px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 border border-slate-600 transition"
                         >
@@ -1337,7 +1461,12 @@ export const SmartDispatch4: React.FC = () => {
               <div className="flex items-center gap-2 text-xs font-bold text-slate-100">
                 <MapPin className="w-4 h-4 text-cyan-400" />
                 <span>2. WHERE — 투입 현장 및 현장 담당자</span>
-                {!isNewCustomerMode && selectedSite && (
+                {!isNewCustomerMode && isRegisteringNewSite && (
+                  <span className="text-[11px] font-semibold text-purple-300 bg-purple-950/50 px-2 py-0.5 rounded border border-purple-500/30">
+                    + [신규현장] {newSiteName || '현장명 입력대기'}{contactPerson ? ` (${contactPerson})` : ''}
+                  </span>
+                )}
+                {!isNewCustomerMode && !isRegisteringNewSite && selectedSite && (
                   <span className="text-[11px] font-semibold text-emerald-400 bg-emerald-950/50 px-2 py-0.5 rounded border border-emerald-500/30">
                     ✓ {selectedSite.name}{contactPerson ? ` (${contactPerson})` : ''}
                   </span>
@@ -1354,7 +1483,8 @@ export const SmartDispatch4: React.FC = () => {
             {openBlocks.has('WHERE') && (
               <div className="dispatch4-block-body">
                 {isNewCustomerMode ? (
-                  <>
+                  /* 1. 신규 고객사 모드: 신규 현장명/주소/담당자 */
+                  <div className="flex flex-col gap-3">
                     <div className="flex flex-col gap-1">
                       <label className="text-xs font-semibold text-slate-300">신규 현장명 *</label>
                       <input
@@ -1365,75 +1495,15 @@ export const SmartDispatch4: React.FC = () => {
                       />
                     </div>
                     <div className="flex flex-col gap-1">
-                      <label className="text-xs font-semibold text-slate-300">현장 상세주소</label>
+                      <label className="text-xs font-semibold text-slate-300">현장 상세주소 *</label>
                       <input
                         className="bg-slate-800 border border-slate-700 text-white rounded-lg p-2.5 text-xs focus:outline-none focus:border-blue-500"
                         value={newSiteAddress}
                         onChange={e => setNewSiteAddress(e.target.value)}
-                        placeholder="기사 배차용 도로명 주소"
+                        placeholder="기사 배차용 도로명 주소 (예: 경기도 평택시 고덕면 ...)"
                       />
                     </div>
-                  </>
-                ) : !selectedCustomer ? (
-                  <div className="p-5 bg-slate-950/60 border border-slate-800 rounded-xl text-center flex flex-col items-center justify-center gap-2 text-xs text-slate-400">
-                    <MapPin className="w-5 h-5 text-slate-500" />
-                    <span className="font-bold text-slate-300">고객사를 먼저 선택하십시오</span>
-                    <span className="text-[11px] text-slate-500">1. WHO 블록에서 거래처(고객사)를 지정하면 해당 고객사의 등록 현장 목록이 표시됩니다.</span>
-                  </div>
-                ) : (
-                  <>
-                    <div className="flex flex-col gap-1">
-                      <label className="text-xs font-semibold text-slate-300">현장 검색</label>
-                      <input
-                        className="bg-slate-800 border border-slate-700 text-white rounded-lg p-2.5 text-xs focus:outline-none focus:border-blue-500"
-                        value={siteQuery}
-                        onChange={e => setSiteQuery(e.target.value)}
-                        placeholder={`${selectedCustomer.name} 등록 현장 검색...`}
-                      />
-                    </div>
-                    <div className="flex flex-wrap gap-1.5 max-h-36 overflow-y-auto p-1 bg-slate-950/60 rounded-lg border border-slate-800">
-                      {filteredSites.map(s => {
-                        const isSelected = selectedSite?.id === s.id;
-                        return (
-                          <button
-                            key={s.id}
-                            onClick={() => handleSelectSite(s)}
-                            className={`px-2.5 py-1 rounded text-xs font-medium transition border ${
-                              isSelected
-                                ? 'bg-cyan-600 border-cyan-400 text-white'
-                                : 'bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-700'
-                            }`}
-                          >
-                            {s.name}
-                          </button>
-                        );
-                      })}
-                      {filteredSites.length === 0 && (
-                        <div className="text-xs text-slate-500 py-2 px-3">
-                          등록된 기존 현장이 없습니다. 아래에서 직접 현장명을 입력할 수 있습니다.
-                        </div>
-                      )}
-                    </div>
-                    <div className="pt-2 border-t border-slate-800 flex flex-col gap-1">
-                      <label className="text-xs font-semibold text-slate-400">직접 현장명/주소 수동 입력 시</label>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                        <input
-                          className="bg-slate-800 border border-slate-700 text-white rounded-lg p-2 text-xs"
-                          placeholder="수동 현장명"
-                          value={newSiteName}
-                          onChange={e => setNewSiteName(e.target.value)}
-                        />
-                        <input
-                          className="bg-slate-800 border border-slate-700 text-white rounded-lg p-2 text-xs"
-                          placeholder="수동 현장 주소"
-                          value={newSiteAddress}
-                          onChange={e => setNewSiteAddress(e.target.value)}
-                        />
-                      </div>
-                    </div>
-
-                    {/* 🌟 현장 담당자 성명 및 연락처 */}
-                    <div className="pt-3 border-t border-slate-800 flex flex-col gap-2">
+                    <div className="pt-2 border-t border-slate-800 flex flex-col gap-2">
                       <div className="text-xs font-bold text-cyan-300 flex items-center gap-1.5">
                         <User className="w-3.5 h-3.5" />
                         <span>현장 담당자 정보 *</span>
@@ -1460,7 +1530,201 @@ export const SmartDispatch4: React.FC = () => {
                         </div>
                       </div>
                     </div>
-                  </>
+                  </div>
+                ) : !selectedCustomer ? (
+                  /* 2. 고객사 미선택 시 안내 */
+                  <div className="p-5 bg-slate-950/60 border border-slate-800 rounded-xl text-center flex flex-col items-center justify-center gap-2 text-xs text-slate-400">
+                    <MapPin className="w-5 h-5 text-slate-500" />
+                    <span className="font-bold text-slate-300">고객사를 먼저 선택하십시오</span>
+                    <span className="text-[11px] text-slate-500">1. WHO 블록에서 거래처(고객사)를 지정하면 해당 고객사의 등록 현장 목록이 표시됩니다.</span>
+                  </div>
+                ) : isRegisteringNewSite ? (
+                  /* 3. 신규 현장 등록 모드 (퀵카드/버튼 클릭 시) */
+                  <div className="flex flex-col gap-3">
+                    <div className="flex items-center justify-between p-2.5 bg-purple-950/40 border border-purple-800/60 rounded-xl">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-black text-purple-300">신규 현장 등록</span>
+                        <span className="text-[11px] text-slate-400">({selectedCustomer.name})</span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsRegisteringNewSite(false);
+                          setNewSiteName('');
+                          setNewSiteAddress('');
+                          applyInheritance(selectedCustomer, null);
+                        }}
+                        className="flex items-center gap-1 text-[11px] font-bold text-slate-300 hover:text-white px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 border border-slate-700"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                        <span>기존현장 목록</span>
+                      </button>
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <label className="text-xs font-semibold text-slate-300">신규 현장명 *</label>
+                      <input
+                        className="bg-slate-800 border border-slate-700 text-white rounded-lg p-2.5 text-xs focus:outline-none focus:border-purple-500"
+                        value={newSiteName}
+                        onChange={e => setNewSiteName(e.target.value)}
+                        placeholder="예: 송도 바이오클러스터 4공구"
+                      />
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <label className="text-xs font-semibold text-slate-300">신규 현장 상세주소 *</label>
+                      <input
+                        className="bg-slate-800 border border-slate-700 text-white rounded-lg p-2.5 text-xs focus:outline-none focus:border-purple-500"
+                        value={newSiteAddress}
+                        onChange={e => setNewSiteAddress(e.target.value)}
+                        placeholder="배차 기사용 정확한 도로명 주소"
+                      />
+                    </div>
+                    <div className="pt-2 border-t border-slate-800 flex flex-col gap-2">
+                      <div className="text-xs font-bold text-cyan-300 flex items-center gap-1.5">
+                        <User className="w-3.5 h-3.5" />
+                        <span>현장 담당자 정보 *</span>
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <div className="flex flex-col gap-1">
+                          <label className="text-xs font-semibold text-slate-300">현장 담당자 성명 *</label>
+                          <input
+                            className="bg-slate-800 border border-slate-700 text-white rounded-lg p-2.5 text-xs focus:outline-none focus:border-cyan-500"
+                            value={contactPerson}
+                            onChange={e => setContactPerson(e.target.value)}
+                            placeholder="현장 인수 소장/담당자명"
+                          />
+                        </div>
+                        <div className="flex flex-col gap-1">
+                          <label className="text-xs font-semibold text-slate-300">인수 담당자 연락처 *</label>
+                          <input
+                            className="bg-slate-800 border border-slate-700 text-white rounded-lg p-2.5 text-xs focus:outline-none focus:border-cyan-500"
+                            value={contactPhone}
+                            onChange={e => setContactPhone(e.target.value)}
+                            placeholder="010-0000-0000"
+                            inputMode="tel"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ) : selectedSite ? (
+                  /* 4. 기존 현장 선택 완료 상태 (수동 입력창 완전 은폐, 주소 인라인 보정 지원) */
+                  <div className="flex flex-col gap-3">
+                    <div className="p-3 bg-slate-950/80 border border-cyan-500/50 rounded-xl flex flex-col gap-2.5">
+                      <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+                        <div className="flex items-center gap-2">
+                          <Building2 className="w-4 h-4 text-cyan-400" />
+                          <span className="font-extrabold text-white text-sm">{selectedSite.name}</span>
+                          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-cyan-950 text-cyan-300 border border-cyan-800">
+                            기존 등록 현장
+                          </span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedSite(null);
+                            setSelectedSiteAddress('');
+                            setSiteQuery('');
+                            applyInheritance(selectedCustomer, null);
+                          }}
+                          className="flex items-center gap-1 text-[11px] font-bold text-slate-400 hover:text-red-300 px-2 py-1 rounded bg-slate-850 hover:bg-slate-800 border border-slate-750 transition"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                          <span>현장 변경</span>
+                        </button>
+                      </div>
+
+                      {/* 현장 상세주소 (인라인 확인 및 수정) */}
+                      <div className="flex flex-col gap-1">
+                        <label className="text-xs font-semibold text-slate-300 flex items-center justify-between">
+                          <span>현장 상세주소 (배차 기사용) *</span>
+                          <span className="text-[10px] text-slate-500">필요 시 수정 가능</span>
+                        </label>
+                        <input
+                          className="bg-slate-800 border border-slate-700 text-white rounded-lg p-2.5 text-xs focus:outline-none focus:border-cyan-500"
+                          value={selectedSiteAddress}
+                          onChange={e => setSelectedSiteAddress(e.target.value)}
+                          placeholder="배차 기사용 현장 주소"
+                        />
+                      </div>
+
+                      {/* 현장 담당자 정보 */}
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1">
+                        <div className="flex flex-col gap-1">
+                          <label className="text-xs font-semibold text-slate-300">현장 담당자 성명 *</label>
+                          <input
+                            className="bg-slate-800 border border-slate-700 text-white rounded-lg p-2 text-xs focus:outline-none focus:border-cyan-500"
+                            value={contactPerson}
+                            onChange={e => setContactPerson(e.target.value)}
+                            placeholder="현장 인수 소장/담당자명"
+                          />
+                        </div>
+                        <div className="flex flex-col gap-1">
+                          <label className="text-xs font-semibold text-slate-300">인수 담당자 연락처 *</label>
+                          <input
+                            className="bg-slate-800 border border-slate-700 text-white rounded-lg p-2 text-xs focus:outline-none focus:border-cyan-500"
+                            value={contactPhone}
+                            onChange={e => setContactPhone(e.target.value)}
+                            placeholder="010-0000-0000"
+                            inputMode="tel"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  /* 5. 현장 선택 대기 상태 (검색 인풋 + [신규현장 등록] 버튼 + 기존 현장 칩) */
+                  <div className="flex flex-col gap-2.5">
+                    <div className="flex items-center gap-2">
+                      <div className="relative flex-1">
+                        <input
+                          className="w-full bg-slate-800 border border-slate-700 text-white rounded-lg pl-8 pr-3 py-2 text-xs focus:outline-none focus:border-cyan-500"
+                          value={siteQuery}
+                          onChange={e => setSiteQuery(e.target.value)}
+                          placeholder={`${selectedCustomer.name} 등록 현장 검색 (초성 가능)...`}
+                        />
+                        <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2.5" />
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsRegisteringNewSite(true);
+                          setSelectedSite(null);
+                          setSelectedSiteAddress('');
+                          setNewSiteName('');
+                          setNewSiteAddress('');
+                          setContactPerson('');
+                          setContactPhone('');
+                        }}
+                        className="flex items-center gap-1 text-xs font-bold px-3 py-2 rounded-lg bg-purple-900/60 hover:bg-purple-800/70 text-purple-200 border border-purple-600/70 whitespace-nowrap transition"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                        <span>신규현장 등록</span>
+                      </button>
+                    </div>
+
+                    <div className="flex flex-wrap gap-1.5 max-h-48 overflow-y-auto p-1.5 bg-slate-950/60 rounded-lg border border-slate-800">
+                      {filteredSites.map(s => (
+                        <button
+                          key={s.id}
+                          type="button"
+                          onClick={() => handleSelectSite(s)}
+                          className="px-2.5 py-1.5 rounded-lg text-xs font-medium transition border bg-slate-850 border-slate-750 text-slate-200 hover:bg-slate-750 hover:border-cyan-500/50 hover:text-white flex items-center gap-1.5"
+                        >
+                          <Building2 className="w-3 h-3 text-cyan-400" />
+                          <span>{s.name}</span>
+                          {s.address && (
+                            <span className="text-[10px] text-slate-400 max-w-[120px] truncate">({s.address})</span>
+                          )}
+                        </button>
+                      ))}
+                      {filteredSites.length === 0 && (
+                        <div className="text-xs text-slate-400 py-4 px-3 text-center w-full flex flex-col items-center gap-1">
+                          <span>일치하는 현장이 없습니다.</span>
+                          <span className="text-[11px] text-purple-400">우측 상단의 [+ 신규현장 등록] 버튼을 눌러 새 현장을 추가하세요.</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
                 )}
               </div>
             )}
@@ -1743,7 +2007,9 @@ export const SmartDispatch4: React.FC = () => {
                   <span className={`text-[11px] font-semibold px-2 py-0.5 rounded border ${
                     retrievalAssetIds.length > 0 ? 'bg-cyan-950 text-cyan-300 border-cyan-800' : 'bg-red-950 text-red-300 border-red-800'
                   }`}>
-                    {retrievalAssetIds.length > 0 ? `대차: ${retrievalAssetIds.length}대` : '회수전자산 미지정'}
+                    {retrievalAssetIds.length > 0
+                      ? (isUnknownRetrieval ? '회수: 모름(현장확인)' : `회수: ${retrievalAssetIds.length}대`)
+                      : '회수자산 필수'}
                   </span>
                 )}
               </div>
@@ -1758,13 +2024,39 @@ export const SmartDispatch4: React.FC = () => {
                     <div className="flex items-center justify-between">
                       <label className="text-[11px] font-black text-cyan-200 flex items-center gap-1.5">
                         <RotateCcw className="w-3.5 h-3.5" />
-                        <span>회수 대상 전자산 선택 (복수 선택 가능) *</span>
+                        <span>회수 대상 전자산 선택 (복수 선택 또는 "모름" 선택) *</span>
                       </label>
                       {retrievalAssetIds.length > 0 && (
                         <span className="text-[10px] text-cyan-300 font-mono font-bold">
-                          {retrievalAssetIds.length}대 선택됨
+                          {isUnknownRetrieval ? '미확정 (현장확인)' : `${retrievalAssetIds.length}대 선택됨`}
                         </span>
                       )}
+                    </div>
+
+                    {/* 🌟 "모름 (현장 확인 후 회수)" 퀵 선택 카드 */}
+                    <div
+                      onClick={toggleUnknownRetrieval}
+                      className={`flex items-center justify-between p-2 rounded-lg border cursor-pointer select-none transition ${
+                        isUnknownRetrieval
+                          ? 'bg-amber-950/60 border-amber-500 text-amber-200 shadow-sm'
+                          : 'bg-slate-900 border-slate-750 text-slate-300 hover:bg-slate-850 hover:border-slate-650'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="checkbox"
+                          checked={isUnknownRetrieval}
+                          onChange={toggleUnknownRetrieval}
+                          className="w-4 h-4 rounded bg-slate-950 border-slate-700 text-amber-500 focus:ring-0"
+                        />
+                        <span className="font-black text-xs text-amber-300">모름 (현장 확인 후 회수)</span>
+                        <span className="text-[11px] text-slate-400">현장에서 반납할 장비 관리번호를 모르는 경우 선택</span>
+                      </div>
+                      <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${
+                        isUnknownRetrieval ? 'bg-amber-900/80 text-amber-200 border-amber-650' : 'bg-slate-800 text-slate-400 border-slate-700'
+                      }`}>
+                        미확정
+                      </span>
                     </div>
 
                     {activeCustomerAssets.length > 0 ? (
@@ -1796,8 +2088,8 @@ export const SmartDispatch4: React.FC = () => {
                         })}
                       </div>
                     ) : (
-                      <div className="text-xs text-slate-500 py-3 text-center bg-slate-950/60 rounded-lg border border-slate-850">
-                        {selectedCustomer ? '선택된 고객사에 현재 대여 중인 장비가 없습니다.' : '고객사를 먼저 선택하십시오.'}
+                      <div className="text-xs text-slate-500 py-2.5 text-center bg-slate-950/60 rounded-lg border border-slate-850">
+                        {selectedCustomer ? '선택된 고객사에 대여 중인 장비가 없습니다. (상단 "모름" 선택 가능)' : '고객사를 먼저 선택하십시오.'}
                       </div>
                     )}
                   </div>
@@ -1835,41 +2127,113 @@ export const SmartDispatch4: React.FC = () => {
                   </div>
                 </div>
 
-                {/* 3. 현장 안전옵션 & 보양작업 4종 선택기 */}
-                <div className="flex flex-col gap-1">
-                  <div className="flex items-center justify-between">
+                {/* 3. 고객 요청 옵션 및 작업 요구사항 */}
+                <div className="flex flex-col gap-2">
+                  <div className="flex items-center justify-between flex-wrap gap-2">
                     <label className="text-[11px] font-bold text-slate-300 flex items-center gap-1.5">
                       <Wrench className="w-3.5 h-3.5 text-amber-400" />
-                      <span>현장 필수 안전옵션 및 보양작업</span>
+                      <span>고객 요청 옵션 및 작업 요구사항</span>
+                      {selectedSafetyOptions.size > 0 && (
+                        <span className="text-[10px] text-amber-400 font-bold bg-amber-950/60 px-1.5 py-0.5 rounded border border-amber-800/50">
+                          {selectedSafetyOptions.size}개 등록됨
+                        </span>
+                      )}
                     </label>
-                    {selectedSafetyOptions.size > 0 && (
-                      <span className="text-[10px] text-amber-400 font-bold">
-                        {selectedSafetyOptions.size}종 선택됨
-                      </span>
-                    )}
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={handleReloadSiteOptions}
+                        disabled={!selectedSite}
+                        className="flex items-center gap-1 px-2 py-1 rounded text-[10.5px] font-bold bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 disabled:opacity-40 disabled:cursor-not-allowed transition"
+                        title="선택된 현장 마스터 및 과거 배차 이력에서 옵션 불러오기"
+                      >
+                        <RefreshCw className="w-3 h-3 text-cyan-400" />
+                        <span>현장옵션 불러오기</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleSaveOptionsToCurrentSite}
+                        disabled={!selectedSite}
+                        className="flex items-center gap-1 px-2 py-1 rounded text-[10.5px] font-bold bg-emerald-950/60 hover:bg-emerald-900/60 text-emerald-300 hover:text-white border border-emerald-700/60 disabled:opacity-40 disabled:cursor-not-allowed transition"
+                        title="현재 등록된 옵션을 이 현장의 기본 옵션으로 영구 저장"
+                      >
+                        <Save className="w-3 h-3 text-emerald-400" />
+                        <span>현장옵션 저장</span>
+                      </button>
+                    </div>
                   </div>
-                  <div className="grid grid-cols-2 gap-2">
-                    {SAFETY_OPTION_LIST.map(opt => {
-                      const isChecked = selectedSafetyOptions.has(opt.id);
+
+                  {/* 등록된 옵션 태그 목록 */}
+                  {selectedSafetyOptions.size > 0 ? (
+                    <div className="flex flex-wrap gap-1.5 p-2 bg-slate-950/60 rounded-lg border border-slate-800">
+                      {Array.from(selectedSafetyOptions).map(opt => (
+                        <span
+                          key={opt}
+                          className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-bold bg-amber-950/70 border border-amber-500/60 text-amber-200"
+                        >
+                          <span>{opt}</span>
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveOption(opt)}
+                            className="text-amber-400/80 hover:text-red-400 transition"
+                            title="옵션 삭제"
+                          >
+                            <X className="w-3 h-3" />
+                          </button>
+                        </span>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="text-xs text-slate-500 p-2.5 bg-slate-950/40 rounded-lg border border-slate-850 text-center">
+                      등록된 고객 요청 옵션이 없습니다. (아래 입력창에 직접 입력하거나 추천 칩 클릭)
+                    </div>
+                  )}
+
+                  {/* 추천 키워드 칩 (타이핑 단축) */}
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <span className="text-[10px] text-slate-400 font-semibold">자주 쓰는 요청:</span>
+                    {QUICK_OPTION_SUGGESTIONS.map(tag => {
+                      const isAdded = selectedSafetyOptions.has(tag);
                       return (
-                        <label
-                          key={opt.id}
-                          className={`flex items-center gap-2 p-1.5 rounded-lg border cursor-pointer select-none transition ${
-                            isChecked
-                              ? 'bg-amber-950/40 border-amber-500 text-amber-200'
-                              : 'bg-slate-800 border-slate-700 text-slate-400 hover:bg-slate-750'
+                        <button
+                          key={tag}
+                          type="button"
+                          onClick={() => toggleOptionTag(tag)}
+                          className={`px-2 py-0.5 rounded text-[11px] font-semibold border transition ${
+                            isAdded
+                              ? 'bg-amber-900/60 border-amber-500 text-amber-200'
+                              : 'bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-750 hover:text-white'
                           }`}
                         >
-                          <input
-                            type="checkbox"
-                            checked={isChecked}
-                            onChange={() => toggleSafetyOption(opt.id)}
-                            className="rounded bg-slate-900 border-slate-700 text-amber-500"
-                          />
-                          <span className="text-xs font-bold">{opt.label}</span>
-                        </label>
+                          {isAdded ? `✓ ${tag}` : `+ ${tag}`}
+                        </button>
                       );
                     })}
+                  </div>
+
+                  {/* 영업사원 고객 요구사항 있는 그대로 직접 입력 */}
+                  <div className="flex items-center gap-1.5 pt-0.5">
+                    <input
+                      type="text"
+                      value={newOptionInput}
+                      onChange={e => setNewOptionInput(e.target.value)}
+                      onKeyDown={e => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          handleAddOption();
+                        }
+                      }}
+                      placeholder="고객 요구사항 있는 그대로 입력 (예: 협착봉, 비닐보양, 무분진, 충전선 연장 등)..."
+                      className="flex-1 bg-slate-800 border border-slate-700 text-white rounded-lg px-2.5 py-1.5 text-xs focus:outline-none focus:border-amber-500"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => handleAddOption()}
+                      className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold bg-amber-600 hover:bg-amber-500 text-slate-950 transition flex-shrink-0"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      <span>추가</span>
+                    </button>
                   </div>
                 </div>
               </div>
@@ -2127,9 +2491,9 @@ export const SmartDispatch4: React.FC = () => {
               <div className="bg-slate-950 border border-slate-800 rounded-lg p-2 text-[10.5px] text-slate-300 flex flex-col gap-1">
                 {selectedSafetyOptions.size > 0 && (
                   <div>
-                    <span className="font-bold text-amber-400">안전옵션: </span>
+                    <span className="font-bold text-amber-400">요청옵션: </span>
                     <span className="text-slate-200">
-                      {Array.from(selectedSafetyOptions).map(id => SAFETY_OPTION_LIST.find(s => s.id === id)?.label).join(', ')}
+                      {Array.from(selectedSafetyOptions).join(', ')}
                     </span>
                   </div>
                 )}
@@ -2137,7 +2501,9 @@ export const SmartDispatch4: React.FC = () => {
                   <div>
                     <span className="font-bold text-cyan-400">대차 회수장비: </span>
                     <span className="text-slate-200">
-                      자산 #{retrievalAssetIds.join(', #')} (총 {retrievalAssetIds.length}대, 회수연계)
+                      {isUnknownRetrieval
+                        ? '모름 (기사 현장 확인 후 회수)'
+                        : `자산 #${retrievalAssetIds.join(', #')} (총 ${retrievalAssetIds.length}대, 회수)`}
                     </span>
                   </div>
                 )}
@@ -2417,7 +2783,7 @@ export const SmartDispatch4: React.FC = () => {
                   {selectedSafetyOptions.size > 0 ? (
                     Array.from(selectedSafetyOptions).map(id => (
                       <span key={id} className="px-2 py-0.5 rounded bg-slate-700 text-amber-300 text-[10px] font-mono">
-                        {SAFETY_OPTION_LIST.find(o => o.id === id)?.label || id}
+                        {id}
                       </span>
                     ))
                   ) : (

@@ -1012,7 +1012,7 @@ export const PRESET_PRODUCT_SPECS: Record<string, ProductPresetSpec> = {
     "modelName": "1414EPLUS",
     "feet": 46,
     "spec": "배터리, 15.8 M, 적재 350 kg",
-    "manufacturer": "기연리프트",
+    "manufacturer": "Sinoboom",
     "safetyCertUrl": "https://pub-a2fd3c2ae0cc450b8ebe34baf1b051e1.r2.dev/Eq_doc/1414E%20Plus/5.%EC%95%88%EC%A0%84%EC%9D%B8%EC%A6%9D%EC%84%9C(1414E%20Plus)2023%EB%85%846%EC%9B%9420%EC%9D%BC).pdf",
     "specSheetUrl": "https://pub-a2fd3c2ae0cc450b8ebe34baf1b051e1.r2.dev/Eq_doc/1414E%20Plus/4.%EC%A0%9C%EC%9B%90%ED%91%9C(1414E%20Plus).pdf",
     "emergencyGuideUrl": "https://pub-a2fd3c2ae0cc450b8ebe34baf1b051e1.r2.dev/Eq_doc/1414E%20Plus/7.%EB%B9%84%EC%83%81%ED%95%98%EA%B0%95%EC%9E%91%EB%8F%99%EB%B2%95_%EC%8B%9C%EB%85%B8%EB%B6%90.pdf",

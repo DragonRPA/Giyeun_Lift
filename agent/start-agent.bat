@@ -1,6 +1,12 @@
-@echo off  
+癤�@echo off  
 chcp 65001 >nul  
-title [기연리프트] 로컬 에이전트  
-cd /d C:\KiyeunAgent  
-node agent.js  
-pause 
+title [eBroAgent] Local Sidecar Agent  
+cd /d C:\eBroAgent  
+if exist eBroAgent.js (
+    node eBroAgent.js
+) else if exist agent.js (
+    node agent.js
+) else (
+    node "%~dp0eBroAgent.js"
+)
+pause

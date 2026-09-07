@@ -1,5 +1,5 @@
 // src/components/CloudStoragePickerModal.tsx
-// (주)기연리프트 Cloudflare R2 클라우드 스토리지 파일/폴더 탐색기 모달
+// e-Bro ERP Cloudflare R2 클라우드 스토리지 파일/폴더 탐색기 모달
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { useApp } from '../context/AppContext';

@@ -1,4 +1,4 @@
-const X  = require('D:/01.AntiGravity/Kiyuen_Lift/node_modules/xlsx/xlsx.js');
+const X  = require('D:/01.AntiGravity/Giyuen_Lift/node_modules/xlsx/xlsx.js');
 const fs = require('fs');
 
 const EXCEL_PATH = 'D:\\OneDrive\\Desktop\\기연리프트자료_\\자동업로드\\초기DB현황1.xlsx';

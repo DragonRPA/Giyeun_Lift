@@ -1,6 +1,6 @@
 import os
 
-with open(r'd:\01.AntiGravity\Kiyuen_Lift\RELEASE_NOTES.md', 'a', encoding='utf-8') as f:
+with open(r'd:\01.AntiGravity\Giyuen_Lift\RELEASE_NOTES.md', 'a', encoding='utf-8') as f:
     f.write(
         "\n### v0.7.1.Build.37 (2026-09-02 18:25)\n"
         "- **버그패치**: Supabase deliveries Check Constraint(type, dispatchCategory) 100% 준수 매핑.\n"

@@ -19,8 +19,8 @@ $filesToSign = @()
 if ($targetFile -and (Test-Path $targetFile)) {
     $filesToSign += $targetFile
 } else {
-    $agentExe = Join-Path $scriptDir "KiyeunAgent.exe"
-    $publicExe = Join-Path (Split-Path -Parent $scriptDir) "public\downloads\KiyeunAgent.exe"
+    $agentExe = Join-Path $scriptDir "eBroAgent.exe"
+    $publicExe = Join-Path (Split-Path -Parent $scriptDir) "public\downloads\eBroAgent.exe"
     if (Test-Path $agentExe) {
         Copy-Item $agentExe $publicExe -Force
         $filesToSign += $agentExe

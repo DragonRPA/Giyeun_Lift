@@ -1,6 +1,6 @@
 import os
 
-with open(r'd:\01.AntiGravity\Kiyuen_Lift\RELEASE_NOTES.md', 'a', encoding='utf-8') as f:
+with open(r'd:\01.AntiGravity\Giyuen_Lift\RELEASE_NOTES.md', 'a', encoding='utf-8') as f:
     f.write(
         "\n### v0.7.1.Build.24 (2026-09-01 20:25)\n"
         "- **버그수정(치명)**: 초기DB 업로드 시 당사 자산 '관리번호'가 항상 '미지정'으로 저장되는 근본 원인 수정.\n"

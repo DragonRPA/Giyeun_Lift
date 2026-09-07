@@ -402,12 +402,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [theme, setTheme] = useState<'light' | 'dark'>('light');
 
   // React state of database tables
-  const [tenants, setTenants] = useState<Tenant[]>(() => db.tenants);
+  const [tenants, setTenants] = useState<Tenant[]>(() => db.tenants || []);
   const [currentTenantId, setCurrentTenantIdState] = useState<string>(() => {
-    return (typeof window !== 'undefined' ? localStorage.getItem('erp_current_tenant_id') : null) || db.currentTenant.id;
+    return (typeof window !== 'undefined' ? localStorage.getItem('erp_current_tenant_id') : null) || db.currentTenant?.id || 'tenant-1';
   });
 
-  const currentTenant = tenants.find(t => t.id === currentTenantId || t.tenantCode === currentTenantId) || tenants.find(t => t.isDefault) || tenants[0] || db.currentTenant;
+  const currentTenant = (tenants && tenants.length > 0 ? (tenants.find(t => t.id === currentTenantId || t.tenantCode === currentTenantId) || tenants.find(t => t.isDefault) || tenants[0]) : null) || db.currentTenant;
 
   const setCurrentTenantId = (id: string) => {
     if (typeof window !== 'undefined') {
@@ -2271,7 +2271,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         try {
           const vat = Math.round(totalSalePrice * 0.1);
           const grand = totalSalePrice + vat;
-          const subject = `[기연리프트] 자산 매각 계약서 및 청구서 안내 (${customer.name} 귀하)`;
+          const tenantBrand = currentTenant?.displayName || currentTenant?.tradeName || 'e-Bro';
+          const tenantCorp = currentTenant?.tradeName || currentTenant?.corporateName || tenantBrand;
+          const tenantAccount = currentTenant?.bankAccounts?.[0]
+            ? `[${tenantBrand}] ${currentTenant.bankAccounts[0].bankName} ${currentTenant.bankAccounts[0].accountNumber} (예금주: ${currentTenant.bankAccounts[0].accountHolder})`
+            : '[e-Bro] 계좌문의';
+          const subject = `[${tenantBrand}] 자산 매각 계약서 및 청구서 안내 (${customer.name} 귀하)`;
           const paymentTermsText = payload.saleTerms?.paymentType === 'INSTALLMENT'
             ? `분할 지급 (계약금: ₩${(payload.saleTerms.installmentDownAmount || 0).toLocaleString()}원 / 잔금: ₩${(payload.saleTerms.installmentBalanceAmount || 0).toLocaleString()}원, 잔금납기: ${payload.saleTerms.installmentBalanceDueDate || '-'})`
             : `일시불 완납 (${payload.saleTerms?.lumpSumDueTerm === 'DELIVERY' ? '장비 인도일 완납' : payload.saleTerms?.lumpSumDueTerm === '7_DAYS' ? '계약일로부터 7일 이내' : payload.saleTerms?.lumpSumDueTerm === '14_DAYS' ? '계약일로부터 14일 이내' : payload.saleTerms?.lumpSumDueTerm === 'MONTH_10' ? '익월 10일 완납' : '계약 체결 즉시 완납'})`;
@@ -2280,7 +2285,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
           const body = `
 안녕하세요, ${customer.name} 담당자님.
-(주)기연리프트입니다.
+${tenantCorp}입니다.
 
 귀사와 체결된 고소작업대 자산 매각 계약 건에 대한 계약서 및 매각 대금 청구 내역을 안내해 드립니다.
 
@@ -2292,7 +2297,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 - 공급가액: ₩${totalSalePrice.toLocaleString()}원
 - 부가세 (10%): ₩${vat.toLocaleString()}원
 - 청구 총합계금액: ₩${grand.toLocaleString()}원
-- 입금 계좌: ${payload.saleTerms?.bankAccount ? payload.saleTerms.bankAccount : '[기연리프트] 기업은행 144-082875-01-017'}
+- 입금 계좌: ${payload.saleTerms?.bankAccount ? payload.saleTerms.bankAccount : tenantAccount}
 - 결제 조건: ${paymentTermsText}
 - 인도 조건: ${deliveryTermsText}
 ${payload.saleTerms?.useStandardAsIsClause ? '- 특약: 현상태 인수(As-Is) 및 소유권 유보(대금 완납 시 이전)\n' : ''}
@@ -2302,7 +2307,7 @@ ${soldAssetSummaries.map((s, idx) => `${idx + 1}. 관리번호: ${s.assetNo} / �
 ${payload.memo ? `\n[특이사항 / 메모]\n${payload.memo}\n` : ''}
 
 감사합니다.
-(주)기연리프트 배상
+${currentTenant?.corporateName || tenantCorp} 배상
           `.trim();
 
           await emailService.sendEmail(

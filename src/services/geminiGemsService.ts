@@ -1,5 +1,5 @@
 // src/services/geminiGemsService.ts
-// (주)기연리프트 Google Gemini GEMS 기반 4대 업무서식(출고·회수·교환·AS) 자동완성·교차검증 AI 서비스
+// e-Bro ERP Google Gemini GEMS 기반 4대 업무서식(출고·회수·교환·AS) 자동완성·교차검증 AI 서비스
 
 export type GemsWorkType = 'DISPATCH' | 'RETURN' | 'EXCHANGE' | 'FIELD_AS' | 'UNKNOWN';
 
@@ -80,7 +80,7 @@ export function setGeminiApiKey(key: string) {
  * 시스템 프롬프트(System Instruction) 생성
  */
 function buildSystemInstruction(context: GemsContextData): string {
-  return `당신은 (주)기연리프트의 '렌탈 업무 의뢰 AI 비서 (기연 젬스)'입니다.
+  return `당신은 e-Bro 고소작업대 렌탈 ERP의 '렌탈 업무 의뢰 AI 비서 (e-Bro 젬스)'입니다.
 영업사원이 현장에서 운전 중이거나 보행 중에 말하는 자연어 음성을 듣고, 4대 업무 서식을 지능적으로 교차 검증하여 완성하는 역할을 수행합니다.
 
 ### 🏛️ 전사 시스템 표준 헌장 준수 사항:

@@ -1,4 +1,4 @@
-# Kiyuen Lift ERP — WTT DB 스키마 명세서 (`WTT_DB스키마.md`)
+# e-Bro Lift ERP — WTT DB 스키마 명세서 (`WTT_DB스키마.md`)
 
 > **작성일**: 2026-08-23  
 > **목적**: 대규모 Work-Through Test (WTT) 시나리오 수행을 위한 전체 테이블 스키마, 외래키 관계, 상태 전이 규칙 정의

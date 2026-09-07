@@ -1,6 +1,6 @@
 import os
 
-with open(r'd:\01.AntiGravity\Kiyuen_Lift\RELEASE_NOTES.md', 'a', encoding='utf-8') as f:
+with open(r'd:\01.AntiGravity\Giyuen_Lift\RELEASE_NOTES.md', 'a', encoding='utf-8') as f:
     f.write(
         "\n### v0.7.1.Build.25 (2026-09-01 20:31)\n"
         "- **버그수정**: migrationEngine.ts 내 getCol() 호출 13건 전수 감사 완료.\n"

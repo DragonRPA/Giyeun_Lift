@@ -7,17 +7,17 @@ if (-not $scriptDir) { $scriptDir = (Get-Location).Path }
 $rootDir = Split-Path -Parent $scriptDir
 
 Write-Host "========================================================" -ForegroundColor Cyan
-Write-Host "  [KiyeunAgent.exe] Compilation and Packaging" -ForegroundColor Cyan
+Write-Host "  [eBroAgent.exe] Compilation and Packaging" -ForegroundColor Cyan
 Write-Host "========================================================" -ForegroundColor Cyan
 
 # 0. 기존 실행 중인 프로세스 안전 종료
-Write-Host "0. Stopping existing KiyeunAgent processes..." -ForegroundColor Yellow
-Get-Process -Name "KiyeunAgent" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+Write-Host "0. Stopping existing eBroAgent processes..." -ForegroundColor Yellow
+Get-Process -Name "eBroAgent", "KiyeunAgent" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
 Start-Sleep -Milliseconds 500
 
 # 1. esbuild 번들링
 Write-Host "1. Bundling with esbuild..." -ForegroundColor Yellow
-cmd /c "npx esbuild `"$scriptDir\agent.js`" --bundle --platform=node --outfile=`"$scriptDir\agent-bundle.js`""
+cmd /c "npx esbuild `"$scriptDir\eBroAgent.js`" --bundle --platform=node --outfile=`"$scriptDir\agent-bundle.js`""
 if ($LASTEXITCODE -ne 0) {
     Write-Host "❌ esbuild 번들링 실패!" -ForegroundColor Red
     exit 1
@@ -36,7 +36,7 @@ Set-Location $scriptDir
 # 3. node.exe 복제
 Write-Host "3. Copying node.exe binary..." -ForegroundColor Yellow
 $nodeExe = (Get-Command node).Source
-$targetExe = Join-Path $scriptDir "KiyeunAgent.exe"
+$targetExe = Join-Path $scriptDir "eBroAgent.exe"
 Copy-Item $nodeExe $targetExe -Force
 Start-Sleep -Milliseconds 500
 
@@ -53,12 +53,15 @@ Start-Sleep -Milliseconds 1000
 Write-Host "5. Code signing and sync to public/downloads..." -ForegroundColor Yellow
 $publicDownloadsDir = Join-Path $rootDir "public\downloads"
 if (-not (Test-Path $publicDownloadsDir)) { New-Item -ItemType Directory -Path $publicDownloadsDir -Force | Out-Null }
+Copy-Item (Join-Path $scriptDir "eBroAgent.js") (Join-Path $publicDownloadsDir "eBroAgent.js") -Force
 Copy-Item (Join-Path $scriptDir "agent.js") (Join-Path $publicDownloadsDir "agent.js") -Force
+Copy-Item (Join-Path $scriptDir "start-agent.bat") (Join-Path $publicDownloadsDir "start-agent.bat") -Force
+Copy-Item (Join-Path $scriptDir "kill-agent.bat") (Join-Path $publicDownloadsDir "kill-agent.bat") -Force
 powershell -ExecutionPolicy Bypass -File (Join-Path $scriptDir "sign-agent.ps1")
 
 Write-Host "========================================================" -ForegroundColor Green
-Write-Host "  [OK] KiyeunAgent.exe and agent.js build completed!" -ForegroundColor Green
-Write-Host "  - agent\KiyeunAgent.exe" -ForegroundColor White
-Write-Host "  - public\downloads\KiyeunAgent.exe" -ForegroundColor White
-Write-Host "  - public\downloads\agent.js" -ForegroundColor White
+Write-Host "  [OK] eBroAgent.exe and eBroAgent.js build completed!" -ForegroundColor Green
+Write-Host "  - agent\eBroAgent.exe" -ForegroundColor White
+Write-Host "  - public\downloads\eBroAgent.exe" -ForegroundColor White
+Write-Host "  - public\downloads\eBroAgent.js" -ForegroundColor White
 Write-Host "========================================================" -ForegroundColor Green

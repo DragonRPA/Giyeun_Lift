@@ -126,7 +126,7 @@ const makeScoredField = (value: string, source: ScoredField['source'] = 'MANUAL'
 // ─────────────────────────────────────────────────────────────────────────────
 export const SmartDispatch4: React.FC = () => {
   const {
-    hasPermission, customers, sites, contacts, currentUser,
+    hasPermission, customers, sites, contacts, currentUser, currentTenant,
     saveSmartDispatch, assets, deliveries
   } = useApp();
 
@@ -2652,7 +2652,7 @@ export const SmartDispatch4: React.FC = () => {
             <div className="flex items-center justify-between border-b border-slate-800 pb-2">
               <div>
                 <span className="text-[9.5px] font-bold text-blue-400 uppercase tracking-widest block font-mono">
-                  KIYEUN LIFT ERP DISPATCH ORDER
+                  {(currentTenant?.tradeName || 'E-BRO LIFT').toUpperCase()} ERP DISPATCH ORDER
                 </span>
                 <h3 className="text-xs font-black text-white tracking-tight">
                   출고 요청서 (실시간 정형화)

@@ -1,6 +1,6 @@
 import os
 
-with open(r'd:\01.AntiGravity\Kiyuen_Lift\RELEASE_NOTES.md', 'a', encoding='utf-8') as f:
+with open(r'd:\01.AntiGravity\Giyuen_Lift\RELEASE_NOTES.md', 'a', encoding='utf-8') as f:
     f.write(
         "\n### v0.7.1.Build.28 (2026-09-01 21:32)\n"
         "- **버그수정**: 외상미수금 운반비 파싱 fallback 인덱스 오류 수정.\n"

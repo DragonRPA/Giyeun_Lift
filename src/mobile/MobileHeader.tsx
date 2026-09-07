@@ -28,7 +28,7 @@ export const MobileHeader: React.FC<MobileHeaderProps> = ({
   isWorkLoading = false,
   onToggleWork
 }) => {
-  const { currentUser, logout } = useApp();
+  const { currentUser, logout, currentTenant } = useApp();
   const [isRefreshing, setIsRefreshing] = useState(false);
 
   const handleRefresh = async () => {
@@ -242,7 +242,7 @@ export const MobileHeader: React.FC<MobileHeaderProps> = ({
           </div>
         </div>
 
-        {/* ── 2행: 기연리프트 로고 & 사용자 정보 & 출퇴근 토글 ── */}
+        {/* ── 2행: 회사 로고 & 사용자 정보 & 출퇴근 토글 ── */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', minWidth: 0 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0, flex: 1 }}>
             <div style={{
@@ -264,7 +264,7 @@ export const MobileHeader: React.FC<MobileHeaderProps> = ({
             </div>
             <div style={{ minWidth: 0, overflow: 'hidden', flex: 1 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '5px', whiteSpace: 'nowrap' }}>
-                <span style={{ fontSize: '13px', fontWeight: '800', color: '#ffffff', letterSpacing: '-0.02em' }}>기연리프트</span>
+                <span style={{ fontSize: '13px', fontWeight: '800', color: '#ffffff', letterSpacing: '-0.02em' }}>{currentTenant?.displayName || 'e-Bro ERP'}</span>
                 <span style={{
                   fontSize: '9px',
                   fontWeight: '700',

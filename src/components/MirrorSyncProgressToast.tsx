@@ -1,5 +1,5 @@
 // src/components/MirrorSyncProgressToast.tsx
-// (주)기연리프트 구글 드라이브 실시간 미러링 진행상황 플로팅 토스트 UI
+// e-Bro ERP 구글 드라이브 실시간 미러링 진행상황 플로팅 토스트 UI
 
 import React, { useState, useEffect } from 'react';
 import { Cloud, CheckCircle2, AlertCircle, RefreshCw, HardDrive, X } from 'lucide-react';
@@ -105,7 +105,7 @@ export const MirrorSyncProgressToast: React.FC = () => {
 
       {/* 하단 상세 메시지 */}
       <div style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'flex', justifyContent: 'space-between' }}>
-        <span>저장소: C:\KiyeunAgent\drive_mirror\</span>
+        <span>저장소: C:\eBroAgent\drive_mirror\</span>
         {!isCompleted && !isError && <span>{state.percent}%</span>}
       </div>
     </div>

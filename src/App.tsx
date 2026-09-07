@@ -1,4 +1,4 @@
-// d:\Kiyeun_Lift\src\App.tsx
+// d:\Giyeun_Lift\src\App.tsx
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useApp } from './context/AppContext';
 import {
@@ -70,7 +70,7 @@ export interface MenuGroup {
 }
 
 const App: React.FC = () => {
-  const { currentUser, login, logout, theme, toggleTheme, hasPermission, activeTab, setActiveTab, loadTablesForMenu } = useApp();
+  const { currentUser, login, logout, theme, toggleTheme, hasPermission, activeTab, setActiveTab, loadTablesForMenu, currentTenant } = useApp();
 
   // 로그인 폼 상태
   const [loginId, setLoginId] = useState('');
@@ -416,10 +416,10 @@ const App: React.FC = () => {
         <div className="card" style={{ width: '100%', maxWidth: '380px', padding: '24px', boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.3)' }}>
           <div style={{ textAlign: 'center', marginBottom: '20px' }}>
             <h1 style={{ fontSize: '24px', fontWeight: '800', color: 'var(--primary)', letterSpacing: '-0.5px' }}>
-              KIYEUN LIFT ERP
+              e-Bro LIFT ERP
             </h1>
             <p style={{ fontSize: '13px', color: 'var(--text-secondary)', marginTop: '4px' }}>
-              소규모 고소작업대 렌탈 관리 시스템
+              스마트 고소작업대 렌탈 관리 시스템
             </p>
           </div>
 
@@ -629,9 +629,25 @@ const App: React.FC = () => {
           >
             {mobileMenuOpen ? <X size={20} /> : <Menu size={20} />}
           </button>
-          <h1 style={{ fontSize: '19px', fontWeight: '800', color: 'var(--primary)', letterSpacing: '-0.5px', whiteSpace: 'nowrap' }}>
-            KIYEUN LIFT ERP
-          </h1>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <h1 style={{ fontSize: '19px', fontWeight: '800', color: 'var(--primary)', letterSpacing: '-0.5px', whiteSpace: 'nowrap' }}>
+              e-Bro LIFT ERP
+            </h1>
+            {currentTenant && (
+              <span style={{
+                fontSize: '11px',
+                fontWeight: '700',
+                padding: '2px 7px',
+                borderRadius: '4px',
+                backgroundColor: 'rgba(99, 102, 241, 0.12)',
+                color: '#6366f1',
+                border: '1px solid rgba(99, 102, 241, 0.3)',
+                whiteSpace: 'nowrap'
+              }}>
+                {currentTenant.displayName || currentTenant.tradeName}
+              </span>
+            )}
+          </div>
 
           {/* 헤더 좌측 실시간 현장 날씨 정보 위젯 */}
           <WeatherWidget />

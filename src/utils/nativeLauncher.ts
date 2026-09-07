@@ -126,7 +126,7 @@ export async function launchNavigation(destination: string, app: NavAppType = 'T
     targetUrl = `kakaonavi://navigate?name=${encodedDest}&coord_type=wgs84`;
   } else if (app === 'NAVER') {
     // 네이버지도 내비게이션 정식 길안내 모드
-    targetUrl = `nmap://navigation?dname=${encodedDest}&appname=com.kiyuen.lift`;
+    targetUrl = `nmap://navigation?dname=${encodedDest}&appname=com.ebro.lift`;
   } else {
     // WEB 모드: 웹 길찾기
     targetUrl = `https://map.kakao.com/link/to/${encodedDest}`;
@@ -347,6 +347,7 @@ export interface DispatchSmsParams {
   siteContactName?: string;
   siteContactPhone?: string;
   customerName?: string;
+  companyName?: string;
   hqYardAddress?: string;
   hqYardPhone?: string;
 }
@@ -356,7 +357,7 @@ export interface DispatchSmsParams {
  */
 export function buildDispatchSmsText(params: DispatchSmsParams): string {
   const { delivery } = params;
-  const hqAddress = params.hqYardAddress || '경기도 용인시 처인구 모현읍 백옥대로 2420 (기연 본사주기장)';
+  const hqAddress = params.hqYardAddress || '경기도 용인시 처인구 모현읍 백옥대로 2420 (본사주기장)';
   const hqPhone = params.hqYardPhone || '배차/출고팀';
 
   const type = delivery.type || 'OUTBOUND';
@@ -411,8 +412,9 @@ export function buildDispatchSmsText(params: DispatchSmsParams): string {
     destContact = hqPhone;
   }
 
+  const headerTitle = params.companyName ? `[${params.companyName} 배차안내]` : '[배차안내]';
   const lines = [
-    `[기연리프트 배차안내]`,
+    headerTitle,
     `■ 배차유형: ${typeLabel} (${category})`,
     `■ 배차번호: DP-${dNo}`,
     `■ 배정기사: ${driver} (${vehicle})`,

@@ -1,7 +1,7 @@
 import os
 import re
 
-files_dir = r"d:\01.AntiGravity\Kiyuen_Lift\src\pages"
+files_dir = r"d:\01.AntiGravity\Giyuen_Lift\src\pages"
 
 def patch_file(filename, old_block_regex, new_block):
     filepath = os.path.join(files_dir, filename)

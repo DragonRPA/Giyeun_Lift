@@ -171,6 +171,6 @@ $$\text{월간 총비용} = \text{Cloudflare Workers Paid ($5.00)} + \text{R2 �
 - 기존 단독 GPU 서버(월 40만~60만원) 대비 **비용 97.3% 절감 달성**.
 
 ### 8.2 최우선 즉시 프로덕션 적용 로드맵 (Quick Win Top 3)
-1. **[1순위] `Kiyuen-BankMatch-Worker` (통장 분할 대사 RPC)**: `api/bank-match.ts` 신설, 월말 수작업 대사 시간 80% 즉각 절감.
+1. **[1순위] `Giyeun-BankMatch-Worker` (통장 분할 대사 RPC)**: `api/bank-match.ts` 신설, 월말 수작업 대사 시간 80% 즉각 절감.
 2. **[2순위] `Kiyeun-LPU-Cockpit-Diagnostics` (계기판 에러코드 1초 진단)**: `api/vision-diagnose.ts` 신설, 현장 AS 턴어라운드 타임 70% 단축.
 3. **[3순위] `K-VoiceDispatch` (무전 발화 기반 배차 초안 자동 라우팅)**: 무전 종료 즉시 배차 대장 DRAFT 레코드 자동 인입.

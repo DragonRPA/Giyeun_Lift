@@ -103,7 +103,7 @@ export const AgentHeaderBadge: React.FC<Props> = ({ currentUser }) => {
     try {
       const link1 = document.createElement('a');
       link1.href = AGENT_CERT_URL;
-      link1.download = 'KiyeunLift_Root.cer';
+      link1.download = 'eBroAgent_Root.cer';
       document.body.appendChild(link1);
       link1.click();
       document.body.removeChild(link1);
@@ -121,14 +121,14 @@ export const AgentHeaderBadge: React.FC<Props> = ({ currentUser }) => {
     }
   };
 
-  // 2단계: 에이전트 파일 다운로드 (agent.js + start-agent.bat)
+  // 2단계: 에이전트 파일 다운로드 (eBroAgent.js + start-agent.bat)
   const handleDownloadAgent = () => {
     setIsDownloading(true);
     try {
-      // agent.js 다운로드
+      // eBroAgent.js 다운로드
       const link1 = document.createElement('a');
       link1.href = AGENT_DOWNLOAD_URL;
-      link1.download = 'agent.js';
+      link1.download = 'eBroAgent.js';
       document.body.appendChild(link1);
       link1.click();
       document.body.removeChild(link1);

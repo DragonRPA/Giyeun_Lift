@@ -2,7 +2,7 @@
  * diagnose_grouping.cjs — 계약 그룹핑 진단
  * 202608 시트에서 (고객+현장+시작일+종료일) 조합 분포를 분석
  */
-const X  = require('D:/01.AntiGravity/Kiyuen_Lift/node_modules/xlsx/xlsx.js');
+const X  = require('D:/01.AntiGravity/Giyuen_Lift/node_modules/xlsx/xlsx.js');
 const fs = require('fs');
 
 const EXCEL_PATH = 'D:\\OneDrive\\Desktop\\기연리프트자료_\\자동업로드\\초기DB현황1.xlsx';

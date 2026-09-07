@@ -1,5 +1,5 @@
 /**
- * Kiyuen Lift ERP — Supabase WTT 7개월 전체 엔티티 100% 완벽 무결점 주입기 (V3 PERFECT)
+ * Giyeun Lift ERP — Supabase WTT 7개월 전체 엔티티 100% 완벽 무결점 주입기 (V3 PERFECT)
  */
 
 const { createClient } = require('@supabase/supabase-js');

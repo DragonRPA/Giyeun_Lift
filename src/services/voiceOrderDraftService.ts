@@ -37,7 +37,7 @@ export interface VoiceOrderDraft {
   updatedAt: string;
 }
 
-export const DRAFT_STORAGE_KEY = 'kiyuen_sales_dispatch_draft';
+export const DRAFT_STORAGE_KEY = 'giyeun_sales_dispatch_draft';
 
 const KOREAN_COUNT_MAP: Record<string, number> = {
   '한': 1, '일': 1, '하나': 1, '1': 1,

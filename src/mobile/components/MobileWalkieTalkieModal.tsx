@@ -30,7 +30,7 @@ export const MobileWalkieTalkieModal: React.FC<MobileWalkieTalkieModalProps> = (
   onClose,
   onNavigateToDispatchOrder
 }) => {
-  const { currentUser, customers, sites, users } = useApp();
+  const { currentUser, customers, sites, users, currentTenant } = useApp();
   const activeUsers = (users || []).filter(u => u.status !== 'RETIRED');
 
   const [isMonologueOrderMode, setIsMonologueOrderMode] = useState<boolean>(false);
@@ -99,7 +99,7 @@ export const MobileWalkieTalkieModal: React.FC<MobileWalkieTalkieModalProps> = (
       id: currentUser.id,
       name: currentUser.name,
       role: currentUser.role,
-      deptName: currentUser.department || '기연리프트'
+      deptName: currentUser.department || currentTenant?.tradeName || 'eBro'
     });
 
     setChannels(walkieService.getChannels(currentUser.id));
@@ -311,7 +311,7 @@ export const MobileWalkieTalkieModal: React.FC<MobileWalkieTalkieModalProps> = (
       currentUser ? {
         id: currentUser.id,
         name: currentUser.name,
-        deptName: currentUser.department || '기연리프트'
+        deptName: currentUser.department || currentTenant?.tradeName || 'eBro'
       } : undefined,
       { sttOnly: isMonologueOrderMode }
     );
@@ -358,7 +358,7 @@ export const MobileWalkieTalkieModal: React.FC<MobileWalkieTalkieModalProps> = (
           id: currentUser.id,
           name: currentUser.name,
           role: currentUser.role,
-          deptName: currentUser.department || '기연리프트'
+          deptName: currentUser.department || currentTenant?.tradeName || 'eBro'
         },
         currentChannel
       );

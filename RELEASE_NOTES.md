@@ -1,3 +1,79 @@
+## [v1.10.0.Build.6] - 2026-09-07 13:36
+
+### 🚀 [로컬 에이전트 C:\eBroAgent 이전/파일명 eBroAgent 개편 및 테넌트 기반 회사정보 동적화 & 외부 노출 브랜드 e-Bro 단일화]
+- **요구사항**: "에이전트가 작동하는 로컬 위치도 C:\eBroAgent 로 변경. 에이전트 파일명도 eBroAgent로 변경. 관련 코드 전부 개편. 사용자회사에 대한 정보는 모두 테넌트에서 관리하고, 외부에 보여지는 모든 이름에 특정회사명은 노출되지 않도록 수정"
+- **구현 조치**:
+  1. **로컬 에이전트 인프라 및 실행 스크립트 전면 개편 (`C:\eBroAgent` / `eBroAgent.*`)**:
+     - `agent/agent.js`, `agent/eBroAgent.js`: `AGENT_HOME = 'C:\\eBroAgent'`, `TARGET_EXE_PATH = C:\\eBroAgent\\eBroAgent.exe`, 로컬 미러링 경로 `C:\\eBroAgent\\drive_mirror\\`, 프로세스 종료 타깃(`eBroAgent`, `KiyeunAgent`), 윈도우 시작 레지스트리 키(`eBroAgent`) 갱신.
+     - `agent/package.json`: `"name": "ebro-local-agent"`, `"main": "eBroAgent.js"`.
+     - `agent/build-agent.ps1`, `agent/sign-agent.ps1`: `eBroAgent.exe` 대상 단독 실행 파일 빌드 및 서명 파이프라인 정비.
+     - `agent/start-agent.bat`, `agent/kill-agent.bat`, 루트 `kill-agent.bat`: `C:\eBroAgent`, `eBroAgent.js` 실행 및 구/신 프로세스 동시 종료 지원.
+     - `public/downloads/`: `eBroAgent.js`, `eBroAgent.exe`, `eBroAgent_Root.cer`, `start-agent.bat`, `kill-agent.bat`, `install-cert.bat` 최신화 배치 (구 `KiyeunAgent.zip` 완전 제거).
+     - `src/services/agentService.ts`: `EXPECTED_AGENT_VERSION = 'v2.0.0.Build.1'`, `AGENT_DOWNLOAD_URL = '/downloads/eBroAgent.js'`, `AGENT_EXE_URL = '/downloads/eBroAgent.exe'`, `AGENT_CERT_URL = '/downloads/eBroAgent_Root.cer'`, `AGENT_INSTALL_BAT_URL = '/downloads/install-cert.bat'` 단일 표준화.
+     - `src/components/AgentHeaderBadge.tsx`, `src/pages/Dashboard.tsx`, `src/pages/GoogleConfig.tsx`: 다운로드 파일명 및 경로 `eBroAgent.js`, `eBroAgent_Root.cer`, `eBroAgent.exe` 완전 동기화.
+     - `src/services/driveMirrorSync.ts`, `src/services/r2MirrorSync.ts`, `src/components/MirrorSyncProgressToast.tsx`: 로컬 미러링 기본 경로 `C:\eBroAgent\drive_mirror\` 일괄 갱신.
+  2. **사용자 회사 정보 테넌트(Tenant) SSOT 관리 및 외부 노출 동적화**:
+     - 원칙: 특정 회사명은 테넌트 레코드(`db.currentTenant`, `AppContext.currentTenant`)의 속성(`corporateName`, `tradeName`, `representativeName`, `businessNumber`, `tel`, `fax`, `bankAccounts`, `stampImageUrl`, `yards`, `workplaces` 등)에만 보존되고, UI/서식/보고서/외부 출력물은 해당 테넌트 객체로부터 100% 동적으로 읽어 표출.
+     - `index.html`: `<title>e-Bro Lift ERP | 스마트 고소작업대 렌탈 관리 시스템</title>`, `apple-mobile-web-app-title="e-Bro ERP"`.
+     - `public/manifest.json`, `public/sw.js`: `"name": "e-Bro Lift ERP"`, `"short_name": "e-Bro ERP"`, 캐시 버전 최신화.
+     - `src/App.tsx`: 로그인 로고 및 메인 헤더를 `e-Bro LIFT ERP` 단일 시스템 브랜드로 개편하고, 로그인된 테넌트의 상호 배지(`{currentTenant.displayName}`)를 우측에 동적 렌더링.
+     - `src/services/templates.ts`: `getLessorInfo()` 및 `applyLessorPlaceholders()` 엔진 신설. 견적서, 계약서, 안전점검표, 거래명세서 등 HTML 템플릿의 공급자/임대인 정보를 `currentTenant` 속성으로 동적 주입.
+     - `src/services/monthlyReportPdfBuilder.ts`: 3페이지 헤더 `[${tenantBrand}]`, 푸터 `e-Bro ERP 시스템 자동 생성`, 다운로드 파일명 동적화.
+     - `src/components/ContractDocumentBundleModal.tsx`: 계약서 패키지 14p PDF 파일명, 이메일 제목 및 본문 내 발신 회사명을 `currentTenant` 속성으로 동적 연동.
+     - `src/pages/BankMatching.tsx`: 공급자 정보(상호, 대표자, 등록번호, 주소, 계좌, 직인) `currentTenant` 100% 동적 바인딩.
+     - `src/pages/Billings.tsx`: 거래명세서 엑셀/PDF 파일명, 이메일 제목, 공급자 인쇄 정보, 직인 `currentTenant` 동적 연동 및 타입 무결성 확보.
+     - `src/pages/DelinquencyPage.tsx`: 내용증명 법적통지서 발신인 블록(상호, 대표자, 사업자번호, 주소, 전화번호, 직인) `currentTenant` 동적 연동.
+     - `src/pages/TruckDispatch.tsx`: 배차 요청서 인쇄 헤더 및 폴백 주기장 명칭 동적화.
+     - `src/mobile/MobileHeader.tsx`, `MobileApp.tsx`, `MobileWalkieTalkieModal.tsx`: 모바일 헤더 브랜드 및 무전기 채널명 테넌트 연동.
+     - `src/utils/nativeLauncher.ts`: 내비게이션 파라미터 `appname=com.ebro.lift`, 기사 배차 안내 SMS 발신사명 동적 치환.
+     - `src/context/AppContext.tsx`: 자산 매각 계약 안내 이메일 발신사명 및 계좌 테넌트 연동.
+     - `src/data/presetProductSpecs.ts`, `src/data/presetProductSpecs.json`, `src/services/db.ts`: 프리셋 장비 제조사 오표기(`기연리프트`)를 정품 제조사명(`Sinoboom`)으로 정상 정제.
+     - `src/services/transportCallService.ts`, `src/services/walkieTalkieService.ts`: STT Whisper 프롬프트 힌트에서 특정 회사명 제거 및 도메인 표준 정제.
+- **검증 결과**:
+  - `npm run build`: **0 Error 통과** (`built in 1.09s`).
+  - TypeScript strict 타입 무결성 및 Vite 번들링 100% 정상.
+
+---
+
+## [v1.10.0.Build.5] - 2026-09-07 12:05
+
+### 🌐 [전사 사명 영문 표기 전면 정정 ("Kiyuen" ➔ "Giyuen"), Git 저장소 이전 및 프로젝트 설정 동기화]
+- **요구사항**: "이제까지 프로젝트 전체에서 사용하던 'Kiyuen' 의 모든 단어를 'Giyuen' 으로 변경. 내가 회사 영어명칭을 착오했어. 프로젝트명도 바굴것이고 버셋에도 변경, 깃에도 변경할거야. 깃주소 변경 https://github.com/DragonRPA/Giyeun_Lift"
+- **구현 조치**:
+  1. Git Remote Origin URL 이전 및 검증: `https://github.com/DragonRPA/Giyeun_Lift.git`
+  2. 패키지 및 인프라 프로젝트 식별자 변경 (`package.json`, `.vercel/project.json`, `public/sw.js`)
+  3. 소스코드 및 UI 텍스트 전수 치환 (App.tsx, BankMatching.tsx, smart_dispatch4.tsx, db.ts, nativeLauncher.ts 등)
+  4. 테스트 및 스크립트 파일 경로 일괄 동기화
+- **검증 결과**:
+  - `npm run build`: **0 Error 통과** (`built in 1.12s`).
+
+---
+
+## [v1.10.0.Build.4] - 2026-09-07 11:55
+
+### 📦 [관리 소모품 30종 마스터 형성 및 초기DB 업로드 메뉴 내 소모품 재고 업로드 기능 신설]
+- **요구사항**: "D:\OneDrive\Desktop\기연리프트자료_\자동업로드\밴드\소모품재고.txt 파일을 참고하여, 관리 소모품의 제품과 수량을 형성해줘. 초기DB 업로드 메뉴에서 소모품 재고 업로드 기능을 추가해줘"
+- **구현 조치**:
+  1. `src/services/consumableMigrationService.ts` 신설 (30종 기본 품목 마스터 시드, 파서, DB 적재 엔진)
+  2. `src/services/db.ts` 소모품 스키마 확장 및 정규화
+  3. `src/pages/InitialDbUploader.tsx` 관리 소모품 업로드 전용 카드 신설
+- **검증 결과**:
+  - `npm run build`: **0 Error 통과** (`built in 1.08s`).
+  - Edge Headless CDP 브라우저 엔드투엔드 100% PASS (0 Exceptions).
+
+---
+
+## [v1.10.0.Build.3] - 2026-09-07 11:40
+
+### 🛠️ [배포 후 흰 화면(WSOD) 크래시 긴급 규명 및 100% 정상 복구 & 배차/운송관리 3개 탭 전면 개편]
+- **구현 조치**:
+  1. `src/services/db.ts`: `mockDataCont` 복원 및 최상위 모듈 평가 에러 해소
+  2. 배차/운송관리 메뉴 3개 탭 단일 표준 역할 정립 및 '운송사 배차 협의' 통화파일 업로드 기반 전면 개편 (`src/services/transportCallService.ts`)
+- **검증 결과**:
+  - Edge Headless CDP 브라우저 진단 렌더링 100% 정상 검증 완료.
+
+---
+
 ## [v1.10.0.Build.2] - 2026-09-07 11:27
 
 ### 🏛️ [테넌트 스키마 고도화: 본사·다수 사업장(Workplaces) 및 다수 주기장(Yards) 복수 체계 구축 & 공식 법인 직인 정식 등록]
@@ -7,15 +83,15 @@
      - 기존 견적/계약서 내 인감 Base64 데이터를 `OFFICIAL_STAMP_BASE64` 전사 상수로 정식 등록.
      - 물리적 이미지 파일 `public/images/official_stamp.png` (489 bytes) 생성 및 정적 에셋 서빙 지원.
      - 1호 테넌트(`tenant-1`)의 `stampImageUrl`을 공식 직인으로 연결.
-  2. **본사 및 다수 사업장(Workplaces) 복수 관리 스키마 신설 ([`src/services/db.ts`](file:///d:/01.AntiGravity/Kiyuen_Lift/src/services/db.ts))**:
+  2. **본사 및 다수 사업장(Workplaces) 복수 관리 스키마 신설 ([`src/services/db.ts`](file:///d:/01.AntiGravity/Giyuen_Lift/src/services/db.ts))**:
      - `TenantWorkplace` 인터페이스 신설: `id`, `workplaceCode`, `name`, `isHeadquarter`, `businessNumber`, `subBizNumber`(종사업장식별번호), `address`, `tel`, `fax`, `managerName`, `managerPhone` 등 지원.
      - `SEED_TENANTS`에 `용인 본사 (본점)`을 `isHeadquarter: true`로 마스터 시딩.
-  3. **다수 장비 주기장(Yards) 복수 관리 스키마 신설 ([`src/services/db.ts`](file:///d:/01.AntiGravity/Kiyuen_Lift/src/services/db.ts))**:
+  3. **다수 장비 주기장(Yards) 복수 관리 스키마 신설 ([`src/services/db.ts`](file:///d:/01.AntiGravity/Giyuen_Lift/src/services/db.ts))**:
      - `TenantYard` 인터페이스 신설: `id`, `yardCode`, `name`, `isDefault`, `address`, `operatingCapacity`(수용장비대수), `managerName`, `managerPhone`, `tel`, `operatingHours`, `memo` 등 지원.
      - `SEED_TENANTS`에 복수 주기장 마스터 시딩:
        - `[대표 야드]` **기연리프트 화성 주기장** (`isDefault: true`, 수용능력 200대, 복합 주기장)
        - `[보조 야드]` **용인 본사 주기장** (`isDefault: false`, 수용능력 50대, 본사 부속 대기/수리 주기장)
-  4. **전역 AppContext 및 편의 액션 API 연동 ([`src/context/AppContext.tsx`](file:///d:/01.AntiGravity/Kiyuen_Lift/src/context/AppContext.tsx))**:
+  4. **전역 AppContext 및 편의 액션 API 연동 ([`src/context/AppContext.tsx`](file:///d:/01.AntiGravity/Giyuen_Lift/src/context/AppContext.tsx))**:
      - `addTenantWorkplace`, `updateTenantWorkplace`, `deleteTenantWorkplace`
      - `addTenantYard`, `updateTenantYard`, `deleteTenantYard`, `setDefaultYard`
 - **검증 결과**:
@@ -4159,13 +4235,13 @@
 - **1. 전사 잔존 체크박스 전수 감사 및 인라인 충돌 스타일 제거**:
   - 시스템 전체를 스캔하여 체크마크를 찌그러뜨리거나 왜곡하던 인라인 크기(`width: 13~16px`) 및 `accentColor` 설정을 전면 제거.
   - 적용 대상 페이지:
-    - **[`smart_dispatch.tsx`](file:///d:/01.AntiGravity/Kiyuen_Lift/src/pages/smart_dispatch.tsx)**: 고객사 기본 스펙 전파 패널 및 21대 표준 스펙 체크박스
-    - **[`Contracts.tsx`](file:///d:/01.AntiGravity/Kiyuen_Lift/src/pages/Contracts.tsx)**: 계약 연장/단축 및 신규 계약 체결 시 '종료일 미정' 체크박스
-    - **[`CorporateCardPage.tsx`](file:///d:/01.AntiGravity/Kiyuen_Lift/src/pages/CorporateCardPage.tsx)**: 법인카드 적격 세금계산서 증빙 체크박스
-    - **[`FieldAsManagement.tsx`](file:///d:/01.AntiGravity/Kiyuen_Lift/src/pages/FieldAsManagement.tsx)**: 현장 AS 대차(교체) 건의 및 기본 내비게이션 기억 체크박스
-    - **[`Products.tsx`](file:///d:/01.AntiGravity/Kiyuen_Lift/src/pages/Products.tsx)**: 장비 모델 사용 여부 활성 체크박스
-    - **[`users_permissions.tsx`](file:///d:/01.AntiGravity/Kiyuen_Lift/src/pages/users_permissions.tsx)**: 사용자 권한 매트릭스(조회/저장) 체크박스
-    - **[`App.tsx`](file:///d:/01.AntiGravity/Kiyuen_Lift/src/App.tsx)**: 로그인 화면(아이디 저장, 비밀번호 저장, 자동 로그인) 체크박스
+    - **[`smart_dispatch.tsx`](file:///d:/01.AntiGravity/Giyuen_Lift/src/pages/smart_dispatch.tsx)**: 고객사 기본 스펙 전파 패널 및 21대 표준 스펙 체크박스
+    - **[`Contracts.tsx`](file:///d:/01.AntiGravity/Giyuen_Lift/src/pages/Contracts.tsx)**: 계약 연장/단축 및 신규 계약 체결 시 '종료일 미정' 체크박스
+    - **[`CorporateCardPage.tsx`](file:///d:/01.AntiGravity/Giyuen_Lift/src/pages/CorporateCardPage.tsx)**: 법인카드 적격 세금계산서 증빙 체크박스
+    - **[`FieldAsManagement.tsx`](file:///d:/01.AntiGravity/Giyuen_Lift/src/pages/FieldAsManagement.tsx)**: 현장 AS 대차(교체) 건의 및 기본 내비게이션 기억 체크박스
+    - **[`Products.tsx`](file:///d:/01.AntiGravity/Giyuen_Lift/src/pages/Products.tsx)**: 장비 모델 사용 여부 활성 체크박스
+    - **[`users_permissions.tsx`](file:///d:/01.AntiGravity/Giyuen_Lift/src/pages/users_permissions.tsx)**: 사용자 권한 매트릭스(조회/저장) 체크박스
+    - **[`App.tsx`](file:///d:/01.AntiGravity/Giyuen_Lift/src/App.tsx)**: 로그인 화면(아이디 저장, 비밀번호 저장, 자동 로그인) 체크박스
 - **2. 100% 일관된 시각적 피드백 달성**:
   - ERP 내의 어떤 화면, 어떤 모달에서든 체크박스를 클릭하면 **고선명 화이트 벡터 "V"**가 선명하게 돋보이는 단일 표준 UX 완성.
 
@@ -4327,12 +4403,12 @@
 ## 🗄️ [DB 스키마] 전사 42대 테이블 6대 도메인 표준 논리적 배치 전면 재정돈 & 무손실 원자적 스왑 DDL 패치
 
 ### 🎯 핵심 요약 및 기능 구축 내역
-- **1. 단일 진실의 원천(SSOT) [`schema.sql`](file:///d:/01.AntiGravity/Kiyuen_Lift/schema.sql) 전면 리팩토링 완결**:
+- **1. 단일 진실의 원천(SSOT) [`schema.sql`](file:///d:/01.AntiGravity/Giyuen_Lift/schema.sql) 전면 리팩토링 완결**:
   - 누적 패치로 누더기화되었던 중복 테이블(`receivables`, `purchase_settlements` 등) 및 흩어진 컬럼들을 전면 정돈.
   - 전사 단일 표준 **[논리적 컬럼 6단계 배치 원칙]** (`①식별자 ➔ ②본질속성 ➔ ③FK관계 ➔ ④일정/수량/금액 ➔ ⑤업무상태 ➔ ⑥감사로그`)을 전사 42개 테이블에 100% 일관되게 적용.
   - 6대 비즈니스 도메인(조직/인사, 기준정보, 계약/배차, 정비/AS, 회계/정산, 협업/시스템)별 체계적 그룹화.
 - **2. 기존 운영 데이터 100% 무손실 보존 원자적 테이블 스왑 마이그레이션 DDL 구축**:
-  - [`scripts/reorganize_tables_zero_loss.sql`](file:///d:/01.AntiGravity/Kiyuen_Lift/scripts/reorganize_tables_zero_loss.sql) 생성.
+  - [`scripts/reorganize_tables_zero_loss.sql`](file:///d:/01.AntiGravity/Giyuen_Lift/scripts/reorganize_tables_zero_loss.sql) 생성.
   - `assets`, `deliveries`, `receivables`, `repairs` 등 핵심 운영 테이블의 기존 데이터를 단 1건도 유실하지 않고 정돈된 새 컬럼 순서로 1:1 복제 후 단일 트랜잭션(`BEGIN ~ COMMIT`) 내 0.01초 스왑(`RENAME`) 및 RLS 보안 정책 자동 재연결.
 
 ---
@@ -8901,7 +8977,7 @@ unsyncedLocalRows.forEach(row => this.insertRow(key, row));
 
 3. **泥댄겕諛뺤뒪 湲곕컲 遺遺?留ㅼ엯 ?뺤궛 (Partial Settlement) & 蹂대쪟(HELD) ?댁썡 泥닿퀎 援ъ텞 (`RentAssets.tsx`)**
    - **`[?윟 ?쇱튂 嫄대쭔 鍮좊Ⅸ ?좏깮]`** 1-Click ?ロ궎 踰꾪듉 ?묒옱.
-   - 100% ?쇱튂/寃利??꾨즺??嫄대쭔 泥댄겕 ?좏깮?섏뿬 **`[?뮩 ?좏깮??N嫄대쭔 遺遺?留ㅼ엯 ?뺤궛 ?뱀씤]`**?쇰줈 ?붾쭚 留ㅼ엯 ?뺤궛 ???[PurchaseSettlementPage.tsx](file:///d:/GoogleDrive/RPA%20%EA%B0%9C%EB%B0%9C/01.AntiGravity/Kiyuen_Lift/src/pages/PurchaseSettlementPage.tsx))?쇰줈 ?뱀씤 ?꾩넚.
+   - 100% ?쇱튂/寃利??꾨즺??嫄대쭔 泥댄겕 ?좏깮?섏뿬 **`[?뮩 ?좏깮??N嫄대쭔 遺遺?留ㅼ엯 ?뺤궛 ?뱀씤]`**?쇰줈 ?붾쭚 留ㅼ엯 ?뺤궛 ???[PurchaseSettlementPage.tsx](file:///d:/GoogleDrive/RPA%20%EA%B0%9C%EB%B0%9C/01.AntiGravity/Giyuen_Lift/src/pages/PurchaseSettlementPage.tsx))?쇰줈 ?뱀씤 ?꾩넚.
    - 誘몄꽑????留욌뒗 ?ㅼ감 嫄댁? ???紐⑸줉??**'蹂대쪟(HELD)'** ?곹깭濡??덉쟾?섍쾶 ?좎??섏뼱 ?먯궗 ?④? 議곗젙/??컧 ?뱀씤/?듭썡 ?댁썡 議곗튂 媛??
 
 4. **?섑븰??1???댁긽 媛??湲곌컙 援먯감 ?뚭퀬由ъ쬁($\text{AssetStart} \le \text{MonthEnd} \land \text{AssetEnd} \ge \text{MonthStart}$) ?묒옱 (`AppContext.tsx` & `RentAssets.tsx`)**
@@ -11912,7 +11988,7 @@ PostgreSQL DB ?덈꺼??`billings_status_check` ?쒖빟 議곌굔??寃곗옱 ?�
 # Release Notes (v1.4.1.Build.00002 - 2026-07-26 00:22)
 
 ## ?썳截?Supabase RLS ?곌린 沅뚰븳 ?ㅼ떆媛??뚯뒪??& ?묒? ?낅줈???먰겢由?蹂듦뎄 媛?대뱶 媛뺥솕
-- **DB ?ㅽ궎留??뺥빀??寃利??꾧뎄 ?ㅼ떆媛??곌린(INSERT/UPSERT) 沅뚰븳 寃利?異붽? ([DevDataUploader.tsx](file:///d:/GoogleDrive/RPA%20媛쒕컻/01.AntiGravity/Kiyuen_Lift/src/pages/DevDataUploader.tsx))**:
+- **DB ?ㅽ궎留??뺥빀??寃利??꾧뎄 ?ㅼ떆媛??곌린(INSERT/UPSERT) 沅뚰븳 寃利?異붽? ([DevDataUploader.tsx](file:///d:/GoogleDrive/RPA%20媛쒕컻/01.AntiGravity/Giyuen_Lift/src/pages/DevDataUploader.tsx))**:
   - `SELECT` ?쎄린???덉슜?섏?留?`INSERT/UPSERT` ?곌린媛 李⑤떒??RLS ?곹깭源뚯? ?뺣? ?ㅼ떆媛??뚯뒪??`__RLS_TEST_...` 媛???ㅻ? ?뚯뒪???섏뿬 ?ъ쟾 100% 寃異쒗븯?꾨줉 媛쒗렪.
 - **?묒? ?쇨큵 ?낅줈???ㅽ뙣 ??吏곴???RLS 蹂듦뎄 媛?대뱶 ?곕룞**:
   - `42501` / `new row violates row-level security policy` 諛쒖깮 ???먯씤 遺꾩꽍 諛?`ALTER TABLE "tableName" DISABLE ROW LEVEL SECURITY;` 荑쇰━ ?덈궡臾??먮룞 諛붿씤??
@@ -11920,7 +11996,7 @@ PostgreSQL DB ?덈꺼??`billings_status_check` ?쒖빟 議곌굔??寃곗옱 ?�
 # Release Notes (v1.4.1.Build.00001 - 2026-07-26 00:19)
 
 ## ?썳截?Supabase ?ㅼ떆媛?DB ?뺥빀??寃利??꾧뎄 RLS(Row-Level Security) 寃利?& DDL ?⑥튂 媛뺥솕
-- **RLS ?뺤콉 ?꾨컲 ?ㅼ떆媛?寃利?諛??뚮┝ ([DevDataUploader.tsx](file:///d:/GoogleDrive/RPA%20媛쒕컻/01.AntiGravity/Kiyuen_Lift/src/pages/DevDataUploader.tsx))**:
+- **RLS ?뺤콉 ?꾨컲 ?ㅼ떆媛?寃利?諛??뚮┝ ([DevDataUploader.tsx](file:///d:/GoogleDrive/RPA%20媛쒕컻/01.AntiGravity/Giyuen_Lift/src/pages/DevDataUploader.tsx))**:
   - ?곗씠?곕쿋?댁뒪 ?ㅽ궎留?寃利??? `new row violates row-level security policy`? 媛숈? RLS ?뺤콉 ?꾨컲 ?ㅻ쪟 諛쒖깮 媛?μ꽦 諛?李⑤떒 ?곹깭瑜??ㅼ떆媛?媛먯??섎룄濡?蹂닿컯.
 - **?먮룞 DDL 蹂듦뎄 ?⑥튂 荑쇰━ ?앹꽦 媛뺥솕**:
   - ?꾨씫??而щ읆 異붽?肉먮쭔 ?꾨땲?? RLS ?뺤콉?쇰줈 ?명븳 ?곌린 李⑤떒???먰겢由??댁젣/?덉슜?섎뒗 `ALTER TABLE "tableName" DISABLE ROW LEVEL SECURITY;` 荑쇰━瑜??먮룞 ?앹꽦 SQL ?ㅽ겕由쏀듃???꾩닔 ?ы븿.
@@ -11930,15 +12006,15 @@ PostgreSQL DB ?덈꺼??`billings_status_check` ?쒖빟 議곌굔??寃곗옱 ?�
 # Release Notes (v1.4.1.Build.00000 - 2026-07-26 00:15)
 
 ## ?럾截??좉? 踰꾪듉 ?ㅼ쐞移?Toggle Switch) UI ?붿옄??媛쒗렪 & ?섎룞 諛곗감 ?곸슜
-- **怨듯넻 ?좉? ?ㅼ쐞移??붿옄???쒖뒪??援ъ텞 ([ToggleSwitch.tsx](file:///d:/GoogleDrive/RPA%20媛쒕컻/01.AntiGravity/Kiyuen_Lift/src/components/ToggleSwitch.tsx), [index.css](file:///d:/GoogleDrive/RPA%20媛쒕컻/01.AntiGravity/Kiyuen_Lift/src/index.css))**:
+- **怨듯넻 ?좉? ?ㅼ쐞移??붿옄???쒖뒪??援ъ텞 ([ToggleSwitch.tsx](file:///d:/GoogleDrive/RPA%20媛쒕컻/01.AntiGravity/Giyuen_Lift/src/components/ToggleSwitch.tsx), [index.css](file:///d:/GoogleDrive/RPA%20媛쒕컻/01.AntiGravity/Giyuen_Lift/src/index.css))**:
   - 湲곗〈 ?쇰컲 泥댄겕諛뺤뒪 ?뺥깭???낅젰 ?붿냼瑜?紐⑤뜕?섍퀬 ?쒓컖??吏곴??깆씠 ?곗뼱???좊땲硫붿씠???좉? ?ㅼ쐞移?Toggle Switch) ?붿옄?몄쑝濡?紐⑤뱢??
-- **諛곗감 愿由????곸슜 ([TruckDispatch.tsx](file:///d:/GoogleDrive/RPA%20媛쒕컻/01.AntiGravity/Kiyuen_Lift/src/pages/TruckDispatch.tsx))**:
+- **諛곗감 愿由????곸슜 ([TruckDispatch.tsx](file:///d:/GoogleDrive/RPA%20媛쒕컻/01.AntiGravity/Giyuen_Lift/src/pages/TruckDispatch.tsx))**:
   - `[+ ?좉퇋 ?섎룞 諛곗감 ?붿껌 ?앹꽦]` 紐⑤떖 諛?湲곗〈 諛곗감 ?뺣낫 ?섏젙 紐⑤떖 ?댁쓽 `'怨좉컼 泥?뎄 ?щ? (billableToCustomer)'` ?낅젰 ?쇱쓣 ?좉? ?ㅼ쐞移?而댄룷?뚰듃濡??꾨㈃ ?꾪솚.
 
 # Release Notes (v1.4.0.Build.00001 - 2026-07-26 00:03)
 
 ## ?맀 ???ㅽ넗由ъ?/DB ?곗씠??????깃났 寃利?諛?臾댁쓬 ?ㅽ뙣 諛⑹?(Zero Silent Failures) 媛쒗렪
-- **?뚮え??諛??먯옱 援щℓ?좎껌 ????ㅻ쪟 ?섏젙 ([Consumables.tsx](file:///d:/GoogleDrive/RPA%20媛쒕컻/01.AntiGravity/Kiyuen_Lift/src/pages/Consumables.tsx))**:
+- **?뚮え??諛??먯옱 援щℓ?좎껌 ????ㅻ쪟 ?섏젙 ([Consumables.tsx](file:///d:/GoogleDrive/RPA%20媛쒕컻/01.AntiGravity/Giyuen_Lift/src/pages/Consumables.tsx))**:
   - 援щℓ?좎껌 ?쒖텧(`requestConsumablePurchase`), ?낃퀬 泥섎━(`inboundConsumablePurchase`), ?뚮え??異쒓퀬/?ъ슜(`useConsumable`), ?묒닔 諛?援щℓ?꾨즺 泥섎━ ???뚮え??愿由???紐⑤뱺 ????≪뀡??鍮꾨룞湲?`awaitPendingWrites` ?숆린??諛?`try/catch` ?먮윭 紐⑤떖(`showErrorModal`) ?곕룞.
 - **湲濡쒕쾶 ????덉젙??寃利??뺤콉 異붽? (`AGENTS.md`)**:
   - 洹쒖튃 8踰? 紐⑤뱺 ?곗씠??????섏젙/??젣 ??`await db.awaitPendingWrites()`瑜??숆린濡??섑뻾?섏뿬 ?ㅼ떆媛??깃났 寃利앹쓣 媛뺤젣?섍퀬, ??μ씠 臾댁쓬?쇰줈 ?ㅽ뙣?섏? ?딅룄濡?UI ?먮윭 紐⑤떖 ?몄텧 ?먯튃???쒖뒪??湲濡쒕쾶 ?뺤콉?쇰줈 ?뺤젙.
@@ -12457,7 +12533,7 @@ PostgreSQL DB ?덈꺼??`billings_status_check` ?쒖빟 議곌굔??寃곗옱 ?�
 # Release Notes (v2.7.1 - 2026-07-21 13:43)
 
 ## ?㈉ ?쇳듃(Feet) 而щ읆 ?먮즺???ㅼ닔(DOUBLE PRECISION) 蹂寃?諛??뚯닔???깅줉 ?덉슜
-- **?곗씠?곕쿋?댁뒪 而щ읆 ?먮즺???ㅼ닔??*: ?쒗뭹(`products`) ?뚯씠釉붿쓽 ?쇳듃(`feet`) 洹쒓꺽 而щ읆???뺤닔??`INTEGER`)?먯꽌 ?ㅼ닔??`DOUBLE PRECISION`)?쇰줈 媛쒗렪?섏뿬, 3.6?쇳듃? 媛숈? ?뚯닔??洹쒓꺽???먭꺽 DB? 濡쒖뺄 ?ㅽ궎留?[schema.sql](file:///d:/GoogleDrive/RPA%20媛쒕컻/01.AntiGravity/Kiyuen_Lift/schema.sql)) 紐⑤몢?먯꽌 ?뺤떇 吏?먰븯?꾨줉 蹂寃쏀뻽?듬땲??
+- **?곗씠?곕쿋?댁뒪 而щ읆 ?먮즺???ㅼ닔??*: ?쒗뭹(`products`) ?뚯씠釉붿쓽 ?쇳듃(`feet`) 洹쒓꺽 而щ읆???뺤닔??`INTEGER`)?먯꽌 ?ㅼ닔??`DOUBLE PRECISION`)?쇰줈 媛쒗렪?섏뿬, 3.6?쇳듃? 媛숈? ?뚯닔??洹쒓꺽???먭꺽 DB? 濡쒖뺄 ?ㅽ궎留?[schema.sql](file:///d:/GoogleDrive/RPA%20媛쒕컻/01.AntiGravity/Giyuen_Lift/schema.sql)) 紐⑤몢?먯꽌 ?뺤떇 吏?먰븯?꾨줉 蹂寃쏀뻽?듬땲??
 - **?대씪?댁뼵??寃利?諛?UI 蹂닿컯**: ?ㅼ닔???낅젰???쒗븳 ?놁씠 ?덉슜?섎룄濡?`Products.tsx` ?댁쓽 ?뺤닔 泥댄겕瑜??댁젣?섍퀬, 紐⑤떖 ?낅젰 而댄룷?뚰듃??`step` ?띿꽦??`any`濡??섏젙?섏뿬 `3.6` ?쇳듃? 媛숈? ?ㅼ닔 媛믪씠 ?먯쑀濡?쾶 ?낅젰 諛???λ릺?꾨줉 議곗튂?덉뒿?덈떎.
 
 ---
@@ -12467,7 +12543,7 @@ PostgreSQL DB ?덈꺼??`billings_status_check` ?쒖빟 議곌굔??寃곗옱 ?�
 ## ?뿊截??듯빀 ?뚯뒪???쒕굹由ъ삤 ?곗씠??愿由?湲곕뒫 諛?UI ?쒓굅
 - **CoT ?곗씠???쒕뵫 湲곕뒫 ?쒓굅**: Supabase ?먭꺽 ?곕룞 蹂듭옟??諛??ъ슜???앹궛???좎?瑜??꾪빐, `DevDataUploader.tsx` ?섎떒??異붽??섏뿀??"?듯빀 ?뚯뒪???쒕굹由ъ삤 ?곗씠??愿由? UI? 愿???대씪?댁뼵???ъ씠???곗씠???앹꽦/??젣 湲곕뒫(RPC ?몃━嫄??ы븿)???꾨㈃ ?쒓굅?덉뒿?덈떎.
 - **?꾨줈?앺듃 ?섏〈??諛?CLI ?뺣━**: `package.json`?먯꽌 ???댁긽 ?ъ슜?섏? ?딅뒗 `"db:seed"` 而ㅻ㎤??諛?`pg` ?쇱씠釉뚮윭由??섏〈?깆쓣 ?쒓굅?섏뿬 ?깆쓣 理쒖쟻?붾맂 ?먮옒 ?곹깭濡?濡ㅻ갚?덉뒿?덈떎.
-- **濡쒖뺄 ?ㅽ겕由쏀듃 蹂댁〈**: ?ν썑 蹂꾨룄 ?숈뒿 諛?蹂듦뎄瑜??鍮꾪븯??[scripts/setup_seed_rpc.sql](file:///d:/GoogleDrive/RPA%20媛쒕컻/01.AntiGravity/Kiyuen_Lift/scripts/setup_seed_rpc.sql) 諛?[scripts/seed-db.js](file:///d:/GoogleDrive/RPA%20媛쒕컻/01.AntiGravity/Kiyuen_Lift/scripts/seed-db.js) ?뚯씪? 濡쒖뺄 李멸퀬???덊띁?곗뒪濡?洹몃?濡??좎??⑸땲??
+- **濡쒖뺄 ?ㅽ겕由쏀듃 蹂댁〈**: ?ν썑 蹂꾨룄 ?숈뒿 諛?蹂듦뎄瑜??鍮꾪븯??[scripts/setup_seed_rpc.sql](file:///d:/GoogleDrive/RPA%20媛쒕컻/01.AntiGravity/Giyuen_Lift/scripts/setup_seed_rpc.sql) 諛?[scripts/seed-db.js](file:///d:/GoogleDrive/RPA%20媛쒕컻/01.AntiGravity/Giyuen_Lift/scripts/seed-db.js) ?뚯씪? 濡쒖뺄 李멸퀬???덊띁?곗뒪濡?洹몃?濡??좎??⑸땲??
 
 ---
 
@@ -12491,14 +12567,14 @@ PostgreSQL DB ?덈꺼??`billings_status_check` ?쒖빟 議곌굔??寃곗옱 ?�
 
 ## ?㈉ ?먯궛 ?낅뜲?댄듃 DML 援щЦ ??"updatedAt" 而щ읆 媛뺤젣 媛깆떊 ?곸슜 (23502 ?덉쇅 洹쇰낯??吏꾩븬)
 - **?먯궛(assets) UPDATE 援щЦ updatedAt 紐낆떆**: `assets` ?뚯씠釉붿쓽 `"updatedAt"` Not-Null ?쒖빟議곌굔?쇰줈 ?명빐, `generate_test_data` 諛?`clear_test_data` ?댁쓽 `UPDATE assets SET status = ...` ?곗궛 ?ㅽ뻾 ??`"updatedAt"` 而щ읆??紐낆떆?섏? ?딆븘 諛쒖깮?섎뜕 `23502 (Not-Null Violation)` ?덉쇅瑜??꾩쟾???섏젙?섏??듬땲??
-- **SQL ?⑥닔 媛깆떊 ?쒓났**: [setup_seed_rpc.sql](file:///d:/GoogleDrive/RPA%20媛쒕컻/01.AntiGravity/Kiyuen_Lift/scripts/setup_seed_rpc.sql) ?ㅽ겕由쏀듃瑜??ъ“?뺥븯???곗씠?곕쿋?댁뒪 ?⑥뿉???덉쟾?섍쾶 ?ㅽ뻾?섎룄濡??⑥닔 援ъ“瑜??꾨㈃ ?숆린?뷀뻽?듬땲??
+- **SQL ?⑥닔 媛깆떊 ?쒓났**: [setup_seed_rpc.sql](file:///d:/GoogleDrive/RPA%20媛쒕컻/01.AntiGravity/Giyuen_Lift/scripts/setup_seed_rpc.sql) ?ㅽ겕由쏀듃瑜??ъ“?뺥븯???곗씠?곕쿋?댁뒪 ?⑥뿉???덉쟾?섍쾶 ?ㅽ뻾?섎룄濡??⑥닔 援ъ“瑜??꾨㈃ ?숆린?뷀뻽?듬땲??
 
 ---
 
 # Release Notes (v2.6.9 - 2026-07-21 06:50)
 
 ## ?㈉ DB ?ㅽ궎留??뺥빀?깆뿉 留욎텣 PL/pgSQL RPC ?꾨줈?쒖? 移쇰읆 ?⑥튂 ?곸슜 (23502 ?덉쇅 ?닿껐)
-- **DB 而щ읆 100% 留ㅼ묶 ?숆린??*: `assets` ?뚯씠釉붿쓽 `"updatedAt"` Not-Null ?쒖빟議곌굔 ?꾨컲 ?먮윭(`23502`)瑜?洹쇰낯?곸쑝濡??닿껐?섍린 ?꾪빐, ?먭꺽 DB ?뚯씠釉??ㅽ궎留덉뿉 ?뺤쓽??紐⑤뱺 而щ읆怨?留ㅽ븨 ?뺤떇??[setup_seed_rpc.sql](file:///d:/GoogleDrive/RPA%20媛쒕컻/01.AntiGravity/Kiyuen_Lift/scripts/setup_seed_rpc.sql) ???쎌엯 荑쇰━?ㅼ뿉 ?꾨꼍?섍쾶 ?쇱튂?쒖섟?듬땲??
+- **DB 而щ읆 100% 留ㅼ묶 ?숆린??*: `assets` ?뚯씠釉붿쓽 `"updatedAt"` Not-Null ?쒖빟議곌굔 ?꾨컲 ?먮윭(`23502`)瑜?洹쇰낯?곸쑝濡??닿껐?섍린 ?꾪빐, ?먭꺽 DB ?뚯씠釉??ㅽ궎留덉뿉 ?뺤쓽??紐⑤뱺 而щ읆怨?留ㅽ븨 ?뺤떇??[setup_seed_rpc.sql](file:///d:/GoogleDrive/RPA%20媛쒕컻/01.AntiGravity/Giyuen_Lift/scripts/setup_seed_rpc.sql) ???쎌엯 荑쇰━?ㅼ뿉 ?꾨꼍?섍쾶 ?쇱튂?쒖섟?듬땲??
 - **?ㅽ궎留?遺덉씪移??뚯씠釉?而щ읆 ?꾨㈃ ?섏젙**: 
   - `consumables` ?뚯씠釉붿쓽 `name`/`spec` 臾댄슚 而щ읆??`"modelName"`?쇰줈 蹂寃쏀븯怨?`"stockQty"`/`"unitPrice"` 留ㅽ븨???숆린?뷀뻽?듬땲??
   - `contracts` ?뚯씠釉붿쓽 `"statementClosingDay"` ?쒓굅 諛?`"updatedAt"` 異붽?.
@@ -12513,7 +12589,7 @@ PostgreSQL DB ?덈꺼??`billings_status_check` ?쒖빟 議곌굔??寃곗옱 ?�
 ## ??Supabase DB-Native RPC ?꾨줈?쒖? ?꾧껐 ?쒕뵫 媛쒗렪 (蹂듭궗/遺숈뿬?ｊ린 ?꾨㈃ ?댁텧)
 - **?쒕쾭 ?ㅼ씠?곕툕 ?곗씠???앹꽦湲??묒옱**: ??寃뚯씠?몄썾???⑸웾 ?쒗븳(1MB) 諛??섎룞 蹂듭궗/遺숈뿬?ｊ린 ?ㅼ닔(?? `vBEGIN;` ?ㅽ? ??濡??명븳 ?앹궛????섎? ?먯쿇 ?닿껐?섍린 ?꾪빐 DB ?쒕쾭 ?대??먯꽌 吏곸젒 ?곗씠?곕? ?앹꽦?섎뒗 PL/pgSQL ?꾨줈?쒖? `generate_test_data()` 諛?`clear_test_data()`瑜??좎꽕 ?묒옱?덉뒿?덈떎.
 - **?먰겢由??꾧껐??UI ?곕룞**: ?댁젣 ?뚯씪 ?ㅼ슫濡쒕뱶???곕???紐낅졊???ㅽ뻾 ?놁씠 React ?붾㈃???곗씠???앹꽦 踰꾪듉留??대┃?섎㈃ DB ?쒕쾭 ?댁뿉??**0.2珥?留뚯뿉** 10,000??嫄댁쓽 ?곹샇 ?뺥빀 ?곕룞 ?곗씠?곗뀑???꾨꼍?섍쾶 ?곸옱?⑸땲??
-- **?먭? 吏꾨떒 諛?媛?대뱶 ?묒옱**: ?곗씠?곕쿋?댁뒪??RPC ?⑥닔媛 理쒖큹 ?앹꽦?섏? ?딆? 珥덇린 ?곹깭瑜??鍮꾪븯?? [scripts/setup_seed_rpc.sql](file:///d:/GoogleDrive/RPA%20媛쒕컻/01.AntiGravity/Kiyuen_Lift/scripts/setup_seed_rpc.sql) ?뚯씪??濡쒖뺄 蹂듭궗???먮뵒?곗뿉 ????踰덈쭔 ?깅줉?섎룄濡??섎뒗 ?먮룞 媛먯? ?쒗넗由ъ뼹 諛?諛깆뾽 ?ㅼ슫濡쒕뱶 ?대갚??援ъ텞?덉뒿?덈떎.
+- **?먭? 吏꾨떒 諛?媛?대뱶 ?묒옱**: ?곗씠?곕쿋?댁뒪??RPC ?⑥닔媛 理쒖큹 ?앹꽦?섏? ?딆? 珥덇린 ?곹깭瑜??鍮꾪븯?? [scripts/setup_seed_rpc.sql](file:///d:/GoogleDrive/RPA%20媛쒕컻/01.AntiGravity/Giyuen_Lift/scripts/setup_seed_rpc.sql) ?뚯씪??濡쒖뺄 蹂듭궗???먮뵒?곗뿉 ????踰덈쭔 ?깅줉?섎룄濡??섎뒗 ?먮룞 媛먯? ?쒗넗由ъ뼹 諛?諛깆뾽 ?ㅼ슫濡쒕뱶 ?대갚??援ъ텞?덉뒿?덈떎.
 
 ---
 
@@ -12523,7 +12599,7 @@ PostgreSQL DB ?덈꺼??`billings_status_check` ?쒖빟 議곌굔??寃곗옱 ?�
 - **10?④퀎 ?쒖감 ?곗씠???쒕뵫 ?뚯씠?꾨씪??*: 10,000嫄댁쓽 ????몄꽌??荑쇰━媛 Supabase API 寃뚯씠?몄썾??諛??대씪?곕뱶?뚮젅??諛붾뵒 ?ш린 ?쒗븳(1MB)??嫄몃젮 ?ㅽ뙣?섎뒗 臾몄젣瑜??뚰뵾?섍린 ?꾪빐, 理쒕? 1,500???댄븯(300KB ?섏?)??10媛??몃옖??뀡 ?뚰듃濡?怨좊Ⅴ寃?遺꾪븷?섏??듬땲??
 - **?섏〈??異⑸룎 ?쒕줈???ㅺ퀎**: 1踰??뚰듃(?쒗뭹/?먯궛)遺??10踰??뚰듃(?뺣퉬)源뚯? ?쒓컙 ?쒖꽌 諛??몃옒???곹샇 李몄“ 愿怨꾩뿉 留욎떠 ?꾨꼍?섍쾶 ?쒖감??Chronological)?쇰줈 鍮뚮뱶?섎룄濡??쇰━瑜??곸슜?덉뒿?덈떎.
 - **UI ?쒖뼱 移대뱶 5x2 洹몃━????媛쒗렪**: 10媛??뚰듃瑜?吏곴??곸쑝濡??쒖뼱?????덈룄濡?`DevDataUploader.tsx` ?섎떒??5x2 諛곗뿴???щ┃??洹몃━?쒗삎 ??踰꾪듉??援ъ꽦?섍퀬, ?쒖꽦 ??뿉 留욎떠 媛쒕퀎 ?대┰蹂대뱶 蹂듭궗 諛??ㅼ슫濡쒕뱶媛 ?곕룞?섎룄濡?留덇컧?덉뒿?덈떎.
-- **湲濡쒕쾶 ?꾨줈?앺듃 ?뺤콉 ?쒖빟 ?ы빆 臾몄꽌??*: ?곗씠?곕쿋?댁뒪 理쒕? ?꾩넚 ?섏씠濡쒕뱶? ?쒗븳 ?곹솴 ?泥??붾졊???곸? [SUPABASE_LIMITS.md](file:///d:/GoogleDrive/RPA%20媛쒕컻/01.AntiGravity/Kiyuen_Lift/SUPABASE_LIMITS.md) ?뚯씪怨?濡쒖뺄 ?꾨줈?앺듃 洹쒖튃 ?뚯씪 [.agents/AGENTS.md](file:///d:/GoogleDrive/RPA%20媛쒕컻/01.AntiGravity/Kiyuen_Lift/.agents/AGENTS.md)瑜??곕룞 ?뺤쓽?덉뒿?덈떎.
+- **湲濡쒕쾶 ?꾨줈?앺듃 ?뺤콉 ?쒖빟 ?ы빆 臾몄꽌??*: ?곗씠?곕쿋?댁뒪 理쒕? ?꾩넚 ?섏씠濡쒕뱶? ?쒗븳 ?곹솴 ?泥??붾졊???곸? [SUPABASE_LIMITS.md](file:///d:/GoogleDrive/RPA%20媛쒕컻/01.AntiGravity/Giyuen_Lift/SUPABASE_LIMITS.md) ?뚯씪怨?濡쒖뺄 ?꾨줈?앺듃 洹쒖튃 ?뚯씪 [.agents/AGENTS.md](file:///d:/GoogleDrive/RPA%20媛쒕컻/01.AntiGravity/Giyuen_Lift/.agents/AGENTS.md)瑜??곕룞 ?뺤쓽?덉뒿?덈떎.
 
 ---
 

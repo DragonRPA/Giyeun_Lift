@@ -5,7 +5,7 @@ import { SmartReturnData } from '../context/AppContext';
 import { fetchMyDrafts, DraftDispatchOrder, discardDraft } from '../services/callUploadService';
 
 export const SmartReturn: React.FC = () => {
-  const { hasPermission, saveSmartReturn, contracts, customers, sites, contacts, deliveries, contractAssets, assets, repairs, vendors, currentUser, users } = useApp();
+  const { hasPermission, saveSmartReturn, contracts, customers, sites, contacts, deliveries, contractAssets, assets, repairs, vendors, currentUser, users, currentTenant } = useApp();
   const canSave = hasPermission('delivery', 'save');
 
   // 토스트 알림 상태 (헌장 5.2: 브라우저 alert 전면 퇴출)
@@ -1143,7 +1143,7 @@ export const SmartReturn: React.FC = () => {
 
                   {/* 중앙: 문서 타이틀 */}
                   <div style={{ flex: 1, textAlign: 'center', minWidth: 0 }}>
-                    <h1 style={{ margin: 0, fontSize: '20px', fontWeight: '800', color: '#1e1b4b', letterSpacing: '3px', whiteSpace: 'nowrap' }}>기연리프트 입고요청서</h1>
+                    <h1 style={{ margin: 0, fontSize: '20px', fontWeight: '800', color: '#1e1b4b', letterSpacing: '3px', whiteSpace: 'nowrap' }}>{currentTenant?.tradeName || '장비'} 입고요청서</h1>
                   </div>
 
                   {/* 우측: 입고 등록자 날인란 */}

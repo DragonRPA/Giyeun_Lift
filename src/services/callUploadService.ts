@@ -104,12 +104,12 @@ function mapRow(row: Record<string, unknown>): DraftDispatchOrder {
 }
 
 // ─── LocalDB 로컬 영구 보존 스토리지 (헌장 1.2, 5.2 무누락 보존) ─────
-const LOCAL_DRAFTS_STORAGE_KEY = 'kiyeun_draft_dispatch_orders_local';
+const LOCAL_DRAFTS_STORAGE_KEY = 'giyeun_draft_dispatch_orders_local';
 
 function getLocalDrafts(): DraftDispatchOrder[] {
   try {
     if (typeof localStorage === 'undefined') return [];
-    const raw = localStorage.getItem(LOCAL_DRAFTS_STORAGE_KEY);
+    const raw = localStorage.getItem(LOCAL_DRAFTS_STORAGE_KEY) || localStorage.getItem('kiyeun_draft_dispatch_orders_local');
     return raw ? JSON.parse(raw) : [];
   } catch (e) {
     console.error('로컬 초안 스토리지 파싱 실패:', e);

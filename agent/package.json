@@ -1,10 +1,10 @@
 {
-  "name": "kiyeun-local-agent",
-  "version": "1.127.3",
-  "description": "기연리프트 전사 ERP 로컬 사이드카 에이전트 (Excel 직접 조작 및 PDF 고속 생산 데몬)",
-  "main": "agent.js",
+  "name": "ebro-local-agent",
+  "version": "2.0.0",
+  "description": "e-Bro ERP 로컬 사이드카 에이전트 (eBroAgent)",
+  "main": "eBroAgent.js",
   "scripts": {
-    "start": "node agent.js"
+    "start": "node eBroAgent.js"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.110.7",

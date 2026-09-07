@@ -10,6 +10,7 @@
 
 import { PDFDocument } from 'pdf-lib';
 import { ExecutiveMonthlyReport } from './monthlyReportEngine';
+import { db } from './db';
 
 // 브라우저 캔버스 기반 고해상도 이미지 레이어 생성 유틸리티
 function renderPageToPngBlob(width: number, height: number, drawFn: (ctx: CanvasRenderingContext2D) => void): Promise<Uint8Array> {
@@ -64,6 +65,7 @@ export async function downloadExecutiveReportPdf(data: ExecutiveMonthlyReport): 
   const canvasH = Math.round(a4H * scale);
 
   const { period, kpis, fleet, sales, operations, finance, conservation, executiveDirective, teamComments = [] } = data;
+  const tenantBrand = db.currentTenant?.displayName || db.currentTenant?.tradeName || 'e-Bro';
 
   // =========================================================================
   // [1페이지: 표지 헤더 + 경영 종합 KPI + 렌탈 자산 플릿 현황]
@@ -76,7 +78,7 @@ export async function downloadExecutiveReportPdf(data: ExecutiveMonthlyReport): 
     ctx.fillStyle = '#FFFFFF';
     ctx.font = 'bold ' + (17 * scale) + 'px "Malgun Gothic", "맑은 고딕", sans-serif';
     ctx.textAlign = 'left';
-    ctx.fillText(`[기연리프트] ${period.year}년 ${String(period.month).padStart(2, '0')}월 경영 정기보고서`, 55 * scale, 59 * scale);
+    ctx.fillText(`[${tenantBrand}] ${period.year}년 ${String(period.month).padStart(2, '0')}월 경영 정기보고서`, 55 * scale, 59 * scale);
 
     ctx.fillStyle = '#94A3B8';
     ctx.font = 'bold ' + (10 * scale) + 'px "Malgun Gothic", sans-serif';
@@ -226,7 +228,7 @@ export async function downloadExecutiveReportPdf(data: ExecutiveMonthlyReport): 
     ctx.fillStyle = '#94A3B8';
     ctx.font = '500 ' + (9 * scale) + 'px "Malgun Gothic", sans-serif';
     ctx.textAlign = 'center';
-    ctx.fillText(`Page 1 of 3  •  기연리프트 ERP 시스템 자동 생성`, (a4W / 2) * scale, (a4H - 25) * scale);
+    ctx.fillText(`Page 1 of 3  •  e-Bro ERP 시스템 자동 생성`, (a4W / 2) * scale, (a4H - 25) * scale);
   });
 
   // =========================================================================
@@ -240,7 +242,7 @@ export async function downloadExecutiveReportPdf(data: ExecutiveMonthlyReport): 
     ctx.fillStyle = '#FFFFFF';
     ctx.font = 'bold ' + (10 * scale) + 'px "Malgun Gothic", sans-serif';
     ctx.textAlign = 'left';
-    ctx.fillText(`[기연리프트] ${period.year}년 ${period.month}월 정기보고서 — 영업/물류/정비 세부 실적`, 50 * scale, 46 * scale);
+    ctx.fillText(`[${tenantBrand}] ${period.year}년 ${period.month}월 정기보고서 — 영업/물류/정비 세부 실적`, 50 * scale, 46 * scale);
 
     ctx.textAlign = 'right';
     ctx.fillText('SECTION 2 & 3', (a4W - 50) * scale, 46 * scale);
@@ -366,7 +368,7 @@ export async function downloadExecutiveReportPdf(data: ExecutiveMonthlyReport): 
     ctx.fillStyle = '#94A3B8';
     ctx.font = '500 ' + (9 * scale) + 'px "Malgun Gothic", sans-serif';
     ctx.textAlign = 'center';
-    ctx.fillText(`Page 2 of 3  •  기연리프트 ERP 시스템 자동 생성`, (a4W / 2) * scale, (a4H - 25) * scale);
+    ctx.fillText(`Page 2 of 3  •  e-Bro ERP 시스템 자동 생성`, (a4W / 2) * scale, (a4H - 25) * scale);
   });
 
   // =========================================================================
@@ -380,7 +382,7 @@ export async function downloadExecutiveReportPdf(data: ExecutiveMonthlyReport): 
     ctx.fillStyle = '#FFFFFF';
     ctx.font = 'bold ' + (10 * scale) + 'px "Malgun Gothic", sans-serif';
     ctx.textAlign = 'left';
-    ctx.fillText(`[기연리프트] ${period.year}년 ${period.month}월 정기보고서 — 채권/면제투명성/경영진지시`, 50 * scale, 46 * scale);
+    ctx.fillText(`[${tenantBrand}] ${period.year}년 ${period.month}월 정기보고서 — 채권/면제투명성/경영진지시`, 50 * scale, 46 * scale);
 
     ctx.textAlign = 'right';
     ctx.fillText('SECTION 4 & 5', (a4W - 50) * scale, 46 * scale);
@@ -583,7 +585,7 @@ export async function downloadExecutiveReportPdf(data: ExecutiveMonthlyReport): 
     ctx.fillStyle = '#94A3B8';
     ctx.font = '500 ' + (9 * scale) + 'px "Malgun Gothic", sans-serif';
     ctx.textAlign = 'center';
-    ctx.fillText(`Page 3 of 3  •  기연리프트 ERP 시스템 자동 생성`, (a4W / 2) * scale, (a4H - 25) * scale);
+    ctx.fillText(`Page 3 of 3  •  e-Bro ERP 시스템 자동 생성`, (a4W / 2) * scale, (a4H - 25) * scale);
   });
 
 
@@ -607,7 +609,7 @@ export async function downloadExecutiveReportPdf(data: ExecutiveMonthlyReport): 
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `기연리프트_${period.year}년_${period.month}월_경영정기보고서.pdf`;
+  a.download = `[${tenantBrand}]_${period.year}년_${period.month}월_경영정기보고서.pdf`;
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);

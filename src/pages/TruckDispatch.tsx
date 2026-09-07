@@ -7,7 +7,7 @@ import {
   Calendar, RotateCcw, ShieldCheck, CheckSquare, XCircle, Search,
   MessageSquare, User, Edit2, Upload, Download, FileSpreadsheet,
   CheckCircle2, AlertTriangle, Filter, DollarSign, Send, Sun, MapPin, Printer,
-  UserCheck
+  UserCheck, FileAudio, Volume2, Sparkles, UploadCloud, Loader2
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { Delivery, TransportCompany, TransportDriver, TransportNegotiation, db, DeliveryStatus, Asset } from '../services/db';
@@ -16,6 +16,14 @@ import { matchHangul } from '../utils/hangulSearch';
 import { buildDispatchSmsText, launchDispatchSms } from '../utils/nativeLauncher';
 import { broadcastWorkNotification } from '../utils/workNotificationService';
 import { issueHandoverTask, clearHandoverTasks } from '../utils/taskHandoverPipeline';
+import {
+  TransportCallQueueItem,
+  getTransportCallQueue,
+  saveTransportCallQueue,
+  processNewTransportCall,
+  markTransportCallConfirmed,
+  deleteTransportCall
+} from '../services/transportCallService';
 
 const VEHICLE_TYPE_OPTIONS = ['1.4T', '2.5T', '3.5T', '5T', '5T장축', '8.5T', '11T', '노배드'];
 
@@ -72,7 +80,8 @@ export const TruckDispatch: React.FC = () => {
     deliveries, contracts, customers, products, sites, users,
     contractAssets, assets,
     transportCompanies, transportDrivers, transportNegotiations, outboundInspections, hasPermission, 
-    refreshAllData, showErrorModal, convertReconciledDeliveriesToSettlement
+    refreshAllData, showErrorModal, convertReconciledDeliveriesToSettlement,
+    currentTenant
   } = useApp();
 
   const canSave = hasPermission('delivery', 'save');
@@ -181,7 +190,7 @@ export const TruckDispatch: React.FC = () => {
   @media print { body { margin: 10px; } button { display: none; } }
 </style>
 </head><body>
-<h1>기연리프트 ${title}</h1>
+<h1>${currentTenant?.displayName || currentTenant?.tradeName || 'e-Bro'} ${title}</h1>
 <div class="sub">문서번호: ${delivery.id} | 발행일자: ${today}</div>
 <table>
   <tr><th>계약번호</th><td>${contract?.contractNo || '-'}</td><th>배차구분</th><td>${delivery.dispatchCategory || (isOutbound ? '출고' : '입고')}</td></tr>
@@ -309,6 +318,76 @@ export const TruckDispatch: React.FC = () => {
   const [negoFilterStatus, setNegoFilterStatus] = useState<'ALL' | 'PENDING' | 'IN_NEGOTIATION' | 'CONFIRMED'>('ALL');
   const [negoSearchQuery, setNegoSearchQuery] = useState<string>('');
 
+  // ── 통화 협의 큐 (Call Ingestion Queue) 상태 ──
+  const [callQueue, setCallQueue] = useState<TransportCallQueueItem[]>(() => getTransportCallQueue());
+  const [selectedCallQueueId, setSelectedCallQueueId] = useState<string | null>(() => {
+    const q = getTransportCallQueue();
+    return q.length > 0 ? q[0].id : null;
+  });
+  const [isUploadingCall, setIsUploadingCall] = useState<boolean>(false);
+  const [callUploadError, setCallUploadError] = useState<string | null>(null);
+  const callFileInputRef = useRef<HTMLInputElement>(null);
+
+  const selectedCall = useMemo(() => {
+    return callQueue.find(q => q.id === selectedCallQueueId) || null;
+  }, [callQueue, selectedCallQueueId]);
+
+  // 통화 큐 아이템 선택 시 폼 및 배차 건 자동 프리필
+  const handleSelectCallQueueItem = (call: TransportCallQueueItem) => {
+    setSelectedCallQueueId(call.id);
+    if (call.extracted.matchedDeliveryId) {
+      setSelectedNegoDeliveryId(call.extracted.matchedDeliveryId);
+    }
+    if (call.extracted.matchedCompanyId) {
+      setNegoCompanyId(call.extracted.matchedCompanyId);
+    }
+    if (call.extracted.vehicleType) {
+      setNegoVehicleType(call.extracted.vehicleType);
+    }
+    if (call.extracted.proposedCost) {
+      setNegoProposedCost(call.extracted.proposedCost);
+    }
+    if (call.extracted.targetCost) {
+      setNegoTargetCost(call.extracted.targetCost);
+    }
+    if (call.extracted.specialTerms) {
+      setNegoSpecialTerms(call.extracted.specialTerms);
+    }
+    if (call.extracted.callSummary) {
+      setNegoCallSummary(call.extracted.callSummary);
+    }
+  };
+
+  // 통화 녹음 파일 업로드 및 분석 핸들러
+  const handleUploadCallFile = async (file: File) => {
+    setIsUploadingCall(true);
+    setCallUploadError(null);
+    try {
+      const newItem = await processNewTransportCall(file, transportCompanies, deliveries);
+      const updatedQueue = getTransportCallQueue();
+      setCallQueue(updatedQueue);
+      handleSelectCallQueueItem(newItem);
+      showToast(`'${file.name}' 통화 녹음이 AI 분석되어 큐에 등록되었습니다.`);
+    } catch (err: any) {
+      console.error('Call upload error:', err);
+      setCallUploadError(err?.message || '통화 녹음 파일 분석에 실패했습니다.');
+    } finally {
+      setIsUploadingCall(false);
+    }
+  };
+
+  // 통화 큐 아이템 삭제
+  const handleDeleteCallQueueItem = (callId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    deleteTransportCall(callId);
+    const updated = getTransportCallQueue();
+    setCallQueue(updated);
+    if (selectedCallQueueId === callId) {
+      setSelectedCallQueueId(updated.length > 0 ? updated[0].id : null);
+    }
+    showToast('통화 큐 항목이 삭제되었습니다.');
+  };
+
   // 기존 배차 관리 상세 선택 상태
   const [selectedDelivery, setSelectedDelivery] = useState<Delivery | null>(null);
 
@@ -400,7 +479,76 @@ export const TruckDispatch: React.FC = () => {
 
     await db.awaitPendingWrites();
     refreshAllData();
+
+    if (selectedCallQueueId) {
+      markTransportCallConfirmed(selectedCallQueueId);
+      setCallQueue(getTransportCallQueue());
+    }
+
     showToast(`배차 조건이 [${nego.transportCompanyName} / ₩${costToApply.toLocaleString()}]으로 확정되었습니다.`);
+  };
+
+  // 폼 입력 조건(또는 통화 분석 추출 조건)으로 1클릭 즉시 배차 확정
+  const handleConfirmCurrentForm = async () => {
+    if (!selectedNegoDeliveryId) {
+      showToast('좌측에서 배차 대상을 먼저 선택하십시오.', 'error');
+      return;
+    }
+    if (!negoCompanyId) {
+      showToast('협의 운송사를 선택하십시오.', 'error');
+      return;
+    }
+    const company = transportCompanies.find(c => c.id === negoCompanyId);
+    const companyName = company?.name || '기타 운송사';
+    const costToApply = Number(negoProposedCost) || Number(negoTargetCost) || 0;
+
+    // 1. 배차 건에 운송사, 차종, 비용 즉시 확정 반영
+    const updatedDeliveries = deliveries.map(d => {
+      if (d.id === selectedNegoDeliveryId) {
+        return {
+          ...d,
+          transportCompany: companyName,
+          vehicleType: negoVehicleType,
+          deliveryCost: costToApply,
+          expectedCost: costToApply,
+          deliveryCostConfirmed: costToApply,
+          status: d.status === 'PENDING' ? 'DISPATCHED' : d.status,
+          memo: d.memo ? `${d.memo} | [협의확정] ${companyName} ${negoVehicleType} ₩${costToApply.toLocaleString()}` : `[협의확정] ${companyName} ${negoVehicleType} ₩${costToApply.toLocaleString()}`,
+          updatedAt: new Date().toISOString()
+        };
+      }
+      return d;
+    });
+    db.deliveries = updatedDeliveries;
+
+    // 2. 협의 이력에 CONFIRMED 레코드 생성/저장
+    const newNego: TransportNegotiation = {
+      id: `TN-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+      deliveryId: selectedNegoDeliveryId,
+      transportCompanyId: negoCompanyId,
+      transportCompanyName: companyName,
+      vehicleType: negoVehicleType,
+      proposedCost: costToApply,
+      targetCost: Number(negoTargetCost) || costToApply,
+      confirmedCost: costToApply,
+      status: 'CONFIRMED',
+      negotiatorName: currentUser?.name || '배차담당자',
+      callSummary: negoCallSummary,
+      specialTerms: negoSpecialTerms,
+      negotiatedAt: new Date().toISOString(),
+      createdAt: new Date().toISOString()
+    };
+    db.transportNegotiations = [newNego, ...(db.transportNegotiations || [])];
+
+    // 3. 큐 항목 상태 변경
+    if (selectedCallQueueId) {
+      markTransportCallConfirmed(selectedCallQueueId);
+      setCallQueue(getTransportCallQueue());
+    }
+
+    await db.awaitPendingWrites();
+    refreshAllData();
+    showToast(`배차 조건이 [${companyName} / ₩${costToApply.toLocaleString()}]으로 즉시 확정되었습니다.`);
   };
   
   // 배차 세부 유형 ('출고' | '입고' | '반납' | '정비' | '이동')
@@ -3088,410 +3236,694 @@ export const TruckDispatch: React.FC = () => {
         </div>
       )}
 
-      {/* 탭 2: 운송사 배차 협의 (마스터-디테일 스튜디오, 헌장 3.1, 3.2, 3.4, 3.6 준수) */}
+      {/* 탭 2: 운송사 배차 협의 (통화파일 업로드 ➔ 큐 처리 ➔ AI 분석 ➔ 배차 매핑 ➔ 확정) */}
       {activeTab === 'NEGOTIATION' && (
-        <div style={{ display: 'flex', gap: '16px', minHeight: '650px', alignItems: 'flex-start' }}>
-          {/* ── 좌측 Master: 배차 대상 건 리스트 (너비 400px 고정) ── */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+
+          {/* ── [Step 1] 최상단: 통화 파일 업로드 및 협의 큐 (Call Queue Pipeline) ── */}
           <div style={{
-            width: '400px', flexShrink: 0, display: 'flex', flexDirection: 'column', gap: '10px',
             backgroundColor: 'var(--bg-card)', border: '1px solid var(--border-color)', borderRadius: '10px',
-            padding: '14px', boxSizing: 'border-box'
+            padding: '16px', boxSizing: 'border-box', display: 'flex', flexDirection: 'column', gap: '12px'
           }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <h3 style={{ fontSize: '14px', fontWeight: 800, margin: 0, display: 'flex', alignItems: 'center', gap: '6px', whiteSpace: 'nowrap' }}>
-                <Truck size={16} /> 배차 대상 목록
-              </h3>
-              <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: 700 }}>
-                총 {deliveries.filter(d => d.status !== 'CANCELLED').length}건
-              </span>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <FileAudio size={18} style={{ color: '#3b82f6' }} />
+                  <span style={{ fontSize: '15px', fontWeight: 800, color: 'var(--text-primary)' }}>
+                    배차 협의 통화 큐 (Call Queue)
+                  </span>
+                  <span style={{
+                    padding: '2px 8px', borderRadius: '12px', fontSize: '11px', fontWeight: 800,
+                    backgroundColor: 'rgba(59,130,246,0.15)', color: '#2563eb', border: '1px solid rgba(59,130,246,0.3)'
+                  }}>
+                    대기 {callQueue.filter(q => q.status !== 'CONFIRMED').length}건
+                  </span>
+                </div>
+                <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '3px' }}>
+                  스마트폰 또는 PC에서 녹음된 통화 파일(.m4a, .mp3, .wav)을 업로드하면 AI가 운송사, 차종, 운송비, 특약을 자동 추출합니다.
+                </div>
+              </div>
+
+              {/* 통화 파일 업로드 액션 버튼 & 히든 인풋 */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <input
+                  type="file"
+                  ref={callFileInputRef}
+                  accept="audio/*,.m4a,.mp3,.wav,.aac,.amr"
+                  style={{ display: 'none' }}
+                  onChange={e => {
+                    if (e.target.files && e.target.files[0]) {
+                      handleUploadCallFile(e.target.files[0]);
+                      e.target.value = '';
+                    }
+                  }}
+                />
+                <button
+                  type="button"
+                  disabled={isUploadingCall}
+                  onClick={() => callFileInputRef.current?.click()}
+                  style={{
+                    padding: '8px 16px', borderRadius: '6px', backgroundColor: 'var(--primary)',
+                    color: '#ffffff', border: 'none', fontWeight: 800, fontSize: '12.5px',
+                    cursor: isUploadingCall ? 'not-allowed' : 'pointer',
+                    display: 'inline-flex', alignItems: 'center', gap: '6px',
+                    opacity: isUploadingCall ? 0.7 : 1
+                  }}
+                >
+                  {isUploadingCall ? (
+                    <>
+                      <Loader2 size={15} className="animate-spin" />
+                      <span>AI STT & 분석 중...</span>
+                    </>
+                  ) : (
+                    <>
+                      <UploadCloud size={15} />
+                      <span>통화 녹음 파일 직접 업로드</span>
+                    </>
+                  )}
+                </button>
+              </div>
             </div>
 
-            {/* 필터 & 검색 */}
-            <div style={{ display: 'flex', gap: '6px' }}>
-              <select
-                value={negoFilterStatus}
-                onChange={e => setNegoFilterStatus(e.target.value as any)}
-                style={{
-                  padding: '6px 8px', borderRadius: '6px', border: '1px solid var(--border-color)',
-                  backgroundColor: 'var(--bg-body)', color: 'var(--text-primary)', fontSize: '12px', fontWeight: 700
-                }}
-              >
-                <option value="ALL">전체 상태</option>
-                <option value="PENDING">배차 대기</option>
-                <option value="IN_NEGOTIATION">협의 중</option>
-                <option value="CONFIRMED">협의 완료</option>
-              </select>
-              <input
-                type="text"
-                value={negoSearchQuery}
-                onChange={e => setNegoSearchQuery(e.target.value)}
-                placeholder="고객/현장/주소 검색..."
-                style={{
-                  flex: 1, padding: '6px 10px', borderRadius: '6px', border: '1px solid var(--border-color)',
-                  backgroundColor: 'var(--bg-body)', color: 'var(--text-primary)', fontSize: '12px'
-                }}
-              />
-            </div>
+            {callUploadError && (
+              <div style={{ padding: '8px 12px', borderRadius: '6px', backgroundColor: 'rgba(239,68,68,0.1)', color: '#dc2626', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <AlertCircle size={14} /> {callUploadError}
+              </div>
+            )}
 
-            {/* 배차 건 스크롤 리스트 */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '580px', overflowY: 'auto' }}>
-              {(() => {
-                const filtered = deliveries.filter(d => {
-                  if (d.status === 'CANCELLED') return false;
-                  const negos = (transportNegotiations || []).filter(n => n.deliveryId === d.id);
-                  const hasConfirmed = negos.some(n => n.status === 'CONFIRMED');
-                  const hasNegotiating = negos.some(n => n.status === 'IN_NEGOTIATION');
-
-                  if (negoFilterStatus === 'PENDING' && d.status !== 'PENDING') return false;
-                  if (negoFilterStatus === 'IN_NEGOTIATION' && !hasNegotiating) return false;
-                  if (negoFilterStatus === 'CONFIRMED' && !hasConfirmed) return false;
-
-                  if (negoSearchQuery) {
-                    const q = negoSearchQuery.toLowerCase();
-                    const contract = contracts.find(c => c.id === d.contractId);
-                    const customer = customers.find(c => c.id === contract?.customerId);
-                    const site = sites?.find(s => s.id === contract?.siteId);
-                    const match = (customer?.name || '').toLowerCase().includes(q) ||
-                                  (site?.name || '').toLowerCase().includes(q) ||
-                                  (d.destinationAddress || '').toLowerCase().includes(q) ||
-                                  (d.originAddress || '').toLowerCase().includes(q);
-                    if (!match) return false;
-                  }
-                  return true;
-                });
-
-                if (filtered.length === 0) {
-                  return (
-                    <div style={{ textAlign: 'center', padding: '40px 10px', color: 'var(--text-muted)', fontSize: '12px' }}>
-                      해당 조건의 배차 건이 없습니다.
-                    </div>
-                  );
-                }
-
-                return filtered.map(del => {
-                  const isSelected = selectedNegoDeliveryId === del.id;
-                  const contract = contracts.find(c => c.id === del.contractId);
-                  const customer = customers.find(c => c.id === contract?.customerId);
-                  const site = sites?.find(s => s.id === contract?.siteId);
-                  const negos = (transportNegotiations || []).filter(n => n.deliveryId === del.id);
-                  const confirmedNego = negos.find(n => n.status === 'CONFIRMED');
-
-                  const typeLabel = del.type === 'OUTBOUND' ? '출고' : del.type === 'INBOUND' ? '회수' : del.type === 'EXCHANGE' ? '교환' : '이동';
-                  const typeColor = del.type === 'OUTBOUND' ? '#2563eb' : del.type === 'INBOUND' ? '#dc2626' : del.type === 'EXCHANGE' ? '#0891b2' : '#6b7280';
+            {/* 통화 큐 카드 가로 리스트 */}
+            <div style={{ display: 'flex', gap: '10px', overflowX: 'auto', paddingBottom: '4px' }}>
+              {callQueue.length === 0 ? (
+                <div style={{ padding: '16px', textAlign: 'center', width: '100%', color: 'var(--text-muted)', fontSize: '12px', backgroundColor: 'var(--bg-body)', borderRadius: '6px' }}>
+                  등록된 배차 통화 녹음이 없습니다. [통화 녹음 파일 직접 업로드] 버튼을 눌러 새 통화 파일을 등록하십시오.
+                </div>
+              ) : (
+                callQueue.map(item => {
+                  const isSelected = selectedCallQueueId === item.id;
+                  const isConfirmed = item.status === 'CONFIRMED';
+                  const isAnalyzing = item.status === 'ANALYZING';
 
                   return (
                     <div
-                      key={del.id}
-                      onClick={() => setSelectedNegoDeliveryId(del.id)}
+                      key={item.id}
+                      onClick={() => handleSelectCallQueueItem(item)}
                       style={{
-                        padding: '10px 12px', borderRadius: '8px', cursor: 'pointer', transition: 'all 0.15s ease',
+                        minWidth: '270px', maxWidth: '300px', flexShrink: 0,
+                        padding: '10px 12px', borderRadius: '8px', cursor: 'pointer',
                         backgroundColor: isSelected ? 'rgba(59,130,246,0.12)' : 'var(--bg-body)',
-                        border: isSelected ? '1.5px solid var(--primary)' : '1px solid var(--border-color)',
-                        display: 'flex', flexDirection: 'column', gap: '5px'
+                        border: isSelected ? '2px solid var(--primary)' : isConfirmed ? '1px solid #10b981' : '1px solid var(--border-color)',
+                        display: 'flex', flexDirection: 'column', gap: '6px', position: 'relative',
+                        transition: 'all 0.15s ease'
                       }}
                     >
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                         <span style={{
-                          padding: '2px 6px', borderRadius: '4px', fontSize: '10.5px', fontWeight: 800,
-                          backgroundColor: `${typeColor}20`, color: typeColor, border: `1px solid ${typeColor}40`, whiteSpace: 'nowrap'
+                          fontSize: '10.5px', fontWeight: 800, padding: '2px 6px', borderRadius: '4px',
+                          backgroundColor: isConfirmed ? 'rgba(16,185,129,0.15)' : isAnalyzing ? 'rgba(245,158,11,0.15)' : 'rgba(59,130,246,0.15)',
+                          color: isConfirmed ? '#10b981' : isAnalyzing ? '#d97706' : '#2563eb'
                         }}>
-                          {typeLabel}
+                          {isConfirmed ? '✅ 배차확정됨' : isAnalyzing ? '⏳ AI 분석중' : '🟢 분석완료'}
                         </span>
-                        <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: 600 }}>
-                          {del.loadingDate || del.scheduledDate || del.requestDate}
-                        </span>
-                      </div>
-
-                      <div style={{ fontSize: '12.5px', fontWeight: 800, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        {customer?.name || '(고객사 미지정)'} · {site?.name || '현장'}
-                      </div>
-
-                      <div style={{ fontSize: '11px', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                        <MapPin size={11} /> {del.destinationAddress || del.originAddress || '주소 미입력'}
-                      </div>
-
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '2px' }}>
-                        <span style={{ fontSize: '11px', fontWeight: 700, color: '#10b981' }}>
-                          ₩{del.deliveryCost ? del.deliveryCost.toLocaleString() : '미정'}
-                        </span>
-                        <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
-                          {confirmedNego ? (
-                            <span style={{ fontSize: '10px', padding: '1px 5px', borderRadius: '4px', backgroundColor: 'rgba(16,185,129,0.15)', color: '#10b981', fontWeight: 800 }}>
-                              확정: {confirmedNego.transportCompanyName}
-                            </span>
-                          ) : negos.length > 0 ? (
-                            <span style={{ fontSize: '10px', padding: '1px 5px', borderRadius: '4px', backgroundColor: 'rgba(59,130,246,0.15)', color: '#2563eb', fontWeight: 800 }}>
-                              견적 {negos.length}건
-                            </span>
-                          ) : (
-                            <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>
-                              협의대기
-                            </span>
-                          )}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                          <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>
+                            {item.durationSec ? `${item.durationSec}초` : ''}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={e => handleDeleteCallQueueItem(item.id, e)}
+                            style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: '2px', display: 'flex' }}
+                            title="큐에서 삭제"
+                          >
+                            <X size={13} />
+                          </button>
                         </div>
                       </div>
+
+                      <div style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {item.fileName}
+                      </div>
+
+                      {/* 추출 하이라이트 배지 */}
+                      <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', alignItems: 'center' }}>
+                        {item.extracted.transportCompanyName && (
+                          <span style={{ fontSize: '10.5px', fontWeight: 800, backgroundColor: 'rgba(59,130,246,0.15)', color: '#2563eb', padding: '1px 5px', borderRadius: '4px' }}>
+                            {item.extracted.transportCompanyName}
+                          </span>
+                        )}
+                        {item.extracted.vehicleType && (
+                          <span style={{ fontSize: '10.5px', fontWeight: 800, backgroundColor: 'rgba(139,92,246,0.15)', color: '#8b5cf6', padding: '1px 5px', borderRadius: '4px' }}>
+                            {item.extracted.vehicleType}
+                          </span>
+                        )}
+                        {item.extracted.proposedCost ? (
+                          <span style={{ fontSize: '10.5px', fontWeight: 800, backgroundColor: 'rgba(16,185,129,0.15)', color: '#10b981', padding: '1px 5px', borderRadius: '4px' }}>
+                            ₩{item.extracted.proposedCost.toLocaleString()}
+                          </span>
+                        ) : null}
+                      </div>
+
+                      {item.extracted.matchedDeliverySummary && (
+                        <div style={{ fontSize: '11px', color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          매칭: {item.extracted.matchedDeliverySummary}
+                        </div>
+                      )}
                     </div>
                   );
-                });
-              })()}
+                })
+              )}
             </div>
           </div>
 
-          {/* ── 우측 Detail Studio: 선택된 배차의 운송사 협의 데스크 ── */}
-          <div style={{
-            flex: 1, display: 'flex', flexDirection: 'column', gap: '14px',
-            backgroundColor: 'var(--bg-card)', border: '1px solid var(--border-color)', borderRadius: '10px',
-            padding: '16px', boxSizing: 'border-box', minWidth: 0
-          }}>
-            {!selectedNegoDelivery ? (
-              <div style={{ textAlign: 'center', padding: '100px 20px', color: 'var(--text-muted)' }}>
-                <Truck size={40} style={{ opacity: 0.3, marginBottom: '12px' }} />
-                <h4 style={{ fontSize: '14px', fontWeight: 700, margin: '0 0 6px 0' }}>선택된 배차 건이 없습니다</h4>
-                <p style={{ fontSize: '12px', margin: 0 }}>좌측 목록에서 운송사와 협의할 배차 건을 선택하십시오.</p>
+          {/* ── [Step 2 & 3] 2분할 마스터-디테일 스튜디오 (좌측 배차 대상 + 우측 AI 협의 데스크) ── */}
+          <div style={{ display: 'flex', gap: '16px', minHeight: '650px', alignItems: 'flex-start' }}>
+            {/* ── 좌측 Master: 배차 대상 건 리스트 (너비 400px 고정) ── */}
+            <div style={{
+              width: '400px', flexShrink: 0, display: 'flex', flexDirection: 'column', gap: '10px',
+              backgroundColor: 'var(--bg-card)', border: '1px solid var(--border-color)', borderRadius: '10px',
+              padding: '14px', boxSizing: 'border-box'
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <h3 style={{ fontSize: '14px', fontWeight: 800, margin: 0, display: 'flex', alignItems: 'center', gap: '6px', whiteSpace: 'nowrap' }}>
+                  <Truck size={16} /> 배차 대상 목록
+                </h3>
+                <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: 700 }}>
+                  총 {deliveries.filter(d => d.status !== 'CANCELLED').length}건
+                </span>
               </div>
-            ) : (
-              (() => {
-                const contract = contracts.find(c => c.id === selectedNegoDelivery.contractId);
-                const customer = customers.find(c => c.id === contract?.customerId);
-                const site = sites?.find(s => s.id === contract?.siteId);
-                const currentNegos = (transportNegotiations || []).filter(n => n.deliveryId === selectedNegoDelivery.id);
-                const confirmedNego = currentNegos.find(n => n.status === 'CONFIRMED');
 
+              {/* 통화 AI 추천 배차 상단 배너 카드 */}
+              {selectedCall?.extracted.matchedDeliveryId && (() => {
+                const matchedDel = deliveries.find(d => d.id === selectedCall.extracted.matchedDeliveryId);
+                if (!matchedDel) return null;
+                const mContract = contracts.find(c => c.id === matchedDel.contractId);
+                const mCust = customers.find(c => c.id === mContract?.customerId);
+                const mSite = sites?.find(s => s.id === mContract?.siteId);
+                const isCurrentSelected = selectedNegoDeliveryId === matchedDel.id;
                 return (
-                  <>
-                    {/* 1. 배차 기본 정보 카드 */}
-                    <div style={{
-                      backgroundColor: 'var(--bg-body)', border: '1px solid var(--border-color)', borderRadius: '8px',
-                      padding: '12px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px'
-                    }}>
+                  <div
+                    onClick={() => setSelectedNegoDeliveryId(matchedDel.id)}
+                    style={{
+                      padding: '10px 12px', borderRadius: '8px', cursor: 'pointer',
+                      backgroundColor: isCurrentSelected ? 'rgba(16,185,129,0.15)' : 'rgba(16,185,129,0.08)',
+                      border: '1.5px dashed #10b981',
+                      display: 'flex', flexDirection: 'column', gap: '4px'
+                    }}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ fontSize: '11px', fontWeight: 800, color: '#10b981', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                        <Sparkles size={12} /> 🎯 통화 AI 추천 매칭 배차
+                      </span>
+                      <span style={{ fontSize: '10.5px', color: 'var(--text-muted)' }}>
+                        #{matchedDel.id.slice(-6)}
+                      </span>
+                    </div>
+                    <div style={{ fontSize: '12.5px', fontWeight: 800, color: 'var(--text-primary)' }}>
+                      {mCust?.name || '(고객사)'} · {mSite?.name || '현장'}
+                    </div>
+                    <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
+                      {matchedDel.destinationAddress || matchedDel.originAddress || '현장 주소'}
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {/* 필터 & 검색 */}
+              <div style={{ display: 'flex', gap: '6px' }}>
+                <select
+                  value={negoFilterStatus}
+                  onChange={e => setNegoFilterStatus(e.target.value as any)}
+                  style={{
+                    padding: '6px 8px', borderRadius: '6px', border: '1px solid var(--border-color)',
+                    backgroundColor: 'var(--bg-body)', color: 'var(--text-primary)', fontSize: '12px', fontWeight: 700
+                  }}
+                >
+                  <option value="ALL">전체 상태</option>
+                  <option value="PENDING">배차 대기</option>
+                  <option value="IN_NEGOTIATION">협의 중</option>
+                  <option value="CONFIRMED">협의 완료</option>
+                </select>
+                <input
+                  type="text"
+                  value={negoSearchQuery}
+                  onChange={e => setNegoSearchQuery(e.target.value)}
+                  placeholder="고객/현장/주소 검색..."
+                  style={{
+                    flex: 1, padding: '6px 10px', borderRadius: '6px', border: '1px solid var(--border-color)',
+                    backgroundColor: 'var(--bg-body)', color: 'var(--text-primary)', fontSize: '12px'
+                  }}
+                />
+              </div>
+
+              {/* 배차 건 스크롤 리스트 */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '580px', overflowY: 'auto' }}>
+                {(() => {
+                  const filtered = deliveries.filter(d => {
+                    if (d.status === 'CANCELLED') return false;
+                    const negos = (transportNegotiations || []).filter(n => n.deliveryId === d.id);
+                    const hasConfirmed = negos.some(n => n.status === 'CONFIRMED');
+                    const hasNegotiating = negos.some(n => n.status === 'IN_NEGOTIATION');
+
+                    if (negoFilterStatus === 'PENDING' && d.status !== 'PENDING') return false;
+                    if (negoFilterStatus === 'IN_NEGOTIATION' && !hasNegotiating) return false;
+                    if (negoFilterStatus === 'CONFIRMED' && !hasConfirmed) return false;
+
+                    if (negoSearchQuery) {
+                      const q = negoSearchQuery.toLowerCase();
+                      const contract = contracts.find(c => c.id === d.contractId);
+                      const customer = customers.find(c => c.id === contract?.customerId);
+                      const site = sites?.find(s => s.id === contract?.siteId);
+                      const match = (customer?.name || '').toLowerCase().includes(q) ||
+                                    (site?.name || '').toLowerCase().includes(q) ||
+                                    (d.destinationAddress || '').toLowerCase().includes(q) ||
+                                    (d.originAddress || '').toLowerCase().includes(q);
+                      if (!match) return false;
+                    }
+                    return true;
+                  });
+
+                  if (filtered.length === 0) {
+                    return (
+                      <div style={{ textAlign: 'center', padding: '40px 10px', color: 'var(--text-muted)', fontSize: '12px' }}>
+                        해당 조건의 배차 건이 없습니다.
+                      </div>
+                    );
+                  }
+
+                  return filtered.map(del => {
+                    const isSelected = selectedNegoDeliveryId === del.id;
+                    const isAiMatched = selectedCall?.extracted.matchedDeliveryId === del.id;
+                    const contract = contracts.find(c => c.id === del.contractId);
+                    const customer = customers.find(c => c.id === contract?.customerId);
+                    const site = sites?.find(s => s.id === contract?.siteId);
+                    const negos = (transportNegotiations || []).filter(n => n.deliveryId === del.id);
+                    const confirmedNego = negos.find(n => n.status === 'CONFIRMED');
+
+                    const typeLabel = del.type === 'OUTBOUND' ? '출고' : del.type === 'INBOUND' ? '회수' : del.type === 'EXCHANGE' ? '교환' : '이동';
+                    const typeColor = del.type === 'OUTBOUND' ? '#2563eb' : del.type === 'INBOUND' ? '#dc2626' : del.type === 'EXCHANGE' ? '#0891b2' : '#6b7280';
+
+                    return (
+                      <div
+                        key={del.id}
+                        onClick={() => setSelectedNegoDeliveryId(del.id)}
+                        style={{
+                          padding: '10px 12px', borderRadius: '8px', cursor: 'pointer', transition: 'all 0.15s ease',
+                          backgroundColor: isSelected ? 'rgba(59,130,246,0.12)' : 'var(--bg-body)',
+                          border: isSelected ? '1.5px solid var(--primary)' : isAiMatched ? '1.5px solid #10b981' : '1px solid var(--border-color)',
+                          display: 'flex', flexDirection: 'column', gap: '5px', position: 'relative'
+                        }}
+                      >
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <span style={{
+                              padding: '2px 6px', borderRadius: '4px', fontSize: '10.5px', fontWeight: 800,
+                              backgroundColor: `${typeColor}20`, color: typeColor, border: `1px solid ${typeColor}40`, whiteSpace: 'nowrap'
+                            }}>
+                              {typeLabel}
+                            </span>
+                            {isAiMatched && (
+                              <span style={{ fontSize: '10px', color: '#10b981', fontWeight: 800, backgroundColor: 'rgba(16,185,129,0.15)', padding: '1px 5px', borderRadius: '4px' }}>
+                                🎯 매칭
+                              </span>
+                            )}
+                          </div>
+                          <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: 600 }}>
+                            {del.loadingDate || del.scheduledDate || del.requestDate}
+                          </span>
+                        </div>
+
+                        <div style={{ fontSize: '12.5px', fontWeight: 800, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {customer?.name || '(고객사 미지정)'} · {site?.name || '현장'}
+                        </div>
+
+                        <div style={{ fontSize: '11px', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                          <MapPin size={11} /> {del.destinationAddress || del.originAddress || '주소 미입력'}
+                        </div>
+
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '2px' }}>
+                          <span style={{ fontSize: '11px', fontWeight: 700, color: '#10b981' }}>
+                            ₩{del.deliveryCost ? del.deliveryCost.toLocaleString() : '미정'}
+                          </span>
+                          <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+                            {confirmedNego ? (
+                              <span style={{ fontSize: '10px', padding: '1px 5px', borderRadius: '4px', backgroundColor: 'rgba(16,185,129,0.15)', color: '#10b981', fontWeight: 800 }}>
+                                확정: {confirmedNego.transportCompanyName}
+                              </span>
+                            ) : negos.length > 0 ? (
+                              <span style={{ fontSize: '10px', padding: '1px 5px', borderRadius: '4px', backgroundColor: 'rgba(59,130,246,0.15)', color: '#2563eb', fontWeight: 800 }}>
+                                견적 {negos.length}건
+                              </span>
+                            ) : (
+                              <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>
+                                협의대기
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  });
+                })()}
+              </div>
+            </div>
+
+            {/* ── 우측 Detail Studio: 선택된 배차의 운송사 협의 데스크 ── */}
+            <div style={{
+              flex: 1, display: 'flex', flexDirection: 'column', gap: '14px',
+              backgroundColor: 'var(--bg-card)', border: '1px solid var(--border-color)', borderRadius: '10px',
+              padding: '16px', boxSizing: 'border-box', minWidth: 0
+            }}>
+              {!selectedNegoDelivery ? (
+                <div style={{ textAlign: 'center', padding: '100px 20px', color: 'var(--text-muted)' }}>
+                  <Truck size={40} style={{ opacity: 0.3, marginBottom: '12px' }} />
+                  <h4 style={{ fontSize: '14px', fontWeight: 700, margin: '0 0 6px 0' }}>선택된 배차 건이 없습니다</h4>
+                  <p style={{ fontSize: '12px', margin: 0 }}>상단 통화 큐에서 통화를 선택하거나, 좌측 목록에서 협의할 배차 건을 선택하십시오.</p>
+                </div>
+              ) : (
+                (() => {
+                  const contract = contracts.find(c => c.id === selectedNegoDelivery.contractId);
+                  const customer = customers.find(c => c.id === contract?.customerId);
+                  const site = sites?.find(s => s.id === contract?.siteId);
+                  const currentNegos = (transportNegotiations || []).filter(n => n.deliveryId === selectedNegoDelivery.id);
+
+                  return (
+                    <>
+                      {/* 선택된 통화 음성 플레이어 & STT 전사문 카드 (큐에서 선택된 경우) */}
+                      {selectedCall && (
+                        <div style={{
+                          backgroundColor: 'rgba(59,130,246,0.06)', border: '1px solid rgba(59,130,246,0.25)', borderRadius: '8px',
+                          padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: '10px'
+                        }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                              <Sparkles size={15} style={{ color: '#3b82f6' }} />
+                              <span style={{ fontSize: '13px', fontWeight: 800, color: 'var(--text-primary)' }}>
+                                AI 통화 분석: {selectedCall.fileName}
+                              </span>
+                              <span style={{
+                                fontSize: '10.5px', padding: '1px 6px', borderRadius: '4px', fontWeight: 800,
+                                backgroundColor: selectedCall.extracted.confidence === 'HIGH' ? 'rgba(16,185,129,0.15)' : 'rgba(245,158,11,0.15)',
+                                color: selectedCall.extracted.confidence === 'HIGH' ? '#10b981' : '#d97706'
+                              }}>
+                                신뢰도 {selectedCall.extracted.confidence}
+                              </span>
+                            </div>
+
+                            <button
+                              type="button"
+                              onClick={() => handleSelectCallQueueItem(selectedCall)}
+                              style={{
+                                fontSize: '11px', fontWeight: 800, padding: '4px 8px', borderRadius: '4px',
+                                backgroundColor: 'rgba(59,130,246,0.15)', color: '#2563eb', border: 'none', cursor: 'pointer'
+                              }}
+                            >
+                              ⚡ 폼에 다시 자동 채우기
+                            </button>
+                          </div>
+
+                          {/* 오디오 플레이어 */}
+                          {selectedCall.audioUrl && (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                              <Volume2 size={16} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
+                              <audio controls src={selectedCall.audioUrl} style={{ width: '100%', height: '32px' }} />
+                            </div>
+                          )}
+
+                          {/* STT 음성 전사문 */}
+                          {selectedCall.transcript && (
+                            <div style={{
+                              fontSize: '12px', color: 'var(--text-secondary)', backgroundColor: 'var(--bg-body)',
+                              padding: '8px 12px', borderRadius: '6px', border: '1px solid var(--border-color)',
+                              lineHeight: 1.5, maxHeight: '80px', overflowY: 'auto'
+                            }}>
+                              <strong style={{ color: 'var(--text-primary)', marginRight: '6px' }}>[음성 전사]</strong>
+                              "{selectedCall.transcript}"
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {/* 1. 배차 기본 정보 카드 */}
+                      <div style={{
+                        backgroundColor: 'var(--bg-body)', border: '1px solid var(--border-color)', borderRadius: '8px',
+                        padding: '12px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px'
+                      }}>
+                        <div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: 700 }}>
+                              배차 번호 #{selectedNegoDelivery.id.slice(-6)} · {selectedNegoDelivery.type}
+                            </span>
+                            {selectedCall?.extracted.matchedDeliveryId === selectedNegoDelivery.id && (
+                              <span style={{ fontSize: '10.5px', color: '#10b981', fontWeight: 800, backgroundColor: 'rgba(16,185,129,0.15)', padding: '1px 6px', borderRadius: '4px' }}>
+                                🎯 통화 매칭 대상
+                              </span>
+                            )}
+                          </div>
+                          <div style={{ fontSize: '15px', fontWeight: 800, color: 'var(--text-primary)', marginTop: '2px' }}>
+                            {customer?.name || '고객사'} — {site?.name || '현장'}
+                          </div>
+                          <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '4px', display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+                            <span><strong>상차:</strong> {selectedNegoDelivery.originAddress || '본사 주기장'} ({selectedNegoDelivery.loadingDate || '-'})</span>
+                            <span>➔</span>
+                            <span><strong>하차:</strong> {selectedNegoDelivery.destinationAddress || '현장 주소'} ({selectedNegoDelivery.unloadingDate || '-'})</span>
+                          </div>
+                          {selectedNegoDelivery.memo && (
+                            <div style={{ fontSize: '11.5px', color: 'var(--text-muted)', marginTop: '4px' }}>
+                              메모: {selectedNegoDelivery.memo}
+                            </div>
+                          )}
+                        </div>
+
+                        <div style={{ textAlign: 'right' }}>
+                          <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>현재 등록 운송비</div>
+                          <div style={{ fontSize: '18px', fontWeight: 800, color: '#10b981' }}>
+                            ₩{selectedNegoDelivery.deliveryCost ? selectedNegoDelivery.deliveryCost.toLocaleString() : '0'}
+                          </div>
+                          <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '2px' }}>
+                            차종: {selectedNegoDelivery.vehicleType || '미지정'} | 운송사: {selectedNegoDelivery.transportCompany || '미지정'}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* 2. 기 접수된 운송사 협의 내역 */}
                       <div>
-                        <div style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: 700 }}>
-                          배차 번호 #{selectedNegoDelivery.id.slice(-6)} · {selectedNegoDelivery.type}
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                          <h4 style={{ fontSize: '13px', fontWeight: 800, margin: 0, display: 'flex', alignItems: 'center', gap: '6px', whiteSpace: 'nowrap' }}>
+                            <FileText size={14} /> 운송사별 견적 및 협의 현황 ({currentNegos.length}건)
+                          </h4>
                         </div>
-                        <div style={{ fontSize: '15px', fontWeight: 800, color: 'var(--text-primary)', marginTop: '2px' }}>
-                          {customer?.name || '고객사'} — {site?.name || '현장'}
-                        </div>
-                        <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '4px', display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
-                          <span><strong>상차:</strong> {selectedNegoDelivery.originAddress || '본사 주기장'} ({selectedNegoDelivery.loadingDate || '-'})</span>
-                          <span>➔</span>
-                          <span><strong>하차:</strong> {selectedNegoDelivery.destinationAddress || '현장 주소'} ({selectedNegoDelivery.unloadingDate || '-'})</span>
-                        </div>
-                        {selectedNegoDelivery.memo && (
-                          <div style={{ fontSize: '11.5px', color: 'var(--text-muted)', marginTop: '4px' }}>
-                            메모: {selectedNegoDelivery.memo}
+
+                        {currentNegos.length === 0 ? (
+                          <div style={{ padding: '20px', textAlign: 'center', backgroundColor: 'var(--bg-body)', borderRadius: '6px', color: 'var(--text-muted)', fontSize: '12px' }}>
+                            아직 등록된 운송사 협의 내역이 없습니다. 아래 폼에서 첫 견적을 등록하거나 통화를 확정하십시오.
+                          </div>
+                        ) : (
+                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '10px' }}>
+                            {currentNegos.map(n => {
+                              const isConfirmed = n.status === 'CONFIRMED';
+                              const isRejected = n.status === 'REJECTED';
+                              return (
+                                <div
+                                  key={n.id}
+                                  style={{
+                                    padding: '12px', borderRadius: '8px', border: isConfirmed ? '2px solid #10b981' : isRejected ? '1px solid rgba(239,68,68,0.3)' : '1px solid var(--border-color)',
+                                    backgroundColor: isConfirmed ? 'rgba(16,185,129,0.08)' : isRejected ? 'rgba(239,68,68,0.03)' : 'var(--bg-body)',
+                                    display: 'flex', flexDirection: 'column', gap: '6px'
+                                  }}
+                                >
+                                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                    <span style={{ fontSize: '13px', fontWeight: 800, color: 'var(--text-primary)' }}>
+                                      {n.transportCompanyName}
+                                    </span>
+                                    <span style={{
+                                      fontSize: '10.5px', padding: '2px 6px', borderRadius: '4px', fontWeight: 800,
+                                      backgroundColor: isConfirmed ? '#10b981' : isRejected ? '#ef4444' : '#2563eb',
+                                      color: '#ffffff'
+                                    }}>
+                                      {isConfirmed ? '확정/낙찰' : isRejected ? '결렬' : '협의중'}
+                                    </span>
+                                  </div>
+
+                                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11.5px', color: 'var(--text-secondary)' }}>
+                                    <span>차종: <strong>{n.vehicleType}</strong></span>
+                                    <span>제시: <strong style={{ color: '#ef4444' }}>₩{n.proposedCost.toLocaleString()}</strong></span>
+                                    <span>목표: <strong style={{ color: '#10b981' }}>₩{n.targetCost.toLocaleString()}</strong></span>
+                                  </div>
+
+                                  {n.specialTerms && (
+                                    <div style={{ fontSize: '11px', color: '#d97706', backgroundColor: 'rgba(217,119,6,0.1)', padding: '4px 6px', borderRadius: '4px' }}>
+                                      특약: {n.specialTerms}
+                                    </div>
+                                  )}
+
+                                  {n.callSummary && (
+                                    <div style={{ fontSize: '11.5px', color: 'var(--text-secondary)' }}>
+                                      {n.callSummary}
+                                    </div>
+                                  )}
+
+                                  {!isConfirmed && (
+                                    <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '6px' }}>
+                                      <button
+                                        type="button"
+                                        className="btn-primary"
+                                        onClick={() => handleConfirmNegotiation(n)}
+                                        style={{ padding: '6px 12px', fontSize: '11.5px', fontWeight: 800, display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+                                      >
+                                        <Check size={13} /> 이 조건으로 배차 확정
+                                      </button>
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })}
                           </div>
                         )}
                       </div>
 
-                      <div style={{ textAlign: 'right' }}>
-                        <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>현재 등록 운송비</div>
-                        <div style={{ fontSize: '18px', fontWeight: 800, color: '#10b981' }}>
-                          ₩{selectedNegoDelivery.deliveryCost ? selectedNegoDelivery.deliveryCost.toLocaleString() : '0'}
+                      {/* 3. 신규 운송사 견적 및 통화 협의 기록 폼 (헌장 3.4 상하 세로 스택 레이아웃) */}
+                      <div style={{
+                        backgroundColor: 'var(--bg-body)', border: '1px solid var(--border-color)', borderRadius: '8px',
+                        padding: '14px', display: 'flex', flexDirection: 'column', gap: '12px'
+                      }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <h4 style={{ fontSize: '13px', fontWeight: 800, margin: 0, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <Plus size={14} /> 운송사 통화 견적 및 협의 조건
+                          </h4>
+                          {selectedCall && (
+                            <span style={{ fontSize: '11px', color: '#3b82f6', fontWeight: 700 }}>
+                              AI 추출 내용 자동 입력됨
+                            </span>
+                          )}
                         </div>
-                        <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '2px' }}>
-                          차종: {selectedNegoDelivery.vehicleType || '미지정'} | 운송사: {selectedNegoDelivery.transportCompany || '미지정'}
+
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '10px' }}>
+                          {/* 1. 협의 운송사 */}
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                            <label style={{ fontSize: '11.5px', fontWeight: 700, color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>협의 운송사 *</label>
+                            <select
+                              value={negoCompanyId}
+                              onChange={e => setNegoCompanyId(e.target.value)}
+                              style={{
+                                padding: '8px', borderRadius: '6px', border: '1px solid var(--border-color)',
+                                backgroundColor: 'var(--bg-card)', color: 'var(--text-primary)', fontSize: '12px', fontWeight: 700
+                              }}
+                            >
+                              <option value="">운송사 선택</option>
+                              {transportCompanies.map(c => (
+                                <option key={c.id} value={c.id}>{c.name} ({c.contact || '연락처없음'})</option>
+                              ))}
+                            </select>
+                          </div>
+
+                          {/* 2. 제안 차종 */}
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                            <label style={{ fontSize: '11.5px', fontWeight: 700, color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>제안 차종</label>
+                            <select
+                              value={negoVehicleType}
+                              onChange={e => setNegoVehicleType(e.target.value)}
+                              style={{
+                                padding: '8px', borderRadius: '6px', border: '1px solid var(--border-color)',
+                                backgroundColor: 'var(--bg-card)', color: 'var(--text-primary)', fontSize: '12px', fontWeight: 700
+                              }}
+                            >
+                              {VEHICLE_TYPE_OPTIONS.map(v => (
+                                <option key={v} value={v}>{v}</option>
+                              ))}
+                            </select>
+                          </div>
+
+                          {/* 3. 운송사 제시가 */}
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                            <label style={{ fontSize: '11.5px', fontWeight: 700, color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>운송사 제시 금액 (원)</label>
+                            <input
+                              type="number"
+                              value={negoProposedCost || ''}
+                              onChange={e => setNegoProposedCost(Number(e.target.value))}
+                              placeholder="예: 120000"
+                              style={{
+                                padding: '8px', borderRadius: '6px', border: '1px solid var(--border-color)',
+                                backgroundColor: 'var(--bg-card)', color: 'var(--text-primary)', fontSize: '12px', fontWeight: 700
+                              }}
+                            />
+                          </div>
+
+                          {/* 4. 당사 목표가 */}
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                            <label style={{ fontSize: '11.5px', fontWeight: 700, color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>당사 목표 금액 (원)</label>
+                            <input
+                              type="number"
+                              value={negoTargetCost || ''}
+                              onChange={e => setNegoTargetCost(Number(e.target.value))}
+                              placeholder="예: 100000"
+                              style={{
+                                padding: '8px', borderRadius: '6px', border: '1px solid var(--border-color)',
+                                backgroundColor: 'var(--bg-card)', color: 'var(--text-primary)', fontSize: '12px', fontWeight: 700
+                              }}
+                            />
+                          </div>
                         </div>
-                      </div>
-                    </div>
 
-                    {/* 2. 기 접수된 운송사 협의 내역 */}
-                    <div>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                        <h4 style={{ fontSize: '13px', fontWeight: 800, margin: 0, display: 'flex', alignItems: 'center', gap: '6px', whiteSpace: 'nowrap' }}>
-                          <FileText size={14} /> 운송사별 견적 및 협의 현황 ({currentNegos.length}건)
-                        </h4>
-                      </div>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: '10px' }}>
+                          {/* 특약 사항 */}
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                            <label style={{ fontSize: '11.5px', fontWeight: 700, color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>할증/회차 특약 메모</label>
+                            <input
+                              type="text"
+                              value={negoSpecialTerms}
+                              onChange={e => setNegoSpecialTerms(e.target.value)}
+                              placeholder="예: 회차비 50%, 야간 2만원 할증..."
+                              style={{
+                                padding: '8px', borderRadius: '6px', border: '1px solid var(--border-color)',
+                                backgroundColor: 'var(--bg-card)', color: 'var(--text-primary)', fontSize: '12px'
+                              }}
+                            />
+                          </div>
 
-                      {currentNegos.length === 0 ? (
-                        <div style={{ padding: '20px', textAlign: 'center', backgroundColor: 'var(--bg-body)', borderRadius: '6px', color: 'var(--text-muted)', fontSize: '12px' }}>
-                          아직 등록된 운송사 협의 내역이 없습니다. 아래 폼에서 첫 견적을 등록하십시오.
+                          {/* 통화 내용 요약 */}
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                            <label style={{ fontSize: '11.5px', fontWeight: 700, color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>통화 및 협의 내용 요약</label>
+                            <input
+                              type="text"
+                              value={negoCallSummary}
+                              onChange={e => setNegoCallSummary(e.target.value)}
+                              placeholder="예: 내일 오전 08시 상차 가능하다고 회신받음..."
+                              style={{
+                                padding: '8px', borderRadius: '6px', border: '1px solid var(--border-color)',
+                                backgroundColor: 'var(--bg-card)', color: 'var(--text-primary)', fontSize: '12px'
+                              }}
+                            />
+                          </div>
                         </div>
-                      ) : (
-                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '10px' }}>
-                          {currentNegos.map(n => {
-                            const isConfirmed = n.status === 'CONFIRMED';
-                            const isRejected = n.status === 'REJECTED';
-                            return (
-                              <div
-                                key={n.id}
-                                style={{
-                                  padding: '12px', borderRadius: '8px', border: isConfirmed ? '2px solid #10b981' : isRejected ? '1px solid rgba(239,68,68,0.3)' : '1px solid var(--border-color)',
-                                  backgroundColor: isConfirmed ? 'rgba(16,185,129,0.08)' : isRejected ? 'rgba(239,68,68,0.03)' : 'var(--bg-body)',
-                                  display: 'flex', flexDirection: 'column', gap: '6px'
-                                }}
-                              >
-                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                  <span style={{ fontSize: '13px', fontWeight: 800, color: 'var(--text-primary)' }}>
-                                    {n.transportCompanyName}
-                                  </span>
-                                  <span style={{
-                                    fontSize: '10.5px', padding: '2px 6px', borderRadius: '4px', fontWeight: 800,
-                                    backgroundColor: isConfirmed ? '#10b981' : isRejected ? '#ef4444' : '#2563eb',
-                                    color: '#ffffff'
-                                  }}>
-                                    {isConfirmed ? '확정/낙찰' : isRejected ? '결렬' : '협의중'}
-                                  </span>
-                                </div>
 
-                                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11.5px', color: 'var(--text-secondary)' }}>
-                                  <span>차종: <strong>{n.vehicleType}</strong></span>
-                                  <span>제시: <strong style={{ color: '#ef4444' }}>₩{n.proposedCost.toLocaleString()}</strong></span>
-                                  <span>목표: <strong style={{ color: '#10b981' }}>₩{n.targetCost.toLocaleString()}</strong></span>
-                                </div>
-
-                                {n.specialTerms && (
-                                  <div style={{ fontSize: '11px', color: '#d97706', backgroundColor: 'rgba(217,119,6,0.1)', padding: '4px 6px', borderRadius: '4px' }}>
-                                    특약: {n.specialTerms}
-                                  </div>
-                                )}
-
-                                {n.callSummary && (
-                                  <div style={{ fontSize: '11.5px', color: 'var(--text-secondary)' }}>
-                                    {n.callSummary}
-                                  </div>
-                                )}
-
-                                {!isConfirmed && (
-                                  <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '6px' }}>
-                                    <button
-                                      className="btn-primary"
-                                      onClick={() => handleConfirmNegotiation(n)}
-                                      style={{ padding: '6px 12px', fontSize: '11.5px', fontWeight: 800, display: 'inline-flex', alignItems: 'center', gap: '4px' }}
-                                    >
-                                      <Check size={13} /> 이 조건으로 배차 확정
-                                    </button>
-                                  </div>
-                                )}
-                              </div>
-                            );
-                          })}
-                        </div>
-                      )}
-                    </div>
-
-                    {/* 3. 신규 운송사 견적 및 통화 협의 기록 폼 (헌장 3.4 상하 세로 스택 레이아웃) */}
-                    <div style={{
-                      backgroundColor: 'var(--bg-body)', border: '1px solid var(--border-color)', borderRadius: '8px',
-                      padding: '14px', display: 'flex', flexDirection: 'column', gap: '12px'
-                    }}>
-                      <h4 style={{ fontSize: '13px', fontWeight: 800, margin: 0, display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        <Plus size={14} /> 신규 운송사 통화 및 견적 등록
-                      </h4>
-
-                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '10px' }}>
-                        {/* 1. 협의 운송사 */}
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                          <label style={{ fontSize: '11.5px', fontWeight: 700, color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>협의 운송사 *</label>
-                          <select
-                            value={negoCompanyId}
-                            onChange={e => setNegoCompanyId(e.target.value)}
+                        {/* 우하단 등록 및 1클릭 배차 확정 버튼군 */}
+                        <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: '10px', marginTop: '4px' }}>
+                          <button
+                            type="button"
+                            className="btn-secondary"
+                            onClick={handleSaveNegotiation}
+                            style={{ padding: '8px 16px', fontSize: '12px', fontWeight: 800, display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+                          >
+                            <Check size={14} /> 협의 내용만 저장
+                          </button>
+                          <button
+                            type="button"
+                            className="btn-primary"
+                            onClick={handleConfirmCurrentForm}
                             style={{
-                              padding: '8px', borderRadius: '6px', border: '1px solid var(--border-color)',
-                              backgroundColor: 'var(--bg-card)', color: 'var(--text-primary)', fontSize: '12px', fontWeight: 700
+                              padding: '8px 20px', fontSize: '12.5px', fontWeight: 800,
+                              backgroundColor: '#10b981', borderColor: '#10b981', color: '#ffffff',
+                              display: 'inline-flex', alignItems: 'center', gap: '6px'
                             }}
                           >
-                            <option value="">운송사 선택</option>
-                            {transportCompanies.map(c => (
-                              <option key={c.id} value={c.id}>{c.name} ({c.contact || '연락처없음'})</option>
-                            ))}
-                          </select>
-                        </div>
-
-                        {/* 2. 제안 차종 */}
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                          <label style={{ fontSize: '11.5px', fontWeight: 700, color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>제안 차종</label>
-                          <select
-                            value={negoVehicleType}
-                            onChange={e => setNegoVehicleType(e.target.value)}
-                            style={{
-                              padding: '8px', borderRadius: '6px', border: '1px solid var(--border-color)',
-                              backgroundColor: 'var(--bg-card)', color: 'var(--text-primary)', fontSize: '12px', fontWeight: 700
-                            }}
-                          >
-                            {VEHICLE_TYPE_OPTIONS.map(v => (
-                              <option key={v} value={v}>{v}</option>
-                            ))}
-                          </select>
-                        </div>
-
-                        {/* 3. 운송사 제시가 */}
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                          <label style={{ fontSize: '11.5px', fontWeight: 700, color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>운송사 제시 금액 (원)</label>
-                          <input
-                            type="number"
-                            value={negoProposedCost || ''}
-                            onChange={e => setNegoProposedCost(Number(e.target.value))}
-                            placeholder="예: 120000"
-                            style={{
-                              padding: '8px', borderRadius: '6px', border: '1px solid var(--border-color)',
-                              backgroundColor: 'var(--bg-card)', color: 'var(--text-primary)', fontSize: '12px', fontWeight: 700
-                            }}
-                          />
-                        </div>
-
-                        {/* 4. 당사 목표가 */}
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                          <label style={{ fontSize: '11.5px', fontWeight: 700, color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>당사 목표 금액 (원)</label>
-                          <input
-                            type="number"
-                            value={negoTargetCost || ''}
-                            onChange={e => setNegoTargetCost(Number(e.target.value))}
-                            placeholder="예: 100000"
-                            style={{
-                              padding: '8px', borderRadius: '6px', border: '1px solid var(--border-color)',
-                              backgroundColor: 'var(--bg-card)', color: 'var(--text-primary)', fontSize: '12px', fontWeight: 700
-                            }}
-                          />
+                            <CheckCircle size={15} /> ⭐ 이 조건으로 배차 반영 및 확정
+                          </button>
                         </div>
                       </div>
-
-                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: '10px' }}>
-                        {/* 특약 사항 */}
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                          <label style={{ fontSize: '11.5px', fontWeight: 700, color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>할증/회차 특약 메모</label>
-                          <input
-                            type="text"
-                            value={negoSpecialTerms}
-                            onChange={e => setNegoSpecialTerms(e.target.value)}
-                            placeholder="예: 회차비 50%, 야간 2만원 할증..."
-                            style={{
-                              padding: '8px', borderRadius: '6px', border: '1px solid var(--border-color)',
-                              backgroundColor: 'var(--bg-card)', color: 'var(--text-primary)', fontSize: '12px'
-                            }}
-                          />
-                        </div>
-
-                        {/* 통화 내용 요약 */}
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                          <label style={{ fontSize: '11.5px', fontWeight: 700, color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>통화 및 협의 내용 요약</label>
-                          <input
-                            type="text"
-                            value={negoCallSummary}
-                            onChange={e => setNegoCallSummary(e.target.value)}
-                            placeholder="예: 내일 오전 08시 상차 가능하다고 회신받음..."
-                            style={{
-                              padding: '8px', borderRadius: '6px', border: '1px solid var(--border-color)',
-                              backgroundColor: 'var(--bg-card)', color: 'var(--text-primary)', fontSize: '12px'
-                            }}
-                          />
-                        </div>
-                      </div>
-
-                      {/* 우하단 등록 완결 버튼 */}
-                      <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '4px' }}>
-                        <button
-                          className="btn-primary"
-                          onClick={handleSaveNegotiation}
-                          style={{ padding: '8px 20px', fontSize: '12.5px', fontWeight: 800, display: 'inline-flex', alignItems: 'center', gap: '6px' }}
-                        >
-                          <Check size={14} /> 협의 내용 저장
-                        </button>
-                      </div>
-                    </div>
-                  </>
-                );
-              })()
-            )}
+                    </>
+                  );
+                })()
+              )}
+            </div>
           </div>
         </div>
       )}
@@ -4468,7 +4900,7 @@ export const TruckDispatch: React.FC = () => {
                       </div>
                       <div style={{ borderTop: '1px dashed var(--border-color)', paddingTop: '6px' }}>
                         <div style={{ color: 'var(--text-muted)', fontWeight: 600, marginBottom: '2px' }}>상차지 (출발)</div>
-                        <div style={{ fontWeight: 700, color: 'var(--text-primary)' }}>{sys.originAddress || '기연 주기장'}</div>
+                        <div style={{ fontWeight: 700, color: 'var(--text-primary)' }}>{sys.originAddress || '본사 주기장'}</div>
                       </div>
                       <div>
                         <div style={{ color: 'var(--text-muted)', fontWeight: 600, marginBottom: '2px' }}>하차지 (도착)</div>

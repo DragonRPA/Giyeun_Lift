@@ -1,5 +1,5 @@
 // public/sw.js
-const CACHE_NAME = 'kiyuen-lift-pwa-v2';
+const CACHE_NAME = 'ebro-lift-pwa-v1';
 
 self.addEventListener('install', (event) => {
   self.skipWaiting();
@@ -34,7 +34,7 @@ self.addEventListener('fetch', (event) => {
 // 🔔 PWA 푸시 알림 수신 이벤트 (잠금화면 및 백그라운드 수신)
 self.addEventListener('push', (event) => {
   let data = { 
-    title: '키은리프트 업무알림', 
+    title: 'e-Bro 업무알림', 
     body: '새로운 업무 의뢰가 접수되었습니다.', 
     tag: 'work-alert', 
     url: '/' 

@@ -1,5 +1,5 @@
 // src/services/driveMirrorSync.ts
-// (주)기연리프트 Cloudflare R2 ➔ 로컬 PC (C:\KiyeunAgent\drive_mirror\) 단방향 미러링 동기화 엔진
+// e-Bro ERP Cloudflare R2 ➔ 로컬 PC (C:\eBroAgent\drive_mirror\) 단방향 미러링 동기화 엔진
 // 원칙: CF R2가 유일한 마스터 원본(SSOT), 로컬 drive_mirror는 항상 CF R2를 따라가는 읽기 전용 사본
 
 import { GoogleConfig } from './db';
@@ -248,7 +248,7 @@ export async function executeDriveMirrorSync(
     phase: 'TRANSFERRING',
     currentFile: '로컬 에이전트 전송 중...',
     percent: 90,
-    message: `로컬 C:\\KiyeunAgent\\drive_mirror\\ 에 ${payloadFiles.length}개 저장 중...`
+    message: `로컬 C:\\eBroAgent\\drive_mirror\\ 에 ${payloadFiles.length}개 저장 중...`
   });
 
   try {
@@ -261,7 +261,7 @@ export async function executeDriveMirrorSync(
     if (!agentRes.ok) throw new Error(`에이전트 오류 HTTP ${agentRes.status}`);
 
     const agentData = await agentRes.json();
-    const finalMsg = `✅ CF R2 ${payloadFiles.length}개 파일이 C:\\KiyeunAgent\\drive_mirror\\ 에 미러링되었습니다.`;
+    const finalMsg = `✅ CF R2 ${payloadFiles.length}개 파일이 C:\\eBroAgent\\drive_mirror\\ 에 미러링되었습니다.`;
 
     updateProgress({
       isActive: true,

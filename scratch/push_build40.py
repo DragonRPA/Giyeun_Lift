@@ -1,6 +1,6 @@
 import os
 
-with open(r'd:\01.AntiGravity\Kiyuen_Lift\RELEASE_NOTES.md', 'a', encoding='utf-8') as f:
+with open(r'd:\01.AntiGravity\Giyuen_Lift\RELEASE_NOTES.md', 'a', encoding='utf-8') as f:
     f.write(
         "\n### v0.7.1.Build.40 (2026-09-02 18:53)\n"
         "- **기능 추가**: 과거 소급 청구서 독립 선택 생성 및 전용 실행 버튼 탑재.\n"

@@ -19,7 +19,8 @@ export const Billings: React.FC = () => {
     repairs, linkRepairToBilling, unlinkRepairFromBilling, waiveRepairBilling, cancelRepairWaiver,
     deliveries, linkDeliveryToBilling, unlinkDeliveryFromBilling, waiveDeliveryBilling, cancelDeliveryWaiver,
     applyPrepaidBalanceForBilling,
-    receivables, linkReceivableToBilling
+    receivables, linkReceivableToBilling,
+    currentTenant
   } = useApp();
 
 
@@ -739,7 +740,7 @@ showToast('모든 수납 내역 일괄 취소 및 통장 잔액을 복원합니�
 
     setMailTo(emails.join(', '));
     setMailCc('');
-    setMailSubject(`[기연리프트] 거래명세서_${ym}_${contractNo}_${custName}_${siteName}`);
+    setMailSubject(`[${currentTenant?.displayName || '거래명세서'}] 거래명세서_${ym}_${contractNo}_${custName}_${siteName}`);
     setShowMailModal(true);
   };
 
@@ -762,7 +763,7 @@ showToast('모든 수납 내역 일괄 취소 및 통장 잔액을 복원합니�
     const sName = site?.name || '현장';
     const contractNo = contract?.contractNo || billing?.contractId || '계약번호';
     const ym = billing?.billingYm || '';
-    const fileName = `[기연리프트]_거래명세서_${ym}_${contractNo}_${custName}_${sName}.pdf`;
+    const fileName = `[${currentTenant?.displayName || '거래명세서'}]_거래명세서_${ym}_${contractNo}_${custName}_${sName}.pdf`;
 
     const details = rawDetails.map(d => {
       const ca = contractAssets.find(cAsset => cAsset.id === d.contractAssetId);
@@ -814,15 +815,15 @@ showToast('모든 수납 내역 일괄 취소 및 통장 잔액을 복원합니�
         billingDate,
         billingYm: ym,
         contractNo: contract?.contractNo,
-        lessorBizNo: '138-81-83251',
-        lessorName: '(주)기연리프트',
-        lessorCeo: '이수용',
-        lessorAddress: '경기도 용인시 처인구 모현읍 갈담로112번길 21-3',
+        lessorBizNo: currentTenant?.businessNumber || '138-81-83251',
+        lessorName: currentTenant?.tradeName || currentTenant?.corporateName || '(주)임대인',
+        lessorCeo: currentTenant?.representativeName || '대표자',
+        lessorAddress: currentTenant?.businessAddress || '',
         salespersonName: salesperson?.name || (contract as any)?.salespersonName || '-',
         salespersonPhone: (salesperson as any)?.mobile || salesperson?.phone || '-',
-        billingManagerName: '정수아',
-        billingManagerPhone: '031-334-5295',
-        lessorEmail: 'giyeonlift@naver.com',
+        billingManagerName: currentTenant?.workplaces?.[0]?.managerName || '경영지원팀',
+        billingManagerPhone: currentTenant?.tel || '031-334-5295',
+        lessorEmail: currentTenant?.taxEmail || currentTenant?.email || 'tax@ebro.com',
 
         customerBizNo: customer?.bizRegNo || '-',
         customerName: customer?.name || '-',
@@ -836,7 +837,7 @@ showToast('모든 수납 내역 일괄 취소 및 통장 잔액을 복원합니�
         custBillingManagerPhone: (customer as any)?.billingManagerPhone || (customer as any)?.phone || '-',
         custBillingEmail: (customer as any)?.billingEmail || (customer as any)?.email || '-',
         siteName: site?.name || '-',
-        bankAccount: '신한은행 140-010-007060 , 주식회사 기연리프트',
+        bankAccount: currentTenant?.bankAccounts?.[0] ? `${currentTenant.bankAccounts[0].bankName} ${currentTenant.bankAccounts[0].accountNumber} , ${currentTenant.bankAccounts[0].accountHolder}` : '',
 
         items,
         totalSupply,
@@ -876,7 +877,7 @@ showToast('모든 수납 내역 일괄 취소 및 통장 잔액을 복원합니�
     const sName = site?.name || '현장';
     const contractNo = contract?.contractNo || billing?.contractId || '계약번호';
     const ym = billing?.billingYm || '';
-    const fileName = `[기연리프트]_거래명세서_${ym}_${contractNo}_${custName}_${sName}.xlsx`;
+    const fileName = `[${currentTenant?.displayName || '거래명세서'}]_거래명세서_${ym}_${contractNo}_${custName}_${sName}.xlsx`;
 
     const details = rawDetails.map(d => {
       const ca = contractAssets.find(cAsset => cAsset.id === d.contractAssetId);
@@ -928,15 +929,15 @@ showToast('모든 수납 내역 일괄 취소 및 통장 잔액을 복원합니�
         billingDate,
         billingYm: ym,
         contractNo: contract?.contractNo,
-        lessorBizNo: '138-81-83251',
-        lessorName: '(주)기연리프트',
-        lessorCeo: '이수용',
-        lessorAddress: '경기도 용인시 처인구 모현읍 갈담로112번길 21-3',
+        lessorBizNo: currentTenant?.businessNumber || '138-81-83251',
+        lessorName: currentTenant?.tradeName || currentTenant?.corporateName || '(주)임대인',
+        lessorCeo: currentTenant?.representativeName || '대표자',
+        lessorAddress: currentTenant?.businessAddress || '',
         salespersonName: salesperson?.name || (contract as any)?.salespersonName || '-',
         salespersonPhone: (salesperson as any)?.mobile || salesperson?.phone || '-',
-        billingManagerName: '정수아',
-        billingManagerPhone: '031-334-5295',
-        lessorEmail: 'giyeonlift@naver.com',
+        billingManagerName: currentTenant?.workplaces?.[0]?.managerName || '경영지원팀',
+        billingManagerPhone: currentTenant?.tel || '031-334-5295',
+        lessorEmail: currentTenant?.taxEmail || currentTenant?.email || 'tax@ebro.com',
 
         customerBizNo: customer?.bizRegNo || '-',
         customerName: customer?.name || '-',
@@ -950,7 +951,7 @@ showToast('모든 수납 내역 일괄 취소 및 통장 잔액을 복원합니�
         custBillingManagerPhone: (customer as any)?.billingManagerPhone || (customer as any)?.phone || '-',
         custBillingEmail: (customer as any)?.billingEmail || (customer as any)?.email || '-',
         siteName: site?.name || '-',
-        bankAccount: '신한은행 140-010-007060 , 주식회사 기연리프트',
+        bankAccount: currentTenant?.bankAccounts?.[0] ? `${currentTenant.bankAccounts[0].bankName} ${currentTenant.bankAccounts[0].accountNumber} , ${currentTenant.bankAccounts[0].accountHolder}` : '',
 
         items,
         totalSupply,
@@ -1049,17 +1050,17 @@ showToast('모든 수납 내역 일괄 취소 및 통장 잔액을 복원합니�
 
     const body =
 `========================================================================================
-                        (주) 기 연 리 프 트   거 래 명 세 서
+                        ${currentTenant?.tradeName || currentTenant?.corporateName || 'e-Bro LIFT'}   거 래 명 세 서
 ========================================================================================
 
 안녕하세요, ${getCustName(billing?.customerId || '')} 귀하.
 당사 리프트 임대 계약(계약번호: ${contract?.contractNo || '-'})에 따른 ${billing?.billingYm} 거래명세서 및 청구 내역을 아래와 같이 송부해 드립니다.
 
 [1. 공급자 정보]
-- 사업자등록번호: 138-81-83251 | 상호: (주)기연리프트 | 대표자: 이수용
+- 사업자등록번호: ${currentTenant?.businessNumber || '-'} | 상호: ${currentTenant?.tradeName || currentTenant?.corporateName || '-'} | 대표자: ${currentTenant?.representativeName || '-'}
 - 계약담당자(영업): ${spName} (연락처: ${spPhone})
-- 계산서담당자(경영): 정수아 (연락처: 031-334-5295)
-- 이메일: giyeonlift@naver.com
+- 계산서담당자(경영): ${currentTenant?.workplaces?.[0]?.managerName || '경영지원팀'} (연락처: ${currentTenant?.tel || '-'})
+- 이메일: ${currentTenant?.taxEmail || currentTenant?.email || '-'}
 
 [2. 공급받는 자 정보]
 - 상호(법인명): ${customer?.name || '-'} | 대표자명: ${customer?.representative || '-'}
@@ -1083,13 +1084,13 @@ ${items.map((item, idx) => {
 - 최종 청구 총액: ${(totalSupply + totalVat).toLocaleString()}원 (기수금: ${(billing?.paidAmount || 0).toLocaleString()}원 / 미수잔액: ${(totalSupply + totalVat - (billing?.paidAmount || 0)).toLocaleString()}원)
 
 [5. 입금 계좌 안내]
-- 신한은행 140-010-007060 (주)기연리프트
+- ${currentTenant?.bankAccounts?.[0] ? `${currentTenant.bankAccounts[0].bankName} ${currentTenant.bankAccounts[0].accountNumber} ${currentTenant.bankAccounts[0].accountHolder}` : '-'}
 
 [6. 첨부 파일 안내]
-- 본 이메일에는 (주)기연리프트 공식 전자 거래명세서(.pdf) 파일이 자동 첨부되었습니다.
+- 본 이메일에는 공식 전자 거래명세서(.pdf) 파일이 자동 첨부되었습니다.
 
 감사합니다.
-(주)기연리프트 올림
+${currentTenant?.tradeName || currentTenant?.corporateName || '임대인'} 올림
 ========================================================================================`;
 
     try {
@@ -1106,15 +1107,15 @@ ${items.map((item, idx) => {
           billingDate,
           billingYm: ym,
           contractNo: contract?.contractNo,
-          lessorBizNo: '138-81-83251',
-          lessorName: '(주)기연리프트',
-          lessorCeo: '이수용',
-          lessorAddress: '경기도 용인시 처인구 모현읍 갈담로112번길 21-3',
+          lessorBizNo: currentTenant?.businessNumber || '138-81-83251',
+          lessorName: currentTenant?.tradeName || currentTenant?.corporateName || '(주)임대인',
+          lessorCeo: currentTenant?.representativeName || '대표자',
+          lessorAddress: currentTenant?.businessAddress || '',
           salespersonName: spName,
           salespersonPhone: spPhone,
-          billingManagerName: '정수아',
-          billingManagerPhone: '031-334-5295',
-          lessorEmail: 'giyeonlift@naver.com',
+          billingManagerName: currentTenant?.workplaces?.[0]?.managerName || '경영지원팀',
+          billingManagerPhone: currentTenant?.tel || '031-334-5295',
+          lessorEmail: currentTenant?.taxEmail || currentTenant?.email || 'tax@ebro.com',
 
           customerBizNo: customer?.bizRegNo || '-',
           customerName: customer?.name || '-',
@@ -1128,7 +1129,7 @@ ${items.map((item, idx) => {
           custBillingManagerPhone: billingManagerPhone,
           custBillingEmail: billingEmail,
           siteName: site?.name || '-',
-          bankAccount: '신한은행 140-010-007060 , 주식회사 기연리프트',
+          bankAccount: currentTenant?.bankAccounts?.[0] ? `${currentTenant.bankAccounts[0].bankName} ${currentTenant.bankAccounts[0].accountNumber} , ${currentTenant.bankAccounts[0].accountHolder}` : '',
 
           items,
           totalSupply,
@@ -1144,7 +1145,7 @@ ${items.map((item, idx) => {
         const base64Content = window.btoa(binary);
         const contractNo = contract?.contractNo || billing?.contractId || '계약번호';
         attachments.push({
-          filename: `[기연리프트]_거래명세서_${ym}_${contractNo}_${custName}_${sName}.pdf`,
+          filename: `[${currentTenant?.displayName || '거래명세서'}]_거래명세서_${ym}_${contractNo}_${custName}_${sName}.pdf`,
           content: base64Content
         });
       } catch (attachErr) {
@@ -4323,7 +4324,7 @@ ${items.map((item, idx) => {
 
 
 
-      {/* (주)기연엘리베이터 표준 거래명세서 메일 발송 모달 */}
+      {/* ERP 표준 거래명세서 메일 발송 모달 */}
       {showMailModal && (() => {
         const targetBilling = billings.find(b => b.id === mailBillingId);
         const targetDetails = billingDetails.filter(d => d.billingId === mailBillingId);
@@ -4338,7 +4339,7 @@ ${items.map((item, idx) => {
             <form onSubmit={handleSendStatementSubmit} className="card" style={{ width: '100%', maxWidth: '680px', backgroundColor: 'var(--bg-card)', padding: '24px', borderRadius: '12px', maxHeight: '90vh', overflowY: 'auto' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', borderBottom: '1px solid var(--border-color)', paddingBottom: '12px' }}>
                 <h3 className="card-title" style={{ margin: 0, fontSize: '17px', fontWeight: '700' }}>
-                  📄 (주)기연리프트 표준 거래명세서 이메일 발송
+                  📄 {currentTenant?.tradeName || '표준'} 거래명세서 이메일 발송
                 </h3>
               </div>
 
@@ -4383,7 +4384,7 @@ ${items.map((item, idx) => {
 
                 <div style={{ fontSize: '12.5px', color: 'var(--text-secondary)', padding: '12px', backgroundColor: 'var(--bg-app)', borderRadius: '8px', border: '1px dashed var(--border-color)', display: 'flex', flexDirection: 'column', gap: '4px' }}>
                   <span style={{ fontWeight: '600' }}>💡 거래명세서 메일 자동 생성 안내</span>
-                  <span>- 발송 시 (주)기연리프트 표준 거래명세서 양식(공급자/공급받는자 정보, 세부 품목별 날짜/적용단가/공급가액/부가세)이 메일 본문에 100% 자동 생성되어 전달됩니다.</span>
+                  <span>- 발송 시 표준 거래명세서 양식(공급자/공급받는자 정보, 세부 품목별 날짜/적용단가/공급가액/부가세)이 메일 본문에 100% 자동 생성되어 전달됩니다.</span>
                 </div>
               </div>
 

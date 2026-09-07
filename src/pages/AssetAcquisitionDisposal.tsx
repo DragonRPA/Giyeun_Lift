@@ -50,9 +50,11 @@ export const AssetAcquisitionDisposal: React.FC = () => {
     batchAcquireAssets,
     executeAssetSale,
     hasPermission,
+    currentTenant,
     showErrorModal
   } = useApp();
 
+  const defaultYard = currentTenant?.yards?.find(y => y.isDefault) || currentTenant?.yards?.[0];
   const canSave = hasPermission('acquisition_disposal', 'save');
 
   // 메인 스튜디오 전환 탭 (헌장 3.1 무수식어 건조 명사 단일 표준)
@@ -458,7 +460,7 @@ export const AssetAcquisitionDisposal: React.FC = () => {
     const ws = XLSX.utils.aoa_to_sheet([headers, sampleRow]);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, '자산취득양식');
-    XLSX.writeFile(wb, `기연리프트_자산취득_일괄양식_${new Date().toISOString().split('T')[0]}.xlsx`);
+    XLSX.writeFile(wb, `${currentTenant?.displayName || '자산'}_자산취득_일괄양식_${new Date().toISOString().split('T')[0]}.xlsx`);
   };
 
   // 엑셀 파일 파싱 및 유효성 검사
@@ -644,7 +646,10 @@ export const AssetAcquisitionDisposal: React.FC = () => {
     d.setDate(d.getDate() + 14);
     return d.toISOString().split('T')[0];
   });
-  const [bankAccount, setBankAccount] = useState<string>('기업은행 144-082875-01-017 (주)기연리프트');
+  const [bankAccount, setBankAccount] = useState<string>(() => {
+    const acc = currentTenant?.bankAccounts?.[0];
+    return acc ? `${acc.bankName} ${acc.accountNumber} ${acc.accountHolder}` : '계좌정보 미등록';
+  });
 
   // 3. 장비 인도 조건
   const [deliveryDate, setDeliveryDate] = useState<string>(new Date().toISOString().split('T')[0]);
@@ -2741,7 +2746,7 @@ export const AssetAcquisitionDisposal: React.FC = () => {
                         style={{ padding: '5px 8px', borderRadius: '4px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-card)', fontSize: '11.5px' }}
                       >
                         <option value="BUYER">매수자 부담 (착불)</option>
-                        <option value="SELLER">당사(기연) 부담 (선불)</option>
+                        <option value="SELLER">당사 부담 (선불)</option>
                       </select>
                     </div>
                   </div>
@@ -2763,7 +2768,7 @@ export const AssetAcquisitionDisposal: React.FC = () => {
                       </label>
                       <input
                         type="text"
-                        placeholder={deliveryLocationType === 'YARD' ? '기연리프트 화성 주기장' : '매수처 지정 주소'}
+                        placeholder={deliveryLocationType === 'YARD' ? (defaultYard?.name || '당사 기본 주기장') : '매수처 지정 주소'}
                         value={deliverySiteAddress}
                         onChange={e => setDeliverySiteAddress(e.target.value)}
                         style={{ padding: '5px 8px', borderRadius: '4px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-card)', fontSize: '11.5px' }}
@@ -2884,7 +2889,7 @@ export const AssetAcquisitionDisposal: React.FC = () => {
                         중 고 건 설 기 계 (고 소 작 업 대) 양 도 · 양 수 계 약 서
                       </div>
                       <p style={{ margin: '2px 0' }}>
-                        <strong>양도인(매도인):</strong> (주)기연리프트 (대표이사 이정용 / 사업자등록번호: 144-81-01234)
+                        <strong>양도인(매도인):</strong> {currentTenant?.corporateName || currentTenant?.tradeName || '당사'} (대표이사 {currentTenant?.representativeName || '-'} / 사업자등록번호: {currentTenant?.businessNumber || '-'})
                       </p>
                       <p style={{ margin: '2px 0' }}>
                         <strong>양수인(매수인):</strong> {buyerMode === 'SELECT' ? (selectedBuyer?.name || '매수처 미정') : (newBuyerName || '매수처 미정')}
@@ -2909,7 +2914,7 @@ export const AssetAcquisitionDisposal: React.FC = () => {
                       </p>
                       <p style={{ margin: '4px 0 2px 0', fontWeight: 700 }}>[제4조 장비 인도 및 운송]</p>
                       <p style={{ margin: '2px 0' }}>
-                        인도 방식: {deliveryLocationType === 'YARD' ? `당사 주기장 상차도(${deliverySiteAddress.trim() || '기연리프트 화성 주기장'})` : `매수처 지정장소 도착도(${deliverySiteAddress.trim() || (buyerMode === 'SELECT' ? selectedBuyer?.address : newBuyerAddress) || '지정주소'})`},
+                        인도 방식: {deliveryLocationType === 'YARD' ? `당사 주기장 상차도(${deliverySiteAddress.trim() || defaultYard?.name || '당사 기본 주기장'})` : `매수처 지정장소 도착도(${deliverySiteAddress.trim() || (buyerMode === 'SELECT' ? selectedBuyer?.address : newBuyerAddress) || '지정주소'})`},
                         운송비: {freightBearer === 'BUYER' ? '매수자 부담' : '당사 부담'},
                         인도일자: {deliveryDate}
                       </p>
@@ -2930,7 +2935,7 @@ export const AssetAcquisitionDisposal: React.FC = () => {
                         거 래 명 세 서 (자산 매각 대금 청구서)
                       </div>
                       <p style={{ margin: '2px 0' }}>
-                        <strong>공급자:</strong> (주)기연리프트 | <strong>공급받는자:</strong> {buyerMode === 'SELECT' ? (selectedBuyer?.name || '매수처') : (newBuyerName || '매수처')}
+                        <strong>공급자:</strong> {currentTenant?.corporateName || currentTenant?.tradeName || '당사'} | <strong>공급받는자:</strong> {buyerMode === 'SELECT' ? (selectedBuyer?.name || '매수처') : (newBuyerName || '매수처')}
                       </p>
                       <p style={{ margin: '2px 0' }}>
                         <strong>청구일자:</strong> {disposalDate} | <strong>청구품목:</strong> 고소작업대 자산 매각 대금 ({disposalBasket.length}대)

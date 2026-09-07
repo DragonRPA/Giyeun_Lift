@@ -26,7 +26,7 @@ export const ContractDocumentBundleModal: React.FC<Props> = ({ isOpen, onClose, 
   const { 
     contracts, customers, contacts, sites, assets, 
     contractAssets, deliveries, products, googleConfigs, currentUser,
-    showErrorModal 
+    currentTenant, showErrorModal 
   } = useApp();
 
   const [selectedContractId, setSelectedContractId] = useState<string>(
@@ -83,7 +83,7 @@ export const ContractDocumentBundleModal: React.FC<Props> = ({ isOpen, onClose, 
         modelName: model,
         sn: a?.serialNo || 'GS46D-13045',
         rentalFee: ca.monthlyRentalFee || 480000,
-        manufacturer: prod?.manufacturer || a?.manufacturer || 'GENIE (주)기연리프트',
+        manufacturer: prod?.manufacturer || a?.manufacturer || 'GENIE',
         manufactureYear: a?.manufactureYear || '2018',
         weight: prod?.weight || '1,956 kg',
         workingHeight: prod?.workingHeight || '9.92 M',
@@ -224,14 +224,17 @@ export const ContractDocumentBundleModal: React.FC<Props> = ({ isOpen, onClose, 
     // 제목 및 본문 기본값 세팅
     const custName = customer?.name || '고객사';
     const siteName = site?.name || '현장';
-    setEmailSubject(`[기연리프트] ${custName} - ${siteName} 고소작업대 임대차 계약서패키지`);
-    setEmailBody(`안녕하십니까, ${custName} 담당자님.\n(주)기연리프트 영업팀입니다.\n\n요청하신 [${siteName}] 현장 고소작업대 임대차 계약서패키지를 첨부 파일로 송부드립니다.\n\n■ 첨부 서류 구성 (단일 통합 PDF):\n1. 고소작업대 임대차 계약서 (1p)\n2. 자산별 반입 전 CHECK LIST (${mappedAssets.length}대)\n3. 자산별 안전점검 결과서 (${mappedAssets.length}대)\n4. 장비 모델별(${uniqueModelList.join(', ')}) 정규 문서(제원표, 안전인증서, 작동법 등) 일체\n5. 생산물배상책임(PL)보험증권 (계약기간 보증)\n6. 사업자등록증 (CF R2 원본)\n7. 통장사본 (CF R2 원본)\n\n계약 내용 및 장비 제원을 검토해 주시고, 문의사항이 있으시면 언제든 연락 부탁드립니다.\n\n감사합니다.\n주식회사 기연리프트 배상\n전화: 031-334-5296 / 영업담당: 010-9402-5296`);
+    const tenantBrand = currentTenant?.displayName || currentTenant?.tradeName || 'e-Bro Lift';
+    const tenantCorp = currentTenant?.tradeName || currentTenant?.corporateName || tenantBrand;
+    const tenantTel = currentTenant?.tel || '031-334-5296';
+    setEmailSubject(`[${tenantBrand}] ${custName} - ${siteName} 고소작업대 임대차 계약서패키지`);
+    setEmailBody(`안녕하십니까, ${custName} 담당자님.\n${tenantCorp} 영업팀입니다.\n\n요청하신 [${siteName}] 현장 고소작업대 임대차 계약서패키지를 첨부 파일로 송부드립니다.\n\n■ 첨부 서류 구성 (단일 통합 PDF):\n1. 고소작업대 임대차 계약서 (1p)\n2. 자산별 반입 전 CHECK LIST (${mappedAssets.length}대)\n3. 자산별 안전점검 결과서 (${mappedAssets.length}대)\n4. 장비 모델별(${uniqueModelList.join(', ')}) 정규 문서(제원표, 안전인증서, 작동법 등) 일체\n5. 생산물배상책임(PL)보험증권 (계약기간 보증)\n6. 사업자등록증 (CF R2 원본)\n7. 통장사본 (CF R2 원본)\n\n계약 내용 및 장비 제원을 검토해 주시고, 문의사항이 있으시면 언제든 연락 부탁드립니다.\n\n감사합니다.\n${currentTenant?.corporateName || tenantCorp} 배상\n전화: ${tenantTel}`);
 
     // 생성 결과 초기화
     setGeneratedResult(null);
     setErrorMessage(null);
     setEmailSentSuccess(false);
-  }, [selectedContractId, isOpen]);
+  }, [selectedContractId, isOpen, currentTenant]);
 
   // ── 수신인 추가 / 제거 핸들러 ──
   const handleRemoveRecipient = (id: string) => {
@@ -353,9 +356,10 @@ export const ContractDocumentBundleModal: React.FC<Props> = ({ isOpen, onClose, 
       const blob = new Blob([bytes.buffer], { type: 'application/pdf' });
       const url = URL.createObjectURL(blob);
 
+      const tenantBrand = currentTenant?.displayName || currentTenant?.tradeName || 'e-Bro Lift';
       const finalRes = {
         url,
-        fileName: agentRes.fileName || `[기연리프트]_계약서패키지_${custName}_${siteName}(${agentRes.pageCount || 37}p).pdf`,
+        fileName: agentRes.fileName || `[${tenantBrand}]_계약서패키지_${custName}_${siteName}(${agentRes.pageCount || 37}p).pdf`,
         pageCount: agentRes.pageCount || 37,
         blob,
         base64Content: agentRes.base64Content

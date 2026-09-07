@@ -878,7 +878,7 @@ class WalkieTalkieService {
               channel: this.currentChannel,
               senderId: sender.id,
               senderName: sender.name,
-              senderDept: sender.deptName || 'KiyeunLift'
+              senderDept: sender.deptName || 'GiyeunLift'
             }
           });
           this.addDebugLog(`[PTT] talking_status broadcast sent (ch=${this.currentChannel})`);
@@ -928,7 +928,7 @@ class WalkieTalkieService {
         senderId: sender.id,
         senderName: sender.name,
         senderRole: sender.role,
-        senderDept: sender.deptName || 'KiyeunLift',
+        senderDept: sender.deptName || 'GiyeunLift',
         audioBase64: '',
         durationSec,
         textTranscript: transcriptText || undefined,
@@ -978,7 +978,7 @@ class WalkieTalkieService {
             senderId: sender.id,
             senderName: sender.name,
             senderRole: sender.role,
-            senderDept: sender.deptName || 'KiyeunLift',
+            senderDept: sender.deptName || 'GiyeunLift',
             audioBase64: base64,
             durationSec,
             textTranscript: undefined,
@@ -1101,7 +1101,7 @@ class WalkieTalkieService {
           audioBase64: base64Data,
           mimeType,
           language: 'ko',
-          prompt: '기연리프트 무전 통신.'
+          prompt: '고소작업대 현장 무전 통신.'
         })
       });
 

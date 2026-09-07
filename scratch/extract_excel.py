@@ -19,7 +19,7 @@ files_to_check = [
 output = "# Excel Export Specification (엑셀 내보내기 명세서)\n\n"
 
 for path in files_to_check:
-    full_path = os.path.join(r"d:\01.AntiGravity\Kiyuen_Lift", path)
+    full_path = os.path.join(r"d:\01.AntiGravity\Giyuen_Lift", path)
     if not os.path.exists(full_path):
         continue
     

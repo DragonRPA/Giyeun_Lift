@@ -1,8 +1,9 @@
 // src/services/excelTemplateEngine.ts
-// (주)기연리프트 엑셀 원본 템플릿 기반 데이터 주입 엔진 (사이트 미연결 독립 모듈)
+// e-Bro ERP 엑셀 원본 템플릿 기반 데이터 주입 엔진 (사이트 미연결 독립 모듈)
 // ⚠️ 원칙: HTML/CSS 눈대중 모방을 100% 배제하고, 사장님의 실제 .xlsx 엑셀 파일 서식을 100% 보존하며 셀 값만 정밀 주입합니다.
 
 import ExcelJS from 'exceljs';
+import { db } from './db';
 
 export interface ExcelCellInjection {
   cell: string; // 예: 'C4', 'D14', 'H7'
@@ -144,7 +145,7 @@ export interface SafetyInspectionExcelData {
   siteName: string;            // 사업장명
   clientName: string;          // 사용업체
   manufacturer: string;        // 제 조 사 (ERP [제품관리] 마스터에서 자동 호출, 예: 'GENIE', 'SINOBOOM', 'DINGLI', 'SKYJACK')
-  lessorName?: string;         // 렌탈사 (기본값: '(주)기연리프트')
+  lessorName?: string;         // 렌탈사 (기본값: 테넌트 상호)
   modelName: string;           // 모델명
   serialNo: string;            // 차량/장비번호
   weight: string;              // 장비중량 (ERP [제품관리] 마스터에서 자동 호출)
@@ -403,7 +404,7 @@ export async function generateSafetyInspectionPdf(data: SafetyInspectionExcelDat
 
     // Row 1: 사업장명, 제조사 (렌탈사)
     ctx.fillText(data.siteName || '', canvasW * 0.19, canvasH * 0.059);
-    const mfgText = `${data.manufacturer || 'GENIE'} ${data.lessorName || '(주)기연리프트'}`;
+    const mfgText = `${data.manufacturer || 'GENIE'} ${data.lessorName || db.currentTenant?.tradeName || '(주)임대인'}`;
     ctx.fillText(mfgText, canvasW * 0.72, canvasH * 0.059);
 
     // Row 2: 사용업체, 모델명
@@ -489,8 +490,7 @@ export interface TransactionStatementPdfData {
 }
 
 /**
-/**
- * 4. (주)기연리프트 공식 표준 거래명세서 정품 A4 PDF 생성 엔진 (MS Excel COM 전용)
+ * 4. ERP 공식 표준 거래명세서 정품 A4 PDF 생성 엔진 (MS Excel COM 전용)
  * ⚠️ 원칙: 2D Canvas 눈대중 모방을 100% 영구 배제하고, 로컬 사이드카 에이전트의 정품 MS Excel COM 엔진(00.거래명세서양식.xlsx 정품 원본 기반)만을 사용합니다.
  */
 export async function generateTransactionStatementPdf(data: TransactionStatementPdfData): Promise<Uint8Array> {
@@ -516,16 +516,16 @@ export async function generateTransactionStatementPdf(data: TransactionStatement
     throw new Error(`에이전트 응답 오류 (HTTP ${agentResp.status})`);
   } catch (agentErr: any) {
     throw new Error(
-      `⚠️ 로컬 엑셀 COM 에이전트(KiyeunAgent.exe) 연결 불가:\n\n` +
+      `⚠️ 로컬 엑셀 COM 에이전트(eBroAgent) 연결 불가:\n\n` +
       `거래명세서 PDF는 정품 MS Excel COM 엔진을 통해서만 생성됩니다.\n` +
-      `C:\\KiyeunAgent\\KiyeunAgent.exe 가 실행 중인지 확인해 주세요.\n` +
+      `C:\\eBroAgent\\eBroAgent.js 또는 eBroAgent.exe 가 실행 중인지 확인해 주세요.\n` +
       `(원인: ${agentErr?.message || agentErr})`
     );
   }
 }
 
 /**
- * 5. (주)기연리프트 거래명세서 정품 엑셀 파일(.xlsx) 원본 생성 엔진
+ * 5. 거래명세서 정품 엑셀 파일(.xlsx) 원본 생성 엔진
  * - 템플릿: public/00.거래명세서양식.xlsx
  * - ExcelJS를 통해 셀 단위로 데이터를 주입한 정품 .xlsx 바이너리 반환
  */

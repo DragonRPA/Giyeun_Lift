@@ -9,8 +9,8 @@ function purgeErrorDeployments() {
     const errorUrls = [];
 
     for (const line of lines) {
-      const match = line.match(/https:\/\/kiyuen-lift-[a-z0-9]+(-[a-z0-9_\-]+)?\.vercel\.app/i) || line.match(/https:\/\/[a-z0-9_\-]+-[a-z0-9]+\.vercel\.app/i);
-      if (match && !match[0].endsWith('//kiyuen-lift.vercel.app') && !errorUrls.includes(match[0])) {
+      const match = line.match(/https:\/\/(giyeun|kiyuen)-lift-[a-z0-9]+(-[a-z0-9_\-]+)?\.vercel\.app/i) || line.match(/https:\/\/[a-z0-9_\-]+-[a-z0-9]+\.vercel\.app/i);
+      if (match && !match[0].endsWith('//giyeun-lift.vercel.app') && !match[0].endsWith('//kiyuen-lift.vercel.app') && !errorUrls.includes(match[0])) {
         errorUrls.push(match[0]);
       }
     }
@@ -57,8 +57,8 @@ function fetchAllVercelDeployments() {
     for (const line of lines) {
       // Error 행 제외하고 Ready 등 정상 라인만 수집
       if (line.includes('Error')) continue;
-      const match = line.match(/https:\/\/kiyuen-lift-[a-z0-9]+(-[a-z0-9_\-]+)?\.vercel\.app/i) || line.match(/https:\/\/[a-z0-9_\-]+-[a-z0-9]+\.vercel\.app/i);
-      if (match && !match[0].endsWith('//kiyuen-lift.vercel.app') && !allUrls.includes(match[0])) {
+      const match = line.match(/https:\/\/(giyeun|kiyuen)-lift-[a-z0-9]+(-[a-z0-9_\-]+)?\.vercel\.app/i) || line.match(/https:\/\/[a-z0-9_\-]+-[a-z0-9]+\.vercel\.app/i);
+      if (match && !match[0].endsWith('//giyeun-lift.vercel.app') && !match[0].endsWith('//kiyuen-lift.vercel.app') && !allUrls.includes(match[0])) {
         allUrls.push(match[0]);
       }
     }

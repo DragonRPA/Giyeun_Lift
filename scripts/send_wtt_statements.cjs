@@ -12,7 +12,7 @@ const GMAIL_APP_PASS  = 'hqqgtwtsjimvqmeb';
 const RECIPIENT_EMAIL = '77.victor.lee@gmail.com';
 
 // Vercel 배포 URL (prod)
-const VERCEL_API_URL = 'https://kiyuen-lift.vercel.app/api/send-email';
+const VERCEL_API_URL = 'https://giyeun-lift.vercel.app/api/send-email';
 
 // ── 4건 거래명세서 내용 정의 ─────────────────────────────────────────
 const statements = [

@@ -1,6 +1,6 @@
 import os
 
-with open(r'd:\01.AntiGravity\Kiyuen_Lift\RELEASE_NOTES.md', 'a', encoding='utf-8') as f:
+with open(r'd:\01.AntiGravity\Giyuen_Lift\RELEASE_NOTES.md', 'a', encoding='utf-8') as f:
     f.write(
         "\n### v0.7.1.Build.27 (2026-09-01 20:58)\n"
         "- **버그수정**: 고객 관리 화면에 이름 없는 유령 고객사(114, 115, 189, 190...)가 생성되던 원인 수정.\n"

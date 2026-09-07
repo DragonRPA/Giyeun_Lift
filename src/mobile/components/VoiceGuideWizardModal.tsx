@@ -482,7 +482,7 @@ export const VoiceGuideWizardModal: React.FC<VoiceGuideWizardModalProps> = ({
   const sendToGroqStt = async (base64Data: string, mimeType: string) => {
     try {
       // 단계별 초정밀 프롬프트 힌트 구성
-      let stepPrompt = '기연리프트 고소작업대 출고의뢰.';
+      let stepPrompt = '고소작업대 렌탈 출고의뢰.';
       if (currentStep === 'CUSTOMER') {
         const topCustNames = (customers || []).slice(0, 15).map(c => c.name).join(', ');
         stepPrompt = `고객사 거래처 이름. 예: ${topCustNames}`;

@@ -23,6 +23,14 @@ import {
   BandAsAnalysisResult,
   ParsedBandAsRecord
 } from '../services/migrationEngine';
+import {
+  parseConsumableInventoryText,
+  ingestConsumablesToDatabase,
+  SEED_INVENTORY_ITEMS,
+  ParsedConsumableItem,
+  detectSupplier,
+  detectCategory
+} from '../services/consumableMigrationService';
 import * as XLSX from 'xlsx';
 import {
   Database,
@@ -48,11 +56,13 @@ import {
   Search,
   Eye,
   X,
-  Copy
+  Copy,
+  Boxes,
+  Package
 } from 'lucide-react';
 
 export const InitialDbUploader: React.FC = () => {
-  const { showSuccessToast, showErrorModal, fullRefreshFromServer, users, customers, contracts, contractAssets, customerSites, assets, importBandAsHistory } = useApp();
+  const { showSuccessToast, showErrorModal, fullRefreshFromServer, users, customers, contracts, contractAssets, customerSites, assets, importBandAsHistory, currentUser } = useApp();
 
   // 상태 관리
   const [activeTab, setActiveTab] = useState<'INGEST' | 'BACKUP' | 'RESET'>('INGEST');
@@ -113,7 +123,117 @@ export const InitialDbUploader: React.FC = () => {
   const [showIgnoredPostsModal, setShowIgnoredPostsModal] = useState(false);
   const dispatchHistFileInputRef = useRef<HTMLInputElement>(null);
 
+  // 📦 소모품 및 부품 재고 업로드 상태
+  const [consumableFileName, setConsumableFileName] = useState<string>('');
+  const [consumableRawText, setConsumableRawText] = useState<string>('');
+  const [parsedConsumables, setParsedConsumables] = useState<ParsedConsumableItem[] | null>(null);
+  const [isConsumableParsing, setIsConsumableParsing] = useState(false);
+  const [isConsumableIngesting, setIsConsumableIngesting] = useState(false);
+  const [showConsumableTextarea, setShowConsumableTextarea] = useState(false);
+  const consumableFileInputRef = useRef<HTMLInputElement>(null);
+
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // ── 소모품 파일 파싱 핸들러 (.txt 또는 .xlsx) ──
+  const handleConsumableFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+    const file = files[0];
+    setConsumableFileName(file.name);
+    setIsConsumableParsing(true);
+
+    const isExcel = file.name.endsWith('.xlsx') || file.name.endsWith('.xls');
+
+    if (isExcel) {
+      const reader = new FileReader();
+      reader.onload = (evt) => {
+        try {
+          const data = new Uint8Array(evt.target?.result as ArrayBuffer);
+          const wb = XLSX.read(data, { type: 'array' });
+          const sheetName = wb.SheetNames[0];
+          const rows: any[] = XLSX.utils.sheet_to_json(wb.Sheets[sheetName]);
+          const items: ParsedConsumableItem[] = rows.map((r, idx) => {
+            const mName = String(r['품목명'] || r['모델명'] || r['소모품명'] || r['품명'] || `품목-${idx + 1}`).trim();
+            const qty = Number(r['수량'] || r['현재고'] || r['재고수량'] || 1);
+            const price = Number(r['단가'] || r['입고단가'] || r['단가(원)'] || 0);
+            return {
+              modelName: mName,
+              stockQty: isNaN(qty) ? 1 : qty,
+              unit: String(r['단위'] || '개').trim(),
+              unitPrice: isNaN(price) ? 0 : price,
+              supplier: String(r['제조사'] || r['공급처'] || detectSupplier(mName)).trim(),
+              category: String(r['분류'] || r['카테고리'] || detectCategory(mName)).trim(),
+              note: String(r['비고'] || r['특이사항'] || '').trim()
+            };
+          });
+          setParsedConsumables(items);
+          showSuccessToast?.(`소모품 엑셀 파싱 완료: ${items.length}건`);
+        } catch (err: any) {
+          showErrorModal?.(`소모품 엑셀 파싱 오류: ${err.message}`);
+        } finally {
+          setIsConsumableParsing(false);
+        }
+      };
+      reader.readAsArrayBuffer(file);
+    } else {
+      const reader = new FileReader();
+      reader.onload = (evt) => {
+        try {
+          const text = evt.target?.result as string;
+          setConsumableRawText(text);
+          const items = parseConsumableInventoryText(text);
+          setParsedConsumables(items);
+          showSuccessToast?.(`소모품 텍스트 파싱 완료: ${items.length}건`);
+        } catch (err: any) {
+          showErrorModal?.(`소모품 텍스트 파싱 오류: ${err.message}`);
+        } finally {
+          setIsConsumableParsing(false);
+        }
+      };
+      reader.readAsText(file);
+    }
+  };
+
+  // ── 텍스트 직접 입력 시 파싱 ──
+  const handleConsumableTextareaParse = () => {
+    if (!consumableRawText.trim()) {
+      showErrorModal?.('파싱할 텍스트 내용을 입력해 주세요.');
+      return;
+    }
+    try {
+      const items = parseConsumableInventoryText(consumableRawText);
+      setParsedConsumables(items);
+      setConsumableFileName('직접 텍스트 입력');
+      showSuccessToast?.(`소모품 텍스트 파싱 완료: ${items.length}건`);
+    } catch (err: any) {
+      showErrorModal?.(`텍스트 파싱 오류: ${err.message}`);
+    }
+  };
+
+  // ── 표준 30종 기본 재고 즉시 불러오기 ──
+  const handleLoadDefaultSeedConsumables = () => {
+    setConsumableFileName('소모품재고.txt (표준 30종 마스터)');
+    setParsedConsumables([...SEED_INVENTORY_ITEMS]);
+    showSuccessToast?.('관리 소모품 30종 (총 102개) 즉시 로드 완료');
+  };
+
+  // ── 소모품 재고 일괄 DB 반영 ──
+  const handleConsumablesIngest = async () => {
+    if (!parsedConsumables || parsedConsumables.length === 0) {
+      showErrorModal?.('반영할 소모품 목록이 없습니다. 파일을 선택하거나 기본 목록을 불러와 주세요.');
+      return;
+    }
+    setIsConsumableIngesting(true);
+    try {
+      const res = await ingestConsumablesToDatabase(parsedConsumables, currentUser?.id);
+      showSuccessToast?.(`소모품 DB 반영 완료: 신규 ${res.addedCount}건, 갱신 ${res.updatedCount}건, 총 재고 ${res.totalQty}개`);
+      await fullRefreshFromServer();
+    } catch (err: any) {
+      showErrorModal?.(`소모품 DB 반영 실패: ${err.message}`);
+    } finally {
+      setIsConsumableIngesting(false);
+    }
+  };
 
   // ── 1. DB 전체 백업 실행 ──
   const handleBackup = async () => {
@@ -340,7 +460,7 @@ export const InitialDbUploader: React.FC = () => {
       if (raw.includes('SK하이닉스') || raw.includes('하이닉스')) site = '용인 SK하이닉스';
       else if (raw.includes('평택 P') || raw.includes('P3') || raw.includes('P4')) site = '평택 고덕';
       else if (raw.includes('원주')) site = '원주 푸르지오';
-      else site = '기연 현장';
+      else site = '일반 현장';
     }
 
     if (!issue) {
@@ -537,7 +657,7 @@ export const InitialDbUploader: React.FC = () => {
   // ── 밴드 콘솔 추출 스크립트 클립보드 복사 ──
   const handleCopyBandScraperScript = () => {
     const scriptCode = `(async () => {
-  console.log('🚀 [기연리프트] 밴드 postDetailView ➔ txtBody 정밀 순차 수집기 v8.0 시작...');
+  console.log('🚀 [ERP] 밴드 postDetailView ➔ txtBody 정밀 순차 수집기 v8.0 시작...');
 
   const hudId = 'band_modal_scraper_hud';
   const oldHud = document.getElementById(hudId);
@@ -602,7 +722,7 @@ export const InitialDbUploader: React.FC = () => {
     URL.revokeObjectURL(url);
 
     updateHud('완료', null, '✅ 총 ' + postMap.size + '건 파일 다운로드 완료!', true);
-    console.log('🎉 [기연리프트] 총 ' + postMap.size + '건 다운로드 완료! (band_dispatch_history_full.txt)');
+    console.log('🎉 [ERP] 총 ' + postMap.size + '건 다운로드 완료! (band_dispatch_history_full.txt)');
   };
 
   document.getElementById('hud_btn_stop')?.addEventListener('click', () => {
@@ -622,7 +742,7 @@ export const InitialDbUploader: React.FC = () => {
     if (!layer) return null;
 
     const authorWrap = layer.querySelector('[data-viewname="DPostAuthorView"], .postWriter');
-    let author = '기연리프트';
+    let author = '관리자';
     let dateStr = '';
 
     if (authorWrap) {
@@ -1621,6 +1741,233 @@ export const InitialDbUploader: React.FC = () => {
                     : <><Upload size={15} /> 고객 요구사항 마스터 일괄 DB 동기화 (영구 기억 및 자동 상속)</>
                   }
                 </button>
+              </div>
+            )}
+          </div>
+
+          {/* ⑥ 관리 소모품 및 부품 재고 업로드 카드 */}
+          <div style={{ backgroundColor: 'var(--bg-card)', borderRadius: '8px', border: '1px solid var(--border-color)', padding: '20px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '16px', flexWrap: 'wrap', gap: '12px' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <Boxes size={18} color="#0284c7" />
+                  <label style={{ fontSize: '15px', fontWeight: 700, color: 'var(--text-main)', whiteSpace: 'nowrap' }}>
+                    관리 소모품 및 부품 재고 업로드
+                  </label>
+                  <span style={{ fontSize: '11px', padding: '2px 8px', borderRadius: '9999px', backgroundColor: '#e0f2fe', color: '#0369a1', fontWeight: 600 }}>
+                    밴드 재고 실사 텍스트 / 엑셀
+                  </span>
+                </div>
+                <span style={{ fontSize: '12px', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
+                  소모품재고.txt 파일 또는 엑셀 목록을 분석하여 본사 재고 및 최초 입고 이력을 일괄 등록합니다.
+                </span>
+              </div>
+
+              {/* 우상단 액션 버튼군 */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <button
+                  type="button"
+                  onClick={handleLoadDefaultSeedConsumables}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: '6px',
+                    padding: '8px 14px', borderRadius: '6px',
+                    border: '1px solid #0284c7', backgroundColor: '#f0f9ff',
+                    color: '#0284c7', fontSize: '13px', fontWeight: 600,
+                    cursor: 'pointer', whiteSpace: 'nowrap'
+                  }}
+                >
+                  <FileText size={14} />
+                  표준 30종 기본 로드
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setShowConsumableTextarea(!showConsumableTextarea)}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: '6px',
+                    padding: '8px 14px', borderRadius: '6px',
+                    border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-card)',
+                    color: 'var(--text-secondary)', fontSize: '13px', fontWeight: 600,
+                    cursor: 'pointer', whiteSpace: 'nowrap'
+                  }}
+                >
+                  <Copy size={14} />
+                  텍스트 직접 입력 {showConsumableTextarea ? '닫기' : '열기'}
+                </button>
+              </div>
+            </div>
+
+            {/* 파일 업로드 바 */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '12px 16px', backgroundColor: 'var(--bg-main)', borderRadius: '6px', border: '1px solid var(--border-color)', marginBottom: '16px' }}>
+              <input
+                ref={consumableFileInputRef}
+                type="file"
+                accept=".txt,.xlsx,.xls"
+                onChange={handleConsumableFileSelect}
+                style={{ display: 'none' }}
+              />
+              <button
+                type="button"
+                onClick={() => consumableFileInputRef.current?.click()}
+                disabled={isConsumableParsing}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: '6px',
+                  padding: '7px 14px', borderRadius: '6px',
+                  backgroundColor: '#0284c7', color: 'white',
+                  border: 'none', fontSize: '13px', fontWeight: 600,
+                  cursor: isConsumableParsing ? 'not-allowed' : 'pointer',
+                  whiteSpace: 'nowrap'
+                }}
+              >
+                {isConsumableParsing ? <RefreshCw size={14} className="animate-spin" /> : <Upload size={14} />}
+                파일 선택 (.txt / .xlsx)
+              </button>
+
+              <span style={{ fontSize: '13px', color: consumableFileName ? 'var(--text-main)' : 'var(--text-muted)', fontWeight: consumableFileName ? 600 : 400 }}>
+                {consumableFileName || '선택된 파일 없음 (.txt / .xlsx 등)'}
+              </span>
+            </div>
+
+            {/* 텍스트 직접 입력창 (토글) */}
+            {showConsumableTextarea && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '16px', padding: '12px', backgroundColor: 'var(--bg-main)', borderRadius: '6px', border: '1px solid var(--border-color)' }}>
+                <label style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)' }}>
+                  소모품 재고 텍스트 직접 붙여넣기 (예: "JLG 충전기 2", "지니 g콘 (유압식) 4  3개수리중")
+                </label>
+                <textarea
+                  rows={6}
+                  value={consumableRawText}
+                  onChange={(e) => setConsumableRawText(e.target.value)}
+                  placeholder="품목명과 수량을 줄 단위로 입력하세요.&#10;예:&#10;JLG 충전기 2&#10;지니 충전기 5&#10;스카이잭 컨트롤박스1"
+                  style={{
+                    width: '100%', padding: '8px 10px', fontSize: '13px',
+                    fontFamily: 'monospace', borderRadius: '4px',
+                    border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-card)',
+                    color: 'var(--text-main)', resize: 'vertical'
+                  }}
+                />
+                <button
+                  type="button"
+                  onClick={handleConsumableTextareaParse}
+                  style={{
+                    alignSelf: 'flex-end', display: 'flex', alignItems: 'center', gap: '6px',
+                    padding: '6px 14px', borderRadius: '4px',
+                    backgroundColor: '#0284c7', color: 'white',
+                    border: 'none', fontSize: '12px', fontWeight: 600,
+                    cursor: 'pointer'
+                  }}
+                >
+                  <Search size={13} />
+                  텍스트 파싱 적용
+                </button>
+              </div>
+            )}
+
+            {/* 파싱 결과 고밀도 테이블 및 최종 반영 버튼 */}
+            {parsedConsumables && parsedConsumables.length > 0 && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginTop: '12px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-main)' }}>
+                    파싱 결과 목록 ({parsedConsumables.length}건)
+                  </span>
+                  <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
+                    관리 소모품 제품 및 기초 수량
+                  </span>
+                </div>
+
+                <div style={{ maxHeight: '340px', overflowY: 'auto', border: '1px solid var(--border-color)', borderRadius: '6px' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px', textAlign: 'left' }}>
+                    <thead style={{ position: 'sticky', top: 0, backgroundColor: 'var(--bg-card)', zIndex: 1, borderBottom: '1px solid var(--border-color)' }}>
+                      <tr style={{ color: 'var(--text-muted)' }}>
+                        <th style={{ padding: '8px 12px', whiteSpace: 'nowrap', width: '40px' }}>No</th>
+                        <th style={{ padding: '8px 12px', whiteSpace: 'nowrap' }}>분류</th>
+                        <th style={{ padding: '8px 12px', whiteSpace: 'nowrap' }}>공급처/브랜드</th>
+                        <th style={{ padding: '8px 12px', whiteSpace: 'nowrap' }}>품목명 / 모델명</th>
+                        <th style={{ padding: '8px 12px', whiteSpace: 'nowrap', textAlign: 'right' }}>재고 수량</th>
+                        <th style={{ padding: '8px 12px', whiteSpace: 'nowrap', textAlign: 'right' }}>기준 단가</th>
+                        <th style={{ padding: '8px 12px', whiteSpace: 'nowrap', textAlign: 'right' }}>재고 금액</th>
+                        <th style={{ padding: '8px 12px', whiteSpace: 'nowrap' }}>비고 / 수리상태</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {parsedConsumables.map((item, idx) => {
+                        const totalItemVal = item.stockQty * (item.unitPrice || 0);
+                        return (
+                          <tr key={idx} style={{ borderBottom: '1px solid var(--border-color)', backgroundColor: idx % 2 === 0 ? 'transparent' : 'rgba(0,0,0,0.015)' }}>
+                            <td style={{ padding: '7px 12px', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>{idx + 1}</td>
+                            <td style={{ padding: '7px 12px', whiteSpace: 'nowrap' }}>
+                              <span style={{ padding: '2px 6px', borderRadius: '4px', backgroundColor: 'rgba(2, 132, 199, 0.1)', color: '#0284c7', fontSize: '11px', fontWeight: 600 }}>
+                                {item.category || '기타소모품'}
+                              </span>
+                            </td>
+                            <td style={{ padding: '7px 12px', whiteSpace: 'nowrap', fontWeight: 500, color: 'var(--text-main)' }}>{item.supplier}</td>
+                            <td style={{ padding: '7px 12px', whiteSpace: 'nowrap', fontWeight: 600, color: 'var(--text-main)' }}>{item.modelName}</td>
+                            <td style={{ padding: '7px 12px', textAlign: 'right', whiteSpace: 'nowrap', fontWeight: 700, color: '#0284c7' }}>
+                              {item.stockQty.toLocaleString()} {item.unit || '개'}
+                            </td>
+                            <td style={{ padding: '7px 12px', textAlign: 'right', whiteSpace: 'nowrap', color: 'var(--text-secondary)' }}>
+                              {item.unitPrice ? `₩${item.unitPrice.toLocaleString()}` : '-'}
+                            </td>
+                            <td style={{ padding: '7px 12px', textAlign: 'right', whiteSpace: 'nowrap', fontWeight: 600, color: 'var(--text-main)' }}>
+                              {totalItemVal ? `₩${totalItemVal.toLocaleString()}` : '-'}
+                            </td>
+                            <td style={{ padding: '7px 12px', whiteSpace: 'nowrap' }}>
+                              {item.note ? (
+                                <span style={{ padding: '2px 6px', borderRadius: '4px', backgroundColor: item.repairingQty ? '#fee2e2' : '#fef3c7', color: item.repairingQty ? '#b91c1c' : '#b45309', fontSize: '11px', fontWeight: 600 }}>
+                                  {item.note}
+                                </span>
+                              ) : (
+                                <span style={{ color: 'var(--text-muted)', fontSize: '11px' }}>정상 가용</span>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* 4단계 우하단 Gutenberg Z-패턴: 요약 검증식 & 최종 적재 완결 버튼 */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px', padding: '12px 16px', backgroundColor: 'var(--bg-main)', borderRadius: '6px', border: '1px solid var(--border-color)', marginTop: '4px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '16px', flexWrap: 'wrap', fontSize: '13px' }}>
+                    <span style={{ whiteSpace: 'nowrap' }}>
+                      총 품목수: <strong style={{ color: 'var(--text-main)' }}>{parsedConsumables.length}종</strong>
+                    </span>
+                    <span style={{ color: 'var(--border-color)' }}>|</span>
+                    <span style={{ whiteSpace: 'nowrap' }}>
+                      총 재고 수량: <strong style={{ color: '#0284c7' }}>{parsedConsumables.reduce((acc, it) => acc + it.stockQty, 0).toLocaleString()}개</strong>
+                    </span>
+                    <span style={{ color: 'var(--border-color)' }}>|</span>
+                    <span style={{ whiteSpace: 'nowrap' }}>
+                      수리중: <strong style={{ color: '#ef4444' }}>{parsedConsumables.reduce((acc, it) => acc + (it.repairingQty || 0), 0)}개</strong>
+                    </span>
+                    <span style={{ color: 'var(--border-color)' }}>|</span>
+                    <span style={{ whiteSpace: 'nowrap' }}>
+                      재고 자산 평가액: <strong style={{ color: '#059669' }}>₩{parsedConsumables.reduce((acc, it) => acc + (it.stockQty * (it.unitPrice || 0)), 0).toLocaleString()}</strong>
+                    </span>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={handleConsumablesIngest}
+                    disabled={isConsumableIngesting}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: '8px',
+                      padding: '10px 20px', borderRadius: '6px',
+                      backgroundColor: isConsumableIngesting ? '#94a3b8' : '#0284c7',
+                      color: 'white', border: 'none',
+                      fontSize: '14px', fontWeight: 600,
+                      cursor: isConsumableIngesting ? 'not-allowed' : 'pointer',
+                      whiteSpace: 'nowrap'
+                    }}
+                  >
+                    {isConsumableIngesting ? (
+                      <><RefreshCw size={15} className="animate-spin" /> DB 반영 중...</>
+                    ) : (
+                      <><Upload size={15} /> 소모품 재고 DB 반영 ({parsedConsumables.length}건)</>
+                    )}
+                  </button>
+                </div>
               </div>
             )}
           </div>

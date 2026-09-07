@@ -11,7 +11,7 @@ interface EquipmentItem {
 }
 
 export const SmartDispatch: React.FC = () => {
-  const { hasPermission, saveSmartDispatch, assets, products, showErrorModal, users, contracts, currentUser, customers, contacts, sites, billings } = useApp();
+  const { hasPermission, saveSmartDispatch, assets, products, showErrorModal, users, contracts, currentUser, customers, contacts, sites, billings, currentTenant } = useApp();
   const canSave = hasPermission('delivery', 'save');
 
   // 토스트 알림 상태 (헌장 5.2: 브라우저 alert/confirm 전면 퇴출)
@@ -644,7 +644,7 @@ export const SmartDispatch: React.FC = () => {
   const generateFormattedText = () => {
     const activeSpecs = STANDARD_SPECS.filter(s => checkedSpecs[s.id]);
     return (
-`* 기연리프트 출고 요청서 *
+`* ${(currentTenant?.displayName || currentTenant?.tradeName || 'e-Bro Lift').toUpperCase()} 출고 요청서 *
 
 ■ 기본 정보
 - 고객명 : ${customerName || '-'}
@@ -1950,7 +1950,7 @@ ${activeSpecs.map((s, idx) => `  ${idx + 1}. [적용] ${s.label}`).join('\n') ||
 
                   {/* 중앙: 문서 타이틀 (flex:1, 좌우 공간 자동 분배) */}
                   <div style={{ flex: 1, textAlign: 'center', minWidth: 0 }}>
-                    <h1 style={{ margin: 0, fontSize: '20px', fontWeight: '800', color: '#1e1b4b', letterSpacing: '3px', whiteSpace: 'nowrap' }}>기연리프트 출고요청서</h1>
+                    <h1 style={{ margin: 0, fontSize: '20px', fontWeight: '800', color: '#1e1b4b', letterSpacing: '3px', whiteSpace: 'nowrap' }}>{currentTenant?.displayName || 'e-Bro'} 출고요청서</h1>
                   </div>
 
                   {/* 우측: 출고 완료자 날인란 — div 기반으로 flex 충돌 완전 해소 */}

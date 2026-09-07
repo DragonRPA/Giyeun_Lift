@@ -1,6 +1,6 @@
 /**
  * =========================================================================
- * 🏢 (주)기연리프트 ERP — 로컬 경량 사이드카 에이전트 (Local Sidecar Agent)
+ * 🏢 e-Bro ERP — 로컬 경량 사이드카 에이전트 (eBroAgent)
  * =========================================================================
  * - 역할: CF R2 파일 로컬 미러링, 로컬 문서고 아카이빙, 프런트 실시간 통신 대행
  * - 통신: 로컬 HTTP (http://127.0.0.1:5175)
@@ -17,22 +17,23 @@ const os = require('os');
 const { spawn, execSync } = require('child_process');
 
 
-const VERSION = 'v1.127.3.Build.247';
+const VERSION = 'v2.0.0.Build.1';
 const PORT = process.env.PORT || 5175;
 const CALLSIGN = process.env.AGENT_CALLSIGN || 'admin';
 const MACHINE_NAME = os.hostname();
 
-// 📁 전사 표준 절대경로: C:\KiyeunAgent\ 및 하위 문서고
-const AGENT_HOME = 'C:\\KiyeunAgent';
-const TARGET_EXE_PATH = path.join(AGENT_HOME, 'KiyeunAgent.exe');
+// 📁 전사 표준 절대경로: C:\eBroAgent\ 및 하위 문서고
+const AGENT_HOME = 'C:\\eBroAgent';
+const LEGACY_AGENT_HOME = 'C:\\KiyeunAgent';
+const TARGET_EXE_PATH = path.join(AGENT_HOME, 'eBroAgent.exe');
 const ARCHIVE_ROOT = path.join(AGENT_HOME, '문서고');
 const DRIVE_MIRROR_DIR = path.join(AGENT_HOME, 'drive_mirror');
 
 // =========================================================================
 // 🚀 [스마트 자가 자동 설치 & 구버전 자동 교체(Auto-Kill & Takeover) 엔진]
-// 사용자가 다운로드 폴더나 바탕화면에서 KiyeunAgent.exe를 실행한 경우,
-// 1) 기존에 돌고 있던 구버전 KiyeunAgent.exe 프로세스를 조용히 자동 종료!
-// 2) C:\KiyeunAgent\KiyeunAgent.exe 를 최신 바이너리로 안전 덮어쓰기!
+// 사용자가 다운로드 폴더나 바탕화면에서 eBroAgent.exe를 실행한 경우,
+// 1) 기존에 돌고 있던 구버전 eBroAgent/KiyeunAgent 프로세스를 조용히 자동 종료!
+// 2) C:\eBroAgent\eBroAgent.exe 를 최신 바이너리로 안전 덮어쓰기!
 // 3) 표준 위치에서 최신 에이전트를 백그라운드로 즉시 바통 터치 기동!
 // =========================================================================
 const currentExePath = process.execPath;
@@ -47,21 +48,21 @@ if (isExe && path.resolve(currentExePath).toLowerCase() !== path.resolve(TARGET_
     if (!fs.existsSync(DRIVE_MIRROR_DIR)) fs.mkdirSync(DRIVE_MIRROR_DIR, { recursive: true });
 
     console.log('====================================================');
-    console.log(`📦 [기연리프트] 에이전트 최신 버전(${VERSION}) 자가 교체/설치 진행`);
+    console.log(`📦 [eBroAgent] 에이전트 최신 버전(${VERSION}) 자가 교체/설치 진행`);
     console.log(`📍 현재 실행 위치: ${currentExePath}`);
     console.log(`🎯 표준 정착 경로: ${TARGET_EXE_PATH}`);
 
     // 기존 구버전 프로세스 및 5175 포트 점유 프로세스 완벽 강제 종료 (설치 모드에서만)
     try {
       console.log('🔄 기존 구버전 프로세스 자동 정리 중...');
-      execSync('powershell -NoProfile -Command "Get-Process -Name KiyeunAgent -ErrorAction SilentlyContinue | Where-Object { $_.Id -ne ' + currentPid + ' } | Stop-Process -Force"', { stdio: 'ignore' });
+      execSync('powershell -NoProfile -Command "Get-Process -Name eBroAgent, KiyeunAgent -ErrorAction SilentlyContinue | Where-Object { $_.Id -ne ' + currentPid + ' } | Stop-Process -Force"', { stdio: 'ignore' });
     } catch (kErr) {}
 
     // 0.6초 대기 후 파일 복사
     setTimeout(() => {
       try {
         fs.copyFileSync(currentExePath, TARGET_EXE_PATH);
-        console.log('✅ C:\\KiyeunAgent\\KiyeunAgent.exe 최신 버전으로 교체 완료!');
+        console.log('✅ C:\\eBroAgent\\eBroAgent.exe 최신 버전으로 교체 완료!');
         console.log('🚀 최신 엔진으로 백그라운드 기동합니다...');
         console.log('====================================================');
 
@@ -86,7 +87,8 @@ if (isExe && path.resolve(currentExePath).toLowerCase() !== path.resolve(TARGET_
 
 // 🔄 윈도우 시작 시 자동 실행(Auto-Startup) 레지스트리 자동 등록
 try {
-  execSync(`reg add "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run" /v "KiyeunAgent" /t REG_SZ /d "${TARGET_EXE_PATH}" /f`, { stdio: 'ignore' });
+  execSync(`reg add "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run" /v "eBroAgent" /t REG_SZ /d "${TARGET_EXE_PATH}" /f`, { stdio: 'ignore' });
+  try { execSync('reg delete "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run" /v "KiyeunAgent" /f', { stdio: 'ignore' }); } catch (e) {}
 } catch (e) {}
 
 // 디렉토리 자동 생성 (정식 위치 실행 시)
@@ -99,7 +101,7 @@ try {
 }
 
 console.log('====================================================');
-console.log(`🚀 [기연리프트] 로컬 사이드카 에이전트 가동 (${VERSION})`);
+console.log(`🚀 [eBroAgent] 로컬 사이드카 에이전트 가동 (${VERSION})`);
 console.log(`📡 콜사인(Callsign): ${CALLSIGN}`);
 console.log(`💻 컴퓨터 이름: ${MACHINE_NAME}`);
 console.log(`📂 에이전트 홈 경로: ${AGENT_HOME}`);
@@ -749,7 +751,7 @@ $excel.Quit()
         };
         const contentType = mimeTypes[ext] || 'application/octet-stream';
 
-        // 1순위: 로컬 미러링 폴더(C:\KiyeunAgent\drive_mirror\)에서 파일 확인
+        // 1순위: 로컬 미러링 폴더(C:\eBroAgent\drive_mirror\)에서 파일 확인
         let localFilePath = path.join(DRIVE_MIRROR_DIR, fileName);
         if (fs.existsSync(localFilePath) && fs.statSync(localFilePath).isFile()) {
           const fileBuf = fs.readFileSync(localFilePath);

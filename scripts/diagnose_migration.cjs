@@ -2,7 +2,7 @@
  * diagnose_migration.cjs — 마이그레이션 파싱 결과 진단
  * migrate_run.cjs를 실행하지 않고, 파싱만 수행하여 각 엔티티 수를 출력
  */
-const X  = require('D:/01.AntiGravity/Kiyuen_Lift/node_modules/xlsx/xlsx.js');
+const X  = require('D:/01.AntiGravity/Giyuen_Lift/node_modules/xlsx/xlsx.js');
 const fs = require('fs');
 
 const EXCEL_PATH = 'D:\\OneDrive\\Desktop\\기연리프트자료_\\자동업로드\\초기DB현황1.xlsx';

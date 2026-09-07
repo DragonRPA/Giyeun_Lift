@@ -13,7 +13,7 @@ import {
 } from '../services/excelTemplateEngine';
 import { PDFDocument } from 'pdf-lib';
 import JSZip from 'jszip';
-import { EXPECTED_AGENT_VERSION } from '../services/agentService';
+import { EXPECTED_AGENT_VERSION, AGENT_CERT_URL, AGENT_INSTALL_BAT_URL } from '../services/agentService';
 import { executeR2MirrorSync, testR2Connection } from '../services/r2MirrorSync';
 
 export const GoogleConfig: React.FC = () => {
@@ -108,15 +108,15 @@ export const GoogleConfig: React.FC = () => {
   const handleDownloadCert = () => {
     try {
       const link1 = document.createElement('a');
-      link1.href = '/downloads/KiyeunLift_Root.cer';
-      link1.download = 'KiyeunLift_Root.cer';
+      link1.href = AGENT_CERT_URL;
+      link1.download = 'eBroAgent_Root.cer';
       document.body.appendChild(link1);
       link1.click();
       document.body.removeChild(link1);
 
       setTimeout(() => {
         const link2 = document.createElement('a');
-        link2.href = '/downloads/install-cert.bat';
+        link2.href = AGENT_INSTALL_BAT_URL;
         link2.download = 'install-cert.bat';
         document.body.appendChild(link2);
         link2.click();
@@ -127,14 +127,14 @@ export const GoogleConfig: React.FC = () => {
     }
   };
 
-  // ── 📥 Node.js 무설치 단독 실행 파일 (KiyeunAgent.exe) 직접 다운로드 ──
+  // ── 📥 Node.js 무설치 단독 실행 파일 (eBroAgent.exe) 직접 다운로드 ──
   const [isDownloadingAgent, setIsDownloadingAgent] = useState(false);
   const handleDownloadAgentExe = () => {
     setIsDownloadingAgent(true);
     try {
       const link = document.createElement('a');
-      link.href = '/downloads/KiyeunAgent.exe';
-      link.download = 'KiyeunAgent.exe';
+      link.href = '/downloads/eBroAgent.exe';
+      link.download = 'eBroAgent.exe';
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
@@ -241,7 +241,7 @@ export const GoogleConfig: React.FC = () => {
           </div>
           <h3 style={{ fontSize: '18px', fontWeight: '800', marginBottom: '10px', color: 'var(--text-primary)' }}>접근 권한 제한</h3>
           <p style={{ fontSize: '14px', color: 'var(--text-secondary)', lineHeight: '1.6', marginBottom: '0' }}>
-            본 설정 영역은 기연리프트 최고관리자(ADMIN)만 접근이 허용됩니다.<br />
+            본 설정 영역은 시스템 최고관리자(ADMIN)만 접근이 허용됩니다.<br />
             보안 자격증명 및 클라우드 경로 설정 보호를 위한 조치이오니,<br />
             권한이 필요하신 경우 시스템 총괄자에게 문의하십시오.
           </p>
@@ -488,7 +488,7 @@ export const GoogleConfig: React.FC = () => {
         <div>
           <h2 style={{ fontSize: '22px', fontWeight: '800', margin: 0 }}>구글 및 클라우드 연계 설정</h2>
           <p style={{ fontSize: '13px', color: 'var(--text-secondary)', margin: '4px 0 0 0' }}>
-            기연리프트 전사 ERP와 구글 드라이브 및 Gmail SMTP 발송 서버 간의 크레덴셜 정보를 실시간 편집합니다.
+            e-Bro ERP와 구글 드라이브 및 Gmail SMTP 발송 서버 간의 크레덴셜 정보를 실시간 편집합니다.
           </p>
         </div>
       </div>
@@ -512,7 +512,7 @@ export const GoogleConfig: React.FC = () => {
                   type="email"
                   value={googleEmail}
                   onChange={e => setGoogleEmail(e.target.value)}
-                  placeholder="예: kiyeunlift@gmail.com"
+                  placeholder="예: giyeunlift@gmail.com"
                   required
                 />
               </div>
@@ -999,7 +999,7 @@ export const GoogleConfig: React.FC = () => {
 
               <div style={{ padding: '20px 24px', fontSize: '13.5px', lineHeight: '1.6', color: 'var(--text-primary)' }}>
                 <p style={{ margin: '0 0 14px 0' }}>
-                  <strong>로컬 사이드카 에이전트</strong>를 실행해 두시면, 웹 브라우저의 렌더링 한계를 넘어 <strong>마이크로소프트 엑셀 정품 파일(`.xlsx`)에 직접 데이터를 주입</strong>하고 <strong>100% 무손실 정품 PDF를 생산</strong>하여 사내 로컬 문서고(<code>C:\KiyeunAgent\문서고\</code>)에 자동 아카이빙합니다.
+                  <strong>로컬 사이드카 에이전트</strong>를 실행해 두시면, 웹 브라우저의 렌더링 한계를 넘어 <strong>마이크로소프트 엑셀 정품 파일(`.xlsx`)에 직접 데이터를 주입</strong>하고 <strong>100% 무손실 정품 PDF를 생산</strong>하여 사내 로컬 문서고(<code>C:\eBroAgent\문서고\</code>)에 자동 아카이빙합니다.
                 </p>
 
                 <div style={{ backgroundColor: 'var(--bg-app)', padding: '14px 16px', borderRadius: '10px', border: '1px solid var(--border)', marginBottom: '16px' }}>
@@ -1007,9 +1007,9 @@ export const GoogleConfig: React.FC = () => {
                     ⚡ 1초 원클릭 실행 방법:
                   </h4>
                   <ol style={{ margin: 0, paddingLeft: '18px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                    <li><strong>[📥 KiyeunAgent.exe 다운로드]</strong> 버튼을 누릅니다.</li>
-                    <li>다운로드된 <code>KiyeunAgent.exe</code> 파일을 <code>C:\KiyeunAgent\</code> 에 넣습니다.</li>
-                    <li><strong><code>KiyeunAgent.exe</code></strong> 파일을 더블클릭하여 실행합니다. (Node.js 불필요)</li>
+                    <li><strong>[📥 eBroAgent.exe 다운로드]</strong> 버튼을 누릅니다.</li>
+                    <li>다운로드된 <code>eBroAgent.exe</code> 파일을 <code>C:\eBroAgent\</code> 에 넣습니다.</li>
+                    <li><strong><code>eBroAgent.exe</code></strong> 파일을 더블클릭하여 실행합니다. (Node.js 불필요)</li>
                     <li>웹 화면 상단에 <strong>`🟢 로컬 에이전트 가동중`</strong> 신호등이 즉시 켜집니다.</li>
                   </ol>
                 </div>

@@ -334,7 +334,7 @@ public class MainActivity extends Activity {
     private WebView webView;
     private ProgressBar progressBar;
     private static final int PERMISSION_REQ_CODE = 101;
-    private static final String APP_URL = "https://kiyuen-lift.vercel.app";
+    private static final String APP_URL = "https://giyeun-lift.vercel.app";
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {

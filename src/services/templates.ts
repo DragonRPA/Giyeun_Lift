@@ -1,5 +1,51 @@
-// d:\Kiyeun_Lift\src\services\templates.ts
+// src/services/templates.ts
 import { drive } from './drive';
+import { db } from './db';
+
+// 테넌트 정보 동적 조회 헬퍼
+function getLessorInfo() {
+  const t = db.currentTenant;
+  const corporateName = t?.corporateName || t?.displayName || '(주)임대인';
+  const tradeName = t?.tradeName || t?.displayName || corporateName;
+  const bizNo = t?.businessNumber || '138-81-83251';
+  const ceo = t?.representativeName || '대표자';
+  const email = t?.email || 'contact@ebro.com';
+  const tel = t?.tel || '031-334-5296';
+  const fax = t?.fax || '031-335-5297';
+  const address = t?.businessAddress || (t as any)?.address || '본사';
+  const stampImg = t?.stampImageUrl || 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADIAAAAyCAYAAAAeP4ixAAAAAXNSR0IArs4c6QAAAAlwSFlzAAALEwAACxMBAJqcGAAAAadJREFUaEPtmWFOwzAMhW/uA+4/90HACUgIEoc0ad26/lhq1STN19hOqN9SJfFjO/4e3pI3S5F3fFw8bFp97dZz8/G2abfB2wZ7D6/J+69bWJ6L52P7mHy+Xz8+Lx+fr6v6Xv5m9fP69Vrfy//2Wl/L217ra/s5t4/J91+vybE9bHl9TNu3vVbeXsszW/k59pq2r3up1+TYHk2Ove61/e01ObaHLa+PyWvbq63PseW5eE2OpvXl1XNl9dxyZe7/7M9V33t7eW/sPbfvjXXeW8u5+PzcXq7P5er293v7b8u5+O/rZ/bZ+97bf1vXz+yzz/f+3FauXN6eKz/n8q51/cw+++zzvT+3lSuXt+fKz7m8a10/s88++3zvz23lyuXtufJzLu9a18/ss88++3zvz23lyuXtufJzLu9a18/ss88++3zvz23lyuXtufJzLu9a18/ss88++3zvz23lyuXtufJzLu9a18/ss88++3zvz23lyuXtufJzLu9a18/ss88++3zvz23lyuXtufJzLu9a18/ss88++3zvz23lyuXtufJzLu9a/wdzK+i+0EagAAAAABJRU5ErkJggg==';
+  const firstAcc = t?.bankAccounts?.[0];
+  const bankAccount = firstAcc ? `${firstAcc.bankName} ${firstAcc.accountNumber} (예금주: ${firstAcc.accountHolder})` : '기업은행 138-81-83251 (예금주: (주)임대인)';
+  return {
+    corporateName,
+    tradeName,
+    bizNo,
+    ceo,
+    email,
+    tel,
+    fax,
+    address,
+    stampImg,
+    bankAccount,
+    displayName: t?.displayName || 'e-Bro'
+  };
+}
+
+function applyLessorPlaceholders(html: string): string {
+  const info = getLessorInfo();
+  return html
+    .replace(/\{\{lessorCorporateName\}\}/g, info.corporateName)
+    .replace(/\{\{lessorTradeName\}\}/g, info.tradeName)
+    .replace(/\{\{lessorBizNo\}\}/g, info.bizNo)
+    .replace(/\{\{lessorCeo\}\}/g, info.ceo)
+    .replace(/\{\{lessorEmail\}\}/g, info.email)
+    .replace(/\{\{lessorTel\}\}/g, info.tel)
+    .replace(/\{\{lessorFax\}\}/g, info.fax)
+    .replace(/\{\{lessorAddress\}\}/g, info.address)
+    .replace(/\{\{lessorStampImg\}\}/g, info.stampImg)
+    .replace(/\{\{lessorBankAccount\}\}/g, info.bankAccount)
+    .replace(/\{\{lessorDisplayName\}\}/g, info.displayName);
+}
 
 // 렌탈견적서 HTML 템플릿
 const QUOTATION_TEMPLATE = `<!DOCTYPE html>
@@ -53,14 +99,14 @@ const QUOTATION_TEMPLATE = `<!DOCTYPE html>
                         <h3 style="margin: 0; border: none; padding: 0;">From</h3>
                         <div class="stamp-container">
                             <span style="font-size: 12px; color: #777;">(인)</span>
-                            <img class="stamp" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADIAAAAyCAYAAAAeP4ixAAAAAXNSR0IArs4c6QAAAAlwSFlzAAALEwAACxMBAJqcGAAAAadJREFUaEPtmWFOwzAMhW/uA+4/90HACUgIEoc0ad26/lhq1STN19hOqN9SJfFjO/4e3pI3S5F3fFw8bFp97dZz8/G2abfB2wZ7D6/J+69bWJ6L52P7mHy+Xz8+Lx+fr6v6Xv5m9fP69Vrfy//2Wl/L217ra/s5t4/J91+vybE9bHl9TNu3vVbeXsszW/k59pq2r3up1+TYHk2Ove61/e01ObaHLa+PyWvbq63PseW5eE2OpvXl1XNl9dxyZe7/7M9V33t7eW/sPbfvjXXeW8u5+PzcXq7P5er293v7b8u5+O/rZ/bZ+97bf1vXz+yzz/f+3FauXN6eKz/n8q51/cw+++zzvT+3lSuXt+fKz7m8a10/s88++3zvz23lyuXtufJzLu9a18/ss88++3zvz23lyuXtufJzLu9a18/ss88++3zvz23lyuXtufJzLu9a18/ss88++3zvz23lyuXtufJzLu9a18/ss88++3zvz23lyuXtufJzLu9a18/ss88++3zvz23lyuXtufJzLu9a18/ss88++3zvz23lyuXtufJzLu9a18/ss88++3zvz23lyuXtufJzLu9a18/ss88++3zvz23lyuXtufJzLu9a/wdzK+i+0EagAAAAABJRU5ErkJggg==" alt="대표인">
+                            <img class="stamp" src="{{lessorStampImg}}" alt="대표인">
                         </div>
                     </div>
-                    <div class="info-row"><div class="info-label">상호</div><div class="info-value"><strong>(주)기연리프트</strong> (대표자: 이수용)</div></div>
-                    <div class="info-row"><div class="info-label">등록번호</div><div class="info-value">138-81-83251</div></div>
+                    <div class="info-row"><div class="info-label">상호</div><div class="info-value"><strong>{{lessorTradeName}}</strong> (대표자: {{lessorCeo}})</div></div>
+                    <div class="info-row"><div class="info-label">등록번호</div><div class="info-value">{{lessorBizNo}}</div></div>
                     <div class="info-row"><div class="info-label">담당자</div><div class="info-value">{{salespersonName}} ({{salespersonPhone}})</div></div>
-                    <div class="info-row"><div class="info-label">이메일</div><div class="info-value">giyeonlift@naver.com</div></div>
-                    <div class="info-row"><div class="info-label">TEL / FAX</div><div class="info-value">031-334-5296 / 031-335-5297</div></div>
+                    <div class="info-row"><div class="info-label">이메일</div><div class="info-value">{{lessorEmail}}</div></div>
+                    <div class="info-row"><div class="info-label">TEL / FAX</div><div class="info-value">{{lessorTel}} / {{lessorFax}}</div></div>
                 </div>
             </td>
         </tr>
@@ -139,22 +185,22 @@ const CONTRACT_TEMPLATE = `<!DOCTYPE html>
         <tr>
             <th rowspan="3" style="width: 10%;">임대인<br>(갑)</th>
             <td style="width: 15%; background-color: #fafafa; font-weight: bold;">등록번호</td>
-            <td style="width: 25%;">138-81-83251</td>
+            <td style="width: 25%;">{{lessorBizNo}}</td>
             <th rowspan="3" style="width: 10%;">임차인<br>(을)</th>
             <td style="width: 15%; background-color: #fafafa; font-weight: bold;">등록번호</td>
             <td style="width: 25%;">{{bizRegNo}}</td>
         </tr>
         <tr>
             <td style="background-color: #fafafa; font-weight: bold;">상 호</td>
-            <td>주식회사 기연리프트</td>
+            <td>{{lessorCorporateName}}</td>
             <td style="background-color: #fafafa; font-weight: bold;">상 호</td>
             <td>{{customerName}}</td>
         </tr>
         <tr>
             <td style="background-color: #fafafa; font-weight: bold;">대표자</td>
             <td class="stamp-container">
-                이수용
-                <img class="stamp" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADIAAAAyCAYAAAAeP4ixAAAAAXNSR0IArs4c6QAAAAlwSFlzAAALEwAACxMBAJqcGAAAAadJREFUaEPtmWFOwzAMhW/uA+4/90HACUgIEoc0ad26/lhq1STN19hOqN9SJfFjO/4e3pI3S5F3fFw8bFp97dZz8/G2abfB2wZ7D6/J+69bWJ6L52P7mHy+Xz8+Lx+fr6v6Xv5m9fP69Vrfy//2Wl/L217ra/s5t4/J91+vybE9bHl9TNu3vVbeXsszW/k59pq2r3up1+TYHk2Ove61/e01ObaHLa+PyWvbq63PseW5eE2OpvXl1XNl9dxyZe7/7M9V33t7eW/sPbfvjXXeW8u5+PzcXq7P5er293v7b8u5+O/rZ/bZ+97bf1vXz+yzz/f+3FauXN6eKz/n8q51/cw+++zzvT+3lSuXt+fKz7m8a10/s88++3zvz23lyuXtufJzLu9a18/ss88++3zvz23lyuXtufJzLu9a18/ss88++3zvz23lyuXtufJzLu9a18/ss88++3zvz23lyuXtufJzLu9a18/ss88++3zvz23lyuXtufJzLu9a18/ss88++3zvz23lyuXtufJzLu9a18/ss88++3zvz23lyuXtufJzLu9a18/ss88++3zvz23lyuXtufJzLu9a18/ss88++3zvz23lyuXtufJzLu9a18/ss88++3zvz23lyuXtufJzLu9a/wdzK+i+0EagAAAAABJRU5ErkJggg==" alt="대표인">
+                {{lessorCeo}}
+                <img class="stamp" src="{{lessorStampImg}}" alt="대표인">
             </td>
             <td style="background-color: #fafafa; font-weight: bold;">대표자</td>
             <td>{{ceoName}}</td>
@@ -245,15 +291,14 @@ const CONTRACT_TEMPLATE = `<!DOCTYPE html>
         <tr>
             <td style="background-color: #fafafa; font-weight: bold;">결제 계좌</td>
             <td style="text-align: left; padding-left: 10px; font-weight: bold;">
-                신한은행 140-010-007060 (예금주: 주식회사 기연리프트)
+                {{lessorBankAccount}}
             </td>
         </tr>
     </table>
     <div class="footer-info">
-        <strong>본사/공장:</strong> 경기도 용인시 처인구 모현읍 갈담로112번길 21-3 &nbsp;&nbsp;|&nbsp;&nbsp; 
-        <strong>영업 사무소:</strong> 경기도 용인시 기흥구 기흥로 60-1, C동 1004호 (기흥ICT밸리)<br>
-        <strong>A/S 접수 문의:</strong> 031-334-5296 &nbsp;&nbsp;|&nbsp;&nbsp; 
-        <strong>업무 담당자:</strong> 김동우 팀장 (010-9402-5296)
+        <strong>본사/공장:</strong> {{lessorAddress}} &nbsp;&nbsp;|&nbsp;&nbsp; 
+        <strong>A/S 접수 문의:</strong> {{lessorTel}} &nbsp;&nbsp;|&nbsp;&nbsp; 
+        <strong>업무 담당자:</strong> {{salespersonName}} ({{salespersonPhone}})
     </div>
 </body>
 </html>`;
@@ -290,12 +335,12 @@ const SAFETY_INSPECTION_TEMPLATE = `<!DOCTYPE html>
     <table>
         <tr>
             <th style="width: 12%;">사업장명</th>
-            <td style="width: 20%;">SINOBOOM (주)기연리프트</td>
+            <td style="width: 20%;">{{lessorTradeName}}</td>
             <th style="width: 12%;">형식</th>
             <td style="width: 20%;">수직상승형 고소작업대</td>
             <th style="width: 12%;">제조사(렌탈사)</th>
             <td style="width: 24%;">
-                <span class="fluid-manufacturer">{{manufacturer}} (주)기연리프트</span>
+                <span class="fluid-manufacturer">{{manufacturer}} ({{lessorTradeName}})</span>
             </td>
         </tr>
         <tr>
@@ -414,7 +459,7 @@ const SAFETY_INSPECTION_TEMPLATE = `<!DOCTYPE html>
         </tbody>
     </table>
     <div style="border: 1px solid #000; padding: 6px; font-size: 10px; text-align: left; background-color: #fafafa;">
-        <strong>검사의견:</strong> 상기 기연리프트 임대 장비는 규격 및 안전 검사 기준에 부합하며, 반입 전 최종 점검 결과 이상이 없으므로 임대 출고를 승인함.
+        <strong>검사의견:</strong> 상기 임대 장비는 규격 및 안전 검사 기준에 부합하며, 반입 전 최종 점검 결과 이상이 없으므로 임대 출고를 승인함.
     </div>
     <div class="footer-note">* 검사결과 표시: 양호 O, 불량 X, 해당무 -</div>
 </body>
@@ -566,7 +611,7 @@ const CHECK_LIST_TEMPLATE = `<!DOCTYPE html>
 </body>
 </html>`;
 
-// (주)기연리프트 구글 드라이브 표준 거래명세서 HTML 템플릿
+// ERP 구글 드라이브 표준 거래명세서 HTML 템플릿
 const TRANSACTION_STATEMENT_TEMPLATE = `<!DOCTYPE html>
 <html lang="ko">
 <head>
@@ -623,20 +668,20 @@ const TRANSACTION_STATEMENT_TEMPLATE = `<!DOCTYPE html>
                         <div class="party-title">
                             <span>[공급자]</span>
                         </div>
-                        <div class="info-row"><div class="info-label">등록번호</div><div class="info-val"><strong>138-81-83251</strong></div></div>
+                        <div class="info-row"><div class="info-label">등록번호</div><div class="info-val"><strong>{{lessorBizNo}}</strong></div></div>
                         <div class="info-row">
                             <div class="info-label">상 호</div>
-                            <div class="info-val"><strong>(주)기연리프트</strong></div>
+                            <div class="info-val"><strong>{{lessorTradeName}}</strong></div>
                         </div>
                         <div class="info-row">
                             <div class="info-label">대 표 자</div>
                             <div class="info-val stamp-container">
-                                <strong>이수용</strong>
-                                <img class="stamp" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADIAAAAyCAYAAAAeP4ixAAAAAXNSR0IArs4c6QAAAAlwSFlzAAALEwAACxMBAJqcGAAAAadJREFUaEPtmWFOwzAMhW/uA+4/90HACUgIEoc0ad26/lhq1STN19hOqN9SJfFjO/4e3pI3S5F3fFw8bFp97dZz8/G2abfB2wZ7D6/J+69bWJ6L52P7mHy+Xz8+Lx+fr6v6Xv5m9fP69Vrfy//2Wl/L217ra/s5t4/J91+vybE9bHl9TNu3vVbeXsszW/k59pq2r3up1+TYHk2Ove61/e01ObaHLa+PyWvbq63PseW5eE2OpvXl1XNl9dxyZe7/7M9V33t7eW/sPbfvjXXeW8u5+PzcXq7P5er293v7b8u5+O/rZ/bZ+97bf1vXz+yzz/f+3FauXN6eKz/n8q51/cw+++zzvT+3lSuXt+fKz7m8a10/s88++3zvz23lyuXtufJzLu9a18/ss88++3zvz23lyuXtufJzLu9a18/ss88++3zvz23lyuXtufJzLu9a18/ss88++3zvz23lyuXtufJzLu9a18/ss88++3zvz23lyuXtufJzLu9a18/ss88++3zvz23lyuXtufJzLu9a18/ss88++3zvz23lyuXtufJzLu9a18/ss88++3zvz23lyuXtufJzLu9a/wdzK+i+0EagAAAAABJRU5ErkJggg==" alt="직인">
+                                <strong>{{lessorCeo}}</strong>
+                                <img class="stamp" src="{{lessorStampImg}}" alt="직인">
                             </div>
                         </div>
-                        <div class="info-row"><div class="info-label">주 소</div><div class="info-val">경기도 용인시 처인구 남사읍 성호로 81</div></div>
-                        <div class="info-row"><div class="info-label">TEL / FAX</div><div class="info-val">031-334-5296 / 031-335-5297</div></div>
+                        <div class="info-row"><div class="info-label">주 소</div><div class="info-val">{{lessorAddress}}</div></div>
+                        <div class="info-row"><div class="info-label">TEL / FAX</div><div class="info-val">{{lessorTel}} / {{lessorFax}}</div></div>
                     </div>
                 </td>
                 <td style="width: 2%;"></td>
@@ -694,10 +739,10 @@ const TRANSACTION_STATEMENT_TEMPLATE = `<!DOCTYPE html>
         </table>
 
         <div class="footer-note">
-            <div><strong>[입금 계좌 안내]</strong> 기업은행 138-81-83251 예금주: (주)기연리프트</div>
+            <div><strong>[입금 계좌 안내]</strong> {{lessorBankAccount}}</div>
             <div style="font-size: 10.5px; color: #64748b; margin-top: 2px;">
-                • 본 거래명세서는 (주)기연리프트 구글 드라이브 표준 양식 기반으로 자동 발행되었습니다.<br>
-                • 대금 입금 시 반드시 입금자명을 상호명으로 지정하여 주시기 바랍니다. (문의: 031-334-5296)
+                • 본 거래명세서는 ERP 표준 양식 기반으로 자동 발행되었습니다.<br>
+                • 대금 입금 시 반드시 입금자명을 상호명으로 지정하여 주시기 바랍니다. (문의: {{lessorTel}})
             </div>
         </div>
     </div>
@@ -806,21 +851,23 @@ export const documentBuilder = {
     const totalTax = Math.floor(totalRentSupply * 0.1) + deliveryTax;
     const totalPrice = totalSupply + totalTax;
 
-    return QUOTATION_TEMPLATE
-      .replace('{{customerName}}', customer?.name || '미상 고객사')
-      .replace('{{contactName}}', contact?.name || '담당자')
-      .replace('{{contactPosition}}', contact?.position || '대리/팀장')
-      .replace('{{contactPhone}}', contact?.phone || '010-0000-0000')
-      .replace('{{quotationDate}}', formattedDate)
-      .replace('{{salespersonName}}', salesperson?.name || '김원진 팀장')
-      .replace('{{salespersonPhone}}', salesperson?.phone || '010-9402-5296')
-      .replace('{{totalPrice}}', totalPrice.toLocaleString())
-      .replace('{{deliveryCost}}', deliveryCost.toLocaleString())
-      .replace('{{deliveryTax}}', deliveryTax.toLocaleString())
-      .replace('{{totalQty}}', totalQty.toString())
-      .replace('{{totalSupply}}', totalSupply.toLocaleString())
-      .replace('{{totalTax}}', totalTax.toLocaleString())
-      .replace('{{equipmentLines}}', linesHtml);
+    return applyLessorPlaceholders(
+      QUOTATION_TEMPLATE
+        .replace('{{customerName}}', customer?.name || '미상 고객사')
+        .replace('{{contactName}}', contact?.name || '담당자')
+        .replace('{{contactPosition}}', contact?.position || '대리/팀장')
+        .replace('{{contactPhone}}', contact?.phone || '010-0000-0000')
+        .replace('{{quotationDate}}', formattedDate)
+        .replace('{{salespersonName}}', salesperson?.name || '김원진 팀장')
+        .replace('{{salespersonPhone}}', salesperson?.phone || '010-9402-5296')
+        .replace('{{totalPrice}}', totalPrice.toLocaleString())
+        .replace('{{deliveryCost}}', deliveryCost.toLocaleString())
+        .replace('{{deliveryTax}}', deliveryTax.toLocaleString())
+        .replace('{{totalQty}}', totalQty.toString())
+        .replace('{{totalSupply}}', totalSupply.toLocaleString())
+        .replace('{{totalTax}}', totalTax.toLocaleString())
+        .replace('{{equipmentLines}}', linesHtml)
+    );
   },
 
   // 계약서 조립
@@ -874,24 +921,26 @@ export const documentBuilder = {
         ? '■ 2개월 초과 4개월 미만: 편도 운반비 임차인(을) 부담'
         : '■ 2개월 이하 사용: 왕복 운반비 임차인(을) 부담';
 
-    return CONTRACT_TEMPLATE
-      .replace('{{contractYear}}', contractYear)
-      .replace('{{contractMonth}}', contractMonth)
-      .replace('{{contractDay}}', contractDay)
-      .replace('{{bizRegNo}}', customer?.bizRegNo || '135-81-11137')
-      .replace('{{customerName}}', customer?.name || '미상 고객사')
-      .replace('{{ceoName}}', customer?.representative || '대표자')
-      .replace('{{deliverySite}}', contract.siteName || '평택 현장')
-      .replace('{{deliveryDate}}', deliveryDateStr)
-      .replace('{{siteAddress}}', site?.address || '현장 상세 주소')
-      .replace('{{officePhone}}', customer?.phone || '02-000-0000')
-      .replace('{{applicantName}}', contact?.name || '신청 담당자')
-      .replace('{{applicantPhone}}', contact?.phone || '010-0000-0000')
-      .replace('{{siteContactName}}', contract.siteContactName || '현장 담당자')
-      .replace('{{siteContactPhone}}', contract.siteContactPhone || '010-0000-0000')
-      .replace('{{totalFee}}', totalFee.toLocaleString())
-      .replace('{{transportationTerms}}', transportTerms)
-      .replace('{{rentalLines}}', linesHtml);
+    return applyLessorPlaceholders(
+      CONTRACT_TEMPLATE
+        .replace('{{contractYear}}', contractYear)
+        .replace('{{contractMonth}}', contractMonth)
+        .replace('{{contractDay}}', contractDay)
+        .replace('{{bizRegNo}}', customer?.bizRegNo || '135-81-11137')
+        .replace('{{customerName}}', customer?.name || '미상 고객사')
+        .replace('{{ceoName}}', customer?.representative || '대표자')
+        .replace('{{deliverySite}}', contract.siteName || '평택 현장')
+        .replace('{{deliveryDate}}', deliveryDateStr)
+        .replace('{{siteAddress}}', site?.address || '현장 상세 주소')
+        .replace('{{officePhone}}', customer?.phone || '02-000-0000')
+        .replace('{{applicantName}}', contact?.name || '신청 담당자')
+        .replace('{{applicantPhone}}', contact?.phone || '010-0000-0000')
+        .replace('{{siteContactName}}', contract.siteContactName || '현장 담당자')
+        .replace('{{siteContactPhone}}', contract.siteContactPhone || '010-0000-0000')
+        .replace('{{totalFee}}', totalFee.toLocaleString())
+        .replace('{{transportationTerms}}', transportTerms)
+        .replace('{{rentalLines}}', linesHtml)
+    );
   },
 
   // 안전점검 결과서 조립
@@ -903,18 +952,20 @@ export const documentBuilder = {
     // 제품 제조사
     const manufacturerName = product?.manufacturer || 'SINOBOOM';
 
-    return SAFETY_INSPECTION_TEMPLATE
-      .replace('{{manufacturer}}', manufacturerName)
-      .replace('{{customerName}}', customer?.name || '화성엔지니어링 주식회사')
-      .replace('{{modelName}}', asset.modelName)
-      .replace('{{weight}}', product?.weight || '1,575')
-      .replace('{{maxHeight}}', product?.feet || '7.8')
-      .replace('{{loadCapacity}}', product?.capacity || '230')
-      .replace('{{assetNo}}', asset.assetNo)
-      .replace('{{productionYear}}', productionYear)
-      .replace('{{safetyCertDate}}', safetyCertDate)
-      .replace('{{inspectionDate}}', inspectionDate)
-      .replace('{{inspectorName}}', '김관주 주임');
+    return applyLessorPlaceholders(
+      SAFETY_INSPECTION_TEMPLATE
+        .replace('{{manufacturer}}', manufacturerName)
+        .replace('{{customerName}}', customer?.name || '화성엔지니어링 주식회사')
+        .replace('{{modelName}}', asset.modelName)
+        .replace('{{weight}}', product?.weight || '1,575')
+        .replace('{{maxHeight}}', product?.feet || '7.8')
+        .replace('{{loadCapacity}}', product?.capacity || '230')
+        .replace('{{assetNo}}', asset.assetNo)
+        .replace('{{productionYear}}', productionYear)
+        .replace('{{safetyCertDate}}', safetyCertDate)
+        .replace('{{inspectionDate}}', inspectionDate)
+        .replace('{{inspectorName}}', '김관주 주임')
+    );
   },
 
   // 반입 전 체크리스트 조립
@@ -924,7 +975,7 @@ export const documentBuilder = {
       .replace('{{assetNo}}', asset.assetNo);
   },
 
-  // (주)기연리프트 구글 드라이브 표준 거래명세서 조립
+  // ERP 구글 드라이브 표준 거래명세서 조립
   buildTransactionStatement(billing: any, details: any[], customer: any, contract: any, site: any): string {
     const supplyTotal = Math.round((billing?.totalAmount || 0) / 1.1);
     const vatTotal = (billing?.totalAmount || 0) - supplyTotal;
@@ -956,20 +1007,22 @@ export const documentBuilder = {
       </tr>`;
     }
 
-    return TRANSACTION_STATEMENT_TEMPLATE
-      .replace('{{bizRegNo}}', customer?.bizRegNo || '-')
-      .replace('{{customerName}}', customer?.name || '미상 고객사')
-      .replace('{{representative}}', customer?.representative || '-')
-      .replace('{{address}}', customer?.address || '-')
-      .replace('{{siteName}}', site?.name || contract?.siteName || '본사/직납')
-      .replace('{{billingYm}}', billing?.billingYm || '-')
-      .replace('{{billingDate}}', billing?.billingDate || '-')
-      .replace('{{contractNo}}', contract?.contractNo || '-')
-      .replace('{{totalAmountKorean}}', numberToKoreanAmount(totalAmount))
-      .replace('{{totalAmountFormatted}}', totalAmount.toLocaleString())
-      .replace('{{totalSupplyFormatted}}', supplyTotal.toLocaleString())
-      .replace('{{totalVatFormatted}}', vatTotal.toLocaleString())
-      .replace('{{detailRows}}', detailRowsHtml);
+    return applyLessorPlaceholders(
+      TRANSACTION_STATEMENT_TEMPLATE
+        .replace('{{bizRegNo}}', customer?.bizRegNo || '-')
+        .replace('{{customerName}}', customer?.name || '미상 고객사')
+        .replace('{{representative}}', customer?.representative || '-')
+        .replace('{{address}}', customer?.address || '-')
+        .replace('{{siteName}}', site?.name || contract?.siteName || '본사/직납')
+        .replace('{{billingYm}}', billing?.billingYm || '-')
+        .replace('{{billingDate}}', billing?.billingDate || '-')
+        .replace('{{contractNo}}', contract?.contractNo || '-')
+        .replace('{{totalAmountKorean}}', numberToKoreanAmount(totalAmount))
+        .replace('{{totalAmountFormatted}}', totalAmount.toLocaleString())
+        .replace('{{totalSupplyFormatted}}', supplyTotal.toLocaleString())
+        .replace('{{totalVatFormatted}}', vatTotal.toLocaleString())
+        .replace('{{detailRows}}', detailRowsHtml)
+    );
   },
 
   // 계약에 귀속되는 파일들을 전부 자동 조립하여 가상 드라이브에 등록

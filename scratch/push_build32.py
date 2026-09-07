@@ -1,6 +1,6 @@
 import os
 
-with open(r'd:\01.AntiGravity\Kiyuen_Lift\RELEASE_NOTES.md', 'a', encoding='utf-8') as f:
+with open(r'd:\01.AntiGravity\Giyuen_Lift\RELEASE_NOTES.md', 'a', encoding='utf-8') as f:
     f.write(
         "\n### v0.7.1.Build.32 (2026-09-02 18:03)\n"
         "- **기능추가**: 초기DB 업로드 화면에 '배차 이력 업로드' 섹션 ③ 추가.\n"

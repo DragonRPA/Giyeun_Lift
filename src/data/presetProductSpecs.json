@@ -551,7 +551,7 @@
   },
   "GTJZ0808E": {
     "modelName": "GTJZ0808E",
-    "manufacturer": "기연리프트",
+    "manufacturer": "Sinoboom",
     "feet": 26,
     "spec": "배터리, 10.1 M, 적재 250 kg",
     "powerSource": "배터리",
@@ -595,7 +595,7 @@
   },
   "1414E Plus": {
     "modelName": "1414E Plus",
-    "manufacturer": "기연리프트",
+    "manufacturer": "Sinoboom",
     "feet": 45,
     "spec": "배터리, 15.8 M, 적재 350 kg",
     "powerSource": "배터리",
@@ -1343,7 +1343,7 @@
   },
   "GTJZ0812E": {
     "modelName": "GTJZ0812E",
-    "manufacturer": "기연리프트",
+    "manufacturer": "Sinoboom",
     "feet": 26,
     "spec": "배터리, 10.1 M, 적재 450 kg",
     "powerSource": "배터리",
@@ -1365,7 +1365,7 @@
   },
   "GTJZ1212E": {
     "modelName": "GTJZ1212E",
-    "manufacturer": "기연리프트",
+    "manufacturer": "Sinoboom",
     "feet": 39,
     "spec": "배터리, 13.9 M, 적재 320 kg",
     "powerSource": "배터리",

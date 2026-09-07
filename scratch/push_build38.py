@@ -1,6 +1,6 @@
 import os
 
-with open(r'd:\01.AntiGravity\Kiyuen_Lift\RELEASE_NOTES.md', 'a', encoding='utf-8') as f:
+with open(r'd:\01.AntiGravity\Giyuen_Lift\RELEASE_NOTES.md', 'a', encoding='utf-8') as f:
     f.write(
         "\n### v0.7.1.Build.38 (2026-09-02 18:32)\n"
         "- **기능 확장**: 배차 이력 업로드 시 2026년 이후 거래 운송사 마스터(transport_companies) 자동 선제 등록 연동.\n"

@@ -1,6 +1,6 @@
 import os
 
-path = r'd:\01.AntiGravity\Kiyuen_Lift\src\services\migrationEngine.ts'
+path = r'd:\01.AntiGravity\Giyuen_Lift\src\services\migrationEngine.ts'
 with open(path, 'r', encoding='utf-8') as f:
     c = f.read()
 

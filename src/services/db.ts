@@ -86,8 +86,8 @@ export interface TenantYard {
 export const OFFICIAL_STAMP_BASE64 = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADIAAAAyCAYAAAAeP4ixAAAAAXNSR0IArs4c6QAAAAlwSFlzAAALEwAACxMBAJqcGAAAAadJREFUaEPtmWFOwzAMhW/uA+4/90HACUgIEoc0ad26/lhq1STN19hOqN9SJfFjO/4e3pI3S5F3fFw8bFp97dZz8/G2abfB2wZ7D6/J+69bWJ6L52P7mHy+Xz8+Lx+fr6v6Xv5m9fP69Vrfy//2Wl/L217ra/s5t4/J91+vybE9bHl9TNu3vVbeXsszW/k59pq2r3up1+TYHk2Ove61/e01ObaHLa+PyWvbq63PseW5eE2OpvXl1XNl9dxyZe7/7M9V33t7eW/sPbfvjXXeW8u5+PzcXq7P5er293v7b8u5+O/rZ/bZ+97bf1vXz+yzz/f+3FauXN6eKz/n8q51/cw+++zzvT+3lSuXt+fKz7m8a10/s88++3zvz23lyuXtufJzLu9a18/ss88++3zvz23lyuXtufJzLu9a18/ss88++3zvz23lyuXtufJzLu9a18/ss88++3zvz23lyuXtufJzLu9a18/ss88++3zvz23lyuXtufJzLu9a18/ss88++3zvz23lyuXtufJzLu9a18/ss88++3zvz23lyuXtufJzLu9a/wdzK+i+0EagAAAAABJRU5ErkJggg==';
 
 export interface Tenant {
-  id: string;                          // 테넌트 고유 ID (예: 'tenant-1' 또는 'tenant-kiyeun')
-  tenantCode: string;                  // 테넌트 영문 코드 (예: 'KIYEUN')
+  id: string;                          // 테넌트 고유 ID (예: 'tenant-1' 또는 'tenant-giyeun')
+  tenantCode: string;                  // 테넌트 영문 코드 (예: 'GIYEUN')
   systemName: string;                  // 시스템 기본 명칭 ('e-Bro System')
   displayName: string;                 // 시스템 표출 회사명 (예: '기연리프트')
   corporateName: string;               // 법인명(단체명): '주식회사 기연리프트'
@@ -505,6 +505,9 @@ export interface Consumable {
   unit: string; // '개' | '박스' 등
   unitPrice: number;
   supplier: string;
+  category?: string; // 소모품 분류 (충전기, 제어기, 기판/전장, 밸브/유압, 모터/구동, 안전/센서 등)
+  note?: string; // 비고 (수리중 등 상태 특이사항)
+  repairingQty?: number; // 수리중 수량
   createdAt: string;
   updatedAt: string;
 }
@@ -2662,7 +2665,7 @@ const generateMockProducts = (): Product[] => {
         "modelName": "GTJZ0808E",
         "feet": 26,
         "spec": "배터리, 10.1 M, 적재 250 kg",
-        "manufacturer": "기연리프트",
+        "manufacturer": "Sinoboom",
         "powerSource": "배터리",
         "workingHeight": "10.1 M",
         "platformHeight": "8.1 M",
@@ -2684,7 +2687,7 @@ const generateMockProducts = (): Product[] => {
         "modelName": "GTJZ0812E",
         "feet": 26,
         "spec": "배터리, 10.1 M, 적재 450 kg",
-        "manufacturer": "기연리프트",
+        "manufacturer": "Sinoboom",
         "powerSource": "배터리",
         "workingHeight": "10.1 M",
         "platformHeight": "8.1 M",
@@ -2706,7 +2709,7 @@ const generateMockProducts = (): Product[] => {
         "modelName": "GTJZ1212E",
         "feet": 39,
         "spec": "배터리, 13.9 M, 적재 320 kg",
-        "manufacturer": "기연리프트",
+        "manufacturer": "Sinoboom",
         "powerSource": "배터리",
         "workingHeight": "13.9 M",
         "platformHeight": "11.9 M",
@@ -2728,7 +2731,7 @@ const generateMockProducts = (): Product[] => {
         "modelName": "1414E Plus",
         "feet": 45,
         "spec": "배터리, 15.8 M, 적재 350 kg",
-        "manufacturer": "기연리프트",
+        "manufacturer": "Sinoboom",
         "powerSource": "배터리",
         "workingHeight": "15.8 M",
         "platformHeight": "13.8 M",
@@ -3016,10 +3019,11 @@ const generateMockContracts = (customers: Customer[], contacts: CustomerContact[
 const mockDataProducts = generateMockProducts();
 const mockDataCust = generateMockCustomers();
 const mockDataAssets = generateMockAssets(mockDataProducts);
+const mockDataCont = generateMockContracts(mockDataCust.customers, mockDataCust.contacts, mockDataCust.sites, mockDataAssets);
 export const SEED_TENANTS: Tenant[] = [
   {
     id: 'tenant-1',
-    tenantCode: 'KIYEUN',
+    tenantCode: 'GIYEUN',
     systemName: 'e-Bro System',
     displayName: '기연리프트',
     corporateName: '주식회사 기연리프트',
@@ -3135,7 +3139,38 @@ const SEED_CUSTOMERS: Customer[] = mockDataCust.customers;
 const SEED_CONTACTS: CustomerContact[] = mockDataCust.contacts;
 const SEED_SITES: CustomerSite[] = mockDataCust.sites;
 const SEED_ASSETS: Asset[] = mockDataAssets;
-const SEED_CONSUMABLES: Consumable[] = [];
+export const SEED_CONSUMABLES: Consumable[] = [
+  { id: 'CSM-001', modelName: 'JLG 충전기', stockQty: 2, unit: '개', unitPrice: 450000, supplier: 'JLG', category: '충전기', note: '', createdAt: '2026-09-01T00:00:00.000Z', updatedAt: '2026-09-01T00:00:00.000Z' },
+  { id: 'CSM-002', modelName: '지니 충전기', stockQty: 5, unit: '개', unitPrice: 400000, supplier: '지니 (Genie)', category: '충전기', note: '', createdAt: '2026-09-01T00:00:00.000Z', updatedAt: '2026-09-01T00:00:00.000Z' },
+  { id: 'CSM-003', modelName: '지니 P콘', stockQty: 1, unit: '개', unitPrice: 350000, supplier: '지니 (Genie)', category: '제어기', note: '플랫폼 컨트롤박스', createdAt: '2026-09-01T00:00:00.000Z', updatedAt: '2026-09-01T00:00:00.000Z' },
+  { id: 'CSM-004', modelName: '지니 P콘 케이블', stockQty: 1, unit: '개', unitPrice: 80000, supplier: '지니 (Genie)', category: '기판/전장', note: '', createdAt: '2026-09-01T00:00:00.000Z', updatedAt: '2026-09-01T00:00:00.000Z' },
+  { id: 'CSM-005', modelName: '지니 오일필터 (유압타입)', stockQty: 2, unit: '개', unitPrice: 35000, supplier: '지니 (Genie)', category: '밸브/유압', note: '', createdAt: '2026-09-01T00:00:00.000Z', updatedAt: '2026-09-01T00:00:00.000Z' },
+  { id: 'CSM-006', modelName: '지니 조향실린더', stockQty: 1, unit: '개', unitPrice: 250000, supplier: '지니 (Genie)', category: '모터/구동', note: '', createdAt: '2026-09-01T00:00:00.000Z', updatedAt: '2026-09-01T00:00:00.000Z' },
+  { id: 'CSM-007', modelName: '지니 포트홀 쿠션', stockQty: 2, unit: '개', unitPrice: 45000, supplier: '지니 (Genie)', category: '모터/구동', note: '', createdAt: '2026-09-01T00:00:00.000Z', updatedAt: '2026-09-01T00:00:00.000Z' },
+  { id: 'CSM-008', modelName: '지니 비상하강밸브', stockQty: 1, unit: '개', unitPrice: 120000, supplier: '지니 (Genie)', category: '밸브/유압', note: '', createdAt: '2026-09-01T00:00:00.000Z', updatedAt: '2026-09-01T00:00:00.000Z' },
+  { id: 'CSM-009', modelName: '지니 비상하강코일', stockQty: 2, unit: '개', unitPrice: 65000, supplier: '지니 (Genie)', category: '밸브/유압', note: '', createdAt: '2026-09-01T00:00:00.000Z', updatedAt: '2026-09-01T00:00:00.000Z' },
+  { id: 'CSM-010', modelName: '스카이잭 컨트롤박스', stockQty: 1, unit: '개', unitPrice: 450000, supplier: '스카이잭 (Skyjack)', category: '제어기', note: '', createdAt: '2026-09-01T00:00:00.000Z', updatedAt: '2026-09-01T00:00:00.000Z' },
+  { id: 'CSM-011', modelName: '스카이잭 마그네틱 콘택터', stockQty: 2, unit: '개', unitPrice: 75000, supplier: '스카이잭 (Skyjack)', category: '기판/전장', note: '', createdAt: '2026-09-01T00:00:00.000Z', updatedAt: '2026-09-01T00:00:00.000Z' },
+  { id: 'CSM-012', modelName: '스카이잭 상승밸브', stockQty: 1, unit: '개', unitPrice: 130000, supplier: '스카이잭 (Skyjack)', category: '밸브/유압', note: '', createdAt: '2026-09-01T00:00:00.000Z', updatedAt: '2026-09-01T00:00:00.000Z' },
+  { id: 'CSM-013', modelName: '스카이잭 모터컨트롤러', stockQty: 1, unit: '개', unitPrice: 600000, supplier: '스카이잭 (Skyjack)', category: '제어기', note: '', createdAt: '2026-09-01T00:00:00.000Z', updatedAt: '2026-09-01T00:00:00.000Z' },
+  { id: 'CSM-014', modelName: '스카이잭 유압 매니폴드 블록', stockQty: 1, unit: '개', unitPrice: 380000, supplier: '스카이잭 (Skyjack)', category: '밸브/유압', note: '', createdAt: '2026-09-01T00:00:00.000Z', updatedAt: '2026-09-01T00:00:00.000Z' },
+  { id: 'CSM-015', modelName: '스카이잭 솔레노이드 밸브 코일', stockQty: 1, unit: '개', unitPrice: 70000, supplier: '스카이잭 (Skyjack)', category: '밸브/유압', note: '', createdAt: '2026-09-01T00:00:00.000Z', updatedAt: '2026-09-01T00:00:00.000Z' },
+  { id: 'CSM-016', modelName: '스카이잭 하강밸브', stockQty: 1, unit: '개', unitPrice: 110000, supplier: '스카이잭 (Skyjack)', category: '밸브/유압', note: '', createdAt: '2026-09-01T00:00:00.000Z', updatedAt: '2026-09-01T00:00:00.000Z' },
+  { id: 'CSM-017', modelName: '스카이잭 12발 3단 토글 스위치', stockQty: 2, unit: '개', unitPrice: 25000, supplier: '스카이잭 (Skyjack)', category: '기판/전장', note: '', createdAt: '2026-09-01T00:00:00.000Z', updatedAt: '2026-09-01T00:00:00.000Z' },
+  { id: 'CSM-018', modelName: '스카이잭 조향실린더 엔드볼', stockQty: 8, unit: '개', unitPrice: 35000, supplier: '스카이잭 (Skyjack)', category: '모터/구동', note: '', createdAt: '2026-09-01T00:00:00.000Z', updatedAt: '2026-09-01T00:00:00.000Z' },
+  { id: 'CSM-019', modelName: '스카이잭 주행모터 기어박스', stockQty: 2, unit: '개', unitPrice: 850000, supplier: '스카이잭 (Skyjack)', category: '모터/구동', note: '', createdAt: '2026-09-01T00:00:00.000Z', updatedAt: '2026-09-01T00:00:00.000Z' },
+  { id: 'CSM-020', modelName: '지니 G콘 (유압식)', stockQty: 4, unit: '개', unitPrice: 320000, supplier: '지니 (Genie)', category: '제어기', note: '3개 수리중 (실가용 1개)', repairingQty: 3, createdAt: '2026-09-01T00:00:00.000Z', updatedAt: '2026-09-01T00:00:00.000Z' },
+  { id: 'CSM-021', modelName: '마그네틱 콘택터 (공용)', stockQty: 5, unit: '개', unitPrice: 65000, supplier: '공용', category: '기판/전장', note: '', createdAt: '2026-09-01T00:00:00.000Z', updatedAt: '2026-09-01T00:00:00.000Z' },
+  { id: 'CSM-022', modelName: '지니 조향밸브', stockQty: 2, unit: '개', unitPrice: 180000, supplier: '지니 (Genie)', category: '밸브/유압', note: '', createdAt: '2026-09-01T00:00:00.000Z', updatedAt: '2026-09-01T00:00:00.000Z' },
+  { id: 'CSM-023', modelName: '지니 틸트 센서', stockQty: 2, unit: '개', unitPrice: 140000, supplier: '지니 (Genie)', category: '안전/센서', note: '', createdAt: '2026-09-01T00:00:00.000Z', updatedAt: '2026-09-01T00:00:00.000Z' },
+  { id: 'CSM-024', modelName: '지니 상부기판 (6버튼)', stockQty: 10, unit: '개', unitPrice: 280000, supplier: '지니 (Genie)', category: '기판/전장', note: '', createdAt: '2026-09-01T00:00:00.000Z', updatedAt: '2026-09-01T00:00:00.000Z' },
+  { id: 'CSM-025', modelName: '지니 상부기판 (4버튼)', stockQty: 3, unit: '개', unitPrice: 250000, supplier: '지니 (Genie)', category: '기판/전장', note: '', createdAt: '2026-09-01T00:00:00.000Z', updatedAt: '2026-09-01T00:00:00.000Z' },
+  { id: 'CSM-026', modelName: '아날라이저 (진단기)', stockQty: 1, unit: '개', unitPrice: 550000, supplier: '공용', category: '안전/센서', note: '장비 점검 진단기', createdAt: '2026-09-01T00:00:00.000Z', updatedAt: '2026-09-01T00:00:00.000Z' },
+  { id: 'CSM-027', modelName: '지니 비상하강와이어', stockQty: 5, unit: '개', unitPrice: 45000, supplier: '지니 (Genie)', category: '안전/센서', note: '', createdAt: '2026-09-01T00:00:00.000Z', updatedAt: '2026-09-01T00:00:00.000Z' },
+  { id: 'CSM-028', modelName: '지니 조이스틱', stockQty: 30, unit: '개', unitPrice: 180000, supplier: '지니 (Genie)', category: '제어기', note: '', createdAt: '2026-09-01T00:00:00.000Z', updatedAt: '2026-09-01T00:00:00.000Z' },
+  { id: 'CSM-029', modelName: '지니 주행모터 (유압식)', stockQty: 1, unit: '개', unitPrice: 750000, supplier: '지니 (Genie)', category: '모터/구동', note: '수리중 (실가용 0개)', repairingQty: 1, createdAt: '2026-09-01T00:00:00.000Z', updatedAt: '2026-09-01T00:00:00.000Z' },
+  { id: 'CSM-030', modelName: '지니 브레이크', stockQty: 2, unit: '개', unitPrice: 220000, supplier: '지니 (Genie)', category: '모터/구동', note: '2개 수리중 (실가용 0개)', repairingQty: 2, createdAt: '2026-09-01T00:00:00.000Z', updatedAt: '2026-09-01T00:00:00.000Z' },
+];
 const SEED_CONSUMABLE_LOGS: ConsumableLog[] = [];
 const SEED_CONSUMABLE_PURCHASES: ConsumablePurchaseRequest[] = [];
 const SEED_CONTRACTS: Contract[] = mockDataCont.contracts;
@@ -4166,6 +4201,17 @@ class LocalDB {
       delete normalized.asset_id;
     }
 
+    // consumables 호환 (name ➔ modelName, supplier 추론)
+    if (normalized.name && !normalized.modelName) {
+      normalized.modelName = normalized.name;
+    }
+    if (normalized.modelName && !normalized.supplier) {
+      if (normalized.modelName.includes('JLG')) normalized.supplier = 'JLG';
+      else if (normalized.modelName.includes('지니')) normalized.supplier = '지니 (Genie)';
+      else if (normalized.modelName.includes('스카이잭')) normalized.supplier = '스카이잭 (Skyjack)';
+      else normalized.supplier = '공용';
+    }
+
     return normalized;
   }
 
@@ -4397,8 +4443,8 @@ class LocalDB {
       if (val === undefined) {
         continue;
       }
-      // DB consumables 스키마에 없는 supplier 컬럼 오염 방지
-      if (tableName === 'consumables' && key === 'supplier') {
+      // DB consumables 스키마에 없는 supplier, category, note, repairingQty 컬럼 오염 방지
+      if (tableName === 'consumables' && (key === 'supplier' || key === 'category' || key === 'note' || key === 'repairingQty')) {
         continue;
       }
       // DB purchase_settlements 스키마에 없는 bankTransactionId 컬럼 오염 방지 (Audit Log는 settlement_payment_logs에 보관)
@@ -4419,6 +4465,15 @@ class LocalDB {
         sanitized[key] = null;
       } else {
         sanitized[key] = val;
+      }
+    }
+    // consumables 테이블 호환 (name, spec)
+    if (tableName === 'consumables') {
+      if (!sanitized.name && obj.modelName) {
+        sanitized.name = obj.modelName;
+      }
+      if (!sanitized.spec && (obj.note || obj.category)) {
+        sanitized.spec = [obj.category, obj.note].filter(Boolean).join(' | ');
       }
     }
     // repairs 테이블의 경우 siteAddress를 locationDetail 또는 memo에 무누락 백업 (원격 DB 컬럼 미반영 환경 100% 호환)
@@ -4521,7 +4576,8 @@ class LocalDB {
           if (error) {
             console.error(`Supabase upsert failed for ${tableName}:`, error);
             const msg = error.message || String(error);
-            if (msg.includes('Could not find the table') || error.code === 'PGRST204' || error.code === '42P01') {
+            const isTableMissing = msg.includes('Could not find the table') || (error.code === 'PGRST204' && msg.includes('table')) || error.code === '42P01';
+            if (isTableMissing) {
               if (tableName === 'bank_initial_balances') {
                 return supabase.from('bank_account_initial_balances').upsert([payloadForSupabase], { onConflict: 'id' }).then(({ data: fd }) => fd);
               }
@@ -4532,12 +4588,15 @@ class LocalDB {
               return null;
             }
             // 신규 미반영 컬럼 에러 시 2차 Fallback (주요 기본 컬럼만 전송하여 100% 저장 성공 보장)
-            if (msg.includes('column') || msg.includes('Could not find') || error.code === 'PGRST200' || error.code === '42703') {
+            if (msg.includes('column') || msg.includes('Could not find') || error.code === 'PGRST200' || error.code === '42703' || error.code === 'PGRST204') {
               const fallbackPayload = { ...payloadForSupabase };
               delete fallbackPayload.defectsJson;
               delete fallbackPayload.inboundNo;
               delete fallbackPayload.maintenanceScore;
               delete fallbackPayload.supplier;
+              delete fallbackPayload.category;
+              delete fallbackPayload.note;
+              delete fallbackPayload.repairingQty;
               delete fallbackPayload.bankTransactionId;
               return supabase.from(tableName).upsert([fallbackPayload], { onConflict: 'id' }).then(({ data: d2, error: e2 }) => {
                 if (e2) console.warn(`Supabase fallback upsert failed for ${tableName}:`, e2);
@@ -4601,7 +4660,8 @@ class LocalDB {
           if (error) {
             console.error(`Supabase update failed for ${tableName}:`, error);
             const msg = error.message || String(error);
-            if (msg.includes('Could not find the table') || error.code === 'PGRST204' || error.code === '42P01') {
+            const isTableMissing = msg.includes('Could not find the table') || (error.code === 'PGRST204' && msg.includes('table')) || error.code === '42P01';
+            if (isTableMissing) {
               if (tableName === 'bank_initial_balances') {
                 return supabase.from('bank_account_initial_balances').update(payloadForSupabase as any).eq('id', id).then(({ data: fd }) => fd);
               }
@@ -4611,7 +4671,22 @@ class LocalDB {
               console.warn(`[Graceful Isolation] 원격 Supabase DB에 ${tableName} 테이블이 존재하지 않습니다. 로컬 저장을 완결합니다.`);
               return null;
             }
-            throw error;
+            if (msg.includes('column') || msg.includes('Could not find') || error.code === 'PGRST200' || error.code === '42703' || error.code === 'PGRST204') {
+              const fallbackPayload = { ...payloadForSupabase };
+              delete fallbackPayload.defectsJson;
+              delete fallbackPayload.inboundNo;
+              delete fallbackPayload.maintenanceScore;
+              delete fallbackPayload.supplier;
+              delete fallbackPayload.category;
+              delete fallbackPayload.note;
+              delete fallbackPayload.repairingQty;
+              delete fallbackPayload.bankTransactionId;
+              return supabase.from(tableName).update(fallbackPayload as any).eq('id', id).then(({ data: d2, error: e2 }) => {
+                if (e2) console.warn(`Supabase fallback update failed for ${tableName}:`, e2);
+                return d2;
+              });
+            }
+            return null;
           }
           return data;
         });

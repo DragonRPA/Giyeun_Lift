@@ -229,7 +229,7 @@ export const MobileAsCreate: React.FC<MobileAsCreateProps> = ({
                   audioBase64: base64Audio,
                   mimeType: mime,
                   language: 'ko',
-                  prompt: '기연리프트 현장 긴급 AS 접수 고장수리. 증상: 상하강불량, 충전 전원 방전, 오일누유, 키박스 스위치 레버 조이스틱, 에러코드, 방지봉 협착, 파이프걸림. 긴급, 당장. 관리번호 장비번호 호기.'
+                  prompt: '고소작업대 현장 긴급 AS 접수 고장수리. 증상: 상하강불량, 충전 전원 방전, 오일누유, 키박스 스위치 레버 조이스틱, 에러코드, 방지봉 협착, 파이프걸림. 긴급, 당장. 관리번호 장비번호 호기.'
                 })
               });
 

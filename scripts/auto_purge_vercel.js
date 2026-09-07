@@ -9,8 +9,8 @@ function autoPurgeVercelDeployments(maxSlots = 20) {
     const lines = output.split('\n');
     const urls = [];
     for (const line of lines) {
-      const match = line.match(/https:\/\/kiyuen-lift-[a-z0-9]+(-[a-z0-9_\-]+)?\.vercel\.app/i) || line.match(/https:\/\/[a-z0-9_\-]+-[a-z0-9]+\.vercel\.app/i);
-      if (match && !match[0].endsWith('//kiyuen-lift.vercel.app') && !urls.includes(match[0])) {
+      const match = line.match(/https:\/\/(giyeun|kiyuen)-lift-[a-z0-9]+(-[a-z0-9_\-]+)?\.vercel\.app/i) || line.match(/https:\/\/[a-z0-9_\-]+-[a-z0-9]+\.vercel\.app/i);
+      if (match && !match[0].endsWith('//giyeun-lift.vercel.app') && !match[0].endsWith('//kiyuen-lift.vercel.app') && !urls.includes(match[0])) {
         urls.push(match[0]);
       }
     }

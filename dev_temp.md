@@ -1,7 +1,132 @@
 # 개발 요구사항 임시 기록 (dev_temp.md)
 
+## [완료] 로컬 에이전트 C:\eBroAgent 이전/파일명 eBroAgent 개편 및 테넌트 기반 회사정보 동적화 & 외부 노출 브랜드 e-Bro 단일화 (v1.10.0.Build.6)
+- **요구사항**: "에이전트가 작동하는 로컬 위치도 C:\eBroAgent 로 변경. 에이전트 파일명도 eBroAgent로 변경. 관련 코드 전부 개편. 사용자회사에 대한 정보는 모두 테넌트에서 관리하고, 외부에 보여지는 모든 이름에 특정회사명은 노출되지 않도록 수정"
+- **조치 내역**:
+  1. **로컬 에이전트 인프라 및 실행 스크립트 전면 개편 (`C:\eBroAgent` / `eBroAgent.*`)**:
+     - `agent/agent.js`, `agent/eBroAgent.js`: `AGENT_HOME = 'C:\\eBroAgent'`, `TARGET_EXE_PATH = C:\\eBroAgent\\eBroAgent.exe`, 로컬 미러링 경로 `C:\\eBroAgent\\drive_mirror\\`, 프로세스 종료 타깃(`eBroAgent`, `KiyeunAgent`), 윈도우 시작 레지스트리 키(`eBroAgent`) 갱신.
+     - `agent/package.json`: `"name": "ebro-local-agent"`, `"main": "eBroAgent.js"`.
+     - `agent/build-agent.ps1`, `agent/sign-agent.ps1`: `eBroAgent.exe` 대상 단독 실행 파일 빌드 및 서명 파이프라인 정비.
+     - `agent/start-agent.bat`, `agent/kill-agent.bat`, 루트 `kill-agent.bat`: `C:\eBroAgent`, `eBroAgent.js` 실행 및 구/신 프로세스 동시 종료 지원.
+     - `public/downloads/`: `eBroAgent.js`, `eBroAgent.exe`, `eBroAgent_Root.cer`, `start-agent.bat`, `kill-agent.bat`, `install-cert.bat` 최신화 배치 (구 `KiyeunAgent.zip` 완전 제거).
+     - `src/services/agentService.ts`: `EXPECTED_AGENT_VERSION = 'v2.0.0.Build.1'`, `AGENT_DOWNLOAD_URL = '/downloads/eBroAgent.js'`, `AGENT_EXE_URL = '/downloads/eBroAgent.exe'`, `AGENT_CERT_URL = '/downloads/eBroAgent_Root.cer'`, `AGENT_INSTALL_BAT_URL = '/downloads/install-cert.bat'` 단일 표준화.
+     - `src/components/AgentHeaderBadge.tsx`, `src/pages/Dashboard.tsx`, `src/pages/GoogleConfig.tsx`: 다운로드 파일명 및 경로 `eBroAgent.js`, `eBroAgent_Root.cer`, `eBroAgent.exe` 완전 동기화.
+     - `src/services/driveMirrorSync.ts`, `src/services/r2MirrorSync.ts`, `src/components/MirrorSyncProgressToast.tsx`: 로컬 미러링 기본 경로 `C:\eBroAgent\drive_mirror\` 일괄 갱신.
+  2. **사용자 회사 정보 테넌트(Tenant) SSOT 관리 및 외부 노출 동적화**:
+     - 원칙: 특정 회사명(기연, 기연리프트 등)은 테넌트 레코드(`db.currentTenant`, `AppContext.currentTenant`)의 속성(`corporateName`, `tradeName`, `representativeName`, `businessNumber`, `tel`, `fax`, `bankAccounts`, `stampImageUrl`, `yards`, `workplaces` 등)에만 보존되고, UI/서식/보고서/외부 출력물은 해당 테넌트 객체로부터 100% 동적으로 읽어 표출.
+     - `index.html`: `<title>e-Bro Lift ERP | 스마트 고소작업대 렌탈 관리 시스템</title>`, `apple-mobile-web-app-title="e-Bro ERP"`.
+     - `public/manifest.json`, `public/sw.js`: `"name": "e-Bro Lift ERP"`, `"short_name": "e-Bro ERP"`, 캐시 버전 최신화.
+     - `src/App.tsx`: 로그인 로고 및 메인 헤더를 `e-Bro LIFT ERP` 단일 시스템 브랜드로 개편하고, 로그인된 테넌트의 상호 배지(`{currentTenant.displayName}`)를 우측에 동적 렌더링.
+     - `src/services/templates.ts`: `getLessorInfo()` 및 `applyLessorPlaceholders()` 엔진 신설. 견적서, 계약서, 안전점검표, 거래명세서 등 HTML 템플릿의 공급자/임대인 정보를 `currentTenant` 속성으로 동적 주입.
+     - `src/services/monthlyReportPdfBuilder.ts`: 3페이지 헤더 `[${tenantBrand}]`, 푸터 `e-Bro ERP 시스템 자동 생성`, 다운로드 파일명 동적화.
+     - `src/components/ContractDocumentBundleModal.tsx`: 계약서 패키지 14p PDF 파일명, 이메일 제목 및 본문 내 발신 회사명을 `currentTenant` 속성으로 동적 연동.
+     - `src/pages/BankMatching.tsx`: 공급자 정보(상호, 대표자, 등록번호, 주소, 계좌, 직인) `currentTenant` 100% 동적 바인딩.
+     - `src/pages/Billings.tsx`: 거래명세서 엑셀/PDF 파일명, 이메일 제목, 공급자 인쇄 정보, 직인 `currentTenant` 동적 연동 및 타입 무결성 확보.
+     - `src/pages/DelinquencyPage.tsx`: 내용증명 법적통지서 발신인 블록(상호, 대표자, 사업자번호, 주소, 전화번호, 직인) `currentTenant` 동적 연동.
+     - `src/pages/TruckDispatch.tsx`: 배차 요청서 인쇄 헤더 및 폴백 주기장 명칭 동적화.
+     - `src/mobile/MobileHeader.tsx`, `MobileApp.tsx`, `MobileWalkieTalkieModal.tsx`: 모바일 헤더 브랜드 및 무전기 채널명 테넌트 연동.
+     - `src/utils/nativeLauncher.ts`: 내비게이션 파라미터 `appname=com.ebro.lift`, 기사 배차 안내 SMS 발신사명 동적 치환.
+     - `src/context/AppContext.tsx`: 자산 매각 계약 안내 이메일 발신사명 및 계좌 테넌트 연동.
+     - `src/data/presetProductSpecs.ts`, `src/data/presetProductSpecs.json`, `src/services/db.ts`: 프리셋 장비 제조사 오표기(`기연리프트`)를 정품 제조사명(`Sinoboom`)으로 정상 정제.
+     - `src/services/transportCallService.ts`, `src/services/walkieTalkieService.ts`: STT Whisper 프롬프트 힌트에서 특정 회사명 제거 및 도메인 표준 정제.
+- **검증 결과**:
+  - `npm run build`: **0 Error 통과** (`built in 1.09s`).
+  - TypeScript strict 타입 무결성 및 Vite 번들링 100% 정상.
 
-## [완료] 테넌트 스키마 고도화: 본사·다수 사업장 및 다수 주기장 복수 관리 체계 구축 & 공식 법인 직인 정식 등록 (v1.10.0.Build.2)
+## [완료] 전사 사명 영문 표기 전면 정정 ("Kiyuen" ➔ "Giyuen"), Git 저장소 이전 및 프로젝트 설정 동기화 (v1.10.0.Build.5)
+- **요구사항**: "이제까지 프로젝트 전체에서 사용하던 'Kiyuen' 의 모든 단어를 'Giyuen' 으로 변경. 내가 회사 영어명칭을 착오했어. 프로젝트명도 바굴것이고 버셋에도 변경, 깃에도 변경할거야. 깃주소 변경 https://github.com/DragonRPA/Giyeun_Lift"
+- **조치 내역**:
+  1. **Git Remote Origin URL 이전 및 검증**:
+     - 원격 저장소 URL을 `https://github.com/DragonRPA/Giyeun_Lift.git` (토큰 탑재)로 갱신 (`git remote set-url origin`).
+     - `git ls-remote`를 통해 새 원격 저장소와의 통신 및 `refs/heads/main` 정합성을 100% 검증.
+  2. **패키지 및 인프라 프로젝트 식별자 변경**:
+     - `package.json`: `"name": "giyeun-lift"`
+     - `.vercel/project.json`: `"projectName": "giyeun-lift"`
+     - `public/sw.js`: `CACHE_NAME = 'giyeun-lift-pwa-v2'`
+     - `scripts/auto_purge_vercel.cjs`, `scripts/auto_purge_vercel.js`, `scripts/purge_vercel_deployments.cjs`: 새 프로젝트(`giyeun-lift`) 및 전환기 구 슬롯(`kiyuen-lift`) 모두 20개 슬롯 자동 Purge 관리 정규식 지원.
+     - `scripts/build_android_apk.cjs`, `scripts/send_wtt_statements.cjs`: `https://giyeun-lift.vercel.app`로 URL 갱신.
+  3. **소스코드 및 UI 텍스트 전수 치환 (src/ 내 Kiyuen 잔여 0건)**:
+     - `src/App.tsx`: 헤더 로고 및 로그인 브랜드 텍스트 `KIYEUN LIFT ERP` ➔ `GIYEUN LIFT ERP` 변경.
+     - `src/pages/BankMatching.tsx`: 공급자 영문 상호 `(Giyeun Co., Ltd.)` 변경.
+     - `src/pages/smart_dispatch4.tsx`: 공문서 양식 타이틀 `GIYEUN LIFT ERP DISPATCH ORDER` 변경.
+     - `src/services/db.ts`: 테넌트 코드 `tenantCode: 'GIYEUN'` 및 주석 갱신.
+     - `src/utils/nativeLauncher.ts`: 네이버맵 패키지 파라미터 `appname=com.giyeun.lift` 변경.
+     - `src/services/voiceOrderDraftService.ts`: 로컬 스토리지 키 `giyeun_sales_dispatch_draft` 변경.
+     - `src/services/callUploadService.ts`: 로컬 스토리지 키 `giyeun_draft_dispatch_orders_local` (구 키 하위 호환 폴백 탑재) 변경.
+     - `src/services/transportCallService.ts`: 로컬 스토리지 키 `giyeun_transport_call_queue_local` (구 키 하위 호환 폴백 탑재) 변경.
+     - `src/services/walkieTalkieService.ts`: 무전기 기본 부서명 `GiyeunLift` 변경.
+     - `src/pages/OrganizationSettings.tsx`: `example@giyeun.com` 변경.
+     - `src/pages/GoogleConfig.tsx`: `giyeunlift@gmail.com` 변경.
+     - `대시보드.html`, `public/대시보드.html`: `Giyeun Lift ERP SSOT` 갱신.
+  4. **테스트 및 스크립트 파일 경로 일괄 동기화**:
+     - `scripts/` 내 WTT 테스트 스크립트 및 SQL 주석/로그 갱신.
+     - `scratch/` 내 48개 스크립트 및 `fix_code.ps1`, `google_drive_sync_gas.js` 내 디렉토리 경로 `Giyuen_Lift` 일괄 동기화.
+  5. **빌드 및 렌더링 검증**:
+     - `npm run build`: **0 Error 통과** (`built in 1.12s`).
+     - TypeScript 타입 컴파일 및 프로덕션 번들링 100% 정상.
+
+## [완료] 관리 소모품 30종 마스터 형성 및 초기DB 업로드 메뉴 내 소모품 재고 업로드 기능 신설 (v1.10.0.Build.4)
+- **요구사항**: "D:\OneDrive\Desktop\기연리프트자료_\자동업로드\밴드\소모품재고.txt 파일을 참고하여, 관리 소모품의 제품과 수량을 형성해줘. 초기DB 업로드 메뉴에서 소모품 재고 업로드 기능을 추가해줘"
+- **소모품 현장 실사 분석 및 마스터 정립**:
+  - `소모품재고.txt` 30개 품목 전수 분석 (총 재고 수량 102개: 정상 가용 97개, 수리중 5개):
+    - **JLG** (1종 2개): JLG 충전기(2개)
+    - **지니 (Genie)** (19종 74개): 지니 충전기(5개), P콘(1개), P콘 케이블(1개), 오일필터(2개), 조향실린더(1개), 포트홀 쿠션(2개), 비상하강밸브(1개), 비상하강코일(2개), G콘(4개 중 3개 수리중), 조향밸브(2개), 틸트 센서(2개), 상부기판 6버튼(10개), 상부기판 4버튼(3개), 비상하강와이어(5개), 조이스틱(30개), 주행모터(1개 수리중), 브레이크(2개 수리중) 등
+    - **스카이잭 (Skyjack)** (8종 20개): 컨트롤박스(1개), 마그네틱 콘택터(2개), 상승밸브(1개), 모터컨트롤러(1개), 유압 매니폴드 블록(1개), 솔레노이드 밸브 코일(1개), 하강밸브(1개), 12발 3단 토글 스위치(2개), 조향실린더 엔드볼(8개), 주행모터 기어박스(2개)
+    - **공용** (2종 6개): 마그네틱 콘택터(5개), 아날라이저 진단기(1개)
+- **조치 내역**:
+  1. `src/services/consumableMigrationService.ts` 신설:
+     - 30종 기본 품목 마스터 시드(`SEED_INVENTORY_ITEMS`) 선언.
+     - `parseConsumableInventoryText`: 정규식 기반 수량, 비고(`수리중` 등), 카테고리/공급처 자동 추출 엔진.
+     - `ingestConsumablesToDatabase`: `consumables` 테이블 Upsert 및 `consumableLogs` 입고/조정 로그 무누락 DB 적재, `await db.awaitPendingWrites()` 완결.
+  2. `src/services/db.ts`:
+     - `Consumable` 인터페이스 확장 (`category?: string; note?: string; repairingQty?: number;`).
+     - `SEED_CONSUMABLES`에 30개 실물 품목 마스터 시딩.
+     - Supabase 원격 동기화 시 비호환 컬럼(`category`, `note`, `repairingQty`, `supplier`) 격리 및 `spec`/`name` 안전 매핑, `insertRow`/`updateRow` 2차 폴백 강화로 원격/로컬 100% 정합성 보장.
+     - `normalizePayloadKeys`에 소모품 모델명/공급자 자동 정규화 탑재.
+  3. `src/pages/InitialDbUploader.tsx`:
+     - `{/* ⑥ 관리 소모품 및 부품 재고 업로드 카드 */}` 신설.
+     - 텍스트(.txt) / 엑셀(.xlsx) 파일 선택 업로드, 드래그앤드롭, 직접 붙여넣기 지원.
+     - `[기연 표준 30종 기본 로드]` 원클릭 프리셋 버튼 제공.
+     - Gutenberg Z-패턴 4단계 고밀도 슬림 그리드 프리뷰 (카테고리, 공급처, 품목명, 재고수량, 단가, 평가금액, 비고/수리중 배지).
+     - 우하단 대차대조 요약 검증식(`총 30종 | 총 102개 | 수리중 5개 | 평가액 ₩23,895,000`) 및 `[소모품 재고 DB 반영]` 최종 완결 버튼 배치.
+- **검증 결과**:
+  - `npm run build`: **0 Error 통과** (`built in 1.08s`).
+  - Edge Headless CDP 브라우저 엔드투엔드 자동 검증: 초기DB 메뉴 이동 ➔ 30종 기본 로드 ➔ 소모품 재고 DB 반영 ➔ 소모품 관리 메뉴 본사 창고 대장 표출 100% PASS (0 Exceptions).
+
+
+## [완료] 배포 후 흰 화면(WSOD) 크래시 긴급 규명 및 100% 정상 복구 (v1.10.0.Build.3)
+- **요구사항**: "배포 후 하얀 화면. 아무것도 안떠"
+- **근본 원인 분석 (Edge CDP 브라우저 진단 적발)**:
+  - 브라우저 CDP 진단 결과 `🚨 Uncaught ReferenceError: mockDataCont is not defined at db.ts` 적발.
+  - 테넌트 시드 데이터(`SEED_TENANTS`) 추가 과정에서 `mockDataCont` 선언부가 누락되어, 모듈 최상위 실행(Top-level evaluation) 시점에 참조 에러가 발생.
+  - 모듈 평가 단계 크래시로 인해 `main.tsx`의 `createRoot` 및 `ErrorBoundary`가 마운트되기도 전에 스크립트 실행이 중단되어 화면이 완전한 백지(WSOD)로 표출됨.
+- **조치 내역**:
+  1. `src/services/db.ts`: `mockDataCont = generateMockContracts(...)` 선언 즉시 복원.
+  2. `src/context/AppContext.tsx`: `currentTenantId` 초기화 시 `db.currentTenant?.id || 'tenant-1'` 옵셔널 체이닝 방어막 추가 및 tenants 배열 null-safe 방어 강화.
+  3. 헤드리스 Edge 브라우저 CDP 자동 진단(`verify_dashboard_in_browser.cjs`) 실행:
+     - 로그인 전 화면 DOM (5,075 bytes) 및 로그인 후 메인 대시보드 DOM (35,884 bytes) 100% 정상 렌더링 검증 완료.
+     - 런타임 예외 0건 (`Exceptions: 0`) 완벽 입증.
+
+
+## [완료] 배차/운송관리 메뉴 3개 탭 역할 정립 및 '운송사 배차 협의' 통화파일 업로드 기반 전면 개편 (v1.10.0.Build.3)
+- **요구사항**: "이 메뉴는 배차관련 통화내용을 큐에 등록했을때, 큐의 통화내용을 처리해주는 메뉴가 아닌것 같은데? 배차/운송관리 메뉴 구성의 3개탭 의 각각 역할을 파악하고, 이 메뉴의 기능을 통화파일 업로드에서 시작해서 이어지는 프로세스로 전면 개편해."
+- **배차/운송관리 3개 탭 단일 표준 역할 정립 (헌장 3.6 아키텍처)**:
+  1. **탭 1: 배차 관리 (유형 A: 요청 처리형)**: 확정된 배차(출고/회수/교체) 건별 상차·하차 일정 통제 및 실제 운송 기사/차량 배정, SMS 발송, 운송 상태 완결.
+  2. **탭 2: 운송사 배차 협의 (유형 A: 요청 처리형)**: 통화 녹음 파일 업로드에서 시작하는 전면 처리 스튜디오. 통화 유입 ➔ Groq Whisper STT 전사 ➔ AI 운송사/차종/운송비/특약 추출 ➔ 배차 대상 건 1:1 자동 매칭/추천 ➔ [⭐ 이 조건으로 배차 반영 및 확정] 1클릭 완결.
+  3. **탭 3: 운송료 대사 (유형 B: 기간 정산형)**: 월말 운송사 청구 엑셀 업로드 ➔ 시스템 확정액 vs 청구액 1:1 슬림 그리드 대사 및 차액 검증, 최종 통합 지급 요청/결재 종결.
+- **조치 내역**:
+  1. `src/services/transportCallService.ts` 신설:
+     - Groq Whisper STT 연동 및 운송 협의 전용 도메인 NLP 파서 구현.
+     - 배차 협의 통화 큐 영구 보존 스토리지(`kiyeun_transport_call_queue_local`) 관리.
+     - 실물 통화 시드 2건 및 오디오 Base64 처리기 완비.
+  2. `src/pages/TruckDispatch.tsx` 탭 2 전면 개편:
+     - 최상단 `배차 협의 통화 큐 (Call Queue)` 파이프라인 신설 (PC 파일 드래그앤드롭/업로드 및 실시간 큐 카드 표출).
+     - 좌측 배차 목록 상단 `🎯 통화 AI 추천 매칭 배차` 자동 하이라이트 배너 배치.
+     - 우측 협의 데스크에 오디오 플레이어, STT 음성 전사문 카드, AI 자동 추출 폼 프리필 연동.
+     - `[⭐ 이 조건으로 배차 반영 및 확정]` 원클릭으로 배차 건에 운송사/차종/운송비 즉시 확정 및 `DISPATCHED` 상태 전환.
+- **검증 결과**:
+  - `npm run build`: 0 Error 통과 (`built in 999ms`).
+  - 단위 테스트(`test_transport_call_parse.cjs`): 통화 전사 파싱 및 배차 매칭 100% 정상 통과.
 - **요구사항**: "현재 가지고 있는 인감 이미지를 정식으로 등록 사용해, 회사의 사업장은 본사 및 다수의 사업장이 가능해야 하고, 다수의 주기장이 등록가능해야해, 테넌트 테이블의 스키마에 고려. 모두 적용하고 완료되면 알려줘. 다음 지시를 줄게"
 - **조치 내역**:
   1. **공식 법인 직인 정식 등록 및 실물 에셋 영구 보존**:
@@ -146,7 +271,7 @@
      - `(출고요청)`: 940건 (유상옵션 208건/42종, 무상옵션 396건/78종, 보양 541건, 서류 189건, 고객요구 25개 불릿 전수)
      - `(AS)`: 5,633건 (고장증상 2,267종, 장비 관리번호 2,160대, 208개 거래처, 231개 현장, 층수/위치)
      - `(임차자산입출고)`: 548건 (입고 252, 출고 299, 반납 585, 협력사 롯데/포스/한국/AJ/한솔, 37개 상차지, 26개 하차지)
-  2. 단일 독립형 `대시보드.html` 생성 (`d:\01.AntiGravity\Kiyuen_Lift\대시보드.html` 및 `public/대시보드.html`):
+  2. 단일 독립형 `대시보드.html` 생성 (`d:\01.AntiGravity\Giyuen_Lift\대시보드.html` 및 `public/대시보드.html`):
      - 다크 테마 고밀도 엔터프라이즈 UI (헌장 3.1 무수식어, 3.2 줄바꿈 방지 적용)
      - 4대 KPI 요약 카드 + 5개 전문 탭 (종합 개요, 출고요청, AS·정비, 임차자산, 무압축 전수 검색기)
      - Chart.js 시각화 차트 4종 (3대 데이터 비중 도넛, AS 고장증상 Top 10 바, 임차 협력사 점유율 파이, 거래처별 AS 빈도 바)

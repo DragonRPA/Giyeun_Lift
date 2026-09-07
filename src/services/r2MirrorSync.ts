@@ -1,5 +1,5 @@
-﻿// src/services/r2MirrorSync.ts
-// (주)기연리프트 Cloudflare R2 ➔ 로컬 PC (C:\KiyeunAgent\drive_mirror\) 100% 무인 미러링 동기화 엔진
+// src/services/r2MirrorSync.ts
+// e-Bro ERP Cloudflare R2 ➔ 로컬 PC (C:\eBroAgent\drive_mirror\) 100% 무인 미러링 동기화 엔진
 
 import { GoogleConfig } from './db';
 import { subscribeMirrorProgress, MirrorProgressState, MirrorSyncResult } from './driveMirrorSync';
@@ -42,7 +42,7 @@ export function subscribeR2MirrorProgress(listener: MirrorProgressListener): () 
 }
 
 /**
- * Cloudflare R2 버킷의 모든 하위 폴더와 파일들을 로컬 에이전트(C:\KiyeunAgent\drive_mirror\)로 일괄 무인 미러링
+ * Cloudflare R2 버킷의 모든 하위 폴더와 파일들을 로컬 에이전트(C:\eBroAgent\drive_mirror\)로 일괄 무인 미러링
  */
 export async function executeR2MirrorSync(
   config?: GoogleConfig,
@@ -179,14 +179,14 @@ export async function executeR2MirrorSync(
       throw new Error('R2 파일 수신에 실패했습니다. 공개 도메인(R2 Public Domain) 설정을 확인해 주세요.');
     }
 
-    // 3. 로컬 사이드카 에이전트(C:\KiyeunAgent\drive_mirror\)로 전송 및 하위 폴더 트리 자동 생성
+    // 3. 로컬 사이드카 에이전트(C:\eBroAgent\drive_mirror\)로 전송 및 하위 폴더 트리 자동 생성
     updateProgress({
       phase: 'TRANSFERRING',
       currentFile: '로컬 디스크 저장 중...',
       currentIndex: payloadFiles.length,
       totalCount: payloadFiles.length,
       percent: 90,
-      message: `로컬 PC (C:\\KiyeunAgent\\drive_mirror\\)에 ${payloadFiles.length}개 파일 저장 중...`
+      message: `로컬 PC (C:\\eBroAgent\\drive_mirror\\)에 ${payloadFiles.length}개 파일 저장 중...`
     });
 
     const agentRes = await fetch('http://127.0.0.1:5175/api/sync-drive', {
@@ -200,7 +200,7 @@ export async function executeR2MirrorSync(
     }
 
     const agentData = await agentRes.json();
-    const finalMsg = `✅ Cloudflare R2의 ${payloadFiles.length}개 파일이 C:\\KiyeunAgent\\drive_mirror\\ 에 실시간 미러링되었습니다.`;
+    const finalMsg = `✅ Cloudflare R2의 ${payloadFiles.length}개 파일이 C:\\eBroAgent\\drive_mirror\\ 에 실시간 미러링되었습니다.`;
 
     updateProgress({
       isActive: true,

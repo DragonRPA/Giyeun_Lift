@@ -1,6 +1,6 @@
 import os
 
-with open(r'd:\01.AntiGravity\Kiyuen_Lift\RELEASE_NOTES.md', 'a', encoding='utf-8') as f:
+with open(r'd:\01.AntiGravity\Giyuen_Lift\RELEASE_NOTES.md', 'a', encoding='utf-8') as f:
     f.write(
         "\n### v0.7.1.Build.36 (2026-09-02 18:20)\n"
         "- **버그패치 & 스키마 전수 정합성 검증**: TABLE_COLUMNS 화이트리스트 전체 Supabase DB 스키마 1:1 동기화.\n"

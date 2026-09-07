@@ -1,5 +1,5 @@
 /**
- * Kiyuen Lift ERP — Supabase WTT 7개월 전체 엔티티 100% 정합성 주입 스크립트 (V2)
+ * Giyeun Lift ERP — Supabase WTT 7개월 전체 엔티티 100% 정합성 주입 스크립트 (V2)
  */
 
 const { createClient } = require('@supabase/supabase-js');

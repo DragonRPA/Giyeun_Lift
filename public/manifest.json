@@ -1,7 +1,7 @@
 {
-  "name": "기연리프트 ERP",
-  "short_name": "기연리프트",
-  "description": "고소작업대 렌탈 관리 및 실시간 가용 재고 조회 시스템",
+  "name": "e-Bro Lift ERP",
+  "short_name": "e-Bro ERP",
+  "description": "스마트 고소작업대 렌탈 관리 시스템",
   "start_url": "/?mode=mobile",
   "display": "standalone",
   "background_color": "#020617",

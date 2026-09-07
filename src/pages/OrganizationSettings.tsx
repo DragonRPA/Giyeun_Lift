@@ -806,7 +806,7 @@ const enforceManagerPolicies = (usersList: UserNode[], deptList: Department[]) =
                 
                 <div>
                   <label style={{ marginBottom: '2px', fontSize: '12px' }}><Mail size={12} style={{ display: 'inline', verticalAlign: 'text-bottom', marginRight: '4px' }}/> 이메일</label>
-                  <input type="email" style={{ padding: '4px 8px', fontSize: '12px' }} placeholder="example@kiyeun.com" value={selectedProfile.email || ''} onChange={e => setSelectedProfile({...selectedProfile, email: e.target.value})} disabled={!canEdit} />
+                  <input type="email" style={{ padding: '4px 8px', fontSize: '12px' }} placeholder="example@giyeun.com" value={selectedProfile.email || ''} onChange={e => setSelectedProfile({...selectedProfile, email: e.target.value})} disabled={!canEdit} />
                 </div>
 
                 <div>

@@ -17,7 +17,7 @@ function Replace-InFile {
     }
 }
 
-$basePath = "d:/GoogleDrive/RPA 개발/01.AntiGravity/Kiyuen_Lift"
+$basePath = "d:/01.AntiGravity/Giyuen_Lift"
 
 # 1. Fix stray style braces
 Replace-InFile -Path $basePath -Pattern 'style=\{\{ \{' -Replacement 'style={{'

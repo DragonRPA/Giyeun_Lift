@@ -3,7 +3,7 @@ import os
 
 files = ["asset_history.tsx", "Billings.tsx", "Contracts.tsx", "Deliveries.tsx", 
          "Products.tsx", "rent_assets.tsx", "Repairs.tsx", "Vendors.tsx"]
-folder = r"d:\01.AntiGravity\Kiyuen_Lift\src\pages"
+folder = r"d:\01.AntiGravity\Giyuen_Lift\src\pages"
 
 for f in files:
     path = os.path.join(folder, f)

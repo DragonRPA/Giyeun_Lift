@@ -29,7 +29,9 @@ dist-ssr
 .vercel
 
 # Agent Standalone Binary artifacts (Node.js SEA, over 90MB) - Git으로 추적 불필요
+agent/*.exe
 agent/KiyeunAgent.exe
+agent/eBroAgent.exe
 agent/*.blob
 agent/*bundle.js
 
@@ -39,3 +41,6 @@ public/downloads/*.zip
 
 # Android 서명 키스토어 — 민감 정보, 절대 커밋 금지
 *.keystore
+
+# Supabase CLI temp
+supabase/.temp/

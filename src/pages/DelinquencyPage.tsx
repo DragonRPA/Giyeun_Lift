@@ -45,7 +45,8 @@ export const DelinquencyPage: React.FC = () => {
     currentUser, hasPermission, billings, customers, users, contracts, 
     delinquencyActionLogs, saveDelinquencyAction, updateDelinquencyActionPromise,
     saveCustomer, refreshAllData, showErrorModal, todos,
-    legalNoticeLogs, legalNoticeTemplates, saveLegalNoticeLog, saveLegalNoticeTemplate
+    legalNoticeLogs, legalNoticeTemplates, saveLegalNoticeLog, saveLegalNoticeTemplate,
+    currentTenant
   } = useApp();
   const canSave = hasPermission('billing', 'save');
   // ─── [내용증명 스튜디오 상태] ───
@@ -1280,11 +1281,11 @@ export const DelinquencyPage: React.FC = () => {
                       </div>
                       <div>
                         <div style={{ fontWeight: 800, borderBottom: '1px dashed #cbd5e1', paddingBottom: '3px', marginBottom: '4px' }}>[발 신 인]</div>
-                        <div>상 호: <strong>주식회사 기연리프트</strong></div>
-                        <div>대 표 자: <strong>이 수 용</strong> (직인생략/날인)</div>
-                        <div>등록번호: 138-81-83251</div>
-                        <div>주 소: 경기도 용인시 처인구 백암면 덕평로 112</div>
-                        <div>전화번호: 031-334-5296</div>
+                        <div>상 호: <strong>{currentTenant?.corporateName || currentTenant?.tradeName || '주식회사 임대인'}</strong></div>
+                        <div>대 표 자: <strong>{currentTenant?.representativeName || '대표자'}</strong> (직인생략/날인)</div>
+                        <div>등록번호: {currentTenant?.businessNumber || '138-81-83251'}</div>
+                        <div>주 소: {currentTenant?.businessAddress || (currentTenant as any)?.address || '사업장 소재지'}</div>
+                        <div>전화번호: {currentTenant?.tel || '031-334-5296'}</div>
                       </div>
                     </div>
 
@@ -1303,7 +1304,7 @@ export const DelinquencyPage: React.FC = () => {
                         {todayStr.split('-')[0]}년 {todayStr.split('-')[1]}월 {todayStr.split('-')[2]}일
                       </div>
                       <div style={{ fontSize: '14px', fontWeight: 900, display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
-                        <span>주식회사 기연리프트 대표이사 이 수 용</span>
+                        <span>{currentTenant?.corporateName || '주식회사 임대인'} 대표이사 {currentTenant?.representativeName || '대표자'}</span>
                         <span style={{ border: '2px solid #dc2626', color: '#dc2626', padding: '2px 6px', borderRadius: '4px', fontSize: '11px', fontWeight: 800 }}>
                           (인)
                         </span>

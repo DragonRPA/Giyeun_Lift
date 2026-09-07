@@ -39,7 +39,7 @@ interface MobileAppProps {
 }
 
 export const MobileApp: React.FC<MobileAppProps> = ({ onSwitchToPc: _onSwitchToPc }) => {
-  const { fieldAsTickets, deliveries, outboundInspections, currentUser, assets, customers, billings } = useApp();
+  const { fieldAsTickets, deliveries, outboundInspections, currentUser, assets, customers, billings, currentTenant } = useApp();
 
   // 전대 장비 주기장 유휴 누수 위험 건수
   const subleaseLeakCount = useMemo(() => {
@@ -166,7 +166,7 @@ export const MobileApp: React.FC<MobileAppProps> = ({ onSwitchToPc: _onSwitchToP
         id: currentUser.id,
         name: currentUser.name,
         role: currentUser.role,
-        deptName: currentUser.department || '기연리프트'
+        deptName: currentUser.department || currentTenant?.tradeName || 'eBro'
       });
       initWorkNotificationListener(currentUser);
     }

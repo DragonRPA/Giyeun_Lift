@@ -1,6 +1,6 @@
 import os
 
-with open(r'd:\01.AntiGravity\Kiyuen_Lift\RELEASE_NOTES.md', 'a', encoding='utf-8') as f:
+with open(r'd:\01.AntiGravity\Giyuen_Lift\RELEASE_NOTES.md', 'a', encoding='utf-8') as f:
     f.write(
         "\n### v0.7.1.Build.35 (2026-09-02 18:14)\n"
         "- **버그패치**: 배차 적재 실패 수정 — deliveries 테이블에 존재하지 않는 컬럼 제거.\n"

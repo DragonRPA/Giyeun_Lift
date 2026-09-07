@@ -1,6 +1,6 @@
 
 # INITIAL_DB_UPLOAD.md의 섹션 13~14를 새 내용으로 교체
-filepath = r'd:\01.AntiGravity\Kiyuen_Lift\INITIAL_DB_UPLOAD.md'
+filepath = r'd:\01.AntiGravity\Giyuen_Lift\INITIAL_DB_UPLOAD.md'
 
 with open(filepath, 'r', encoding='utf-8') as f:
     content = f.read()

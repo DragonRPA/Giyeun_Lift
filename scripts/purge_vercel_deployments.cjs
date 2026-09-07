@@ -7,7 +7,7 @@ function purgeOldDeployments() {
     const urls = [];
     
     lines.forEach(l => {
-      const match = l.match(/(https:\/\/kiyuen-lift-[a-z0-9]+-dragonrpa\.vercel\.app)/);
+      const match = l.match(/(https:\/\/(giyeun|kiyuen)-lift-[a-z0-9]+-dragonrpa\.vercel\.app)/);
       if (match) {
         if (!urls.includes(match[1])) {
           urls.push(match[1]);

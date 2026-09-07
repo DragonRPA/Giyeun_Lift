@@ -1,5 +1,5 @@
 /**
- * Kiyuen Lift ERP — 전체 업무활동 WTT (Work-Through Test) 종합 검증 스위트 (v3)
+ * Giyeun Lift ERP — 전체 업무활동 WTT (Work-Through Test) 종합 검증 스위트 (v3)
  * 
  * 16대 전사 업무활동 파이프라인 전체 순회 및 데이터/비즈니스 룰 검증
  * - 조직/권한, 자산/모델, 고객/현장, 계약체결, 배차출고, 대차교체, 계약변경,
@@ -31,7 +31,7 @@ function assert(condition, message, details = '') {
 
 async function runFullWttSuite() {
   console.log('========================================================================');
-  console.log('🚀 Kiyuen Lift ERP — 전체 업무활동 WTT 16대 파이프라인 순회 검증 시작');
+  console.log('🚀 Giyeun Lift ERP — 전체 업무활동 WTT 16대 파이프라인 순회 검증 시작');
   console.log('========================================================================\n');
 
   // ---------------------------------------------------------------------------

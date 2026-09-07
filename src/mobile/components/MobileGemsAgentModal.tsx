@@ -29,7 +29,7 @@ export const MobileGemsAgentModal: React.FC<MobileGemsAgentModalProps> = ({
     {
       id: 'welcome',
       role: 'model',
-      text: '안녕하세요! 기연 렌탈 AI 비서 젬스입니다. 출고의뢰, 회수의뢰, 교환의뢰, 현장AS 접수를 음성으로 말씀해주시면 서식을 자동으로 검증하고 완성해드립니다.',
+      text: '안녕하세요! e-Bro AI 비서 젬스입니다. 출고의뢰, 회수의뢰, 교환의뢰, 현장AS 접수를 음성으로 말씀해주시면 서식을 자동으로 검증하고 완성해드립니다.',
       timestamp: new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })
     }
   ]);
@@ -374,7 +374,7 @@ export const MobileGemsAgentModal: React.FC<MobileGemsAgentModalProps> = ({
             </div>
             <div>
               <div style={{ fontSize: '13.5px', fontWeight: '900', color: '#f8fafc', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <span>기연 렌탈 GEMS 비서</span>
+                <span>e-Bro GEMS AI 비서</span>
                 <span style={{
                   fontSize: '9.5px',
                   fontWeight: '800',

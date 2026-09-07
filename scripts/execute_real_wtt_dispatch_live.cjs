@@ -556,7 +556,7 @@ const scenarios = [
 // ── 메인 라이브 실행 함수 ──────────────────────────────────────────────────
 async function executeLiveWttPipeline() {
   console.log('========================================================================');
-  console.log('⚡ [Kiyuen Lift ERP] WTT 30회 실제 DB 라이브 관통 실행');
+  console.log('⚡ [Giyeun Lift ERP] WTT 30회 실제 DB 라이브 관통 실행');
   console.log('   대상: 원격 Supabase 실제 데이터베이스');
   console.log('   모듈: smart_dispatch4 & AppContext.saveSmartDispatch 풀 비즈니스 엔진');
   console.log('========================================================================\n');

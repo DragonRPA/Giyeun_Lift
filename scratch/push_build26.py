@@ -1,6 +1,6 @@
 import os
 
-with open(r'd:\01.AntiGravity\Kiyuen_Lift\RELEASE_NOTES.md', 'a', encoding='utf-8') as f:
+with open(r'd:\01.AntiGravity\Giyuen_Lift\RELEASE_NOTES.md', 'a', encoding='utf-8') as f:
     f.write(
         "\n### v0.7.1.Build.26 (2026-09-01 20:49)\n"
         "- **버그수정(치명)**: 마이그레이션 엔진의 중복 헤더로 인한 전대 장비 파싱 오류 3종 일괄 수정.\n"

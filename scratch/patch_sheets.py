@@ -1,6 +1,6 @@
 import os
 
-engine_path = r'd:\01.AntiGravity\Kiyuen_Lift\src\services\migrationEngine.ts'
+engine_path = r'd:\01.AntiGravity\Giyuen_Lift\src\services\migrationEngine.ts'
 with open(engine_path, 'r', encoding='utf-8') as f:
     c = f.read()
 
@@ -10,7 +10,7 @@ c = c.replace("202608 시트 기반", "계약현황(202608) 시트 기반")
 with open(engine_path, 'w', encoding='utf-8') as f:
     f.write(c)
 
-ui_path = r'd:\01.AntiGravity\Kiyuen_Lift\src\pages\InitialDbUploader.tsx'
+ui_path = r'd:\01.AntiGravity\Giyuen_Lift\src\pages\InitialDbUploader.tsx'
 with open(ui_path, 'r', encoding='utf-8') as f:
     c2 = f.read()
 

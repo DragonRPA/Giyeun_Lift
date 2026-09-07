@@ -1,4 +1,4 @@
-# Kiyuen Lift ERP — WTT 업무 분장 명세서 (`WTT_업무분장.md`)
+# e-Bro Lift ERP — WTT 업무 분장 명세서 (`WTT_업무분장.md`)
 
 > **작성일**: 2026-08-23  
 > **목적**: 대규모 Work-Through Test (WTT) 시나리오 수행을 위한 테스터 직원별 역할, 소속 부서, 권한 매핑 및 직무별 책임/업무 프로세스(R&R) 정의

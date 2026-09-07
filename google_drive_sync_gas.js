@@ -25,8 +25,8 @@ function doPost(e) {
     var mimeType = data.mimeType || 'application/pdf';
     var base64Data = data.base64Data || '';
 
-    // 최상위 루트 폴더 [Kiyuen_Lift] 조회 및 미존재 시 자동 생성
-    var rootFolderName = 'Kiyuen_Lift';
+    // 최상위 루트 폴더 [Giyeun_Lift] 조회 및 미존재 시 자동 생성
+    var rootFolderName = 'Giyeun_Lift';
     var rootFolder;
     var rootFolders = DriveApp.getFoldersByName(rootFolderName);
     if (rootFolders.hasNext()) {

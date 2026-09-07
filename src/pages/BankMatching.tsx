@@ -60,6 +60,7 @@ export const BankMatching: React.FC = () => {
     deleteMatchingRule,
     hasPermission,
     currentUser,
+    currentTenant,
     showErrorModal
   } = useApp();
 
@@ -1874,25 +1875,28 @@ export const BankMatching: React.FC = () => {
               display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '12px', position: 'relative'
             }}>
               <div style={{ fontSize: '12px', lineHeight: '1.7', color: '#374151' }}>
-                <div><strong>공급자 상호:</strong> 주식회사 기연 (Kiyuen Co., Ltd.)</div>
-                <div><strong>사업자등록번호:</strong> 123-45-67890 | <strong>대표이사:</strong> 이기연</div>
-                <div><strong>사업장 소재지:</strong> 경기도 시흥시 범안로 123번길 45 (주기장)</div>
-                <div><strong>업태 / 종목:</strong> 건설기계대여 / 고소작업대 임대 및 정비</div>
-                <div><strong>입금 계좌:</strong> {receiptTx.bankName || '우리은행'} {receiptTx.accountNumber || '1002-***-******'}</div>
+                <div><strong>공급자 상호:</strong> {currentTenant?.corporateName || currentTenant?.tradeName || '공급자 (매출사)'}</div>
+                <div><strong>사업자등록번호:</strong> {currentTenant?.businessNumber || '-'} | <strong>대표이사:</strong> {currentTenant?.representativeName || '-'}</div>
+                <div><strong>사업장 소재지:</strong> {currentTenant?.businessAddress || '-'}</div>
+                <div><strong>업태 / 종목:</strong> {currentTenant?.businessCategory || '-'} / {currentTenant?.businessItem || '-'}</div>
+                <div><strong>입금 계좌:</strong> {receiptTx.bankName || (currentTenant?.bankAccounts?.[0]?.bankName) || '주거래은행'} {receiptTx.accountNumber || (currentTenant?.bankAccounts?.[0]?.accountNumber) || '-'}</div>
               </div>
 
               {/* 직인 날인 인장 마크 */}
               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
-                <div style={{
-                  width: '84px', height: '84px', borderRadius: '50%', border: '2.5px solid #dc2626',
-                  color: '#dc2626', display: 'flex', flexDirection: 'column', alignItems: 'center',
-                  justifyContent: 'center', fontWeight: '900', fontSize: '11px', transform: 'rotate(-8deg)',
-                  boxShadow: 'inset 0 0 4px rgba(220, 38, 38, 0.2)'
-                }}>
-                  <span>주식회사</span>
-                  <span style={{ fontSize: '13px', letterSpacing: '1px' }}>기 연</span>
-                  <span style={{ fontSize: '9px' }}>[ 직 인 ]</span>
-                </div>
+                {currentTenant?.stampImageUrl ? (
+                  <img src={currentTenant.stampImageUrl} style={{ width: '72px', height: '72px', objectFit: 'contain' }} alt="직인" />
+                ) : (
+                  <div style={{
+                    width: '84px', height: '84px', borderRadius: '50%', border: '2.5px solid #dc2626',
+                    color: '#dc2626', display: 'flex', flexDirection: 'column', alignItems: 'center',
+                    justifyContent: 'center', fontWeight: '900', fontSize: '11px', transform: 'rotate(-8deg)',
+                    boxShadow: 'inset 0 0 4px rgba(220, 38, 38, 0.2)'
+                  }}>
+                    <span>{currentTenant?.tradeName ? currentTenant.tradeName.slice(0, 4) : '법인직인'}</span>
+                    <span style={{ fontSize: '9px' }}>[ 직 인 ]</span>
+                  </div>
+                )}
                 <span style={{ fontSize: '10px', color: '#9ca3af', marginTop: '4px' }}>법인 인장 날인</span>
               </div>
             </div>

@@ -35,7 +35,8 @@ export const Dashboard: React.FC = () => {
     completeTodo, 
     resolveExecutiveDirective,
     setActiveTab, 
-    setNavigationPayload 
+    setNavigationPayload,
+    currentTenant 
   } = useApp();
 
   // 경영진 업무지시 하달 모달 및 조치 보고 상태
@@ -112,15 +113,15 @@ export const Dashboard: React.FC = () => {
   const handleDownloadCert = () => {
     try {
       const link1 = document.createElement('a');
-      link1.href = '/downloads/KiyeunLift_Root.cer';
-      link1.download = 'KiyeunLift_Root.cer';
+      link1.href = AGENT_CERT_URL;
+      link1.download = 'eBroAgent_Root.cer';
       document.body.appendChild(link1);
       link1.click();
       document.body.removeChild(link1);
 
       setTimeout(() => {
         const link2 = document.createElement('a');
-        link2.href = '/downloads/install-cert.bat';
+        link2.href = AGENT_INSTALL_BAT_URL;
         link2.download = 'install-cert.bat';
         document.body.appendChild(link2);
         link2.click();
@@ -131,13 +132,13 @@ export const Dashboard: React.FC = () => {
     }
   };
 
-  // ── 📥 Node.js 무설치 단독 실행 파일 (KiyeunAgent.exe) 직접 다운로드 ──
+  // ── 📥 Node.js 무설치 단독 실행 파일 (eBroAgent.exe) 직접 다운로드 ──
   const handleDownloadAgentExe = () => {
     setIsDownloadingAgent(true);
     try {
       const link = document.createElement('a');
-      link.href = '/downloads/KiyeunAgent.exe';
-      link.download = 'KiyeunAgent.exe';
+      link.href = '/downloads/eBroAgent.exe';
+      link.download = 'eBroAgent.exe';
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
@@ -184,9 +185,9 @@ export const Dashboard: React.FC = () => {
       setMergeProgressLabel('1단계: 계약서 양식 데이터 주입 중...');
       const contractPdfData = {
         contractDate: targetContract.startDate || new Date().toISOString().split('T')[0],
-        lessorName: '주식회사 기연리프트',
-        lessorCeo: '이수용',
-        lessorBizNo: '138-81-83251',
+        lessorName: currentTenant?.corporateName || currentTenant?.tradeName || '주식회사 임대인',
+        lessorCeo: currentTenant?.representativeName || '대표자',
+        lessorBizNo: currentTenant?.businessNumber || '138-81-83251',
         lesseeName: customer?.name || '주식회사 우진아이엔에스',
         lesseeCeo: customer?.representative || '홍경모',
         lesseeBizNo: customer?.bizRegNo || '114-81-33003',
@@ -275,7 +276,8 @@ export const Dashboard: React.FC = () => {
 
       const link = document.createElement('a');
       link.href = url;
-      link.download = `[기연리프트]_${targetContract.contractNo}_${customer?.name || '계약서'}_통합팩_${mergedPdf.getPageCount()}p_${new Date().toISOString().split('T')[0]}.pdf`;
+      const tenantBrand = currentTenant?.displayName || currentTenant?.tradeName || 'e-Bro';
+      link.download = `[${tenantBrand}]_${targetContract.contractNo}_${customer?.name || '계약서'}_통합팩_${mergedPdf.getPageCount()}p_${new Date().toISOString().split('T')[0]}.pdf`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
@@ -296,7 +298,7 @@ export const Dashboard: React.FC = () => {
           });
           if (agentRes.ok) {
             const agentData = await agentRes.json();
-            localSaveMsg = `\n\n📂 [로컬 문서고 자동 보관 완료]\n저장 경로: ${agentData.localFilePath || 'C:\\KiyeunAgent\\문서고'}`;
+            localSaveMsg = `\n\n📂 [로컬 문서고 자동 보관 완료]\n저장 경로: ${agentData.localFilePath || 'C:\\eBroAgent\\문서고'}`;
           }
         } catch (e) {}
       }
@@ -688,7 +690,7 @@ export const Dashboard: React.FC = () => {
                   <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>진행 중 계약 {activeContracts}건</span>
                 </div>
                 <h4 style={{ margin: '0 0 10px 0', fontSize: '16px', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <Layers size={18} color="#3b82f6" /> 기연리프트 고객 대여 렌탈 계약 관리
+                  <Layers size={18} color="#3b82f6" /> {currentTenant?.displayName || '고소작업대'} 고객 대여 렌탈 계약 관리
                 </h4>
                 <p style={{ fontSize: '13px', color: 'var(--text-secondary)', margin: '0 0 14px 0', lineHeight: '1.5' }}>
                   현재 담당 관리하는 활성/연장 계약은 총 <strong>{activeContracts}건</strong>입니다. 
@@ -958,7 +960,7 @@ export const Dashboard: React.FC = () => {
 
             <div style={{ padding: '20px 24px', fontSize: '13.5px', lineHeight: '1.6', color: 'var(--text-primary)' }}>
               <p style={{ margin: '0 0 14px 0' }}>
-                <strong>로컬 사이드카 에이전트</strong>를 실행해 두시면, 웹 브라우저의 렌더링 한계를 넘어 <strong>마이크로소프트 엑셀 정품 파일에 직접 데이터를 주입</strong>하고 <strong>100% 무손실 정품 PDF를 생산</strong>하여 사내 로컬 문서고(<code>C:\KiyeunAgent\문서고\</code>)에 자동 보관합니다.
+                <strong>로컬 사이드카 에이전트</strong>를 실행해 두시면, 웹 브라우저의 렌더링 한계를 넘어 <strong>마이크로소프트 엑셀 정품 파일에 직접 데이터를 주입</strong>하고 <strong>100% 무손실 정품 PDF를 생산</strong>하여 사내 로컬 문서고(<code>C:\eBroAgent\문서고\</code>)에 자동 보관합니다.
               </p>
 
               <div style={{ backgroundColor: 'var(--bg-app, #f8fafc)', padding: '14px 16px', borderRadius: '10px', border: '1px solid var(--border)', marginBottom: '16px' }}>
@@ -970,10 +972,10 @@ export const Dashboard: React.FC = () => {
                     <a href="https://nodejs.org/en/download/" target="_blank" rel="noreferrer" style={{ color: '#16a34a', fontWeight: '700' }}>🟢 Node.js 공식 사이트</a>에서 LTS 버전을 설치합니다. (최초 1회, PC당 1회)
                   </li>
                   <li>
-                    <strong>[2단계: 🛡️ 보안 인증서 등록]</strong> 버튼을 누르면 <code>KiyeunLift_Root.cer</code>와 <code>인증서_원클릭_자동등록.bat</code>이 내려옵니다. 배치 파일을 실행하여 PC에 1회 등록합니다.
+                    <strong>[2단계: 🛡️ 보안 인증서 등록]</strong> 버튼을 누르면 배치 파일이 내려옵니다. 배치 파일을 실행하여 PC에 1회 등록합니다.
                   </li>
                   <li>
-                    <strong>[3단계: 📥 에이전트 파일 받기]</strong> 버튼을 누르면 <code>agent.js</code>와 <code>start-agent.bat</code>이 내려옵니다. 두 파일을 <code>C:\KiyeunAgent\</code>에 넣은 뒤 <code>start-agent.bat</code>을 실행합니다.
+                    <strong>[3단계: 📥 에이전트 파일 받기]</strong> 버튼을 누르면 <code>eBroAgent.js</code>와 <code>start-agent.bat</code>이 내려옵니다. 두 파일을 <code>C:\eBroAgent\</code>에 넣은 뒤 <code>start-agent.bat</code>을 실행합니다.
                   </li>
                 </ol>
               </div>

@@ -743,19 +743,30 @@ export interface ParsedSummaryInfo {
   loadingDate?: string;
   loadingTime?: string;
   safetyOptions: string[];
+  retrievalAssetIds: string[];
+  paidBy?: 'OURS' | 'CUSTOMER' | 'SPLIT';
 }
 
 export function parseCallSummaryText(text: string, fileName?: string): ParsedSummaryInfo {
   const result: ParsedSummaryInfo = {
     equipments: [],
     safetyOptions: [],
+    retrievalAssetIds: [],
+    paidBy: undefined,
   };
 
-  const clean = ((text || '') + ' ' + (fileName || '')).trim();
-  if (!clean) return result;
+  const rawText = (text || '').trim();
+  const rawFile = (fileName || '').trim();
+  const clean = (rawText + ' ' + rawFile).trim();
+  if (!clean) {
+    result.equipments.push({ modelName: '19ft', qty: 1 });
+    return result;
+  }
 
-  // 1. 전화번호 추출
-  const phoneMatch = clean.match(/(01[016789][-.\s]?\d{3,4}[-.\s]?\d{4}|02[-.\s]?\d{3,4}[-.\s]?\d{4}|0[3-6]\d[-.\s]?\d{3,4}[-.\s]?\d{4})/);
+  // 1. 전화번호 추출 (텍스트 우선, 파일명 보조)
+  const phoneMatch = rawText.match(/(01[016789][-.\s]?\d{3,4}[-.\s]?\d{4}|02[-.\s]?\d{3,4}[-.\s]?\d{4}|0[3-6]\d[-.\s]?\d{3,4}[-.\s]?\d{4})/)
+    || rawFile.match(/(01[016789][-.\s]?\d{3,4}[-.\s]?\d{4}|02[-.\s]?\d{3,4}[-.\s]?\d{4}|0[3-6]\d[-.\s]?\d{3,4}[-.\s]?\d{4})/);
+  
   if (phoneMatch) {
     const raw = phoneMatch[0].replace(/[-.\s]/g, '');
     if (raw.startsWith('02')) {
@@ -765,22 +776,25 @@ export function parseCallSummaryText(text: string, fileName?: string): ParsedSum
     } else if (raw.length === 10) {
       result.contactPhone = `${raw.slice(0, 3)}-${raw.slice(3, 6)}-${raw.slice(6)}`;
     }
+  } else if (rawFile) {
+    const pFromFn = parsePhoneFromFileName(rawFile);
+    if (pFromFn) result.contactPhone = pFromFn;
   }
 
-  // 2. 담당자 이름 추출 (예: "김반장", "홍길동 소장", "담당자 이철수")
-  const explicitMatch = clean.match(/(?:담당자|인수자|소장)\s*[:：]?\s*([가-힣]{2,4})/);
-  const titleMatch = clean.match(/([가-힣]{2,4}\s*(?:소장님?|반장님?|과장님?|부장님?|팀장님?|대리님?))/);
-  if (explicitMatch && explicitMatch[1]) {
-    result.contactPerson = explicitMatch[1].trim();
-  } else if (titleMatch && titleMatch[0]) {
+  // 2. 담당자 이름 추출 (1~4글자 성씨 + 직책 대응)
+  const explicitMatch = rawText.match(/(?:담당자|인수자|소장)\s*[:：]?\s*([가-힣]{2,4})/);
+  const titleMatch = rawText.match(/([가-힣]{1,4}\s*(?:소장님?|반장님?|과장님?|부장님?|팀장님?|대리님?))/);
+  if (titleMatch && titleMatch[0]) {
     const candidate = titleMatch[0].trim().replace(/님$/, '');
     if (!['내일', '모레', '아침', '오전', '오후', '현대', '삼성', '대우'].some(w => candidate.startsWith(w))) {
       result.contactPerson = candidate;
     }
+  } else if (explicitMatch && explicitMatch[1]) {
+    result.contactPerson = explicitMatch[1].trim();
   }
 
-  // 3. 현장명 추출 (예: "김포 고촌 현장", "판교 현장", "고촌현장", "마곡 현장")
-  const siteMatch = clean.match(/([가-힣a-zA-Z0-9]{2,15}\s*(?:현장|신축현장|PJ|플랜트))/);
+  // 3. 현장명 추출
+  const siteMatch = rawText.match(/([가-힣a-zA-Z0-9]{2,15}\s*(?:현장|신축현장|PJ|플랜트))/);
   if (siteMatch && siteMatch[0]) {
     result.siteName = siteMatch[0].trim();
   }
@@ -812,7 +826,7 @@ export function parseCallSummaryText(text: string, fileName?: string): ParsedSum
   }
 
   // 5. 시간 추출
-  if (/ASAP|즉시|긴급/i.test(clean)) {
+  if (/ASAP|즉시|당장|긴급/i.test(clean)) {
     result.loadingTime = 'ASAP';
   } else {
     const timeMatch = clean.match(/(아침|새벽|오전|오후|낮|저녁)?\s*(\d{1,2})시(?:\s*(\d{1,2})분)?/);
@@ -832,7 +846,7 @@ export function parseCallSummaryText(text: string, fileName?: string): ParsedSum
     }
   }
 
-  // 6. 장비 모델 및 수량 추출
+  // 6. 🛡️ [WTT 검증 결함 해결] 장비 모델 및 수량 추출
   const countMap: Record<string, number> = {
     '한': 1, '일': 1, '하나': 1, '두': 2, '이': 2, '둘': 2,
     '세': 3, '삼': 3, '셋': 3, '네': 4, '사': 4, '넷': 4,
@@ -841,9 +855,12 @@ export function parseCallSummaryText(text: string, fileName?: string): ParsedSum
   };
 
   const detectedEquipments: EquipmentItem[] = [];
-  const modelRegex = /(1930|2632|2646|3219|3226|3246|4047|4626|4632|0812|0808|1012|0608|1412|1612|19피트|26피트|32피트|40피트|46피트|53피트|19ft|26ft|32ft|40ft|46ft|53ft|sj3219|sj3226|sj4632|sj4740|gs1930|gs2632|gs3246|gs4047)/gi;
+  // 텍스트가 있으면 텍스트만 스캔 (파일명의 전화번호/타임스탬프 오인식 방지)
+  const textToScan = rawText.length > 0 ? rawText : rawFile.replace(/01[016789]\d{7,8}/g, '').replace(/\d{8}_\d{6}/g, '');
+
+  const modelRegex = /(1930|2632|2646|3219|3226|3246|4047|4626|4632|0812|0808|1012|0608|1412|1612|19피트|26피트|32피트|40피트|46피트|53피트|19ft|26ft|32ft|40ft|46ft|53ft|sj3219|sj3226|sj4632|sj4740|gs1930|gs2632|gs3246|gs4047|\b19\b(?:\s*대)|\b26\b(?:\s*대)|\b32\b(?:\s*대))/gi;
   let m: RegExpExecArray | null;
-  while ((m = modelRegex.exec(clean)) !== null) {
+  while ((m = modelRegex.exec(textToScan)) !== null) {
     const rawKey = m[0].toUpperCase();
     let modelName = '19ft';
     if (rawKey.includes('19') || rawKey.includes('0608')) modelName = '19ft';
@@ -853,9 +870,13 @@ export function parseCallSummaryText(text: string, fileName?: string): ParsedSum
     else if (rawKey.includes('46') || rawKey.includes('1412')) modelName = '46ft';
     else if (rawKey.includes('53') || rawKey.includes('1612')) modelName = '53ft';
 
-    // 모델명 뒤 25글자 내에서 수량 탐색
-    const sub = clean.substring(m.index, m.index + 25);
-    const countMatch = sub.match(/(\d+)\s*(?:대|개)?/) || sub.match(/(한|두|세|네|다섯|여섯|일곱|여덟|아홉|열)\s*대/);
+    // 🛡️ [버그 수정]: 모델 매칭 문자열 '이후'부터 슬라이스하여 모델명 숫자(19, 26 등)가 수량으로 오인식되는 결함 원천 차단!
+    const afterMatch = textToScan.substring(m.index + m[0].length, m.index + m[0].length + 20);
+    const countMatch = afterMatch.match(/^\s*(\d+)\s*(?:대|개)?/) 
+      || afterMatch.match(/^\s*(한|두|세|네|다섯|여섯|일곱|여덟|아홉|열)\s*대/)
+      || afterMatch.match(/(\d+)\s*(?:대|개)/)
+      || afterMatch.match(/(한|두|세|네|다섯|여섯|일곱|여덟|아홉|열)\s*대/);
+
     let qty = 1;
     if (countMatch) {
       const rawNum = countMatch[1];
@@ -871,8 +892,8 @@ export function parseCallSummaryText(text: string, fileName?: string): ParsedSum
     }
   }
 
-  // 모델명 미기재 시 리프트/작업대 언급 있으면 기본 19ft 1대
-  if (detectedEquipments.length === 0 && (clean.includes('고소작업대') || clean.includes('리프트') || clean.includes('렌탈') || clean.includes('장비'))) {
+  // 장비가 언급되었으나 모델 특정 불가, 또는 음성 파일만 올라온 경우 기본 19ft 1대 보장
+  if (detectedEquipments.length === 0) {
     detectedEquipments.push({ modelName: '19ft', qty: 1 });
   }
 
@@ -885,6 +906,21 @@ export function parseCallSummaryText(text: string, fileName?: string): ParsedSum
   if (clean.includes('소화기')) result.safetyOptions.push('소화기');
   if (clean.includes('논마킹')) result.safetyOptions.push('논마킹 타이어');
   if (clean.includes('비닐보양') || clean.includes('도색보양') || clean.includes('보양')) result.safetyOptions.push('비닐보양');
+
+  // 8. 🛡️ [대차 회수자산번호 추출] (예: "101호기", "105호기", "305호기")
+  const assetMatches = clean.matchAll(/(\d{3,4})\s*호기/g);
+  for (const am of assetMatches) {
+    result.retrievalAssetIds.push(am[1]);
+  }
+
+  // 9. 🛡️ [운송비 부담 귀속선 추출]
+  if (clean.includes('당사부담') || clean.includes('회사부담')) {
+    result.paidBy = 'OURS';
+  } else if (clean.includes('고객청구') || clean.includes('고객부담')) {
+    result.paidBy = 'CUSTOMER';
+  } else if (clean.includes('편도지원') || clean.includes('반반') || clean.includes('50%')) {
+    result.paidBy = 'SPLIT';
+  }
 
   return result;
 }
@@ -932,6 +968,23 @@ export async function convertUploadToDraft(
   const finalDate = parsed.loadingDate || new Date().toISOString().slice(0, 10);
   const finalTime = parsed.loadingTime || '08:00';
 
+  // 🛡️ [메타데이터 직렬화] 대차 회수대상, 운송비 귀속선, 안전옵션 100% 보존
+  const noteSegments: string[] = [];
+  if (upload.summary_text) noteSegments.push(`[통화요약] ${upload.summary_text}`);
+  else noteSegments.push(`[통화 녹음 파일] ${upload.file_name}`);
+
+  if (parsed.retrievalAssetIds.length > 0) {
+    noteSegments.push(`[대차회수대상] ${parsed.retrievalAssetIds.join(', ')}`);
+  }
+  if (parsed.paidBy) {
+    noteSegments.push(`[운송비부담] ${parsed.paidBy === 'OURS' ? '당사부담' : parsed.paidBy === 'CUSTOMER' ? '고객청구' : '편도지원'}`);
+  }
+  if (parsed.safetyOptions.length > 0) {
+    noteSegments.push(`[안전옵션] ${parsed.safetyOptions.join(', ')}`);
+  }
+
+  const finalNote = noteSegments.join(' | ');
+
   const newDraft = await createDraftOrder({
     ownerId: upload.uploader_id || 'sys-admin',
     sourceCallIds: [upload.id],
@@ -964,9 +1017,7 @@ export async function convertUploadToDraft(
       confirmed: false,
     },
     contactPhone: phone,
-    note: upload.summary_text
-      ? `[통화요약] ${upload.summary_text}${parsed.safetyOptions.length > 0 ? ` | [안전옵션] ${parsed.safetyOptions.join(', ')}` : ''} | 파일: ${upload.file_name}`
-      : `[통화 녹음 파일] ${upload.file_name}`,
+    note: finalNote,
     isNewCustomer: !customerFound,
     customerRegistered: customerFound,
     status: 'DRAFT',

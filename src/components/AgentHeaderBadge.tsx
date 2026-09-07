@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Bot, Download, RefreshCw, Shield, ChevronDown, CheckCircle2, AlertTriangle, X, Cloud, FolderCheck, HardDrive } from 'lucide-react';
-import { EXPECTED_AGENT_VERSION, AGENT_DOWNLOAD_URL, AGENT_LAUNCHER_URL, AGENT_CERT_URL, AGENT_INSTALL_BAT_URL, NODEJS_INSTALL_URL, restartLocalAgent } from '../services/agentService';
+import { Bot, Download, RefreshCw, Shield, ChevronDown, CheckCircle2, AlertTriangle, X, Cloud, FolderCheck, HardDrive, Play } from 'lucide-react';
+import { EXPECTED_AGENT_VERSION, AGENT_DOWNLOAD_URL, AGENT_BRO_JS_URL, AGENT_REG_BAT_URL, AGENT_LAUNCHER_URL, AGENT_CERT_URL, AGENT_INSTALL_BAT_URL, NODEJS_INSTALL_URL, launchLocalAgentFromBrowser, restartLocalAgent } from '../services/agentService';
 import { executeDriveMirrorSync, getLocalMirrorStatus, subscribeMirrorProgress, MirrorProgressState } from '../services/driveMirrorSync';
 import { useApp } from '../context/AppContext';
 
@@ -18,6 +18,8 @@ export const AgentHeaderBadge: React.FC<Props> = ({ currentUser }) => {
   const [agentCallsign, setAgentCallsign] = useState<string>('');
   const [isRestarting, setIsRestarting] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
+  const [isLaunching, setIsLaunching] = useState(false);
+  const [launchMsg, setLaunchMsg] = useState('');
   const [isOpenMenu, setIsOpenMenu] = useState(false);
 
   // 미러링 상태
@@ -146,6 +148,47 @@ export const AgentHeaderBadge: React.FC<Props> = ({ currentUser }) => {
     } finally {
       setTimeout(() => setIsDownloading(false), 1500);
     }
+  };
+
+  // 사이트에서 로컬 에이전트 실행 트리거
+  const handleLaunchAgent = () => {
+    setIsLaunching(true);
+    setLaunchMsg('실행 명령 전송 중...');
+    launchLocalAgentFromBrowser();
+
+    let attempts = 0;
+    const maxAttempts = 12; // 6초간 0.5초 간격 폴링
+    const poller = setInterval(async () => {
+      attempts++;
+      try {
+        const userCallsign = currentUser?.loginId || currentUser?.name || 'admin';
+        const res = await fetch(`http://127.0.0.1:5175/health?callsign=${encodeURIComponent(userCallsign)}`, {
+          method: 'GET',
+          signal: AbortSignal.timeout(1000),
+          cache: 'no-store'
+        });
+        if (res.ok) {
+          clearInterval(poller);
+          setIsLaunching(false);
+          setLaunchMsg('연결 완료');
+          setAgentStatus('ONLINE');
+          const data = await res.json();
+          setAgentVersion(data.version || '');
+          setAgentCallsign(data.callsign || userCallsign);
+          setTimeout(() => {
+            setLaunchMsg('');
+            setIsOpenMenu(false);
+          }, 1500);
+          return;
+        }
+      } catch (e) {}
+
+      if (attempts >= maxAttempts) {
+        clearInterval(poller);
+        setIsLaunching(false);
+        setLaunchMsg('미실행 시 실행 등록 파일(2단계) 1회 실행 필요');
+      }
+    }, 500);
   };
 
   // 핫 재시작
@@ -394,34 +437,111 @@ export const AgentHeaderBadge: React.FC<Props> = ({ currentUser }) => {
           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
             {agentStatus === 'OFFLINE' && (
               <>
-                {/* Node.js 설치 링크 */}
+                {/* 🚀 브라우저(사이트)에서 로컬 에이전트 실행 */}
+                <button
+                  type="button"
+                  disabled={isLaunching}
+                  onClick={handleLaunchAgent}
+                  style={{
+                    width: '100%',
+                    padding: '10px',
+                    fontSize: '13px',
+                    fontWeight: '800',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '6px',
+                    background: 'linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)',
+                    border: 'none',
+                    borderRadius: '7px',
+                    color: '#fff',
+                    cursor: isLaunching ? 'wait' : 'pointer',
+                    boxShadow: '0 2px 6px rgba(37,99,235,0.35)'
+                  }}
+                >
+                  <Play size={14} fill="#fff" />
+                  {isLaunching ? '실행 명령 전송 중...' : '사이트에서 에이전트 실행'}
+                </button>
+                {launchMsg && (
+                  <div style={{ fontSize: '11px', textAlign: 'center', color: launchMsg.includes('완료') ? '#16a34a' : '#b45309', fontWeight: '700' }}>
+                    {launchMsg}
+                  </div>
+                )}
+
+                {/* 1단계: 에이전트 파일 다운로드 */}
+                <a
+                  href={AGENT_BRO_JS_URL}
+                  download="BroAgent.js"
+                  style={{
+                    width: '100%',
+                    padding: '8px 10px',
+                    fontSize: '12px',
+                    fontWeight: '700',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '6px',
+                    background: 'var(--bg-app)',
+                    border: '1px solid var(--border-color)',
+                    borderRadius: '7px',
+                    color: 'var(--text-primary)',
+                    textDecoration: 'none',
+                    boxSizing: 'border-box'
+                  }}
+                >
+                  <Download size={13} color="var(--primary)" />
+                  1단계: 에이전트 파일 다운로드 (BroAgent.js)
+                </a>
+
+                {/* 2단계: 브라우저 실행 등록 */}
+                <a
+                  href={AGENT_REG_BAT_URL}
+                  download="등록-원클릭실행.bat"
+                  style={{
+                    width: '100%',
+                    padding: '8px 10px',
+                    fontSize: '12px',
+                    fontWeight: '700',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '6px',
+                    background: 'var(--bg-app)',
+                    border: '1px solid var(--border-color)',
+                    borderRadius: '7px',
+                    color: 'var(--text-primary)',
+                    textDecoration: 'none',
+                    boxSizing: 'border-box'
+                  }}
+                >
+                  <Download size={13} color="#0284c7" />
+                  2단계: 브라우저 실행 등록 파일 (.bat)
+                </a>
+
+                {/* 3단계: Node.js 설치 링크 */}
                 <a
                   href={NODEJS_INSTALL_URL}
                   target="_blank"
                   rel="noreferrer"
-                  style={{ width: '100%', padding: '8px 10px', fontSize: '12px', fontWeight: '700', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', background: 'rgba(16, 185, 129, 0.12)', border: '1.5px solid #16a34a', borderRadius: '7px', color: '#10b981', textDecoration: 'none', boxSizing: 'border-box' }}
+                  style={{
+                    width: '100%',
+                    padding: '7px 10px',
+                    fontSize: '11px',
+                    fontWeight: '600',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '6px',
+                    background: 'transparent',
+                    border: '1px dashed var(--border-color)',
+                    borderRadius: '7px',
+                    color: 'var(--text-muted)',
+                    textDecoration: 'none',
+                    boxSizing: 'border-box'
+                  }}
                 >
-                  1단계: 🟢 Node.js 설치 (nodejs.org)
+                  3단계: Node.js 설치 (미설치 PC 전용)
                 </a>
-                <button
-                  type="button"
-                  className="btn-secondary"
-                  onClick={handleDownloadCert}
-                  style={{ width: '100%', padding: '8px 10px', fontSize: '12px', fontWeight: '700', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}
-                >
-                  <Shield size={13} color="#0284c7" />
-                  2단계: 🛡️ 보안 인증서 등록 (.cer)
-                </button>
-                <button
-                  type="button"
-                  className="btn-primary"
-                  disabled={isDownloading}
-                  onClick={handleDownloadAgent}
-                  style={{ width: '100%', padding: '9px 10px', fontSize: '12.5px', fontWeight: '800', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', background: 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)', border: 'none', color: '#fff' }}
-                >
-                  <Download size={14} />
-                  {isDownloading ? '다운로드 중...' : '3단계: 📥 에이전트 파일 받기'}
-                </button>
               </>
             )}
 

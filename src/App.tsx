@@ -414,10 +414,18 @@ const App: React.FC = () => {
         background: 'linear-gradient(135deg, #1e1b4b 0%, #0f172a 100%)', padding: '16px'
       }}>
         <div className="card" style={{ width: '100%', maxWidth: '380px', padding: '24px', boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.3)' }}>
-          <div style={{ textAlign: 'center', marginBottom: '20px' }}>
-            <h1 style={{ fontSize: '24px', fontWeight: '800', color: 'var(--primary)', letterSpacing: '-0.5px' }}>
-              {currentTenant?.displayName || currentTenant?.tradeName || currentTenant?.corporateName || '기연리프트'}
-            </h1>
+          <div style={{ textAlign: 'center', marginBottom: '20px', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px' }}>
+              <img 
+                src={currentTenant?.ciUrl || currentTenant?.logoUrl || '/images/ci/giyeun_ci.png'} 
+                alt="CI" 
+                style={{ height: '32px', maxWidth: '110px', objectFit: 'contain' }} 
+                onError={(e) => { (e.currentTarget as HTMLElement).style.display = 'none'; }}
+              />
+              <h1 style={{ fontSize: '24px', fontWeight: '800', color: 'var(--primary)', letterSpacing: '-0.5px', margin: 0 }}>
+                {currentTenant?.displayName || currentTenant?.tradeName || currentTenant?.corporateName || '기연리프트'}
+              </h1>
+            </div>
             <p style={{ fontSize: '13px', color: 'var(--text-secondary)', marginTop: '4px', fontWeight: '600', letterSpacing: '0.3px' }}>
               e-Bro ERP System
             </p>
@@ -629,24 +637,23 @@ const App: React.FC = () => {
           >
             {mobileMenuOpen ? <X size={20} /> : <Menu size={20} />}
           </button>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <h1 style={{ fontSize: '19px', fontWeight: '800', color: 'var(--primary)', letterSpacing: '-0.5px', whiteSpace: 'nowrap' }}>
-              e-Bro LIFT ERP
-            </h1>
-            {currentTenant && (
-              <span style={{
-                fontSize: '11px',
-                fontWeight: '700',
-                padding: '2px 7px',
-                borderRadius: '4px',
-                backgroundColor: 'rgba(99, 102, 241, 0.12)',
-                color: '#6366f1',
-                border: '1px solid rgba(99, 102, 241, 0.3)',
-                whiteSpace: 'nowrap'
-              }}>
-                {currentTenant.displayName || currentTenant.tradeName}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            {/* 🏢 테넌트 회사 CI 이미지 (회사이름 바로 왼쪽) */}
+            <img 
+              src={currentTenant?.ciUrl || currentTenant?.logoUrl || '/images/ci/giyeun_ci.png'} 
+              alt="CI" 
+              style={{ height: '32px', maxWidth: '90px', objectFit: 'contain', flexShrink: 0 }} 
+              onError={(e) => { (e.currentTarget as HTMLElement).style.display = 'none'; }}
+            />
+            {/* 🏢 1열: 고객회사명(강조) / 2열: e-Bro ERP System (작은 글씨) */}
+            <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+              <span style={{ fontSize: '18px', fontWeight: '900', color: 'var(--text-primary)', letterSpacing: '-0.5px', whiteSpace: 'nowrap', lineHeight: 1.15 }}>
+                {currentTenant?.displayName || currentTenant?.tradeName || currentTenant?.corporateName || '기연리프트'}
               </span>
-            )}
+              <span style={{ fontSize: '11.5px', fontWeight: '700', color: 'var(--primary)', letterSpacing: '0.2px', whiteSpace: 'nowrap', marginTop: '2px' }}>
+                e-Bro ERP System
+              </span>
+            </div>
           </div>
 
           {/* 헤더 좌측 실시간 현장 날씨 정보 위젯 */}

@@ -1,0 +1,681 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>(주)기연리프트 공식 기업소개서</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <style>
+    @import url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css');
+    body {
+      font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, system-ui, Roboto, sans-serif;
+      color: #1e293b;
+      background-color: #f1f5f9;
+    }
+    @media print {
+      .no-print { display: none !important; }
+      body { background-color: #ffffff; }
+      .page-break { page-break-after: always; }
+      .shadow-custom { box-shadow: none !important; }
+      main { border: none !important; margin: 0 !important; max-width: 100% !important; }
+    }
+    .shadow-custom {
+      box-shadow: 0 20px 40px -15px rgba(15, 23, 42, 0.08);
+    }
+    .gradient-hero {
+      background: radial-gradient(circle at 80% 20%, #1e3e62 0%, #0b192c 60%, #050b14 100%);
+    }
+    .text-gradient {
+      background: linear-gradient(135deg, #38bdf8 0%, #818cf8 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+  </style>
+</head>
+<body class="antialiased selection:bg-blue-600 selection:text-white">
+
+  <!-- Top Navigation Bar -->
+  <header class="no-print sticky top-0 z-50 bg-slate-950/95 backdrop-blur-md text-white border-b border-slate-800 px-4 sm:px-8 py-3 flex justify-between items-center shadow-lg">
+    <div class="flex items-center space-x-3">
+      <!-- Official CI Symbol (YG Monogram) -->
+      <div class="w-9 h-10 flex items-center justify-center bg-white rounded-lg p-1 shadow-sm">
+        <svg viewBox="0 0 100 130" class="w-full h-full drop-shadow-sm" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <linearGradient id="ygGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stop-color="#5B86B2" />
+              <stop offset="50%" stop-color="#415A8E" />
+              <stop offset="100%" stop-color="#2D3B68" />
+            </linearGradient>
+          </defs>
+          <!-- 'Y' upper stem & arms -->
+          <path d="M18 10 L43 55 L43 78 L57 78 L57 55 L82 10 L64 10 L50 40 L36 10 Z" fill="url(#ygGrad)" />
+          <!-- 'G' body embracing the lower part -->
+          <path d="M50 42 C24 42 12 58 12 85 C12 110 28 125 54 125 C75 125 87 114 88 95 L50 95 L50 82 L100 82 C101 108 84 135 52 135 C18 135 0 115 0 85 C0 50 20 30 50 30 C58 30 65 32 72 36 L64 48 C59 44 54 42 50 42 Z" fill="url(#ygGrad)" />
+        </svg>
+      </div>
+      <div>
+        <div class="flex items-center space-x-2">
+          <span class="font-extrabold text-base tracking-tight text-white">(주)기연리프트</span>
+          <span class="text-[11px] bg-blue-500/20 text-blue-400 border border-blue-400/30 px-2 py-0.5 rounded font-medium">Enterprise Profile 2026</span>
+        </div>
+        <p class="text-[11px] text-slate-400 hidden sm:block">Creative & Trustworthy Aerial Platform Partner</p>
+      </div>
+    </div>
+    <div class="flex items-center space-x-3">
+      <a href="#fleet" class="text-xs text-slate-300 hover:text-white px-3 py-1.5 rounded transition hidden md:inline-block">장비 현황</a>
+      <a href="#safety" class="text-xs text-slate-300 hover:text-white px-3 py-1.5 rounded transition hidden md:inline-block">안전 시스템</a>
+      <a href="#contact" class="text-xs bg-slate-800 hover:bg-slate-700 text-sky-400 border border-slate-700 px-3.5 py-1.5 rounded-lg font-medium transition">견적·배차 문의</a>
+      <button onclick="window.print()" class="text-xs bg-blue-600 hover:bg-blue-500 text-white font-semibold px-4 py-1.5 rounded-lg flex items-center shadow-md transition">
+        <i class="fa-solid fa-print mr-1.5"></i> PDF 저장 / 인쇄
+      </button>
+    </div>
+  </header>
+
+  <!-- Main Document Container -->
+  <main class="max-w-5xl mx-auto my-0 sm:my-8 bg-white sm:rounded-2xl overflow-hidden shadow-custom border border-slate-200">
+
+    <!-- 1. 표지 (Cover Hero Section) -->
+    <section class="gradient-hero text-white relative p-8 sm:p-16 flex flex-col justify-between min-h-[620px] overflow-hidden">
+      <!-- Background Ambient Glow -->
+      <div class="absolute -right-20 -bottom-20 w-[500px] h-[500px] bg-sky-500/10 rounded-full blur-3xl pointer-events-none"></div>
+      <div class="absolute left-1/3 top-10 w-96 h-96 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none"></div>
+
+      <!-- Top Badge & Title -->
+      <div>
+        <div class="flex items-center justify-between">
+          <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-slate-800/80 border border-slate-700 text-sky-300 text-xs font-semibold tracking-wide uppercase mb-6 shadow-inner">
+            <span class="w-2 h-2 rounded-full bg-sky-400 animate-pulse"></span>
+            Creative, Trustworthy Platform Partner
+          </div>
+          <!-- Watermark CI on Cover -->
+          <div class="hidden sm:flex items-center space-x-2 opacity-30">
+            <span class="text-xs tracking-widest text-slate-400 font-mono">EST. 2013</span>
+          </div>
+        </div>
+
+        <h1 class="text-3xl sm:text-5xl font-extrabold tracking-tight leading-[1.25]">
+          현장의 안전과 공기를 책임지는<br>
+          <span class="text-gradient">고소작업대 스마트 종합 렌탈 파트너</span>
+        </h1>
+        <p class="mt-5 text-slate-300 text-sm sm:text-base max-w-2xl leading-relaxed font-light">
+          (주)기연리프트는 <strong>직영 763대(총 운용 선단 1,272대)</strong>의 검증된 메이저 브랜드 정품 인벤토리와
+          자체 디지털 자산 관제 시스템(<strong>e-Bro ERP</strong>)을 기반으로, 1군 건설사 기준을 100% 충족하는
+          무결점 안전 장비와 모바일 당일 기동 AS 체계를 제공합니다.
+        </p>
+      </div>
+
+      <!-- Live Fleet Stats Cards -->
+      <div class="mt-12 pt-8 border-t border-slate-800 flex flex-wrap justify-between items-end gap-6">
+        <div>
+          <div class="flex items-center space-x-3 mb-1">
+            <div class="w-8 h-9 bg-white rounded p-1 flex items-center justify-center">
+              <svg viewBox="0 0 100 130" class="w-full h-full" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M18 10 L43 55 L43 78 L57 78 L57 55 L82 10 L64 10 L50 40 L36 10 Z" fill="#2D3B68" />
+                <path d="M50 42 C24 42 12 58 12 85 C12 110 28 125 54 125 C75 125 87 114 88 95 L50 95 L50 82 L100 82 C101 108 84 135 52 135 C18 135 0 115 0 85 C0 50 20 30 50 30 C58 30 65 32 72 36 L64 48 C59 44 54 42 50 42 Z" fill="#2D3B68" />
+              </svg>
+            </div>
+            <div>
+              <h2 class="text-xl sm:text-2xl font-bold text-white tracking-wide">주식회사 기연리프트</h2>
+              <p class="text-xs text-slate-400">GIYEUN LIFT CO., LTD. | 설립 2013년 (업력 13년차)</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 w-full sm:w-auto">
+          <div class="bg-slate-900/90 border border-slate-800 p-3 rounded-xl">
+            <span class="text-slate-400 block text-[11px]">총 운용 선단</span>
+            <span class="text-lg font-extrabold text-sky-400">1,272대</span>
+          </div>
+          <div class="bg-slate-900/90 border border-slate-800 p-3 rounded-xl">
+            <span class="text-slate-400 block text-[11px]">자사 직영 보유</span>
+            <span class="text-lg font-extrabold text-indigo-300">763대</span>
+          </div>
+          <div class="bg-slate-900/90 border border-slate-800 p-3 rounded-xl">
+            <span class="text-slate-400 block text-[11px]">24~26년식 최신</span>
+            <span class="text-lg font-extrabold text-emerald-400">63.3%</span>
+          </div>
+          <div class="bg-slate-900/90 border border-slate-800 p-3 rounded-xl">
+            <span class="text-slate-400 block text-[11px]">실시간 가동률</span>
+            <span class="text-lg font-extrabold text-amber-400">96.2%</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 2. 회사 개요 & 거점 인프라 (Overview & Hubs) -->
+    <section class="p-8 sm:p-12 border-b border-slate-100">
+      <div class="flex items-center space-x-2 text-blue-600 font-bold text-xs uppercase tracking-wider mb-2">
+        <i class="fa-solid fa-building"></i>
+        <span>Corporate Overview</span>
+      </div>
+      <h2 class="text-2xl sm:text-3xl font-bold text-slate-900">회사 개요</h2>
+      <p class="text-slate-500 text-sm mt-1">철저한 장비 점검 체계와 스마트 ERP 인프라를 바탕으로 고객사의 안전한 무재해 완공을 견인합니다.</p>
+
+      <div class="mt-8 grid grid-cols-1 md:grid-cols-2 gap-6">
+        <!-- Enterprise Summary Spec Card -->
+        <div class="bg-slate-50 p-6 rounded-2xl border border-slate-200">
+          <h3 class="font-bold text-slate-800 text-sm mb-4 flex items-center">
+            <i class="fa-solid fa-circle-info text-blue-600 mr-2"></i> 기본 기업 정보
+          </h3>
+          <dl class="text-xs sm:text-sm space-y-3">
+            <div class="flex justify-between border-b border-slate-200/80 pb-2">
+              <dt class="text-slate-500 font-medium">회사명</dt>
+              <dd class="text-slate-900 font-bold text-right">주식회사 기연리프트</dd>
+            </div>
+            <div class="flex justify-between border-b border-slate-200/80 pb-2">
+              <dt class="text-slate-500 font-medium">대표이사</dt>
+              <dd class="text-slate-900 font-bold text-right">이 수 용</dd>
+            </div>
+            <div class="flex justify-between border-b border-slate-200/80 pb-2">
+              <dt class="text-slate-500 font-medium">설립일</dt>
+              <dd class="text-slate-900 font-semibold text-right">2013년 4월 3일 (업력 13년차)</dd>
+            </div>
+            <div class="flex justify-between border-b border-slate-200/80 pb-2">
+              <dt class="text-slate-500 font-medium">사업자등록번호</dt>
+              <dd class="text-slate-900 font-mono font-medium text-right">138-81-83251</dd>
+            </div>
+            <div class="flex justify-between">
+              <dt class="text-slate-500 font-medium">주요 사업</dt>
+              <dd class="text-slate-900 font-medium text-right text-xs leading-relaxed max-w-[260px]">
+                고소작업대(시저·붐·마스트) 렌탈 / 신품·중고 매매 / 순정 부품 유통 / 법정 안전장치 R&D / 스마트 ERP 운영
+              </dd>
+            </div>
+          </dl>
+        </div>
+
+        <!-- Corrected Hubs (Removed Hwaseong, Emphasized Yongin Depot & Giheung ICT) -->
+        <div class="bg-slate-50 p-6 rounded-2xl border border-slate-200 flex flex-col justify-between">
+          <div>
+            <h3 class="font-bold text-slate-800 text-sm mb-4 flex items-center">
+              <i class="fa-solid fa-location-dot text-blue-600 mr-2"></i> 핵심 거점 네트워크
+            </h3>
+            <div class="space-y-3.5 text-xs">
+              <!-- Yongin Main Yard & Logistics Hub -->
+              <div class="p-3.5 bg-white rounded-xl border border-slate-200 shadow-sm">
+                <div class="flex justify-between items-center mb-1">
+                  <span class="px-2 py-0.5 rounded bg-blue-100 text-blue-800 font-bold text-[10px]">본사 · 종합 주기장 및 입출고센터</span>
+                  <span class="text-[10px] text-slate-400 font-mono">Headquarters & Fleet Hub</span>
+                </div>
+                <p class="font-bold text-slate-800 text-sm">경기도 용인시 처인구 포곡읍 곡현로 254-3</p>
+                <p class="text-slate-500 text-[11px] mt-1 leading-normal">
+                  영동고속도로 용인IC 및 포곡IC 인근 / 셀프로더 대형 트레일러 광폭 진입로 완비 / 전수 PDI 안전점검 라인 및 대규모 상설 주기장 운영
+                </p>
+              </div>
+
+              <!-- Giheung R&D & Operations Control -->
+              <div class="p-3.5 bg-white rounded-xl border border-slate-200 shadow-sm">
+                <div class="flex justify-between items-center mb-1">
+                  <span class="px-2 py-0.5 rounded bg-indigo-100 text-indigo-800 font-bold text-[10px]">R&D 및 스마트 관제센터</span>
+                  <span class="text-[10px] text-slate-400 font-mono">Giheung ICT Valley C-1004</span>
+                </div>
+                <p class="font-bold text-slate-800 text-sm">경기도 용인시 기흥구 기흥로 60-1, C동 1004호</p>
+                <p class="text-slate-500 text-[11px] mt-1 leading-normal">
+                  e-Bro ERP 실시간 자산·배차 관제센터 / 1군 현장 전자 안전점검표 실시간 발행 / 스마트 협착방지센서 연구개발
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 3. CEO 메시지 (CEO Message) -->
+    <section class="p-8 sm:p-12 bg-white border-b border-slate-100">
+      <div class="flex items-center space-x-2 text-blue-600 font-bold text-xs uppercase tracking-wider mb-2">
+        <i class="fa-solid fa-quote-left"></i>
+        <span>CEO Message</span>
+      </div>
+      <h2 class="text-2xl sm:text-3xl font-bold text-slate-900">대표이사 인사말</h2>
+
+      <div class="mt-6 bg-gradient-to-br from-slate-50 via-white to-blue-50/40 p-6 sm:p-8 rounded-2xl border border-slate-200 relative">
+        <h3 class="text-lg sm:text-xl font-bold text-slate-900 mb-4 leading-snug">
+          "현장의 가장 높은 곳에서, 작업자의 생명과 공기를 지키는<br class="hidden sm:inline">
+          가장 신뢰받는 엔지니어링 동반자가 되겠습니다."
+        </h3>
+        <div class="space-y-4 text-slate-600 text-xs sm:text-sm leading-relaxed">
+          <p>
+            주식회사 기연리프트는 2013년 창립 이래 13년 동안 오직 고소작업대 렌탈 및 엔지니어링 기술 외길을 걸어왔습니다.
+            대한민국의 첨단 반도체 플랜트, 대형 물류 허브, 하이테크 건축 현장의 가설 공정에서 저희 장비는 수많은 작업자의 안전한 발판이 되어 왔습니다.
+          </p>
+          <p>
+            고소작업대는 단순한 대여 장비가 아니라 <strong>작업자의 생명과 직결되는 안전의 최전선</strong>입니다.
+            당사는 입출고 전 21개 항목의 철저한 사전 점검(PDI), 5대 법정 안전장치 완비, 그리고 현장 장애 시 당일 즉각 기동 출동 및 1:1 무중단 맞교환(대차) 시스템을 확고한 원칙으로 삼고 있습니다.
+          </p>
+          <p>
+            현재 당사는 <strong>직영 763대(총 운용 선단 1,272대)</strong>의 풍부한 인벤토리와 자체 개발한 <strong>스마트 ERP(e-Bro ERP)</strong>를 바탕으로,
+            투명한 계약·안전 서류를 원클릭 모바일로 즉시 교부하며 중대재해 없는 안전하고 혁신적인 건설 문화를 선도해 나가겠습니다.
+          </p>
+        </div>
+        <div class="mt-8 pt-4 border-t border-slate-200 flex justify-between items-center">
+          <div>
+            <span class="text-xs text-slate-400 block">주식회사 기연리프트</span>
+            <span class="font-bold text-slate-900 text-base">대표이사 이 수 용</span>
+          </div>
+          <div class="w-20 h-9 border border-dashed border-slate-300 rounded-lg flex items-center justify-center text-[11px] text-slate-400 font-serif">
+            (직인생략)
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 4. 장비 보유 현황 및 상세 제원 (Equipment Lineup & Fleet) -->
+    <section id="fleet" class="p-8 sm:p-12 border-b border-slate-100 bg-slate-50/50">
+      <div class="flex items-center space-x-2 text-blue-600 font-bold text-xs uppercase tracking-wider mb-2">
+        <i class="fa-solid fa-layer-group"></i>
+        <span>Fleet & Specifications</span>
+      </div>
+      <div class="flex flex-wrap justify-between items-end gap-4 mb-6">
+        <div>
+          <h2 class="text-2xl sm:text-3xl font-bold text-slate-900">보유 자산 및 피트(Feet)별 운용 현황</h2>
+          <p class="text-slate-500 text-xs sm:text-sm mt-1">2026년 기준 실시간 e-Bro ERP 전수 집계 데이터 / 2024~2026년식 최신형 장비 63.3% 편성</p>
+        </div>
+        <div class="flex flex-wrap gap-2 text-xs">
+          <span class="bg-blue-600 text-white px-3 py-1.5 rounded-lg font-bold shadow-sm">
+            직영 보유 자산: 763대
+          </span>
+          <span class="bg-slate-800 text-slate-200 px-3 py-1.5 rounded-lg font-medium">
+            총 운용 선단: 1,272대
+          </span>
+        </div>
+      </div>
+
+      <!-- Fleet Overview Summary Table -->
+      <div class="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm mb-8">
+        <table class="w-full text-left text-xs sm:text-sm border-collapse">
+          <thead>
+            <tr class="bg-slate-900 text-white font-semibold text-xs uppercase tracking-wider">
+              <th class="py-3 px-4">규격 구분</th>
+              <th class="py-3 px-4">작업 높이 (발판)</th>
+              <th class="py-3 px-4 text-center">직영 보유</th>
+              <th class="py-3 px-4 text-center">전대 운용</th>
+              <th class="py-3 px-4 text-center bg-slate-800">총 운용선단</th>
+              <th class="py-3 px-4 text-center">구성비</th>
+              <th class="py-3 px-4">주 활용 공정 및 현장</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-slate-200 text-slate-700 text-xs">
+            <tr class="hover:bg-slate-50 transition">
+              <td class="py-3 px-4 font-bold text-slate-900">초소형 / 13FT</td>
+              <td class="py-3 px-4">5.8 m (3.8 m)</td>
+              <td class="py-3 px-4 text-center font-bold text-blue-600">13대</td>
+              <td class="py-3 px-4 text-center text-slate-500">38대</td>
+              <td class="py-3 px-4 text-center font-bold text-slate-900 bg-slate-50">51대</td>
+              <td class="py-3 px-4 text-center text-slate-500">4.0%</td>
+              <td class="py-3 px-4 text-slate-600">실내 협소 공간, 인테리어 마감, 호텔·병원 유지보수</td>
+            </tr>
+            <tr class="hover:bg-slate-50 transition">
+              <td class="py-3 px-4 font-bold text-slate-900">저층 / 14~15FT</td>
+              <td class="py-3 px-4">6.5 m (4.5 m)</td>
+              <td class="py-3 px-4 text-center font-bold text-blue-600">51대</td>
+              <td class="py-3 px-4 text-center text-slate-500">20대</td>
+              <td class="py-3 px-4 text-center font-bold text-slate-900 bg-slate-50">71대</td>
+              <td class="py-3 px-4 text-center text-slate-500">5.6%</td>
+              <td class="py-3 px-4 text-slate-600">상가 인테리어, 닥트·배관, 저층 전기 조명 설비</td>
+            </tr>
+            <tr class="bg-blue-50/60 hover:bg-blue-50 transition">
+              <td class="py-3 px-4 font-bold text-blue-900 flex items-center">
+                <span class="w-2 h-2 rounded-full bg-blue-600 mr-2"></span>
+                표준 / 19FT <span class="ml-1.5 text-[10px] bg-blue-600 text-white px-1.5 py-0.2 rounded font-medium">최다보유</span>
+              </td>
+              <td class="py-3 px-4 font-bold text-blue-900">7.8 m (5.8 m)</td>
+              <td class="py-3 px-4 text-center font-black text-blue-700 text-sm">378대</td>
+              <td class="py-3 px-4 text-center text-slate-600 font-medium">122대</td>
+              <td class="py-3 px-4 text-center font-black text-blue-900 text-sm bg-blue-100/60">500대</td>
+              <td class="py-3 px-4 text-center font-bold text-blue-800">39.3%</td>
+              <td class="py-3 px-4 text-slate-800 font-medium">대형 물류센터, 반도체 공장, 소방·전기·배관 표준 공정</td>
+            </tr>
+            <tr class="hover:bg-slate-50 transition">
+              <td class="py-3 px-4 font-bold text-slate-900">중층 / 26FT (협폭·광폭)</td>
+              <td class="py-3 px-4">9.9 m (7.9 m)</td>
+              <td class="py-3 px-4 text-center font-bold text-blue-600">198대</td>
+              <td class="py-3 px-4 text-center text-slate-500">191대</td>
+              <td class="py-3 px-4 text-center font-bold text-slate-900 bg-slate-50">389대</td>
+              <td class="py-3 px-4 text-center text-slate-500">30.6%</td>
+              <td class="py-3 px-4 text-slate-600">공장 생산라인, 물류창고 랙 설비, 내외벽 판넬 시공</td>
+            </tr>
+            <tr class="hover:bg-slate-50 transition">
+              <td class="py-3 px-4 font-bold text-slate-900">고층 / 32FT</td>
+              <td class="py-3 px-4">11.8 m (9.8 m)</td>
+              <td class="py-3 px-4 text-center font-bold text-blue-600">76대</td>
+              <td class="py-3 px-4 text-center text-slate-500">70대</td>
+              <td class="py-3 px-4 text-center font-bold text-slate-900 bg-slate-50">146대</td>
+              <td class="py-3 px-4 text-center text-slate-500">11.5%</td>
+              <td class="py-3 px-4 text-slate-600">고천고 물류센터, 체육관, 공장 철골 공정</td>
+            </tr>
+            <tr class="hover:bg-slate-50 transition">
+              <td class="py-3 px-4 font-bold text-slate-900">초고층 / 40FT</td>
+              <td class="py-3 px-4">13.8 m (11.8 m)</td>
+              <td class="py-3 px-4 text-center font-bold text-blue-600">24대</td>
+              <td class="py-3 px-4 text-center text-slate-500">32대</td>
+              <td class="py-3 px-4 text-center font-bold text-slate-900 bg-slate-50">56대</td>
+              <td class="py-3 px-4 text-center text-slate-500">4.4%</td>
+              <td class="py-3 px-4 text-slate-600">대형 플랜트, 14m급 초고천고 특수 공정</td>
+            </tr>
+            <tr class="hover:bg-slate-50 transition">
+              <td class="py-3 px-4 font-bold text-slate-900">대형 / 46~53FT</td>
+              <td class="py-3 px-4">15.8~18 m (14~16 m)</td>
+              <td class="py-3 px-4 text-center font-bold text-blue-600">23대</td>
+              <td class="py-3 px-4 text-center text-slate-500">20대</td>
+              <td class="py-3 px-4 text-center font-bold text-slate-900 bg-slate-50">43대</td>
+              <td class="py-3 px-4 text-center text-slate-500">3.4%</td>
+              <td class="py-3 px-4 text-slate-600">초대형 물류센터, 하이테크 플랜트 외부 캐노피 작업</td>
+            </tr>
+            <tr class="hover:bg-slate-50 transition">
+              <td class="py-3 px-4 font-bold text-slate-900">붐리프트 / 특수 (45~60FT)</td>
+              <td class="py-3 px-4">16.0~20 m</td>
+              <td class="py-3 px-4 text-center text-slate-400 font-mono">-</td>
+              <td class="py-3 px-4 text-center text-slate-500">16대</td>
+              <td class="py-3 px-4 text-center font-bold text-slate-900 bg-slate-50">16대</td>
+              <td class="py-3 px-4 text-center text-slate-500">1.2%</td>
+              <td class="py-3 px-4 text-slate-600">철골 조립, 외벽 도장, 장애물 회피 굴절/직진 작업</td>
+            </tr>
+          </tbody>
+          <tfoot>
+            <tr class="bg-slate-100 font-bold text-slate-900 text-xs sm:text-sm">
+              <td colspan="2" class="py-3.5 px-4 text-right">선단 총계 (Fleet Total):</td>
+              <td class="py-3.5 px-4 text-center text-blue-700 font-extrabold text-base">763 대</td>
+              <td class="py-3.5 px-4 text-center text-slate-600 font-bold">509 대</td>
+              <td class="py-3.5 px-4 text-center text-slate-900 font-black text-base bg-slate-200/80">1,272 대</td>
+              <td class="py-3.5 px-4 text-center">100.0%</td>
+              <td class="py-3.5 px-4 text-xs text-blue-700 font-semibold">가동률 96.2% / 수도권 당일 즉시 배차 지원</td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+
+      <!-- Core Spec Highlights (3 Major Models) -->
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
+        <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
+          <div class="flex justify-between items-start mb-3">
+            <div>
+              <span class="text-[10px] text-blue-600 font-bold uppercase tracking-wider block">주력 기종 378대</span>
+              <h4 class="font-bold text-slate-900 text-sm">GENIE GS-1930 / E-Drive</h4>
+            </div>
+            <span class="bg-blue-50 text-blue-700 px-2 py-0.5 rounded text-[11px] font-bold">19 FT 표준</span>
+          </div>
+          <ul class="space-y-1.5 text-slate-600">
+            <li>• <strong>최대 작업높이</strong>: 7.79 m (발판 5.79 m)</li>
+            <li>• <strong>적재 하중</strong>: 227 kg (1~2인 표준 작업)</li>
+            <li>• <strong>전폭 x 전장</strong>: 0.76 x 1.83 m (엘리베이터 진입 가능)</li>
+            <li>• <strong>특징</strong>: 차세대 전동 E-Drive 탑재, 누유 위험 제로</li>
+          </ul>
+        </div>
+
+        <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
+          <div class="flex justify-between items-start mb-3">
+            <div>
+              <span class="text-[10px] text-indigo-600 font-bold uppercase tracking-wider block">광폭/협폭 198대</span>
+              <h4 class="font-bold text-slate-900 text-sm">SINOBOOM / GENIE 26FT</h4>
+            </div>
+            <span class="bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded text-[11px] font-bold">26 FT 중층</span>
+          </div>
+          <ul class="space-y-1.5 text-slate-600">
+            <li>• <strong>최대 작업높이</strong>: 9.92 ~ 10.10 m (발판 8.10 m)</li>
+            <li>• <strong>적재 하중</strong>: 450 ~ 454 kg (광폭 102대 보유)</li>
+            <li>• <strong>전폭</strong>: 0.81 m (협폭) / 1.17 m (광폭) 선택 가능</li>
+            <li>• <strong>특징</strong>: 중량 자재 적재 및 2인 여유 작업 최적화</li>
+          </ul>
+        </div>
+
+        <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
+          <div class="flex justify-between items-start mb-3">
+            <div>
+              <span class="text-[10px] text-emerald-600 font-bold uppercase tracking-wider block">고천고 전용 76대</span>
+              <h4 class="font-bold text-slate-900 text-sm">GENIE / SINOBOOM 32FT</h4>
+            </div>
+            <span class="bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded text-[11px] font-bold">32 FT 고층</span>
+          </div>
+          <ul class="space-y-1.5 text-slate-600">
+            <li>• <strong>최대 작업높이</strong>: 11.75 ~ 12.00 m (발판 10.0 m)</li>
+            <li>• <strong>적재 하중</strong>: 318 ~ 320 kg</li>
+            <li>• <strong>플랫폼</strong>: 대용량 확장 데크 및 안전 난간</li>
+            <li>• <strong>특징</strong>: 물류센터 랙 설치, 공장 철골/판넬 시공</li>
+          </ul>
+        </div>
+      </div>
+
+      <!-- Manufacturer & Fleet Age Breakdown Badges -->
+      <div class="mt-6 bg-white p-5 rounded-xl border border-slate-200 flex flex-wrap justify-between items-center gap-4 text-xs">
+        <div class="flex items-center space-x-4">
+          <span class="font-bold text-slate-800 text-xs">글로벌 탑티어 2강 집중 편성:</span>
+          <span class="text-slate-600">Genie (미국) <strong>365대 (47.8%)</strong></span>
+          <span class="text-slate-300">|</span>
+          <span class="text-slate-600">Sinoboom <strong>353대 (46.3%)</strong></span>
+          <span class="text-slate-300">|</span>
+          <span class="text-slate-600">Skyjack / JLG 외 <strong>45대</strong></span>
+        </div>
+        <div class="flex items-center space-x-2">
+          <span class="px-2.5 py-1 rounded bg-emerald-50 text-emerald-700 font-bold text-[11px] border border-emerald-200">
+            <i class="fa-solid fa-sparkles mr-1"></i>2024~2026년식 최신 장비 63.3% (483대)
+          </span>
+        </div>
+      </div>
+    </section>
+
+    <!-- 5. 6단계 스마트 렌탈 라이프사이클 (Standard Rental Process) -->
+    <section class="p-8 sm:p-12 border-b border-slate-100 bg-white">
+      <div class="flex items-center space-x-2 text-blue-600 font-bold text-xs uppercase tracking-wider mb-2">
+        <i class="fa-solid fa-arrows-spin"></i>
+        <span>Standard Process</span>
+      </div>
+      <h2 class="text-2xl sm:text-3xl font-bold text-slate-900">스마트 6단계 렌탈 라이프사이클</h2>
+      <p class="text-slate-500 text-sm mt-1">입고부터 사전 점검, 정시 직송, 사후 케어까지 전산과 기술이 결합된 원스톱 프로세스</p>
+
+      <div class="mt-8 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        <!-- Step 1 -->
+        <div class="p-5 rounded-xl border border-slate-200 bg-slate-50/70 relative">
+          <div class="text-xs font-bold text-blue-600 mb-1 tracking-wider">STEP 01</div>
+          <h4 class="font-bold text-slate-800 text-sm">현장 맞춤 상담 & 스마트 수주</h4>
+          <p class="text-xs text-slate-500 mt-2 leading-relaxed">
+            현장 층고, 바닥 여건, 상부 장애물 및 원청 안전옵션을 사전에 정밀 분석하여 최적 기종 매칭 및 e-Bro 견적서 즉시 발행.
+          </p>
+        </div>
+
+        <!-- Step 2 -->
+        <div class="p-5 rounded-xl border border-blue-200 bg-blue-50/40 relative">
+          <div class="text-xs font-bold text-blue-600 mb-1 tracking-wider">STEP 02</div>
+          <h4 class="font-bold text-slate-800 text-sm">출고 전 21개 항목 PDI 검수</h4>
+          <p class="text-xs text-slate-500 mt-2 leading-relaxed">
+            용인 주기장 입출고센터에서 배터리 비중, 유압 밸브, 브레이크, 비상하강레버 및 5대 법정 안전장치를 전수 무결점 검사.
+          </p>
+        </div>
+
+        <!-- Step 3 -->
+        <div class="p-5 rounded-xl border border-slate-200 bg-slate-50/70 relative">
+          <div class="text-xs font-bold text-blue-600 mb-1 tracking-wider">STEP 03</div>
+          <h4 class="font-bold text-slate-800 text-sm">전용 셀프로더 맞춤 정시 직송</h4>
+          <p class="text-xs text-slate-500 mt-2 leading-relaxed">
+            주기장 출발부터 현장 도착까지 실시간 배차 알림을 전송하며, 안전 운송 전용 셀프로더로 지정 일시에 정확히 반입.
+          </p>
+        </div>
+
+        <!-- Step 4 -->
+        <div class="p-5 rounded-xl border border-slate-200 bg-slate-50/70 relative">
+          <div class="text-xs font-bold text-blue-600 mb-1 tracking-wider">STEP 04</div>
+          <h4 class="font-bold text-slate-800 text-sm">현장 인수 & 디지털 서류 교부</h4>
+          <p class="text-xs text-slate-500 mt-2 leading-relaxed">
+            현장 조작 및 비상하강법 안전 교육을 실시하고, 법정 안전점검표 및 전자계약서를 모바일(카카오톡/SMS)로 1분 내 즉시 교부.
+          </p>
+        </div>
+
+        <!-- Step 5 -->
+        <div class="p-5 rounded-xl border border-emerald-200 bg-emerald-50/40 relative">
+          <div class="text-xs font-bold text-emerald-600 mb-1 tracking-wider">STEP 05</div>
+          <h4 class="font-bold text-slate-800 text-sm">모바일 당일 AS & 무중단 대차</h4>
+          <p class="text-xs text-slate-500 mt-2 leading-relaxed">
+            운용 중 트러블 발생 시 직영 기동 정비차가 당일 현장 출동하며, 수리 불가 시 동일 스펙 장비로 당일 1:1 맞교환(대차) 배차.
+          </p>
+        </div>
+
+        <!-- Step 6 -->
+        <div class="p-5 rounded-xl border border-slate-200 bg-slate-50/70 relative">
+          <div class="text-xs font-bold text-blue-600 mb-1 tracking-wider">STEP 06</div>
+          <h4 class="font-bold text-slate-800 text-sm">반납 회수 및 주기장 입고 정밀 점검</h4>
+          <p class="text-xs text-slate-500 mt-2 leading-relaxed">
+            공정 완료 후 안전 회수, 용인 주기장 입출고센터 입고 즉시 고압 세척, 배터리 충전 및 소모품 점검을 거쳐 차기 출고 상시 대기.
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <!-- 6. 1군 건설사 안전 무결점 패키지 (Safety Compliance) -->
+    <section id="safety" class="p-8 sm:p-12 border-b border-slate-100 bg-slate-50/50">
+      <div class="flex items-center space-x-2 text-blue-600 font-bold text-xs uppercase tracking-wider mb-2">
+        <i class="fa-solid fa-shield-halved"></i>
+        <span>Zero Accident System</span>
+      </div>
+      <h2 class="text-2xl sm:text-3xl font-bold text-slate-900">현장 안전 풀 패키지 완비</h2>
+      <p class="text-slate-500 text-sm mt-1">삼성전자·현대건설·SK하이닉스 등 1군 건설사 현장 반입 감사를 100% 무통과 합격 보장합니다.</p>
+
+      <div class="mt-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 text-xs">
+        <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+          <div class="flex items-center space-x-2 font-bold text-slate-800 mb-2">
+            <i class="fa-solid fa-bullseye text-blue-600"></i>
+            <span>스마트 상부 협착방지센서</span>
+          </div>
+          <p class="text-slate-500 leading-relaxed">천장 구조물 및 배관과 30cm 이내 접근 시 승강을 자동으로 강제 차단하여 끼임 사고 원천 방지.</p>
+        </div>
+
+        <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+          <div class="flex items-center space-x-2 font-bold text-slate-800 mb-2">
+            <i class="fa-solid fa-weight-scale text-blue-600"></i>
+            <span>과부하 감지 및 잠금 장치</span>
+          </div>
+          <p class="text-slate-500 leading-relaxed">정격 적재 하중 초과 시 즉시 고음 경보음이 울리며 상승 동작을 차단하여 전복 및 프레임 파손 방지.</p>
+        </div>
+
+        <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+          <div class="flex items-center space-x-2 font-bold text-slate-800 mb-2">
+            <i class="fa-solid fa-shoe-prints text-blue-600"></i>
+            <span>안전 발판 풋스위치 (Foot Switch)</span>
+          </div>
+          <p class="text-slate-500 leading-relaxed">발판 스위치를 확실히 밟아야만 조작 레버가 반응하도록 설계되어 오조작으로 인한 충돌 차단.</p>
+        </div>
+
+        <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+          <div class="flex items-center space-x-2 font-bold text-slate-800 mb-2">
+            <i class="fa-solid fa-circle-down text-blue-600"></i>
+            <span>지상 수동 비상 하강 밸브</span>
+          </div>
+          <p class="text-slate-500 leading-relaxed">비상 전원 차단 또는 배터리 방전 시에도 지상에서 수동으로 작업대를 안전하게 착륙 지원.</p>
+        </div>
+
+        <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+          <div class="flex items-center space-x-2 font-bold text-slate-800 mb-2">
+            <i class="fa-solid fa-lightbulb text-blue-600"></i>
+            <span>360도 LED 경광등 & 후진 부저</span>
+          </div>
+          <p class="text-slate-500 leading-relaxed">고휘도 LED 스트로브 및 주행 시 알림 부저를 장착하여 어두운 지하주차장 및 복잡한 현장 안전 반경 확보.</p>
+        </div>
+
+        <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+          <div class="flex items-center space-x-2 font-bold text-slate-800 mb-2">
+            <i class="fa-solid fa-droplet text-blue-600"></i>
+            <span>유압 오일받이 & 논마킹 타이어</span>
+          </div>
+          <p class="text-slate-500 leading-relaxed">미세 유압 누유를 원천 방지하는 드립팬 및 에폭시·대리석 바닥 타이어 자국 방지 친환경 사양 기본 탑재.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- 7. 사업장 위치 및 직통 연락망 (Infrastructures & Contact) -->
+    <section id="contact" class="p-8 sm:p-12 bg-white">
+      <div class="flex items-center space-x-2 text-blue-600 font-bold text-xs uppercase tracking-wider mb-2">
+        <i class="fa-solid fa-map-location-dot"></i>
+        <span>Infrastructures & Contact</span>
+      </div>
+      <h2 class="text-2xl sm:text-3xl font-bold text-slate-900">사업장 위치 및 문의 안내</h2>
+      <p class="text-slate-500 text-sm mt-1">현장 실측, 맞춤 견적, 긴급 배차 문의를 언제든지 신속하게 지원해 드립니다.</p>
+
+      <!-- Accurate 2-Hub Cards (Yongin Depot Hub & Giheung ICT Valley) -->
+      <div class="mt-8 grid grid-cols-1 md:grid-cols-2 gap-6">
+        <!-- Yongin Depot & In/Out Logistics Center -->
+        <div class="p-6 rounded-2xl border border-slate-200 bg-slate-50 flex flex-col justify-between">
+          <div>
+            <div class="text-blue-600 font-bold text-xs mb-1">
+              <i class="fa-solid fa-warehouse mr-1.5"></i> HEADQUARTERS & FLEET HUB
+            </div>
+            <h4 class="font-bold text-slate-900 text-base sm:text-lg">용인 본사 · 주기장 및 입출고센터</h4>
+            <p class="text-xs sm:text-sm text-slate-700 mt-2 font-semibold">경기도 용인시 처인구 포곡읍 곡현로 254-3</p>
+            <p class="text-[11px] text-slate-500 mt-1.5 leading-relaxed">
+              • 영동고속도로 용인IC 및 포곡IC 인근 (수도권 전역 신속 접근)<br>
+              • 대형 셀프로더 / 트레일러 광폭 전용 진입로 완비<br>
+              • 상설 주기장 보유 및 출고 전 21개 항목 PDI 검수 센터 운용
+            </p>
+          </div>
+          <div class="mt-5 pt-3 border-t border-slate-200 text-xs text-slate-700 flex justify-between items-center">
+            <span>TEL : <strong>031-334-5295</strong></span>
+            <span>FAX : <strong>031-335-5297</strong></span>
+          </div>
+        </div>
+
+        <!-- Giheung ICT Operations & R&D Center -->
+        <div class="p-6 rounded-2xl border border-slate-200 bg-slate-50 flex flex-col justify-between">
+          <div>
+            <div class="text-indigo-600 font-bold text-xs mb-1">
+              <i class="fa-solid fa-laptop-code mr-1.5"></i> R&D & OPERATIONS CENTER
+            </div>
+            <h4 class="font-bold text-slate-900 text-base sm:text-lg">기흥 R&D 및 스마트 관제센터</h4>
+            <p class="text-xs sm:text-sm text-slate-700 mt-2 font-semibold">경기도 용인시 기흥구 기흥로 60-1, C동 1004호 (기흥ICT밸리)</p>
+            <p class="text-[11px] text-slate-500 mt-1.5 leading-relaxed">
+              • 기흥역(분당선·에버라인) 도보 5분 거리 위치<br>
+              • e-Bro ERP 실시간 자산·배차 관제 및 모바일 전자문서 발행 지원<br>
+              • 스마트 상부 협착방지센서 연구개발 및 1군 현장 기술 지원
+            </p>
+          </div>
+          <div class="mt-5 pt-3 border-t border-slate-200 text-xs text-slate-700 flex justify-between items-center">
+            <span>견적 직통 : <strong>031-334-5296</strong></span>
+            <span>모바일 : <strong>010-9402-5296</strong></span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Action Banner -->
+      <div class="mt-8 bg-slate-950 text-white p-6 sm:p-8 rounded-2xl flex flex-col sm:flex-row justify-between items-center gap-6 shadow-xl">
+        <div class="flex items-center space-x-4">
+          <!-- CI in Call-to-action Banner -->
+          <div class="w-12 h-14 bg-white rounded-lg p-1.5 flex items-center justify-center flex-shrink-0 shadow">
+            <svg viewBox="0 0 100 130" class="w-full h-full" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M18 10 L43 55 L43 78 L57 78 L57 55 L82 10 L64 10 L50 40 L36 10 Z" fill="#2D3B68" />
+              <path d="M50 42 C24 42 12 58 12 85 C12 110 28 125 54 125 C75 125 87 114 88 95 L50 95 L50 82 L100 82 C101 108 84 135 52 135 C18 135 0 115 0 85 C0 50 20 30 50 30 C58 30 65 32 72 36 L64 48 C59 44 54 42 50 42 Z" fill="#2D3B68" />
+            </svg>
+          </div>
+          <div>
+            <span class="text-xs text-sky-400 font-bold uppercase tracking-wider">Fast Response Hotline</span>
+            <h3 class="text-lg sm:text-xl font-bold mt-0.5">고소작업대 렌탈·견적·배차 문의</h3>
+            <p class="text-slate-400 text-xs mt-1">1군 건설사 제출용 안전서류 및 최적 규격 견적서를 신속하게 발송해 드립니다.</p>
+          </div>
+        </div>
+        <div class="flex flex-col sm:flex-row gap-3 w-full sm:w-auto">
+          <a href="tel:031-334-5296" class="px-5 py-3 rounded-xl bg-blue-600 hover:bg-blue-500 font-bold text-xs sm:text-sm text-center shadow-lg transition flex items-center justify-center">
+            <i class="fa-solid fa-phone mr-2"></i> 031-334-5296
+          </a>
+          <a href="mailto:giyeonlift@naver.com" class="px-5 py-3 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 font-semibold text-xs sm:text-sm text-center text-slate-200 transition flex items-center justify-center">
+            <i class="fa-solid fa-envelope mr-2"></i> 이메일 문의
+          </a>
+        </div>
+      </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="p-6 bg-slate-100 text-center border-t border-slate-200 text-xs text-slate-500">
+      <div class="flex items-center justify-center space-x-2 mb-2">
+        <div class="w-5 h-6 bg-white rounded p-0.5 inline-block">
+          <svg viewBox="0 0 100 130" class="w-full h-full" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M18 10 L43 55 L43 78 L57 78 L57 55 L82 10 L64 10 L50 40 L36 10 Z" fill="#2D3B68" />
+            <path d="M50 42 C24 42 12 58 12 85 C12 110 28 125 54 125 C75 125 87 114 88 95 L50 95 L50 82 L100 82 C101 108 84 135 52 135 C18 135 0 115 0 85 C0 50 20 30 50 30 C58 30 65 32 72 36 L64 48 C59 44 54 42 50 42 Z" fill="#2D3B68" />
+          </svg>
+        </div>
+        <span class="font-bold text-slate-800">주식회사 기연리프트 (GIYEUN LIFT CO., LTD.)</span>
+      </div>
+      <p>본사 및 주기장: 경기도 용인시 처인구 포곡읍 곡현로 254-3 | 사업자등록번호: 138-81-83251 | E-mail: giyeonlift@naver.com</p>
+      <p class="mt-1 text-[11px] text-slate-400">© 2026 GIYEUN LIFT CO., LTD. All Rights Reserved. Powered by e-Bro LIFT ERP System.</p>
+    </footer>
+
+  </main>
+
+  <div class="h-10 no-print"></div>
+
+</body>
+</html>

@@ -120,6 +120,7 @@ export interface Tenant {
   mainYardAddress?: string;            // 대표 주기장(야드) 주소 (하위 호환)
   bankAccounts?: TenantBankAccount[];  // 주 입금 계좌 목록
   logoUrl?: string;                    // 로고 이미지 URL
+  ciUrl?: string;                      // 회사 CI/브랜드 심볼 이미지 URL
   stampImageUrl?: string;              // 정식 등록 법인 인감/도장 이미지 URL (또는 Base64)
   status: 'ACTIVE' | 'SUSPENDED' | 'TERMINATED';
   isDefault: boolean;                  // 기본 테넌트 여부
@@ -3122,7 +3123,8 @@ export const SEED_TENANTS: Tenant[] = [
         isDefault: false,
       },
     ],
-    logoUrl: '',
+    logoUrl: '/images/ci/giyeun_ci.png',
+    ciUrl: '/images/ci/giyeun_ci.png',
     stampImageUrl: OFFICIAL_STAMP_BASE64,
     status: 'ACTIVE',
     isDefault: true,
@@ -3786,16 +3788,59 @@ class LocalDB {
     }
   }
 
-  get tenants() { return this.get<Tenant>('tenants', SEED_TENANTS); }
+  get tenants() { 
+    const list = this.get<Tenant>('tenants', SEED_TENANTS);
+    let modified = false;
+    const patched = list.map(t => {
+      if ((!t.ciUrl || !t.logoUrl) && (t.id === 'tenant-1' || t.tenantCode === 'GIYEUN' || t.isDefault)) {
+        modified = true;
+        return {
+          ...t,
+          ciUrl: t.ciUrl || '/images/ci/giyeun_ci.png',
+          logoUrl: t.logoUrl || '/images/ci/giyeun_ci.png'
+        };
+      }
+      return t;
+    });
+    if (modified) {
+      this.set('tenants', patched);
+    }
+    return patched;
+  }
   set tenants(val: Tenant[]) { this.set('tenants', val); }
 
   get currentTenant(): Tenant {
     const list = this.tenants;
+
+    // 🌐 [1순위] 브라우저 접속 도메인의 서브도메인 기반 자동 테넌트 매핑 (*.ebro.run)
+    if (typeof window !== 'undefined' && window.location?.hostname) {
+      const hostname = window.location.hostname.toLowerCase();
+      // 예: giyuenlift.ebro.run, giyeun.ebro.run, hansol.ebro.run
+      const parts = hostname.split('.');
+      if (parts.length >= 3 && hostname.endsWith('ebro.run')) {
+        const sub = parts[0].toLowerCase();
+        const matched = list.find(t => {
+          const code = (t.tenantCode || '').toLowerCase();
+          const dName = (t.displayName || '').toLowerCase();
+          return code === sub ||
+                 sub.startsWith(code) ||
+                 code.startsWith(sub) ||
+                 (sub.includes('giyuen') && code === 'giyeun') ||
+                 (sub.includes('giyeun') && code === 'giyeun') ||
+                 (sub.includes('lift') && (code === 'giyeun' || dName.includes('기연')));
+        });
+        if (matched) return matched;
+      }
+    }
+
+    // 💾 [2순위] 로컬스토리지 수동 지정 테넌트 ID
     const activeTenantId = typeof window !== 'undefined' ? localStorage.getItem('erp_current_tenant_id') : null;
     if (activeTenantId) {
       const found = list.find(t => t.id === activeTenantId || t.tenantCode === activeTenantId);
       if (found) return found;
     }
+
+    // 🏢 [3순위] 디폴트 테넌트 (기연리프트)
     const defaultTenant = list.find(t => t.isDefault) || list[0];
     return defaultTenant || SEED_TENANTS[0];
   }

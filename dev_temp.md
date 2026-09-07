@@ -1,5 +1,33 @@
 # 개발 요구사항 임시 기록 (dev_temp.md)
 
+## [완료] PC 헤더 테넌트 회사명 상단 강조 및 하단 e-Bro ERP System 2열 스택 개편 & ebro.run 도메인 연동 (v1.10.0.Build.10)
+- **요구사항**: "화면에서 고객회사(기연리프트) 가 먼저 강조되어 표시되고 아랫줄에 e-Bro ERP System 좀 작은 글씨로 변경"
+- **조치 내역**:
+  1. `src/App.tsx`: PC 최상단 헤더 좌측 로고 영역을 2열 세로 스택(`display: flex, flexDirection: column`)으로 개편:
+     - 1열: `{currentTenant?.displayName || currentTenant?.tradeName || currentTenant?.corporateName || '기연리프트'}` (18px, font-weight: 900, whiteSpace: nowrap) ➔ 고객사 브랜드 최우선 강조.
+     - 2열: `e-Bro ERP System` (11.5px, font-weight: 700, color: var(--primary), whiteSpace: nowrap, marginTop: 2px) ➔ 시스템 고유 브랜드 소형 정밀 배치.
+     - 좌측 CI 로고(32px)와 완벽한 시각적 균형 정렬.
+  2. `src/services/db.ts`: `ebro.run` 도메인 및 와일드카드(`*.ebro.run`) 서브도메인 접속 시 URL의 서브도메인(`giyuenlift`, `hansol` 등)을 자동 감지하여 해당 고객사(테넌트)로 즉시 1순위 분기하는 SaaS 멀티테넌트 자동 라우팅 엔진 탑재.
+- **검증 결과**:
+  - `npm run build`: **0 Error 통과** (`built in 1.12s`).
+
+## [완료] 테넌트 회사 CI 등록/로그인·헤더 표출 및 브라우저 원클릭 로컬 에이전트(BroAgent.js) 기동 파이프라인 구축 (v1.10.0.Build.9)
+- **요구사항**: "사용자 컴퓨터에 node.js 설치되어 있고, 에이전트 파일(BroAgent.js) 을 다운받았으면, 실행은 사이트에서 실행시키게 하고 싶어. 그리고 테넌트 정보에 사용자 회사의 CI 등록. 기연리프트 CI 는 여기에 있음 (D:\01.AntiGravity\Giyuen_Lift\기연리프트_CI.png) 이 파일 등록. 로그인 회면과 사용중인 화면의 가장 좌측상단 회사이름 왼쪽에 표시되도록 개편)"
+- **조치 내역**:
+  1. **회사 CI(로고) 테넌트 스키마 등록 및 로그인/헤더 배치**:
+     - `기연리프트_CI.png`를 `public/images/ci/giyeun_ci.png`, `public/images/ci/default_ci.png`, `public/giyeun_ci.png`에 등록.
+     - `src/services/db.ts`: `Tenant` 인터페이스에 `ciUrl?: string;` 추가, `SEED_TENANTS`에 `logoUrl: '/images/ci/giyeun_ci.png'`, `ciUrl: '/images/ci/giyeun_ci.png'` 반영 및 localStorage 로드 시 누락 방지 자동 보정 로직 구현.
+     - `src/App.tsx`: 로그인 화면의 로그인 카드 상단에 테넌트 CI 로고를 회사명 좌측에 나란히 배치.
+     - `src/App.tsx` & `src/mobile/MobileHeader.tsx`: 사용 중인 PC 화면 및 모바일 화면의 가장 좌측 상단 회사이름 좌측에 테넌트 CI 로고 배치.
+  2. **브라우저(사이트)에서 로컬 에이전트(BroAgent.js) 원클릭 실행 파이프라인**:
+     - Windows 커스텀 프로토콜 핸들러(`broagent://run`, `ebro://run`) 지원.
+     - `agent/BroAgent.js`, `agent/eBroAgent.js`: 실행 시 무권한으로 레지스트리 `HKCU\Software\Classes\broagent` 자동 등록.
+     - `public/downloads/등록-원클릭실행.bat` 배치: 브라우저 다운로드 후 1회 실행으로 프로토콜 등록 지원.
+     - `src/services/agentService.ts`: `launchLocalAgentFromBrowser()` 함수 및 `AGENT_BRO_JS_URL`, `AGENT_REG_BAT_URL` 선언.
+     - `src/components/AgentHeaderBadge.tsx`: 에이전트 오프라인 시 팝오버 상단에 `[사이트에서 에이전트 실행]` 버튼 배치, 클릭 시 0.5초 간격 폴링으로 에이전트 구동 감지 및 자동 연결 완결.
+- **검증 결과**:
+  - `npm run build`: **0 Error 통과** (`built in 1.23s`).
+
 ## [완료] 모바일 웹앱 및 배차 파이프라인 테넌트(Tenant) 정보 기반 100% 동적화 개편 (v1.10.0.Build.8)
 - **요구사항**: "웹앱 에서도 테넌트 정보 기준으로 작동하는지 점검하고 발견사항은 즉시 개편하여 ㄹㅇ"
 - **조치 내역**:

@@ -91,6 +91,18 @@ try {
   try { execSync('reg delete "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run" /v "KiyeunAgent" /f', { stdio: 'ignore' }); } catch (e) {}
 } catch (e) {}
 
+// 🌐 브라우저 원클릭 기동을 위한 URI 프로토콜 (broagent:// 및 ebro://) 자동 등록
+try {
+  const pCmd = 'cmd.exe /c start "" "%SystemRoot%\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -NoProfile -WindowStyle Normal -Command "$host.ui.RawUI.WindowTitle = \'[BroAgent] Local Sidecar Agent\'; if (Test-Path \'C:\\eBroAgent\\BroAgent.js\') { Set-Location \'C:\\eBroAgent\'; node BroAgent.js } elseif (Test-Path \'C:\\eBroAgent\\eBroAgent.js\') { Set-Location \'C:\\eBroAgent\'; node eBroAgent.js } elseif (Test-Path \\"$env:USERPROFILE\\Downloads\\BroAgent.js\\") { Set-Location \\"$env:USERPROFILE\\Downloads\\"; node BroAgent.js } elseif (Test-Path \\"$env:USERPROFILE\\Downloads\\eBroAgent.js\\") { Set-Location \\"$env:USERPROFILE\\Downloads\\"; node eBroAgent.js } else { Write-Host \'[BroAgent] BroAgent.js를 찾지 못했습니다.\' -ForegroundColor Red; pause }"';
+  ['broagent', 'ebro'].forEach(proto => {
+    try {
+      execSync(`reg add "HKCU\\Software\\Classes\\${proto}" /ve /d "URL:${proto} Protocol" /f`, { stdio: 'ignore' });
+      execSync(`reg add "HKCU\\Software\\Classes\\${proto}" /v "URL Protocol" /d "" /f`, { stdio: 'ignore' });
+      execSync(`reg add "HKCU\\Software\\Classes\\${proto}\\shell\\open\\command" /ve /d "${pCmd.replace(/"/g, '\\"')}" /f`, { stdio: 'ignore' });
+    } catch (e) {}
+  });
+} catch (e) {}
+
 // 디렉토리 자동 생성 (정식 위치 실행 시)
 try {
   if (!fs.existsSync(AGENT_HOME)) fs.mkdirSync(AGENT_HOME, { recursive: true });

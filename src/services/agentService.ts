@@ -2,13 +2,35 @@
 // e-Bro ERP 로컬 사이드카 에이전트(eBroAgent) 단일 표준 메타데이터 및 통신 헬퍼
 
 export const EXPECTED_AGENT_VERSION = 'v2.0.0.Build.1';
-export const AGENT_DOWNLOAD_URL = '/downloads/eBroAgent.js';           // Node.js 경량 스크립트 (eBroAgent.js)
+export const AGENT_DOWNLOAD_URL = '/downloads/BroAgent.js';            // Node.js 경량 스크립트 (BroAgent.js)
+export const AGENT_BRO_JS_URL = '/downloads/BroAgent.js';               // BroAgent.js 직접 다운로드
+export const AGENT_EBRO_JS_URL = '/downloads/eBroAgent.js';             // eBroAgent.js 호환 다운로드
+export const AGENT_REG_BAT_URL = '/downloads/등록-원클릭실행.bat';       // 브라우저 원클릭 실행 프로토콜 등록기
 export const AGENT_EXE_URL = '/downloads/eBroAgent.exe';               // Node.js 독립 실행 파일
 export const AGENT_LAUNCHER_URL = '/downloads/start-agent.bat';        // 실행 배치 파일
 export const AGENT_KILL_BAT_URL = '/downloads/kill-agent.bat';
 export const AGENT_CERT_URL = '/downloads/eBroAgent_Root.cer';         // 보안 인증서
 export const AGENT_INSTALL_BAT_URL = '/downloads/install-cert.bat';     // 인증서 등록 배치 파일
 export const NODEJS_INSTALL_URL = 'https://nodejs.org/en/download/';
+export const AGENT_PROTOCOL_URI = 'broagent://run';
+export const AGENT_PROTOCOL_FALLBACK_URI = 'ebro://run';
+
+/**
+ * 🚀 브라우저(사이트)에서 로컬 에이전트(BroAgent.js) 원클릭 기동 트리거
+ */
+export function launchLocalAgentFromBrowser(): void {
+  try {
+    const iframe = document.createElement('iframe');
+    iframe.style.display = 'none';
+    iframe.src = AGENT_PROTOCOL_URI;
+    document.body.appendChild(iframe);
+    setTimeout(() => {
+      try { document.body.removeChild(iframe); } catch (e) {}
+    }, 2500);
+  } catch (e) {
+    window.location.href = AGENT_PROTOCOL_URI;
+  }
+}
 
 
 export interface AgentHealthInfo {

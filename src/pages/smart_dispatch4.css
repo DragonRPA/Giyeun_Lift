@@ -435,3 +435,108 @@
   border: 1px solid #1e293b;
   border-radius: 8px;
 }
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   4형 (기준정보 드로어형) 고밀도 마스터 그리드 & 테이블 규격 (헌장 3.2, 3.6)
+   ───────────────────────────────────────────────────────────────────────────── */
+.dispatch4-master-stage {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 4px 6px;
+  overflow: hidden;
+  box-sizing: border-box;
+}
+
+.dispatch4-grid-section {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background-color: #0b1329;
+  border: 1px solid #1e293b;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.dispatch4-section-header {
+  flex-shrink: 0;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 12px;
+  background-color: #0f172a;
+  border-bottom: 1px solid #1e293b;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.dispatch4-table-container {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+.dispatch4-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.dispatch4-table th {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  height: 32px;
+  background-color: #090e1a;
+  color: #94a3b8;
+  font-weight: 700;
+  text-align: left;
+  padding: 0 10px;
+  border-bottom: 1px solid #1e293b;
+  border-right: 1px solid #1e293b;
+}
+
+.dispatch4-table td {
+  height: 38px;
+  padding: 0 10px;
+  border-bottom: 1px solid #1e293b;
+  border-right: 1px solid #1e293b;
+  color: #e2e8f0;
+}
+
+.dispatch4-table tr:hover td {
+  background-color: rgba(59, 130, 246, 0.08);
+}
+
+.dispatch4-col-sticky-0 {
+  position: sticky;
+  left: 0;
+  z-index: 20;
+  background-color: #0b1329 !important;
+  width: 64px;
+  min-width: 64px;
+  text-align: center;
+  border-right: 2px solid #1e293b !important;
+}
+
+.dispatch4-scrollbar::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+.dispatch4-scrollbar::-webkit-scrollbar-track {
+  background: #090e1a;
+}
+.dispatch4-scrollbar::-webkit-scrollbar-thumb {
+  background: #334155;
+  border-radius: 3px;
+}
+.dispatch4-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #475569;
+}
+

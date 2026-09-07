@@ -81,8 +81,8 @@ export const CallAudioUploadModal: React.FC<CallAudioUploadModalProps> = ({
   };
 
   const handleUpload = async () => {
-    if (!file) {
-      setErrorMsg('업로드할 음성 파일을 선택해 주세요.');
+    if (!file && !summaryText.trim()) {
+      setErrorMsg('음성 파일을 선택하거나 통화 텍스트(메모)를 입력해 주세요.');
       return;
     }
     if (selectedContexts.size === 0) {
@@ -172,8 +172,9 @@ export const CallAudioUploadModal: React.FC<CallAudioUploadModalProps> = ({
 
           {/* 1. 파일 선택 */}
           <div>
-            <div style={{ fontSize: 11, fontWeight: 700, color: '#cbd5e1', marginBottom: 8 }}>
-              1. 음성 파일 선택 <span style={{ color: '#f87171' }}>*</span>
+            <div style={{ fontSize: 11, fontWeight: 700, color: '#cbd5e1', marginBottom: 8, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <span>1. 음성 파일 선택</span>
+              <span style={{ fontSize: 10, fontWeight: 400, color: '#94a3b8' }}>음성 또는 텍스트 중 하나 필수</span>
             </div>
 
             {/* 네이티브 파일 인풋 (Visually Hidden: 모바일 브라우저/웹뷰 터치 연동 100% 호환) */}
@@ -347,17 +348,18 @@ export const CallAudioUploadModal: React.FC<CallAudioUploadModalProps> = ({
             </div>
           </div>
 
-          {/* 3. 통화 메모 */}
+          {/* 3. 통화 메모 / 텍스트 의뢰 */}
           <div>
-            <div style={{ fontSize: 11, fontWeight: 700, color: '#cbd5e1', marginBottom: 8 }}>
-              3. 통화 메모 <span style={{ fontWeight: 400, color: '#64748b' }}>(선택)</span>
+            <div style={{ fontSize: 11, fontWeight: 700, color: '#cbd5e1', marginBottom: 8, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <span>3. 통화 텍스트 / 삼성 AI 요약 / 카톡 의뢰</span>
+              <span style={{ fontSize: 10, fontWeight: 400, color: '#60a5fa' }}>파일 없이 텍스트만으로 초안 생성 가능</span>
             </div>
             <textarea
               value={summaryText}
               onChange={e => setSummaryText(e.target.value)}
-              placeholder="삼성 통화요약 또는 핵심 메모를 붙여넣으세요."
-              rows={3}
-              style={{ width: '100%', background: 'rgba(30,41,59,0.8)', border: '1px solid #334155', borderRadius: 10, padding: '10px 12px', fontSize: 12, color: '#e2e8f0', outline: 'none', resize: 'none', fontFamily: 'inherit', boxSizing: 'border-box' }}
+              placeholder="삼성 통화요약, 고객 카톡 발주문, 또는 핵심 통화 메모를 붙여넣으세요. (예: 고촌 현대 현장 19피트 2대 내일 아침 8시 김반장)"
+              rows={4}
+              style={{ width: '100%', background: 'rgba(30,41,59,0.8)', border: '1px solid #334155', borderRadius: 10, padding: '10px 12px', fontSize: 12, color: '#e2e8f0', outline: 'none', resize: 'none', fontFamily: 'inherit', boxSizing: 'border-box', lineHeight: 1.5 }}
             />
           </div>
 
@@ -391,32 +393,37 @@ export const CallAudioUploadModal: React.FC<CallAudioUploadModalProps> = ({
           >
             취소
           </button>
-          <button
-            type="button"
-            onClick={handleUpload}
-            disabled={uploading || !file}
-            style={{
-              display: 'flex', alignItems: 'center', gap: 8,
-              padding: '10px 24px', borderRadius: 10, fontSize: 14, fontWeight: 700,
-              background: uploading || !file ? '#1e3a5f' : '#2563eb',
-              border: 'none', color: uploading || !file ? '#64748b' : '#fff',
-              cursor: uploading || !file ? 'not-allowed' : 'pointer',
-              boxShadow: !uploading && file ? '0 4px 16px rgba(37,99,235,0.35)' : 'none',
-              transition: 'all 0.15s',
-            }}
-          >
-            {uploading ? (
-              <>
-                <Loader2 style={{ width: 16, height: 16, animation: 'spin 1s linear infinite' }} />
-                <span>업로드 중...</span>
-              </>
-            ) : (
-              <>
-                <UploadCloud style={{ width: 16, height: 16 }} />
-                <span>전송</span>
-              </>
-            )}
-          </button>
+          {(() => {
+            const canSubmit = !uploading && (!!file || summaryText.trim().length > 0) && selectedContexts.size > 0;
+            return (
+              <button
+                type="button"
+                onClick={handleUpload}
+                disabled={!canSubmit}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 8,
+                  padding: '10px 24px', borderRadius: 10, fontSize: 14, fontWeight: 700,
+                  background: !canSubmit ? '#1e3a5f' : '#2563eb',
+                  border: 'none', color: !canSubmit ? '#64748b' : '#fff',
+                  cursor: !canSubmit ? 'not-allowed' : 'pointer',
+                  boxShadow: canSubmit ? '0 4px 16px rgba(37,99,235,0.35)' : 'none',
+                  transition: 'all 0.15s',
+                }}
+              >
+                {uploading ? (
+                  <>
+                    <Loader2 style={{ width: 16, height: 16, animation: 'spin 1s linear infinite' }} />
+                    <span>{file ? '업로드 및 초안 생성 중...' : '초안 자동 생성 중...'}</span>
+                  </>
+                ) : (
+                  <>
+                    <UploadCloud style={{ width: 16, height: 16 }} />
+                    <span>{file ? '전송 (초안 자동생성)' : '텍스트 의뢰 전송 (초안 자동생성)'}</span>
+                  </>
+                )}
+              </button>
+            );
+          })()}
         </div>
       </div>
     </div>

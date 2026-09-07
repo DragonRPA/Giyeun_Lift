@@ -86,6 +86,7 @@ interface DraftOrder {
   paidBy?: PaidBy | null;
   safetyOptions?: string[];
   staggeredMemo?: string;
+  sourceCallIds?: string[];
   vehicleType?: string;
 }
 
@@ -249,6 +250,7 @@ export const SmartDispatch4: React.FC = () => {
           paidBy:             meta.paidBy,
           safetyOptions:      meta.safetyOptions,
           staggeredMemo:      meta.staggeredMemo,
+          sourceCallIds:      d.sourceCallIds || [],
           vehicleType:        meta.vehicleType,
         };
       });
@@ -317,6 +319,7 @@ export const SmartDispatch4: React.FC = () => {
             paidBy:             meta.paidBy,
             safetyOptions:      meta.safetyOptions,
             staggeredMemo:      meta.staggeredMemo,
+            sourceCallIds:      newDraft.sourceCallIds || [],
             vehicleType:        meta.vehicleType,
           };
           setQueue(prev => {
@@ -3154,9 +3157,24 @@ export const SmartDispatch4: React.FC = () => {
                     </div>
                   )}
 
-                  {selectedUpload.summaryText && (
-                    <div className="text-xs text-slate-300 bg-slate-950/80 p-2 rounded border border-slate-800/80 max-h-16 overflow-y-auto leading-relaxed whitespace-pre-wrap dispatch4-scrollbar">
-                      {selectedUpload.summaryText}
+                  {selectedUpload.summaryText ? (
+                    <div className="flex flex-col gap-1">
+                      <div className="flex items-center justify-between text-[11px] font-bold text-blue-300">
+                        <span className="flex items-center gap-1">
+                          <Phone className="w-3 h-3 text-blue-400" />
+                          <span>모바일 통화 텍스트 (삼성 AI 요약 / 녹음 메모)</span>
+                        </span>
+                        <span className="text-[10px] text-slate-400 font-mono">
+                          {selectedUpload.summaryText.length}자
+                        </span>
+                      </div>
+                      <div className="text-xs text-slate-200 bg-slate-950 p-2.5 rounded-lg border border-blue-900/40 max-h-28 overflow-y-auto leading-relaxed whitespace-pre-wrap font-sans dispatch4-scrollbar selection:bg-blue-600">
+                        {selectedUpload.summaryText}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="text-[11px] text-slate-500 bg-slate-950/60 p-2 rounded border border-slate-800/40 text-center">
+                      등록된 모바일 통화 텍스트(메모) 없음
                     </div>
                   )}
 
@@ -3302,10 +3320,11 @@ export const SmartDispatch4: React.FC = () => {
                             <td style={{ textAlign: 'center' }} onClick={e => e.stopPropagation()}>
                               <button
                                 type="button"
-                                onClick={() => handleSubmitDraft(draft)}
-                                className="px-2 py-0.5 rounded bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-[10.5px] transition shadow-sm"
+                                onClick={() => handleLoadDraftToForm(draft)}
+                                className="px-2 py-0.5 rounded bg-blue-600 hover:bg-blue-500 text-white font-bold text-[10.5px] transition shadow-sm"
+                                title="출고의뢰 작성 폼으로 초안 데이터 로드"
                               >
-                                배차등록 ➔
+                                {draft.context.includes('ADDITIONAL') ? '추가출고 작성 ➔' : draft.context.includes('EXCHANGE') ? '대차의뢰 작성 ➔' : '출고의뢰 작성 ➔'}
                               </button>
                             </td>
                             <td style={{ textAlign: 'center' }} onClick={e => e.stopPropagation()}>
@@ -3375,6 +3394,31 @@ export const SmartDispatch4: React.FC = () => {
                     </div>
                   </div>
 
+                  {/* 📄 원본 통화 텍스트 대조 (초안 완성도 검증 뷰) */}
+                  {(() => {
+                    const linkedUpload = callUploads.find(u => (selectedDraft.sourceCallIds || []).includes(u.id));
+                    const rawText = linkedUpload?.summaryText || (selectedDraft.note && selectedDraft.note.includes('[통화요약]') ? selectedDraft.note.replace(/^\[통화요약\]\s*/, '').split(' | ')[0] : null);
+                    if (!rawText) return null;
+                    return (
+                      <div className="flex flex-col gap-1 bg-slate-950 p-2.5 rounded-lg border border-emerald-900/40">
+                        <div className="flex items-center justify-between text-[11px] font-bold text-emerald-400">
+                          <span className="flex items-center gap-1">
+                            <span>📄 원본 통화 텍스트 대조</span>
+                            <span className="text-[10px] font-normal text-slate-400">(모바일 등록 원문)</span>
+                          </span>
+                          {linkedUpload && (
+                            <span className="text-[10px] font-mono text-slate-400">
+                              {linkedUpload.callerPhone || linkedUpload.fileName}
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-xs text-slate-200 max-h-24 overflow-y-auto leading-relaxed whitespace-pre-wrap font-sans dispatch4-scrollbar selection:bg-emerald-600">
+                          {rawText}
+                        </div>
+                      </div>
+                    );
+                  })()}
+
                   {(selectedDraft.safetyOptions?.length || selectedDraft.note) ? (
                     <div className="text-[11px] text-slate-300 bg-slate-950/50 p-1.5 rounded border border-slate-850 truncate">
                       {selectedDraft.safetyOptions && selectedDraft.safetyOptions.length > 0 && (
@@ -3397,17 +3441,19 @@ export const SmartDispatch4: React.FC = () => {
                       <button
                         type="button"
                         onClick={() => handleLoadDraftToForm(selectedDraft)}
-                        className="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 text-[11px] font-bold border border-slate-700 transition"
+                        className="px-3.5 py-1 rounded bg-blue-600 hover:bg-blue-500 text-white text-[11px] font-black transition flex items-center gap-1 shadow-sm"
                       >
-                        새의뢰 작성으로 가져오기 ➔
+                        <ArrowRight className="w-3.5 h-3.5" />
+                        <span>{selectedDraft.context.includes('ADDITIONAL') ? '추가출고 작성 ➔' : selectedDraft.context.includes('EXCHANGE') ? '대차의뢰 작성 ➔' : '출고의뢰 작성 ➔'}</span>
                       </button>
                       <button
                         type="button"
                         onClick={() => handleSubmitDraft(selectedDraft)}
-                        className="px-3.5 py-1 rounded bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-black transition flex items-center gap-1 shadow-sm"
+                        className="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-emerald-300 text-[11px] font-bold border border-slate-700 transition flex items-center gap-1"
+                        title="주소/연락처가 완비된 경우 배차 대장으로 바로 등록"
                       >
-                        <ShieldCheck className="w-3.5 h-3.5" />
-                        <span>배차 대장 등록 ➔</span>
+                        <ShieldCheck className="w-3 h-3 text-emerald-400" />
+                        <span>배차 바로등록</span>
                       </button>
                     </div>
                   </div>

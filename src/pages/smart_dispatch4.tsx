@@ -18,7 +18,12 @@ import { EQUIPMENT_SPEC_MATRIX } from '../services/voiceOrderDraftService';
 import { matchHangul } from '../utils/hangulSearch';
 import {
   fetchMyDrafts, subscribeDraftUpdates, submitDraft, discardDraft,
-  createDraftOrder, DraftDispatchOrder
+  createDraftOrder, DraftDispatchOrder,
+  CallUploadRecord, PipelineLogRecord,
+  fetchCallUploads, fetchPipelineLogs, insertPipelineLog,
+  subscribeCallUploads, subscribePipelineLogs,
+  convertUploadToDraft, deleteCallUpload, parsePhoneFromFileName,
+  CALL_CONTEXT_OPTIONS
 } from '../services/callUploadService';
 import {
   Plus, Minus, Trash2, ChevronDown, ChevronUp,
@@ -27,7 +32,7 @@ import {
   UploadCloud, ShieldCheck, ShieldAlert,
   AlertTriangle, Check, AlertCircle, RotateCcw,
   Truck, Wrench, Shield, RefreshCw, Save, X, Search,
-  FolderOpen, Zap
+  FolderOpen, Zap, Phone, Terminal, Activity
 } from 'lucide-react';
 import { CallAudioUploadModal } from '../components/CallAudioUploadModal';
 import './smart_dispatch4.css';
@@ -147,6 +152,13 @@ export const SmartDispatch4: React.FC = () => {
   const [queue, setQueue] = useState<DraftOrder[]>([]);
   const [selectedQueueIds, setSelectedQueueIds] = useState<Set<string>>(new Set());
 
+  // ── 통화 업로드 및 실시간 파이프라인 로그 ──────────────────────────────────
+  const [callUploads, setCallUploads] = useState<CallUploadRecord[]>([]);
+  const [pipelineLogs, setPipelineLogs] = useState<PipelineLogRecord[]>([]);
+  const [logFilter, setLogFilter] = useState<'ALL' | 'SUCCESS' | 'INFO' | 'WARN' | 'ERROR'>('ALL');
+  const [isConvertingId, setIsConvertingId] = useState<string | null>(null);
+  const logsEndRef = useRef<HTMLDivElement>(null);
+
   // 🌟 [메모 직렬화 파서] DB note 필드에 보존된 배차 핵심 파라미터 역직렬화
   const parseNoteMeta = useCallback((noteText: string) => {
     let siteAddress = '';
@@ -237,13 +249,40 @@ export const SmartDispatch4: React.FC = () => {
     }
   }, [parseNoteMeta]);
 
+  const loadUploadsAndLogs = useCallback(async () => {
+    try {
+      const [uploads, logs] = await Promise.all([
+        fetchCallUploads(),
+        fetchPipelineLogs(100)
+      ]);
+      setCallUploads(uploads);
+      setPipelineLogs(logs);
+    } catch (e) {
+      console.warn('통화 업로드 및 파이프라인 로그 로드 실패:', e);
+    }
+  }, []);
+
   useEffect(() => {
     loadDrafts();
-    let unsubscribe: (() => void) | undefined;
+    loadUploadsAndLogs();
+
+    // 1. 통화 업로드 실시간 구독 (INSERT, UPDATE, DELETE)
+    const unsubUploads = subscribeCallUploads(() => {
+      loadUploadsAndLogs();
+      loadDrafts();
+    });
+
+    // 2. 파이프라인 실시간 로그 구독 (INSERT)
+    const unsubLogs = subscribePipelineLogs((newLog) => {
+      setPipelineLogs(prev => [newLog, ...prev.filter(l => l.id !== newLog.id)].slice(0, 150));
+    });
+
+    // 3. 의뢰 초안 실시간 구독
+    let unsubDrafts: (() => void) | undefined;
     (async () => {
       try {
         if (!currentUser?.id) return;
-        unsubscribe = subscribeDraftUpdates(currentUser.id, (newDraft: DraftDispatchOrder) => {
+        unsubDrafts = subscribeDraftUpdates(currentUser.id, (newDraft: DraftDispatchOrder) => {
           const meta = parseNoteMeta(newDraft.note);
           const mapped: DraftOrder = {
             id:                 newDraft.id,
@@ -279,8 +318,12 @@ export const SmartDispatch4: React.FC = () => {
         });
       } catch { /* 비로그인 시 무시 */ }
     })();
-    return () => { unsubscribe?.(); };
-  }, [loadDrafts, currentUser?.id, showToast, parseNoteMeta]);
+    return () => {
+      unsubUploads?.();
+      unsubLogs?.();
+      unsubDrafts?.();
+    };
+  }, [loadDrafts, loadUploadsAndLogs, currentUser?.id, showToast, parseNoteMeta]);
 
   const pendingCount = queue.filter(q => q.status === 'DRAFT').length;
 
@@ -961,8 +1004,6 @@ export const SmartDispatch4: React.FC = () => {
     const cleanPhone = contactPhone.replace(/[^0-9]/g, '');
     const hasContactPhone = cleanPhone.length >= 9;
 
-    const hasPaidBy = paidBy !== null;
-
     const timeDisplay = !loadingTimeType
       ? '(상차시간 미지정)'
       : loadingTimeType === 'ASAP'
@@ -1052,22 +1093,13 @@ export const SmartDispatch4: React.FC = () => {
       });
     }
 
-    rules.push({
-      id: 'PAID_BY',
-      label: '운송비 부담 귀속선',
-      targetBlock: 'SAFETY_COST',
-      status: hasPaidBy ? 'VALID' : 'INVALID',
-      currentVal: paidBy === 'CUSTOMER' ? '고객사 청구' : paidBy === 'OURS' ? '당사 영업 부담(면제)' : paidBy === 'SPLIT' ? '편도 지원' : '(운송비부담 미선택)',
-      hint: '운송비 정산 및 회계 귀속선 선택 필수',
-    });
-
     return rules;
   }, [
     isNewCustomerMode, isExchangeMode, isRegisteringNewSite, newCustomerName, selectedCustomer,
     newSiteName, selectedSite, selectedSiteAddress, newSiteAddress, newCustomerAddress,
     selectedContext, equipments, totalQty,
     loadingDate, loadingTimeType, loadingTimeVal, contactPerson, contactPhone,
-    retrievalAssetIds, isUnknownRetrieval, paidBy
+    retrievalAssetIds, isUnknownRetrieval
   ]);
 
   const invalidRules = useMemo(() => validationRules.filter(r => r.status === 'INVALID'), [validationRules]);
@@ -1140,7 +1172,6 @@ export const SmartDispatch4: React.FC = () => {
         isExchangeMode && retrievalAssetIds.length > 0
           ? (isUnknownRetrieval ? '[대차회수대상] 모름 (현장 확인 후 회수)' : `[대차회수대상] 자산 #${retrievalAssetIds.join(', #')}`)
           : '',
-        paidBy ? `[운송비부담] ${paidBy === 'CUSTOMER' ? '고객청구' : paidBy === 'OURS' ? '당사부담' : '편도지원'}` : '',
         effectiveAddress ? `[현장상세주소] ${effectiveAddress}` : '',
         vehicleType ? `[차종] ${vehicleType}` : '',
       ].filter(Boolean).join(' | ');
@@ -1383,8 +1414,8 @@ export const SmartDispatch4: React.FC = () => {
         note: draft.note,
         rawText: `[출고의뢰통합 확정] ${draft.context.join(', ')}`,
         vehicleType: draft.vehicleType || '5T',
-        paidBy: draft.paidBy || 'CUSTOMER',
-        billableToCustomer: draft.paidBy === 'CUSTOMER',
+        paidBy: draft.paidBy || undefined,
+        billableToCustomer: false,
         type: isExchange ? 'EXCHANGE' : 'OUTBOUND',
         retrievalAssetIds: draft.retrievalAssetIds || [],
         paidOptions: draft.safetyOptions?.join(', ') || '',
@@ -1411,6 +1442,91 @@ export const SmartDispatch4: React.FC = () => {
     } catch {
       setQueue(prev => prev.filter(d => d.id !== id));
       showToast('초안이 큐에서 제거되었습니다.', 'info');
+    }
+  };
+
+  // ── 통화 파일 ➔ 초안 즉시 생성 ─────────────────────────────
+  const handleConvertUploadToDraft = async (uploadId: string) => {
+    try {
+      setIsConvertingId(uploadId);
+      const newDraft = await convertUploadToDraft(uploadId);
+      await Promise.all([loadDrafts(), loadUploadsAndLogs()]);
+      showToast(`출고의뢰 초안이 생성되었습니다. (ID: ${newDraft.id.slice(0, 8)}...)`, 'success');
+    } catch (err: any) {
+      showToast(`초안 생성 실패: ${err?.message}`, 'error');
+    } finally {
+      setIsConvertingId(null);
+    }
+  };
+
+  // ── 통화 파일 ➔ 새 의뢰 작성 폼으로 로드 ──────────────────
+  const handleLoadUploadToForm = (upload: CallUploadRecord) => {
+    const phone = upload.callerPhone || parsePhoneFromFileName(upload.fileName);
+    const rawCtx = (upload.callContext && upload.callContext[0]) ? upload.callContext[0] : 'ADDITIONAL';
+    const ctx: CallContext = (rawCtx === 'NEW_CUSTOMER' || rawCtx === 'EXCHANGE') ? rawCtx : 'ADDITIONAL';
+
+    // 1. 업무 맥락 설정
+    setSelectedContext(ctx);
+
+    // 2. 전화번호 매칭 시도
+    if (phone) {
+      const cleanDigits = phone.replace(/[^0-9]/g, '');
+      const matchedCust = customers.find(c => {
+        const p1 = (c.repContact || '').replace(/[^0-9]/g, '');
+        return p1 && cleanDigits && (p1.includes(cleanDigits) || cleanDigits.includes(p1));
+      });
+      if (matchedCust) {
+        setSelectedContext(ctx);
+        setSelectedCustomer(matchedCust);
+        setNewCustomerName('');
+      } else {
+        setSelectedContext('NEW_CUSTOMER');
+        setSelectedCustomer(null);
+        setNewCustomerName('');
+      }
+      setContactPhone(phone);
+    }
+
+    // 3. 파일 참조 메모
+    const fileMemo = `[통화 녹음 파일 연계] ${upload.fileName}${upload.summaryText ? ` | ${upload.summaryText}` : ''}`;
+    setNote(fileMemo);
+
+    // 4. 탭 전환
+    setActiveTab('NEW');
+    setOpenBlock('WHO');
+    showToast(`통화 파일(${upload.fileName}) 데이터를 새 의뢰 폼으로 로드했습니다.`, 'info');
+  };
+
+  // ── 통화 파일 업로드 항목 삭제 ─────────────────────────────
+  const handleDeleteUpload = async (upload: CallUploadRecord) => {
+    if (!window.confirm(`통화 녹음 파일 [${upload.fileName}] 항목을 삭제하시겠습니까?`)) return;
+    try {
+      await deleteCallUpload(upload.id, upload.storagePath);
+      await loadUploadsAndLogs();
+      showToast('통화 녹음 항목이 삭제되었습니다.', 'info');
+    } catch (err: any) {
+      showToast(`삭제 실패: ${err?.message}`, 'error');
+    }
+  };
+
+  // ── 파이프라인 디버깅용 실시간 테스트 로그 발행 ────────────
+  const handleSendTestLog = async () => {
+    try {
+      await insertPipelineLog({
+        eventType: 'DEBUG_SIGNAL',
+        level: 'INFO',
+        message: `실시간 파이프라인 모니터 수동 진단 신호 (${new Date().toLocaleTimeString('ko-KR')})`,
+        payload: {
+          testBy: currentUser?.id || 'sys-admin',
+          source: 'smart_dispatch4',
+          activeTab,
+          pendingDrafts: queue.length,
+          callUploadsCount: callUploads.length,
+        },
+      });
+      showToast('테스트 이벤트 로그를 전송했습니다.', 'info');
+    } catch (e: any) {
+      showToast(`로그 전송 실패: ${e?.message}`, 'error');
     }
   };
 
@@ -2378,38 +2494,7 @@ export const SmartDispatch4: React.FC = () => {
                 )}
 
                 {/* 2. 운송비 부담 귀속선 선택기 */}
-                <div className="flex flex-col gap-1">
-                  <div className="flex items-center justify-between">
-                    <label className="text-[11px] font-bold text-slate-300 flex items-center gap-1.5">
-                      <Truck className="w-3.5 h-3.5 text-blue-400" />
-                      <span>운송비 부담 귀속선 (정규 회계 연동) *</span>
-                    </label>
-                    <span className="text-[10px] text-slate-500">배차 및 청구서에 자동 반영</span>
-                  </div>
-                  <div className="grid grid-cols-3 gap-2">
-                    {[
-                      { id: 'CUSTOMER', label: '고객사 전액 청구', desc: '고객사 청구서에 운송비 포함' },
-                      { id: 'OURS', label: '당사 영업 부담 (면제)', desc: '영업 특약 무료 배차 (매출 제외)' },
-                      { id: 'SPLIT', label: '편도 지원 (절반)', desc: '50% 당사 지원 / 50% 고객 청구' },
-                    ].map(item => (
-                      <button
-                        key={item.id}
-                        type="button"
-                        onClick={() => setPaidBy(item.id as PaidBy)}
-                        className={`p-2 rounded-lg border text-left transition flex flex-col gap-0.5 ${
-                          paidBy === item.id
-                            ? 'bg-blue-900/40 border-blue-500 text-white shadow-sm font-bold'
-                            : 'bg-slate-800 border-slate-700 text-slate-400 hover:bg-slate-750'
-                        }`}
-                      >
-                        <span className="text-xs font-bold">{item.label}</span>
-                        <span className="text-[10px] text-slate-400">{item.desc}</span>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* 3. 고객 요청 옵션 및 작업 요구사항 */}
+                {/* 2. 고객 요청 옵션 및 작업 요구사항 */}
                 <div className="flex flex-col gap-2">
                   <div className="flex items-center justify-between flex-wrap gap-2">
                     <label className="text-[11px] font-bold text-slate-300 flex items-center gap-1.5">
@@ -2552,13 +2637,6 @@ export const SmartDispatch4: React.FC = () => {
                   </div>
                 </>
               )}
-              <div className="w-px h-5 bg-slate-800" />
-              <div>
-                <span className="text-slate-500 text-[10px] block">운송비</span>
-                <span className="font-bold text-slate-300 text-[11px]">
-                  {paidBy === 'CUSTOMER' ? '고객청구' : paidBy === 'OURS' ? '당사부담' : paidBy === 'SPLIT' ? '편도지원' : '미선택'}
-                </span>
-              </div>
             </div>
             <button
               type="button"
@@ -2716,7 +2794,7 @@ export const SmartDispatch4: React.FC = () => {
                     : '(상차일시 미지정)'}
                 </div>
               </div>
-              <div className="grid grid-cols-4 border-b border-slate-800">
+              <div className={`grid grid-cols-4 ${staggeredMemo ? 'border-b border-slate-800' : ''}`}>
                 <div className="col-span-1 bg-slate-950 p-1.5 font-bold text-slate-400 border-r border-slate-800 flex items-center text-[11px]">
                   하차일시
                 </div>
@@ -2724,14 +2802,6 @@ export const SmartDispatch4: React.FC = () => {
                   {unloadingDate || loadingDate
                     ? `${unloadingDate || loadingDate} ${unloadingTimeType === 'ASAP' ? '[ASAP]' : unloadingTimeType === 'MORNING' ? '[오전]' : unloadingTimeType === 'AFTERNOON' ? '[오후]' : unloadingTimeVal || '(상차직송)'}`
                     : '(하차일시 미지정)'}
-                </div>
-              </div>
-              <div className={`grid grid-cols-4 ${staggeredMemo ? 'border-b border-slate-800' : ''}`}>
-                <div className="col-span-1 bg-slate-950 p-1.5 font-bold text-slate-400 border-r border-slate-800 flex items-center text-[11px]">
-                  운송비부담
-                </div>
-                <div className="col-span-3 bg-slate-900/90 p-1.5 font-bold text-emerald-400 text-[11px]">
-                  {paidBy === 'CUSTOMER' ? '고객사 전액 청구' : paidBy === 'OURS' ? '당사 영업 부담(면제)' : paidBy === 'SPLIT' ? '편도 지원' : '(운송비부담 미선택)'}
                 </div>
               </div>
               {staggeredMemo && (
@@ -2843,141 +2913,444 @@ export const SmartDispatch4: React.FC = () => {
   // ─────────────────────────────────────────────────────────────────────────
   // 렌더: 처리 대기 큐 탭 (실제 배차 대장 연동 액션 포함)
   // ─────────────────────────────────────────────────────────────────────────
+  // ─────────────────────────────────────────────────────────────────────────
+  // 렌더: 처리 대기 큐 탭 (통화 녹음 파일 목록 + 출고 초안 큐 + 실시간 파이프라인 로그)
+  // ─────────────────────────────────────────────────────────────────────────
   const renderQueueTab = () => {
     const activeQueue = queue.filter(d => d.status === 'DRAFT' || d.status === 'REVIEWING');
-    if (activeQueue.length === 0) {
-      return (
-        <div className="flex flex-col items-center justify-center p-16 text-slate-400 bg-slate-900/50 rounded-2xl border border-slate-800">
-          <Package className="w-12 h-12 text-slate-600 mb-3" />
-          <p className="font-bold text-base text-slate-300">처리 대기 중인 출고의뢰가 없습니다.</p>
-          <p className="text-xs text-slate-500 mt-1">[새 의뢰 작성] 탭에서 출고를 등록하거나 상단 [통화 녹음 업로드]를 이용하세요.</p>
-        </div>
-      );
-    }
+    const filteredLogs = pipelineLogs.filter(l => {
+      if (logFilter === 'ALL') return true;
+      return l.level === logFilter;
+    });
 
     return (
-      <div className="flex flex-col gap-4">
-        {selectedQueueIds.size >= 2 && (
-          <div className="p-3 bg-blue-950/60 border border-blue-500/40 rounded-xl flex items-center justify-between text-xs">
-            <span className="text-blue-200 font-bold">{selectedQueueIds.size}건 선택됨</span>
-            <div className="flex gap-2">
-              <button
-                onClick={handleMerge}
-                className="px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-bold transition flex items-center gap-1"
-              >
-                <Merge className="w-3.5 h-3.5" />
-                <span>단일 의뢰로 병합</span>
-              </button>
-              <button
-                onClick={() => setSelectedQueueIds(new Set())}
-                className="px-3 py-1.5 rounded-lg bg-slate-800 text-slate-400 hover:text-white"
-              >
-                선택 해제
-              </button>
+      <div className="flex flex-col gap-4 p-2">
+        {/* 1. 상단 파이프라인 실시간 상태 및 요약 바 */}
+        <div className="bg-slate-900 border border-slate-800 rounded-xl p-3 flex items-center justify-between flex-wrap gap-3 shadow-sm">
+          <div className="flex items-center gap-4 flex-wrap">
+            <div className="flex items-center gap-2">
+              <span className="relative flex h-3 w-3">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500"></span>
+              </span>
+              <span className="text-xs font-black text-slate-200">실시간 파이프라인 연결</span>
+            </div>
+            <div className="h-4 w-[1px] bg-slate-800" />
+            <div className="flex items-center gap-3 text-xs">
+              <span className="text-slate-400">통화 녹음:</span>
+              <span className="font-mono font-bold text-amber-400">{callUploads.length}건</span>
+              <span className="text-slate-400 ml-2">출고 초안:</span>
+              <span className="font-mono font-bold text-blue-400">{activeQueue.length}건</span>
+              <span className="text-slate-400 ml-2">누적 이벤트 로그:</span>
+              <span className="font-mono font-bold text-slate-300">{pipelineLogs.length}건</span>
             </div>
           </div>
-        )}
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {activeQueue.map(draft => {
-            const isSelected = selectedQueueIds.has(draft.id);
-            return (
-              <div
-                key={draft.id}
-                className={`bg-slate-900 border rounded-xl p-4 flex flex-col justify-between gap-3 shadow-md transition ${
-                  draft.urgency === 'HIGH'
-                    ? 'border-red-500/50'
-                    : draft.urgency === 'MEDIUM'
-                      ? 'border-amber-500/50'
-                      : 'border-slate-800'
-                }`}
-              >
-                <div>
-                  <div className="flex items-center justify-between gap-2 mb-2">
-                    <div className="flex items-center gap-2">
-                      <input
-                        type="checkbox"
-                        checked={isSelected}
-                        onChange={() => {
-                          setSelectedQueueIds(prev => {
-                            const n = new Set(prev);
-                            if (n.has(draft.id)) n.delete(draft.id);
-                            else n.add(draft.id);
-                            return n;
-                          });
-                        }}
-                        className="w-4 h-4 rounded bg-slate-800 border-slate-700"
-                      />
-                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded border ${
-                        draft.urgency === 'HIGH'
-                          ? 'bg-red-950 text-red-300 border-red-800'
-                          : draft.urgency === 'MEDIUM'
-                            ? 'bg-amber-950 text-amber-300 border-amber-800'
-                            : 'bg-emerald-950 text-emerald-300 border-emerald-800'
-                      }`}>
-                        {draft.urgency === 'HIGH' ? '🔴 긴급' : draft.urgency === 'MEDIUM' ? '🟡 보통' : '🟢 여유'}
-                      </span>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={handleSendTestLog}
+              className="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-[11px] font-bold text-slate-300 hover:text-white transition flex items-center gap-1"
+              title="디버깅용 실시간 테스트 로그를 DB에 즉시 발행합니다"
+            >
+              <Activity className="w-3.5 h-3.5 text-emerald-400" />
+              <span>테스트 로그 전송</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                loadDrafts();
+                loadUploadsAndLogs();
+                showToast('큐 및 로그 데이터를 새로고침했습니다.', 'info');
+              }}
+              className="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-[11px] font-bold text-slate-300 hover:text-white transition flex items-center gap-1"
+            >
+              <RefreshCw className="w-3.5 h-3.5 text-blue-400" />
+              <span>새로고침</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setAudioUploadOpen(true)}
+              className="px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-xs font-bold text-white transition flex items-center gap-1.5 shadow-sm"
+            >
+              <UploadCloud className="w-3.5 h-3.5" />
+              <span>녹음 파일 업로드</span>
+            </button>
+          </div>
+        </div>
+
+        {/* 2. 상단 2열 그리드: 좌측 통화 녹음 목록 | 우측 출고 초안 큐 */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          {/* 2-1. 통화 녹음 파일 업로드 대기 목록 */}
+          <div className="flex flex-col gap-3">
+            <div className="flex items-center justify-between pb-1 border-b border-slate-800">
+              <div className="flex items-center gap-2">
+                <Phone className="w-4 h-4 text-blue-400" />
+                <h3 className="text-xs font-black text-slate-200">통화 녹음 업로드 목록</h3>
+                <span className="px-1.5 py-0.5 rounded bg-blue-950 text-blue-300 text-[10px] font-mono font-bold">
+                  {callUploads.length}건
+                </span>
+              </div>
+              <span className="text-[11px] text-slate-500">모바일 자동캡처 및 웹 직접 업로드</span>
+            </div>
+
+            {callUploads.length === 0 ? (
+              <div className="p-8 bg-slate-900/40 rounded-xl border border-slate-800 flex flex-col items-center justify-center text-slate-500 text-xs text-center">
+                <Phone className="w-8 h-8 text-slate-700 mb-2" />
+                <p className="font-bold text-slate-400">대기 중인 통화 녹음 파일이 없습니다.</p>
+                <p className="text-[11px] text-slate-600 mt-0.5">모바일에서 통화가 종료되면 자동으로 업로드되거나 상단 버튼으로 직접 등록할 수 있습니다.</p>
+              </div>
+            ) : (
+              <div className="flex flex-col gap-3">
+                {callUploads.map(upload => {
+                  const phone = upload.callerPhone || parsePhoneFromFileName(upload.fileName);
+                  const isConverting = isConvertingId === upload.id;
+                  return (
+                    <div
+                      key={upload.id}
+                      className="bg-slate-900 border border-slate-800 hover:border-slate-700 rounded-xl p-3.5 flex flex-col gap-2.5 transition shadow-sm"
+                    >
+                      {/* 카드 헤더 */}
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className={`text-[10px] font-black px-2 py-0.5 rounded border ${
+                            upload.status === 'UPLOADED'
+                              ? 'bg-amber-950/80 text-amber-300 border-amber-800'
+                              : upload.status === 'PROCESSING'
+                                ? 'bg-blue-950/80 text-blue-300 border-blue-800'
+                                : upload.status === 'PROCESSED'
+                                  ? 'bg-emerald-950/80 text-emerald-300 border-emerald-800'
+                                  : 'bg-rose-950/80 text-rose-300 border-rose-800'
+                          }`}>
+                            {upload.status === 'UPLOADED' ? '⏳ 대기중' : upload.status === 'PROCESSING' ? '⚙️ 분석중' : upload.status === 'PROCESSED' ? '✅ 초안생성완료' : '❌ 오류'}
+                          </span>
+                          {(upload.callContext || []).map(ctx => {
+                            const opt = CALL_CONTEXT_OPTIONS.find(o => o.id === ctx);
+                            return (
+                              <span
+                                key={ctx}
+                                className="text-[10px] font-bold px-1.5 py-0.5 rounded text-white"
+                                style={{ backgroundColor: opt?.color || '#475569' }}
+                              >
+                                {opt?.label || ctx}
+                              </span>
+                            );
+                          })}
+                        </div>
+                        <span className="text-[10px] text-slate-500 font-mono flex-shrink-0">
+                          {new Date(upload.createdAt).toLocaleString('ko-KR', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                        </span>
+                      </div>
+
+                      {/* 파일명 및 번호 */}
+                      <div>
+                        <div className="text-xs font-bold text-white break-all flex items-center gap-1.5">
+                          <span>{upload.fileName}</span>
+                        </div>
+                        <div className="flex items-center gap-3 text-[11px] text-slate-400 mt-1">
+                          {phone ? (
+                            <span className="flex items-center gap-1 text-blue-300 font-mono font-bold">
+                              <Phone className="w-3 h-3 text-blue-400" />
+                              {phone}
+                            </span>
+                          ) : (
+                            <span className="text-slate-500 font-mono">연락처 미인식</span>
+                          )}
+                          <span className="text-slate-600">|</span>
+                          <span className="text-slate-400 font-mono text-[10px]">업로더: {upload.uploaderId}</span>
+                        </div>
+                      </div>
+
+                      {/* 요약 메모가 있는 경우 */}
+                      {upload.summaryText && (
+                        <div className="text-[11px] text-slate-300 bg-slate-950/60 p-2 rounded border border-slate-800/80">
+                          {upload.summaryText}
+                        </div>
+                      )}
+
+                      {/* 오디오 플레이어 (직접 청취) */}
+                      {upload.publicUrl && (
+                        <div className="bg-slate-950/80 p-2 rounded-lg border border-slate-800/60 flex flex-col gap-1">
+                          <span className="text-[10px] text-slate-500 font-medium">통화 녹음 청취</span>
+                          <audio
+                            controls
+                            src={upload.publicUrl}
+                            className="w-full h-7 bg-slate-950 rounded"
+                            preload="metadata"
+                          />
+                        </div>
+                      )}
+
+                      {/* 하단 액션 버튼 */}
+                      <div className="flex items-center justify-end gap-2 pt-1.5 border-t border-slate-800/80 flex-wrap">
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteUpload(upload)}
+                          className="px-2.5 py-1 text-[11px] font-semibold text-slate-500 hover:text-rose-400 hover:bg-rose-950/40 rounded transition"
+                        >
+                          삭제
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleLoadUploadToForm(upload)}
+                          className="px-3 py-1 rounded-lg text-[11px] font-bold bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 hover:text-white transition flex items-center gap-1"
+                        >
+                          <span>새 의뢰 폼으로 로드 ➔</span>
+                        </button>
+                        <button
+                          type="button"
+                          disabled={isConverting}
+                          onClick={() => handleConvertUploadToDraft(upload.id)}
+                          className="px-3.5 py-1 rounded-lg text-[11px] font-bold bg-blue-600 hover:bg-blue-500 disabled:bg-blue-900 text-white transition flex items-center gap-1 shadow-sm"
+                        >
+                          {isConverting ? (
+                            <>
+                              <RefreshCw className="w-3 h-3 animate-spin" />
+                              <span>초안 생성 중...</span>
+                            </>
+                          ) : (
+                            <>
+                              <Zap className="w-3 h-3 text-amber-300" />
+                              <span>초안 즉시 생성 ➔</span>
+                            </>
+                          )}
+                        </button>
+                      </div>
                     </div>
-                    <span className="text-[10px] text-slate-500 font-mono">
-                      {new Date(draft.createdAt).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })}
-                    </span>
-                  </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
 
-                  <h4 className="text-sm font-black text-white truncate">{draft.customerName.value || '(고객사명 미상)'}</h4>
-                  <p className="text-xs text-slate-400 truncate mt-0.5">{draft.siteName.value || '(현장 미정)'}</p>
+          {/* 2-2. 출고의뢰 초안 목록 (draft_dispatch_orders) */}
+          <div className="flex flex-col gap-3">
+            <div className="flex items-center justify-between pb-1 border-b border-slate-800">
+              <div className="flex items-center gap-2">
+                <Package className="w-4 h-4 text-emerald-400" />
+                <h3 className="text-xs font-black text-slate-200">출고의뢰 초안 목록</h3>
+                <span className="px-1.5 py-0.5 rounded bg-emerald-950 text-emerald-300 text-[10px] font-mono font-bold">
+                  {activeQueue.length}건
+                </span>
+              </div>
+              <span className="text-[11px] text-slate-500">배차 대장 등록 전 검토/확정 대기</span>
+            </div>
 
-                  <div className="mt-3 p-2.5 bg-slate-950 rounded-lg border border-slate-800 flex flex-col gap-1 text-xs">
-                    <div className="flex justify-between">
-                      <span className="text-slate-500">상차일정:</span>
-                      <span className="text-slate-200 font-mono font-bold">
-                        {draft.loadingDate.value || '미정'} {draft.loadingTime.value || ''}
-                      </span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-slate-500">신청장비:</span>
-                      <span className="text-emerald-400 font-bold">
-                        {draft.equipments.length > 0 ? draft.equipments.map(e => `${e.modelName}×${e.qty}`).join(', ') : '없음'}
-                      </span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-slate-500">인수담당:</span>
-                      <span className="text-slate-300">
-                        {draft.contactPerson.value || '-'} ({draft.contactPhone.value || '-'})
-                      </span>
-                    </div>
-                  </div>
-
-                  {draft.note && (
-                    <p className="text-[11px] text-slate-400 bg-slate-800/40 p-2 rounded mt-2 break-all">
-                      {draft.note}
-                    </p>
-                  )}
-                </div>
-
-                <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-800 flex-wrap">
+            {selectedQueueIds.size >= 2 && (
+              <div className="p-2.5 bg-blue-950/60 border border-blue-500/40 rounded-xl flex items-center justify-between text-xs">
+                <span className="text-blue-200 font-bold">{selectedQueueIds.size}건 선택됨</span>
+                <div className="flex gap-2">
                   <button
-                    onClick={() => handleDiscardDraft(draft.id)}
-                    className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 hover:bg-red-950/60 hover:text-red-300 text-slate-400 transition"
+                    type="button"
+                    onClick={handleMerge}
+                    className="px-3 py-1 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-bold transition flex items-center gap-1 text-xs"
                   >
-                    폐기
+                    <Merge className="w-3.5 h-3.5" />
+                    <span>단일 의뢰로 병합</span>
                   </button>
                   <button
-                    onClick={() => handleLoadDraftToForm(draft)}
-                    className="px-3 py-1.5 rounded-lg text-xs font-bold bg-slate-800 hover:bg-slate-700 border border-slate-600 text-slate-200 hover:text-white transition flex items-center gap-1"
-                    title="선택된 초안 데이터를 새 의뢰 작성 폼으로 가져와 수정/보완합니다"
+                    type="button"
+                    onClick={() => setSelectedQueueIds(new Set())}
+                    className="px-2.5 py-1 rounded-lg bg-slate-800 text-slate-400 hover:text-white text-xs"
                   >
-                    <span>새의뢰 작성으로 가져오기 ➔</span>
-                  </button>
-                  <button
-                    onClick={() => handleSubmitDraft(draft)}
-                    className="px-4 py-1.5 rounded-lg text-xs font-bold bg-blue-600 hover:bg-blue-500 text-white transition shadow-sm flex items-center gap-1.5"
-                  >
-                    <span>배차 대장 등록 ➔</span>
+                    선택 해제
                   </button>
                 </div>
               </div>
-            );
-          })}
+            )}
+
+            {activeQueue.length === 0 ? (
+              <div className="p-8 bg-slate-900/40 rounded-xl border border-slate-800 flex flex-col items-center justify-center text-slate-500 text-xs text-center">
+                <Package className="w-8 h-8 text-slate-700 mb-2" />
+                <p className="font-bold text-slate-400">대기 중인 출고의뢰 초안이 없습니다.</p>
+                <p className="text-[11px] text-slate-600 mt-0.5">좌측 통화 파일 목록에서 [초안 즉시 생성]을 누르거나 [새 의뢰 작성]에서 등록하세요.</p>
+              </div>
+            ) : (
+              <div className="flex flex-col gap-3">
+                {activeQueue.map(draft => {
+                  const isSelected = selectedQueueIds.has(draft.id);
+                  return (
+                    <div
+                      key={draft.id}
+                      className={`bg-slate-900 border rounded-xl p-3.5 flex flex-col justify-between gap-2.5 shadow-sm transition ${
+                        draft.urgency === 'HIGH'
+                          ? 'border-red-500/50'
+                          : draft.urgency === 'MEDIUM'
+                            ? 'border-amber-500/50'
+                            : 'border-slate-800'
+                      }`}
+                    >
+                      <div>
+                        <div className="flex items-center justify-between gap-2 mb-1.5">
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="checkbox"
+                              checked={isSelected}
+                              onChange={() => {
+                                setSelectedQueueIds(prev => {
+                                  const n = new Set(prev);
+                                  if (n.has(draft.id)) n.delete(draft.id);
+                                  else n.add(draft.id);
+                                  return n;
+                                });
+                              }}
+                              className="w-4 h-4 rounded bg-slate-800 border-slate-700"
+                            />
+                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded border ${
+                              draft.urgency === 'HIGH'
+                                ? 'bg-red-950 text-red-300 border-red-800'
+                                : draft.urgency === 'MEDIUM'
+                                  ? 'bg-amber-950 text-amber-300 border-amber-800'
+                                  : 'bg-emerald-950 text-emerald-300 border-emerald-800'
+                            }`}>
+                              {draft.urgency === 'HIGH' ? '🔴 긴급' : draft.urgency === 'MEDIUM' ? '🟡 보통' : '🟢 여유'}
+                            </span>
+                          </div>
+                          <span className="text-[10px] text-slate-500 font-mono">
+                            {new Date(draft.createdAt).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })}
+                          </span>
+                        </div>
+
+                        <h4 className="text-sm font-black text-white truncate">{draft.customerName.value || '(고객사명 미상)'}</h4>
+                        <p className="text-xs text-slate-400 truncate mt-0.5">{draft.siteName.value || '(현장 미정)'}</p>
+
+                        <div className="mt-2 p-2 bg-slate-950 rounded-lg border border-slate-800/80 flex flex-col gap-1 text-[11px]">
+                          <div className="flex justify-between">
+                            <span className="text-slate-500">상차일정:</span>
+                            <span className="text-slate-200 font-mono font-bold">
+                              {draft.loadingDate.value || '미정'} {draft.loadingTime.value || ''}
+                            </span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-slate-500">신청장비:</span>
+                            <span className="text-emerald-400 font-bold">
+                              {draft.equipments.length > 0 ? draft.equipments.map(e => `${e.modelName}×${e.qty}`).join(', ') : '없음'}
+                            </span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-slate-500">인수담당:</span>
+                            <span className="text-slate-300">
+                              {draft.contactPerson.value || '-'} ({draft.contactPhone.value || '-'})
+                            </span>
+                          </div>
+                        </div>
+
+                        {draft.note && (
+                          <p className="text-[11px] text-slate-400 bg-slate-800/40 p-2 rounded mt-2 break-all">
+                            {draft.note}
+                          </p>
+                        )}
+                      </div>
+
+                      <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-800 flex-wrap">
+                        <button
+                          type="button"
+                          onClick={() => handleDiscardDraft(draft.id)}
+                          className="px-2.5 py-1 rounded-lg text-xs font-semibold bg-slate-800 hover:bg-red-950/60 hover:text-red-300 text-slate-400 transition"
+                        >
+                          폐기
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleLoadDraftToForm(draft)}
+                          className="px-3 py-1 rounded-lg text-xs font-bold bg-slate-800 hover:bg-slate-700 border border-slate-600 text-slate-200 hover:text-white transition flex items-center gap-1"
+                        >
+                          <span>새의뢰 작성으로 가져오기 ➔</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleSubmitDraft(draft)}
+                          className="px-3.5 py-1 rounded-lg text-xs font-bold bg-blue-600 hover:bg-blue-500 text-white transition shadow-sm flex items-center gap-1.5"
+                        >
+                          <span>배차 대장 등록 ➔</span>
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* 3. 하단: 실시간 파이프라인 이벤트 로그 콘솔 (헌장 1.2 무누락 실시간 디버깅) */}
+        <div className="bg-slate-950 border border-slate-800 rounded-xl overflow-hidden flex flex-col shadow-lg">
+          {/* 콘솔 헤더 */}
+          <div className="bg-slate-900/90 border-b border-slate-800 px-3.5 py-2.5 flex items-center justify-between flex-wrap gap-2">
+            <div className="flex items-center gap-2">
+              <Terminal className="w-4 h-4 text-emerald-400" />
+              <span className="text-xs font-black text-slate-200">실시간 파이프라인 이벤트 로그 모니터</span>
+              <span className="px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 text-[10px] font-mono">
+                {filteredLogs.length} / {pipelineLogs.length}건
+              </span>
+            </div>
+
+            <div className="flex items-center gap-1.5">
+              {(['ALL', 'SUCCESS', 'INFO', 'WARN', 'ERROR'] as const).map(level => (
+                <button
+                  key={level}
+                  type="button"
+                  onClick={() => setLogFilter(level)}
+                  className={`px-2 py-0.5 rounded text-[10px] font-bold transition ${
+                    logFilter === level
+                      ? 'bg-blue-600 text-white'
+                      : 'bg-slate-800 text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  {level === 'ALL' ? '전체' : level === 'SUCCESS' ? '성공' : level === 'INFO' ? '정보' : level === 'WARN' ? '경고' : '오류'}
+                </button>
+              ))}
+              <div className="h-3 w-[1px] bg-slate-800 mx-1" />
+              <button
+                type="button"
+                onClick={() => setPipelineLogs([])}
+                className="px-2 py-0.5 rounded text-[10px] text-slate-500 hover:text-slate-300 hover:bg-slate-800"
+              >
+                화면 지우기
+              </button>
+            </div>
+          </div>
+
+          {/* 콘솔 본문 (스크롤 가능한 터미널 뷰) */}
+          <div className="p-3 max-h-64 overflow-y-auto font-mono text-[11px] leading-relaxed flex flex-col gap-1 text-slate-300 dispatch4-scrollbar bg-slate-950">
+            {filteredLogs.length === 0 ? (
+              <div className="p-6 text-center text-slate-600 text-xs">
+                표시할 파이프라인 로그가 없습니다.
+              </div>
+            ) : (
+              filteredLogs.map(log => {
+                const timeStr = new Date(log.createdAt).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+                return (
+                  <div
+                    key={log.id}
+                    className="flex items-start gap-2 hover:bg-slate-900/50 px-1.5 py-0.5 rounded transition"
+                  >
+                    <span className="text-slate-500 text-[10px] flex-shrink-0 select-none">
+                      [{timeStr}]
+                    </span>
+                    <span className={`text-[10px] font-bold px-1.5 py-0.2 rounded flex-shrink-0 ${
+                      log.level === 'SUCCESS'
+                        ? 'bg-emerald-950 text-emerald-400 border border-emerald-800'
+                        : log.level === 'ERROR'
+                          ? 'bg-rose-950 text-rose-400 border border-rose-800'
+                          : log.level === 'WARN'
+                            ? 'bg-amber-950 text-amber-400 border border-amber-800'
+                            : 'bg-blue-950 text-blue-400 border border-blue-800'
+                    }`}>
+                      {log.level}
+                    </span>
+                    <span className="text-slate-400 font-bold flex-shrink-0 text-[10px]">
+                      [{log.eventType}]
+                    </span>
+                    <span className="text-slate-200 flex-1 break-all">
+                      {log.message}
+                    </span>
+                  </div>
+                );
+              })
+            )}
+            <div ref={logsEndRef} />
+          </div>
         </div>
       </div>
     );
@@ -3006,9 +3379,9 @@ export const SmartDispatch4: React.FC = () => {
               className={`dispatch4-tab-btn ${activeTab === 'QUEUE' ? 'active' : ''}`}
             >
               <span>처리 대기 큐</span>
-              {pendingCount > 0 && (
+              {(pendingCount > 0 || callUploads.length > 0) && (
                 <span className="px-1.5 py-0.2 rounded-full bg-blue-600 text-white text-[10px] font-mono">
-                  {pendingCount}
+                  {callUploads.length > 0 ? `통화 ${callUploads.length} · 초안 ${pendingCount}` : pendingCount}
                 </span>
               )}
             </button>
@@ -3040,8 +3413,9 @@ export const SmartDispatch4: React.FC = () => {
         onClose={() => setAudioUploadOpen(false)}
         onSuccess={() => {
           loadDrafts();
+          loadUploadsAndLogs();
           setActiveTab('QUEUE');
-          showToast('통화 녹음 업로드 완료 — AI 분석 완료 시 초안 큐에 등록됩니다.');
+          showToast('통화 녹음 업로드 완료 — 처리 대기 큐 및 이벤트 로그에 등록되었습니다.');
         }}
       />
 

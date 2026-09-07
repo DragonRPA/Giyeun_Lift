@@ -1,3 +1,75 @@
+## [v1.10.0.Build.13] - 2026-09-07 16:25
+
+### 🎙️ [통화 녹음 파일 실시간 업로드 큐 가시화 & 파이프라인 이벤트 로그 모니터 및 즉시 초안 변환 탑재]
+- **요구사항**: "내가 방금 통화 1건을 업로드 했는데, 어디에도 안보여, 어디서 처리되고 있는거지?. 디버깅 목적으로, PC 화면의 처리대기 큐에 모든 로그를 누적해서 이벤트 발생시마다 실시간으로 보여줘 필요하다면 DB 에 스키마 생성해. (기존에 로깅 목적의 스키마가 있으면 그걸 사용해) 즉시 적용하고 ㄹㅇ"
+- **원인 분석**:
+  1. **초안 테이블만 조회하는 큐 화면**: `smart_dispatch4.tsx`의 "처리 대기 큐"는 `draft_dispatch_orders` (의뢰 초안)만 조회하고 있어, 모바일/웹에서 업로드된 원본 음성 레코드(`call_uploads`, 예: `통화 0264040185_260906_194940.m4a`)가 화면 어디에도 표출되지 않아 사용자는 파일 유실로 오인함.
+  2. **파이프라인 로깅 부재**: 음성 업로드 ➔ STT ➔ LLM 추출 ➔ 초안 생성에 이르는 백그라운드 이벤트 로그가 DB에 기록되지 않고 실시간 스트림 모니터가 존재하지 않았음.
+- **구현 조치**:
+  1. **Supabase `call_pipeline_logs` 로깅 전용 테이블 및 Realtime 구축**:
+     - `call_pipeline_logs` 테이블 생성 (`id`, `call_upload_id`, `draft_id`, `event_type`, `level`, `message`, `payload`, `created_at`).
+     - `anon`, `authenticated` 롤에 대한 RLS 허용 정책 및 인덱스 3종 생성.
+     - `supabase_realtime`에 `call_uploads`, `call_pipeline_logs` 등록하여 전사 실시간 이벤트 스트림 개통.
+  2. **`src/services/callUploadService.ts` 파이프라인 인터페이스 및 함수 완비**:
+     - `fetchCallUploads()`: 업로드된 통화 파일 목록 및 공용 스토리지 재생 URL 로드.
+     - `fetchPipelineLogs()` / `insertPipelineLog()`: 이벤트 로그 조회 및 무누락 DB 저장.
+     - `subscribeCallUploads()` / `subscribePipelineLogs()`: 실시간 웹소켓 변경 감지 및 콜백 연동.
+     - `parsePhoneFromFileName()`: 파일명 내 전화번호(02, 010 등) 정규표현식 자동 추출 (`통화 0264040185_...` ➔ `02-6404-0185`).
+     - `convertUploadToDraft()`: 업로드 음성을 즉시 `draft_dispatch_orders`로 변환하고 `call_uploads.status = 'PROCESSED'` 및 로그 기록.
+     - `deleteCallUpload()`: 업로드 파일 및 레코드 삭제.
+  3. **`smart_dispatch4.tsx` 처리 대기 큐 3단 스튜디오 전면 개편**:
+     - **상단 실시간 파이프라인 상태 바**: 실시간 연결 펄스 표시, 통화 녹음/출고 초안/누적 로그 카운트, `[테스트 로그 전송]`, `[새로고침]`, `[녹음 파일 업로드]` 버튼 탑재.
+     - **좌측: 통화 녹음 업로드 목록**: 업로드된 음성 파일 카드 표시 (사용자가 업로드한 `통화 0264040185_260906_194940.m4a` 즉시 노출), 발신/수신 번호(`02-6404-0185`), 상태 배지, HTML5 인라인 오디오 플레이어(원음 청취), `[새 의뢰 폼으로 로드 ➔]`, `[초안 즉시 생성 ➔]`, `[삭제]` 기능 제공.
+     - **우측: 출고의뢰 초안 목록**: 기존 의뢰 초안 카드 유지 (단일 의뢰 병합, 배차 대장 등록, 폐기).
+     - **하단: 실시간 파이프라인 이벤트 로그 모니터**: 터미널 콘솔 UI로 이벤트 발생 시마다 타임스탬프, 레벨 배지(INFO, SUCCESS, WARN, ERROR), 이벤트 타입, 메시지 실시간 스트리밍 표출.
+- **검증 결과**:
+  - `npm run build`: **0 Error 통과** (`built in 1.38s`).
+
+---
+
+## [v1.10.0.Build.12] - 2026-09-07 16:10
+
+### 🚚 [출고의뢰(통합) 운송료 부담 주체 결정 제외 & 전체 고객/현장 안전옵션 DB 전수 검수 MD 추출]
+- **요구사항**: "출고의뢰시에 운송료 부담 주체를 결정할 필요없음. 출고의뢰(통합) 의 업무 흐름에서 제외. 출고의뢰 지정의 스키마에도 반영. 그리고, 현재 DB의 모든 고객, 모든 현장의 안전요구 옵션이 어떻게 저장되어있는지 MD파일로 추출해줘. 내가 직접 검수해볼게"
+- **구현 조치**:
+  1. **`smart_dispatch4.tsx` 운송료 부담 주체(`paidBy`) 업무 흐름 및 스키마 검증 전면 제외**:
+     - 필수 스키마 방어 차단 실드(`validationRules`)에서 `PAID_BY` 항목 완전 삭제 ➔ 운송료 부담 주체 미선택으로 인한 의뢰 차단 해제.
+     - 좌측 입력 폼 섹션 4 내 `운송비 부담 귀속선 선택기` UI 패널 전면 삭제 ➔ 불필요한 입력 피로도 제거.
+     - 우측 상단 KPI 바의 `운송비` 항목 및 우측 정형화 서식(`출고 요청서`) 내 `운송비부담` 행 삭제 ➔ 출고 제원 및 작업 요구사항 중심으로 문서 정예화.
+     - 출고의뢰 저장 시 메모 조립 및 배차 큐 확정 시 불필요한 `[운송비부담]` 강제 주입 제거.
+  2. **`전체_고객_현장_안전요구옵션_DB현황.MD` 전수 덤프 및 검수 보고서 생성**:
+     - Supabase 원격 DB 내 211개 고객사, 281개 현장의 안전요구옵션, 21대 표준 스펙(`spec1`~`spec21`), 보양, 특이메모 100% 전수 분석.
+     - 옵션 보유 고객사 51개사(24.2%)의 유상옵션 및 표준 스펙을 한글 라벨로 변환하여 소속 현장과 1:1 매핑 정리.
+     - 현장 테이블(`customer_sites`)은 현재 비어있으며, 소속 고객사 마스터로부터 100% 자동 상속되는 아키텍처 구조 명시.
+- **검증 결과**:
+  - `npm run build`: **0 Error 통과** (`built in 1.81s`).
+
+---
+
+## [v1.10.0.Build.11] - 2026-09-07 15:45
+
+### 📁 [통화 녹음 파일 업로드 버킷(call-recordings) 생성 및 DB 파이프라인 연동 & 모바일 헤더 CI 표출]
+- **요구사항**: "테넌트가 가지고 있는 CI 는 표시되는거야? 그리고 웹앱에서 파일업로드 실패하는데, 버킷 존재와 연결상태 확인해봐"
+- **원인 분석**:
+  1. **버킷 부재 에러 (`Bucket not found`)**: Supabase Storage에 `call-recordings` 버킷 및 `call_uploads`, `draft_dispatch_orders` DB 테이블이 생성되지 않은 상태에서 웹앱 모달 업로드가 시도되어 404/403 오류 발생.
+  2. **모바일 헤더 CI 미표출**: PC 화면 및 로그인 화면에는 CI 로고가 적용되었으나 모바일 헤더(`MobileHeader.tsx`)에는 기존 Wrench/Crown 부서 아이콘 박스만 존재하여 테넌트 CI 이미지가 노출되지 않음.
+- **구현 조치**:
+  1. **Supabase Storage 버킷 신규 생성 및 RLS 완비**:
+     - `storage.buckets`에 `call-recordings` (public, 50MB) 버킷 생성.
+     - `storage.objects`에 `anon` 및 `authenticated` 롤을 위한 SELECT, INSERT, UPDATE, DELETE 권한 정책 4종 완비.
+  2. **통화 파이프라인 DB 테이블 및 Realtime 활성화**:
+     - `call_uploads` (통화 파일 업로드 이력 관리) 테이블 생성.
+     - `draft_dispatch_orders` (STT 및 LLM 추출 출고의뢰 초안) 테이블 생성.
+     - 인덱스 및 `anon`/`authenticated` 허용 RLS 정책 적용, `supabase_realtime` publication 등록.
+  3. **실제 엔드투엔드 업로드 검증**:
+     - 테스트 스크립트로 스토리지 파일 업로드 및 `call_uploads` DB 레코드 INSERT 성공 검증 완료 (0 Error).
+  4. **모바일 헤더(`src/mobile/MobileHeader.tsx`) CI 이미지 표출**:
+     - 모바일 헤더 2행 좌측에 테넌트 CI 이미지(`currentTenant?.ciUrl || currentTenant?.logoUrl`)를 24px 높이로 배치하여 모바일 폰에서도 회사 브랜드가 즉시 식별되도록 개편.
+- **검증 결과**:
+  - `npm run build`: **0 Error 통과** (`built in 1.16s`).
+
+---
+
 ## [v1.10.0.Build.10] - 2026-09-07 15:20
 
 ### 🏢 [PC 헤더 테넌트 회사명 상단 강조 및 하단 e-Bro ERP System 2열 스택 개편 & ebro.run 도메인 연동]

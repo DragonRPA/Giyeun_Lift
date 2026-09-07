@@ -245,21 +245,28 @@ export const MobileHeader: React.FC<MobileHeaderProps> = ({
         {/* ── 2행: 회사 로고 & 사용자 정보 & 출퇴근 토글 ── */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', minWidth: 0 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0, flex: 1 }}>
+            {/* 🏢 테넌트 회사 CI 로고 표출 (모바일 헤더) */}
+            <img 
+              src={currentTenant?.ciUrl || currentTenant?.logoUrl || '/images/ci/giyeun_ci.png'} 
+              alt="CI" 
+              style={{ height: '24px', maxWidth: '65px', objectFit: 'contain', flexShrink: 0 }} 
+              onError={(e) => { (e.currentTarget as HTMLElement).style.display = 'none'; }}
+            />
             <div style={{
-              width: '28px',
-              height: '28px',
-              borderRadius: '8px',
+              width: '24px',
+              height: '24px',
+              borderRadius: '6px',
               backgroundColor: deptMode === 'EXECUTIVE' ? '#7c3aed' : '#2563eb',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              boxShadow: '0 3px 8px rgba(37, 99, 235, 0.3)',
+              boxShadow: '0 2px 6px rgba(37, 99, 235, 0.3)',
               flexShrink: 0
             }}>
               {deptMode === 'EXECUTIVE' ? (
-                <Crown size={15} color="#ffffff" />
+                <Crown size={13} color="#ffffff" />
               ) : (
-                <Wrench size={14} color="#ffffff" />
+                <Wrench size={12} color="#ffffff" />
               )}
             </div>
             <div style={{ minWidth: 0, overflow: 'hidden', flex: 1 }}>

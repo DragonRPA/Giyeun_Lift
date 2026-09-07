@@ -36,6 +36,41 @@ export interface ScoredField {
   confirmed:  boolean;
 }
 
+// ─── 통화 업로드 DB 레코드 인터페이스 ──────────────────────
+export interface CallUploadRecord {
+  id:                 string;
+  uploaderId:         string;
+  uploaderPhone?:     string;
+  callerPhone?:       string;
+  callDirection?:     'OUTGOING' | 'INCOMING';
+  callEndedAt?:       string;
+  durationSeconds?:   number;
+  storagePath:        string;
+  fileName:           string;
+  callContext:        CallContext[];
+  summaryText?:       string;
+  status:             'UPLOADED' | 'PROCESSING' | 'PROCESSED' | 'FAILED';
+  retryCount:         number;
+  errorMessage?:      string;
+  draftId?:           string;
+  customerId?:        string;
+  createdAt:          string;
+  processedAt?:       string;
+  publicUrl?:         string;
+}
+
+// ─── 파이프라인 실시간 이벤트 로그 인터페이스 ───────────────
+export interface PipelineLogRecord {
+  id:             string;
+  callUploadId?:  string;
+  draftId?:       string;
+  eventType:      string;
+  level:          'INFO' | 'SUCCESS' | 'WARN' | 'ERROR' | 'DEBUG';
+  message:        string;
+  payload?:       Record<string, unknown>;
+  createdAt:      string;
+}
+
 // DB Row → 앱 타입 매핑
 export interface DraftDispatchOrder {
   id:                 string;
@@ -100,6 +135,74 @@ function mapRow(row: Record<string, unknown>): DraftDispatchOrder {
     urgency:            (row.urgency as Urgency) ?? 'LOW',
     createdAt:          row.created_at as string,
     submittedAt:        (row.submitted_at as string) ?? undefined,
+  };
+}
+
+// ─── 전화번호 파서 (파일명 또는 텍스트에서 010/02 등 전화번호 추출) ──
+export function parsePhoneFromFileName(fileName: string): string {
+  if (!fileName) return '';
+  const digitsMatch = fileName.match(/(0\d{1,2}\d{7,8})/);
+  if (digitsMatch) {
+    const digits = digitsMatch[1];
+    if (digits.startsWith('02')) {
+      return digits.length === 9
+        ? `02-${digits.slice(2, 5)}-${digits.slice(5)}`
+        : `02-${digits.slice(2, 6)}-${digits.slice(6)}`;
+    } else if (digits.startsWith('01') && digits.length === 11) {
+      return `${digits.slice(0, 3)}-${digits.slice(3, 7)}-${digits.slice(7)}`;
+    } else if (digits.length >= 10) {
+      return `${digits.slice(0, 3)}-${digits.slice(3, digits.length - 4)}-${digits.slice(digits.length - 4)}`;
+    }
+  }
+  return '';
+}
+
+// ─── DB Row → CallUploadRecord 변환 ────────────────────────
+export function mapUploadRow(row: Record<string, unknown>): CallUploadRecord {
+  const storagePath = (row.storage_path as string) || '';
+  let publicUrl = '';
+  if (supabase && storagePath) {
+    try {
+      const { data } = supabase.storage.from('call-recordings').getPublicUrl(storagePath);
+      publicUrl = data?.publicUrl || '';
+    } catch {
+      publicUrl = '';
+    }
+  }
+  return {
+    id:               row.id as string,
+    uploaderId:       (row.uploader_id as string) || '',
+    uploaderPhone:    (row.uploader_phone as string) || undefined,
+    callerPhone:      (row.caller_phone as string) || undefined,
+    callDirection:    (row.call_direction as 'OUTGOING' | 'INCOMING') || undefined,
+    callEndedAt:      (row.call_ended_at as string) || undefined,
+    durationSeconds:  (row.duration_seconds as number) || undefined,
+    storagePath:      storagePath,
+    fileName:         (row.file_name as string) || '',
+    callContext:      ((row.call_context as CallContext[]) || []),
+    summaryText:      (row.summary_text as string) || undefined,
+    status:           (row.status as CallUploadRecord['status']) || 'UPLOADED',
+    retryCount:       (row.retry_count as number) || 0,
+    errorMessage:     (row.error_message as string) || undefined,
+    draftId:          (row.draft_id as string) || undefined,
+    customerId:       (row.customer_id as string) || undefined,
+    createdAt:        (row.created_at as string) || new Date().toISOString(),
+    processedAt:      (row.processed_at as string) || undefined,
+    publicUrl:        publicUrl,
+  };
+}
+
+// ─── DB Row → PipelineLogRecord 변환 ───────────────────────
+export function mapLogRow(row: Record<string, unknown>): PipelineLogRecord {
+  return {
+    id:            row.id as string,
+    callUploadId:  (row.call_upload_id as string) || undefined,
+    draftId:       (row.draft_id as string) || undefined,
+    eventType:     (row.event_type as string) || 'UNKNOWN',
+    level:         (row.level as PipelineLogRecord['level']) || 'INFO',
+    message:       (row.message as string) || '',
+    payload:       (row.payload as Record<string, unknown>) || {},
+    createdAt:     (row.created_at as string) || new Date().toISOString(),
   };
 }
 
@@ -416,14 +519,14 @@ export async function uploadCallRecording(
   const timestamp = new Date().toISOString().replace(/[-:T.]/g, '').slice(0, 15);
   const storagePath = `${uploaderId}/${timestamp.slice(0, 8)}/${timestamp}.${file.name.split('.').pop()}`;
 
-  // Storage 업로드
+  // 1. Storage 업로드
   const { error: uploadErr } = await supabase.storage
     .from('call-recordings')
     .upload(storagePath, file, { upsert: false });
 
   if (uploadErr) throw new Error(`업로드 실패: ${uploadErr.message}`);
 
-  // call_uploads 레코드 INSERT → Edge Function 자동 트리거
+  // 2. call_uploads 레코드 INSERT
   const { data: record, error: insertErr } = await supabase
     .from('call_uploads')
     .insert({
@@ -439,10 +542,303 @@ export async function uploadCallRecording(
 
   if (insertErr || !record) throw new Error(`업로드 이력 저장 실패: ${insertErr?.message}`);
 
+  // 3. 파이프라인 이벤트 실시간 로깅 (헌장 1.2 무누락 저장)
+  try {
+    await insertPipelineLog({
+      callUploadId: record.id as string,
+      eventType: 'UPLOAD_RECEIVED',
+      level: 'SUCCESS',
+      message: `통화 녹음 파일 업로드 완료: ${file.name} (${uploaderId})`,
+      payload: {
+        storage_path: storagePath,
+        file_name: file.name,
+        uploader_id: uploaderId,
+        call_context: context,
+        size_bytes: file.size,
+      },
+    });
+
+    await insertPipelineLog({
+      callUploadId: record.id as string,
+      eventType: 'PIPELINE_PENDING',
+      level: 'INFO',
+      message: `처리 대기 큐 진입: STT 및 출고의뢰 초안 분석 대기 중`,
+      payload: {
+        upload_id: record.id,
+        status: 'UPLOADED',
+      },
+    });
+  } catch (logErr) {
+    console.warn('파이프라인 로깅 경고:', logErr);
+  }
+
   return record.id as string;
 }
 
-// ─── Realtime 구독 ────────────────────────────────────────
+// ─── 공용 스토리지 재생 URL 획득 ─────────────────────────
+export function getCallAudioPublicUrl(storagePath: string): string {
+  if (!supabase || !storagePath) return '';
+  try {
+    const { data } = supabase.storage.from('call-recordings').getPublicUrl(storagePath);
+    return data?.publicUrl || '';
+  } catch {
+    return '';
+  }
+}
+
+// ─── 전체 통화 업로드 목록 조회 ──────────────────────────
+export async function fetchCallUploads(): Promise<CallUploadRecord[]> {
+  if (!supabase) return [];
+  try {
+    const { data, error } = await supabase
+      .from('call_uploads')
+      .select('*')
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      console.warn('fetchCallUploads 실패:', error.message);
+      return [];
+    }
+    return (data || []).map(mapUploadRow);
+  } catch (err: any) {
+    console.warn('fetchCallUploads 예외:', err?.message);
+    return [];
+  }
+}
+
+// ─── 파이프라인 이벤트 로그 조회 ───────────────────────────
+export async function fetchPipelineLogs(limit = 100): Promise<PipelineLogRecord[]> {
+  if (!supabase) return [];
+  try {
+    const { data, error } = await supabase
+      .from('call_pipeline_logs')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .limit(limit);
+
+    if (error) {
+      console.warn('fetchPipelineLogs 실패:', error.message);
+      return [];
+    }
+    return (data || []).map(mapLogRow);
+  } catch (err: any) {
+    console.warn('fetchPipelineLogs 예외:', err?.message);
+    return [];
+  }
+}
+
+// ─── 파이프라인 이벤트 로그 기록 ───────────────────────────
+export async function insertPipelineLog(
+  log: Omit<PipelineLogRecord, 'id' | 'createdAt'>
+): Promise<PipelineLogRecord | null> {
+  const id = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : ('log_' + Date.now());
+  const now = new Date().toISOString();
+  const item: PipelineLogRecord = { ...log, id, createdAt: now };
+
+  if (supabase) {
+    try {
+      const { data, error } = await supabase
+        .from('call_pipeline_logs')
+        .insert({
+          id,
+          call_upload_id: log.callUploadId || null,
+          draft_id:       log.draftId || null,
+          event_type:     log.eventType,
+          level:          log.level,
+          message:        log.message,
+          payload:        log.payload || {},
+          created_at:     now,
+        })
+        .select()
+        .single();
+      if (!error && data) {
+        return mapLogRow(data);
+      }
+    } catch (e: any) {
+      console.warn('insertPipelineLog 예외:', e?.message);
+    }
+  }
+  return item;
+}
+
+// ─── 통화 업로드 실시간 구독 (INSERT, UPDATE, DELETE) ─────
+export function subscribeCallUploads(onUpdate: () => void) {
+  if (!supabase) return () => {};
+
+  const channel = supabase
+    .channel('call-uploads-realtime')
+    .on(
+      'postgres_changes',
+      {
+        event: '*',
+        schema: 'public',
+        table: 'call_uploads',
+      },
+      () => {
+        onUpdate();
+      }
+    )
+    .subscribe();
+
+  return () => { supabase!.removeChannel(channel); };
+}
+
+// ─── 파이프라인 실시간 로그 구독 ───────────────────────────
+export function subscribePipelineLogs(onNewLog: (log: PipelineLogRecord) => void) {
+  if (!supabase) return () => {};
+
+  const channel = supabase
+    .channel('call-pipeline-logs-realtime')
+    .on(
+      'postgres_changes',
+      {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'call_pipeline_logs',
+      },
+      (payload) => {
+        onNewLog(mapLogRow(payload.new as Record<string, unknown>));
+      }
+    )
+    .subscribe();
+
+  return () => { supabase!.removeChannel(channel); };
+}
+
+// ─── 업로드된 통화 파일 ➔ 출고의뢰 초안 즉시 변환 ─────────
+export async function convertUploadToDraft(
+  uploadId: string
+): Promise<DraftDispatchOrder> {
+  if (!supabase) throw new Error('Supabase 미연결');
+
+  // 1. 업로드 정보 로드
+  const { data: upload, error: fetchErr } = await supabase
+    .from('call_uploads')
+    .select('*')
+    .eq('id', uploadId)
+    .single();
+
+  if (fetchErr || !upload) throw new Error(`업로드 기록 조회 실패: ${fetchErr?.message}`);
+
+  const phone = upload.caller_phone || parsePhoneFromFileName(upload.file_name);
+  const context = (upload.call_context as CallContext[]) || ['ADDITIONAL'];
+
+  // 2. 고객 매칭 시도 (전화번호 기준)
+  let matchedCustomerName = '';
+  let customerFound = false;
+  if (phone) {
+    const rawDigits = phone.replace(/[^0-9]/g, '');
+    try {
+      const { data: custs } = await supabase
+        .from('customers')
+        .select('id, name')
+        .or(`phone.ilike.%${rawDigits}%,tel.ilike.%${rawDigits}%`)
+        .limit(1);
+      if (custs && custs.length > 0) {
+        matchedCustomerName = custs[0].name;
+        customerFound = true;
+      }
+    } catch { /* ignore */ }
+  }
+
+  // 3. DraftDispatchOrder 생성
+  const newDraft = await createDraftOrder({
+    ownerId: upload.uploader_id || 'sys-admin',
+    sourceCallIds: [upload.id],
+    context: context,
+    customerName: {
+      value: matchedCustomerName,
+      confidence: customerFound ? 'HIGH' : 'MISSING',
+      source: customerFound ? 'DB' : 'MANUAL',
+      confirmed: customerFound,
+    },
+    siteName: {
+      value: '',
+      confidence: 'MISSING',
+      confirmed: false,
+    },
+    equipments: [],
+    loadingDate: {
+      value: new Date().toISOString().slice(0, 10),
+      confidence: 'MEDIUM',
+      confirmed: false,
+    },
+    loadingTime: {
+      value: '08:00',
+      confidence: 'LOW',
+      confirmed: false,
+    },
+    contactPerson: {
+      value: '',
+      confidence: 'MISSING',
+      confirmed: false,
+    },
+    contactPhone: phone,
+    note: upload.summary_text
+      ? `[통화요약] ${upload.summary_text} | 파일: ${upload.file_name}`
+      : `[통화 녹음 파일] ${upload.file_name}`,
+    isNewCustomer: !customerFound,
+    customerRegistered: customerFound,
+    status: 'DRAFT',
+    urgency: 'LOW',
+  });
+
+  // 4. call_uploads 상태를 PROCESSED 로 갱신
+  await supabase
+    .from('call_uploads')
+    .update({
+      status: 'PROCESSED',
+      draft_id: newDraft.id,
+      processed_at: new Date().toISOString(),
+    })
+    .eq('id', uploadId);
+
+  // 5. 로깅 (무누락 DB 저장)
+  await insertPipelineLog({
+    callUploadId: uploadId,
+    draftId: newDraft.id,
+    eventType: 'MANUAL_CONVERT',
+    level: 'SUCCESS',
+    message: `통화 녹음 [${upload.file_name}]이 출고의뢰 초안으로 변환되었습니다. (의뢰ID: ${newDraft.id.slice(0, 8)}..., 연락처: ${phone || '미지정'})`,
+    payload: {
+      upload_id: uploadId,
+      draft_id: newDraft.id,
+      file_name: upload.file_name,
+      phone,
+      customer: matchedCustomerName || '(미상)',
+    },
+  });
+
+  return newDraft;
+}
+
+// ─── 통화 업로드 항목 삭제 ─────────────────────────────────
+export async function deleteCallUpload(uploadId: string, storagePath?: string): Promise<void> {
+  if (!supabase) return;
+
+  try {
+    if (storagePath) {
+      await supabase.storage.from('call-recordings').remove([storagePath]);
+    }
+  } catch (e: any) {
+    console.warn('스토리지 파일 삭제 예외:', e?.message);
+  }
+
+  const { error } = await supabase.from('call_uploads').delete().eq('id', uploadId);
+  if (error) {
+    console.warn('call_uploads 삭제 실패:', error.message);
+  } else {
+    await insertPipelineLog({
+      callUploadId: uploadId,
+      eventType: 'UPLOAD_DELETED',
+      level: 'INFO',
+      message: `통화 녹음 업로드 항목(${uploadId.slice(0, 8)}...)이 삭제되었습니다.`,
+      payload: { upload_id: uploadId, storage_path: storagePath },
+    });
+  }
+}
+
+// ─── Realtime 초안 구독 ────────────────────────────────────
 export function subscribeDraftUpdates(
   ownerId: string,
   onNewDraft: (draft: DraftDispatchOrder) => void
@@ -467,3 +863,4 @@ export function subscribeDraftUpdates(
 
   return () => { supabase!.removeChannel(channel); };
 }
+

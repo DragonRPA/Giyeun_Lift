@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
-import { db, supabase, User, MenuPermission, createMenuPermission, Customer, CustomerContact, CustomerSite, Product, Asset, Consumable, ConsumableLog, ConsumablePurchaseRequest, MechanicConsumableStock, Contract, ContractAsset, ContractHistory, Delivery, Billing, BillingType, BillingDetail, Receivable, Payment, PaymentDepositLink, Repair, RepairConsumable, Todo, BankTransaction, BankMatchingRule, BankAccountInitialBalance, AssetInOutLog, GoogleConfig, Vendor, CashFlowSnapshot, OutboundInspection, TransportCompany, TransportDriver, TransportNegotiation, SubleaseNegotiation, DepreciationLog, PurchaseSettlement, PurchaseSettlementItem, SettlementPaymentLog, ExternalLease, PurchaseSettlementType, PurchaseSettlementStatus, findCustomerByNormalizedName, AnnualLeaveQuota, LeaveUsage, OvertimeRecord, PayrollClosing, InspectionChecklistItem, EquipmentManual, InboundDefectDetail, PrepaidTransaction, DelinquencyActionLog, LegalNoticeLog, LegalNoticeTemplate, calculateAssetDepreciation, FieldAsTicket, FieldAsPartUsed, FieldAsCollectedPart, CorporateVehicle, VehicleOperationLog, VehicleFuelLog, RepairPartUsed, RepairCollectedPart, SaleContractTerms, StocktakingAudit, StocktakingAuditItem, CollectedPart } from '../services/db';
+import { db, supabase, Tenant, TenantWorkplace, TenantYard, TenantBusinessType, TenantBankAccount, OFFICIAL_STAMP_BASE64, User, MenuPermission, createMenuPermission, Customer, CustomerContact, CustomerSite, Product, Asset, Consumable, ConsumableLog, ConsumablePurchaseRequest, MechanicConsumableStock, Contract, ContractAsset, ContractHistory, Delivery, Billing, BillingType, BillingDetail, Receivable, Payment, PaymentDepositLink, Repair, RepairConsumable, Todo, BankTransaction, BankMatchingRule, BankAccountInitialBalance, AssetInOutLog, GoogleConfig, Vendor, CashFlowSnapshot, OutboundInspection, TransportCompany, TransportDriver, TransportNegotiation, SubleaseNegotiation, DepreciationLog, PurchaseSettlement, PurchaseSettlementItem, SettlementPaymentLog, ExternalLease, PurchaseSettlementType, PurchaseSettlementStatus, findCustomerByNormalizedName, AnnualLeaveQuota, LeaveUsage, OvertimeRecord, PayrollClosing, InspectionChecklistItem, EquipmentManual, InboundDefectDetail, PrepaidTransaction, DelinquencyActionLog, LegalNoticeLog, LegalNoticeTemplate, calculateAssetDepreciation, FieldAsTicket, FieldAsPartUsed, FieldAsCollectedPart, CorporateVehicle, VehicleOperationLog, VehicleFuelLog, RepairPartUsed, RepairCollectedPart, SaleContractTerms, StocktakingAudit, StocktakingAuditItem, CollectedPart } from '../services/db';
 import { ErrorModal } from '../components/ErrorModal';
 import { getAllSystemMenuIds } from '../config/menu_config';
 import { broadcastWorkNotification } from '../utils/workNotificationService';
@@ -84,6 +84,17 @@ interface AppContextType {
   showErrorModal: (message: string, title?: string) => void;
   
   // Data States
+  tenants: Tenant[];
+  currentTenant: Tenant;
+  setCurrentTenantId: (tenantId: string) => void;
+  saveTenant: (tenant: Partial<Tenant> & { id?: string }) => Promise<Tenant>;
+  addTenantWorkplace: (tenantId: string, workplace: Omit<TenantWorkplace, 'id'>) => Promise<Tenant>;
+  updateTenantWorkplace: (tenantId: string, workplaceId: string, workplace: Partial<TenantWorkplace>) => Promise<Tenant>;
+  deleteTenantWorkplace: (tenantId: string, workplaceId: string) => Promise<Tenant>;
+  addTenantYard: (tenantId: string, yard: Omit<TenantYard, 'id'>) => Promise<Tenant>;
+  updateTenantYard: (tenantId: string, yardId: string, yard: Partial<TenantYard>) => Promise<Tenant>;
+  deleteTenantYard: (tenantId: string, yardId: string) => Promise<Tenant>;
+  setDefaultYard: (tenantId: string, yardId: string) => Promise<Tenant>;
   users: User[];
   permissions: MenuPermission[];
   customers: Customer[];
@@ -391,6 +402,107 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [theme, setTheme] = useState<'light' | 'dark'>('light');
 
   // React state of database tables
+  const [tenants, setTenants] = useState<Tenant[]>(() => db.tenants);
+  const [currentTenantId, setCurrentTenantIdState] = useState<string>(() => {
+    return (typeof window !== 'undefined' ? localStorage.getItem('erp_current_tenant_id') : null) || db.currentTenant.id;
+  });
+
+  const currentTenant = tenants.find(t => t.id === currentTenantId || t.tenantCode === currentTenantId) || tenants.find(t => t.isDefault) || tenants[0] || db.currentTenant;
+
+  const setCurrentTenantId = (id: string) => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('erp_current_tenant_id', id);
+    }
+    setCurrentTenantIdState(id);
+  };
+
+  const saveTenant = async (tenant: Partial<Tenant> & { id?: string }): Promise<Tenant> => {
+    let saved: Tenant;
+    if (tenant.id) {
+      saved = db.updateRow<Tenant>('tenants', tenant.id, tenant as any) as Tenant;
+    } else {
+      saved = db.insertRow<Tenant>('tenants', tenant as any) as Tenant;
+    }
+    await db.awaitPendingWrites();
+    setTenants([...db.tenants]);
+    return saved;
+  };
+
+  const addTenantWorkplace = async (tenantId: string, workplaceData: Omit<TenantWorkplace, 'id'>): Promise<Tenant> => {
+    const targetTenant = tenants.find(t => t.id === tenantId) || currentTenant;
+    const newId = `wp-${Date.now()}`;
+    const newWorkplace: TenantWorkplace = {
+      ...workplaceData,
+      id: newId,
+      createdAt: new Date().toISOString(),
+    };
+    const updatedWorkplaces = [...(targetTenant.workplaces || []), newWorkplace];
+    return saveTenant({ id: targetTenant.id, workplaces: updatedWorkplaces });
+  };
+
+  const updateTenantWorkplace = async (tenantId: string, workplaceId: string, updates: Partial<TenantWorkplace>): Promise<Tenant> => {
+    const targetTenant = tenants.find(t => t.id === tenantId) || currentTenant;
+    const updatedWorkplaces = (targetTenant.workplaces || []).map(wp => 
+      wp.id === workplaceId ? { ...wp, ...updates, updatedAt: new Date().toISOString() } : wp
+    );
+    return saveTenant({ id: targetTenant.id, workplaces: updatedWorkplaces });
+  };
+
+  const deleteTenantWorkplace = async (tenantId: string, workplaceId: string): Promise<Tenant> => {
+    const targetTenant = tenants.find(t => t.id === tenantId) || currentTenant;
+    const updatedWorkplaces = (targetTenant.workplaces || []).filter(wp => wp.id !== workplaceId);
+    return saveTenant({ id: targetTenant.id, workplaces: updatedWorkplaces });
+  };
+
+  const addTenantYard = async (tenantId: string, yardData: Omit<TenantYard, 'id'>): Promise<Tenant> => {
+    const targetTenant = tenants.find(t => t.id === tenantId) || currentTenant;
+    const newId = `yard-${Date.now()}`;
+    const newYard: TenantYard = {
+      ...yardData,
+      id: newId,
+      createdAt: new Date().toISOString(),
+    };
+    let updatedYards = [...(targetTenant.yards || [])];
+    if (newYard.isDefault) {
+      updatedYards = updatedYards.map(y => ({ ...y, isDefault: false }));
+    }
+    updatedYards.push(newYard);
+    return saveTenant({ 
+      id: targetTenant.id, 
+      yards: updatedYards,
+      mainYardAddress: newYard.isDefault ? newYard.name : targetTenant.mainYardAddress 
+    });
+  };
+
+  const updateTenantYard = async (tenantId: string, yardId: string, updates: Partial<TenantYard>): Promise<Tenant> => {
+    const targetTenant = tenants.find(t => t.id === tenantId) || currentTenant;
+    let updatedYards = (targetTenant.yards || []).map(y => {
+      if (y.id === yardId) {
+        return { ...y, ...updates, updatedAt: new Date().toISOString() };
+      }
+      if (updates.isDefault) {
+        return { ...y, isDefault: false };
+      }
+      return y;
+    });
+    const defaultYard = updatedYards.find(y => y.isDefault);
+    return saveTenant({ 
+      id: targetTenant.id, 
+      yards: updatedYards,
+      mainYardAddress: defaultYard ? defaultYard.name : targetTenant.mainYardAddress 
+    });
+  };
+
+  const deleteTenantYard = async (tenantId: string, yardId: string): Promise<Tenant> => {
+    const targetTenant = tenants.find(t => t.id === tenantId) || currentTenant;
+    const updatedYards = (targetTenant.yards || []).filter(y => y.id !== yardId);
+    return saveTenant({ id: targetTenant.id, yards: updatedYards });
+  };
+
+  const setDefaultYard = async (tenantId: string, yardId: string): Promise<Tenant> => {
+    return updateTenantYard(tenantId, yardId, { isDefault: true });
+  };
+
   const [users, setUsers] = useState<User[]>([]);
   const [permissions, setPermissions] = useState<MenuPermission[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -485,6 +597,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       db.awaitPendingWrites().catch(err => console.error("BillingDetails cleanup error:", err));
     }
 
+    setTenants([...db.tenants]);
     setUsers([...db.users]);
     setPermissions([...db.permissions]);
     setCustomers([...db.customers]);
@@ -569,8 +682,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     'rent_asset':           ['assets', 'vendors'],
     'consumable':           ['consumables', 'consumableLogs', 'consumablePurchases', 'vendors', 'mechanicConsumableStocks', 'stocktakingAudits', 'stocktakingAuditItems', 'collectedParts'],
     'smart_dispatch':       ['deliveries', 'contracts', 'assets', 'transportCompanies', 'transportDrivers'],
-    'smart_dispatch2':      ['deliveries', 'contracts', 'assets', 'transportCompanies', 'transportDrivers'],
-    'smart_dispatch3':      ['deliveries', 'contracts', 'assets', 'transportCompanies', 'transportDrivers'],
     'smart_dispatch4':      ['customers', 'sites', 'contacts', 'contracts', 'deliveries', 'assets'],
     'smart_return':         ['deliveries', 'contracts', 'assets', 'transportCompanies', 'transportDrivers'],
     'asset_inout_history':  ['assetInOutLogs', 'assets', 'customers'],
@@ -8030,6 +8141,9 @@ ${payload.memo ? `\n[특이사항 / 메모]\n${payload.memo}\n` : ''}
   return (
     <AppContext.Provider value={{ receivables: db.receivables as any[], refreshReceivables: () => {}, 
       currentUser, theme, toggleTheme, login, logout, hasPermission, showErrorModal,
+      tenants, currentTenant, setCurrentTenantId, saveTenant,
+      addTenantWorkplace, updateTenantWorkplace, deleteTenantWorkplace,
+      addTenantYard, updateTenantYard, deleteTenantYard, setDefaultYard,
       users, permissions, customers, contacts, sites, products, assets, consumables, consumableLogs, consumablePurchases, mechanicConsumableStocks: db.mechanicConsumableStocks, contracts, contractAssets, contractHistory, deliveries, billings, billingDetails, payments, paymentDepositLinks, repairs, repairConsumables, transportCompanies, transportDrivers, transportNegotiations, subleaseNegotiations, todos,
       stocktakingAudits, stocktakingAuditItems, collectedParts,
       bankTransactions, bankMatchingRules, bankInitialBalances, assetInOutLogs, vendors, googleConfigs, cashFlowSnapshots, outboundInspections, depreciationLogs,

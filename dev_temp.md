@@ -1,6 +1,180 @@
 # 개발 요구사항 임시 기록 (dev_temp.md)
 
 
+## [완료] 테넌트 스키마 고도화: 본사·다수 사업장 및 다수 주기장 복수 관리 체계 구축 & 공식 법인 직인 정식 등록 (v1.10.0.Build.2)
+- **요구사항**: "현재 가지고 있는 인감 이미지를 정식으로 등록 사용해, 회사의 사업장은 본사 및 다수의 사업장이 가능해야 하고, 다수의 주기장이 등록가능해야해, 테넌트 테이블의 스키마에 고려. 모두 적용하고 완료되면 알려줘. 다음 지시를 줄게"
+- **조치 내역**:
+  1. **공식 법인 직인 정식 등록 및 실물 에셋 영구 보존**:
+     - 기존 견적/계약서 서식의 인감 Base64 데이터를 `OFFICIAL_STAMP_BASE64` 전사 상수로 등록.
+     - 물리적 이미지 파일 `public/images/official_stamp.png` (489 bytes) 생성 및 정적 에셋 서빙 지원.
+     - 1호 테넌트(`tenant-1`)의 `stampImageUrl`을 공식 직인으로 연결.
+  2. **본사 및 다수 사업장(Workplaces) 복수 관리 스키마 신설 (`src/services/db.ts`)**:
+     - `TenantWorkplace` 인터페이스 신설: `id`, `workplaceCode`, `name`, `isHeadquarter`, `businessNumber`, `subBizNumber`(종사업장식별번호), `address`, `tel`, `fax`, `managerName`, `managerPhone` 등 지원.
+     - `SEED_TENANTS`에 `용인 본사 (본점)`을 `isHeadquarter: true`로 마스터 시딩.
+  3. **다수 장비 주기장(Yards) 복수 관리 스키마 신설 (`src/services/db.ts`)**:
+     - `TenantYard` 인터페이스 신설: `id`, `yardCode`, `name`, `isDefault`, `address`, `operatingCapacity`(수용장비대수), `managerName`, `managerPhone`, `tel`, `operatingHours`, `memo` 등 지원.
+     - `SEED_TENANTS`에 복수 주기장 마스터 시딩:
+       - `[대표 야드]` **기연리프트 화성 주기장** (`isDefault: true`, 수용능력 200대, 복합 주기장)
+       - `[보조 야드]` **용인 본사 주기장** (`isDefault: false`, 수용능력 50대, 본사 부속 대기/수리 주기장)
+  4. **전역 AppContext 및 편의 액션 API 연동 (`src/context/AppContext.tsx`)**:
+     - `addTenantWorkplace`, `updateTenantWorkplace`, `deleteTenantWorkplace`
+     - `addTenantYard`, `updateTenantYard`, `deleteTenantYard`, `setDefaultYard`
+- **검증 결과**:
+  - 스키마 무결성 및 에셋 검증 테스트(`test_tenant_registration.cjs`): 전 항목 PASS (100.0%).
+  - 프로덕션 빌드(`npm run build`): **0 Error 통과** (`built in 1.09s`).
+
+---
+
+## [완료] e-Bro System SaaS 멀티테넌트 코어 구축 및 1호 테넌트(주식회사 기연리프트) 사업자등록증 정밀 등록 (v1.10.0.Build.1)
+- **요구사항**: "주식회사 기연리프트를 첫번째 테넌트로 등록해. 필요한 정보는 사업자등록증에서 먼저 추출하고 더 필요한 것이 있으면 나한테 물어봐"
+- **사업자등록증 원천 정보 추출 및 1:1 정밀 매핑**:
+  1. 등록번호 (사업자등록번호): `138-81-83251`
+  2. 법인명 (단체명): `주식회사 기연리프트` (약칭/상호: `(주)기연리프트`)
+  3. 대표자 성명: `이수용`
+  4. 개업연월일: `2013년 04월 03일` (`2013-04-03`)
+  5. 법인등록번호: `134111-0236287`
+  6. 사업장 소재지: `경기도 용인시 처인구 모현읍 갈담로112번길 21-3`
+  7. 본점 소재지: `경기도 용인시 처인구 모현읍 갈담로112번길 21-3`
+  8. 사업의 종류 (업태/종목 4종 전수 등록):
+     - 주 업태: `사업지원및임대서비스업` / 주 종목: `고소장비임대업`
+     - 부 업태: `도매및소매업` / 부 종목: `건설기계·부품및수리업`, `컴퓨터및주변장치도매업`
+     - 부 업태: `제조업` / 부 종목: `건설기계장비 및 고소장비 수리,유지관리업`
+  9. 사업자 단위 과세 적용사업자 여부: `부` (`isUnitTaxation: false`)
+  10. 전자세금계산서 전용 전자우편주소: `giyeonlift@naver.com`
+  11. 대표 전화번호: `031-334-5295`
+  12. 팩스 번호: `031-335-5297`
+  13. 관할 세무서: `용인세무서장`
+  14. 발급일자: `2025-11-26`
+- **시스템 및 브랜딩 보완 정보 기본 바인딩**:
+  - 시스템 제품명: `e-Bro System` (플랫폼 전사 브랜드)
+  - 시스템 표시명: `기연리프트`
+  - 영업/고객상담 직통: `031-334-5296` / `010-9402-5296`
+  - 대표 주기장(야드): `기연리프트 화성 주기장`
+  - 주거래 입금 계좌: `신한은행 140-010-007060 (예금주: 주식회사 기연리프트)` [대표], `기업은행 144-082875-01-017 (예금주: (주)기연리프트)`
+  - 법인 대표 직인: Base64 대표인 도장 연동
+- **구현 조치**:
+  1. `src/services/db.ts`:
+     - `Tenant`, `TenantBusinessType`, `TenantBankAccount` 인터페이스 신설.
+     - `SEED_TENANTS` 마스터 시드 데이터 등록 (`id: 'tenant-1'`, `tenantCode: 'KIYEUN'`).
+     - `ALL_DB_KEYS`에 `'tenants'` 추가 및 `LocalDB.tenants`, `LocalDB.currentTenant` getter/setter 탑재.
+     - Supabase 테이블 맵핑(`tenants: 'tenants'`) 및 `generateNextId` (`prefix: 'TNT-'`) 연동.
+  2. `src/context/AppContext.tsx`:
+     - `AppContextType`에 `tenants`, `currentTenant`, `setCurrentTenantId`, `saveTenant` 정의.
+     - `AppContextProvider`에 실시간 상태 바인딩, `localStorage.erp_current_tenant_id` 캐시 동기화, `refreshAllData` 연계.
+- **검증 결과**:
+  - 테넌트 18대 핵심 속성 무결성 테스트(`test_tenant_registration.cjs`): 18/18 PASS (100.0%).
+  - 프로덕션 빌드(`npm run build`): 0 Error 통과 (`built in 2.18s`).
+
+---
+
+## [완료] 출고의뢰(통합) 선택 장비 목록 수량 컨트롤러 및 아이콘 렌더링 고밀도 엔터프라이즈 전면 개편 (v1.9.5.Build.11)
+- **요구사항**: "출고의뢰(통합) 에서 이부분의 UI가 이상해. +,- 표시도 안되고 삭제 아이콘도 없어. UI 크기의 발란스도 안맞아. UIUX 에이전트 투입해서 조정해"
+- **원인 분석**:
+  1. **아이콘 빈 네모 박스 현상**: `lucide-react` 컴포넌트(`Minus`, `Plus`, `Trash2`) 호출 시 `size` prop 미지정으로 기본 `24x24` viewBox 방출, 유틸리티 클래스(`w-3 h-3`)와 충돌 및 stroke 블러링으로 아이콘이 사라지고 빈 네모로 렌더링됨.
+  2. **수량 인풋 찌그러짐 (36px 강제 충돌)**: `smart_dispatch4.css` 내 `.dispatch4-left-pane input`의 `height: 36px !important; padding: 6px 12px !important;`가 수량 입력창을 강제 팽창시켜 40px 폭 안에서 숫자가 1px도 안 보이게 압착되고 인접 버튼 정렬 파괴.
+  3. **시각적 밸런스 불일치**: 모델명과 수량 조절기 간의 수직 중앙 정렬 불균형 및 제원 힌트 부재.
+- **수정 조치 (`src/pages/smart_dispatch4.tsx`, `src/pages/smart_dispatch4.css`)**:
+  1. **CSS 전용 클래스 분리 및 침범 차단**:
+     - 기존 인풋 규칙에 `:not(.dispatch4-qty-input)` 방어 셀렉터 추가.
+     - `.dispatch4-qty-input` (높이 28px, 폭 36px, 모노스페이스 볼드, 중앙 정렬, 스핀 버튼 숨김) 신설.
+     - `.dispatch4-qty-btn` (28px x 28px 완전 정사각형 규격화, hover/active 시각 피드백) 신설.
+     - `.dispatch4-delete-btn` (28px x 28px 규격, red 호버 경고 피드백) 신설.
+  2. **아이콘 렌더링 무결성 확보**:
+     - `Minus`, `Plus`, `Trash2`에 `size={14}`, `strokeWidth={2.5}`, `color="currentColor"`, 인라인 `style={{ width: 14, height: 14, display: 'block' }}` 명시하여 100% 선명 노출.
+  3. **엔터프라이즈 UX 밸런스 고도화**:
+     - 모델명 좌측에 `EQUIPMENT_SPEC_MATRIX` 연동 제원 배지(`19ft`/`26ft`, `협폭`/`광폭`) 자동 노출.
+     - 수량 1대일 때 감산 버튼 `disabled` 처리 및 툴팁 가이드(최소 수량 1대 안내).
+     - 미선택 시 빈 상태 안내 카드(Package 아이콘 및 탭 선택 안내) 정돈.
+- **검증 결과**:
+  - `npm run build`: 0 Error 통과.
+
+---
+
+## [완료] 출고의뢰(통합) 텍스트 파일 불러오기 탑재 및 9대 스키마 상관관계 폼 데이터 변환 고도화 (v1.9.5.Build.10)
+- **요구사항**: "이미지1 "출고 요청" 메뉴에 있는 이 버튼의 기능을 , 이미지 2 표시 위치에 붙이고, 데이터와 스키마 상관관계를 따져서 적용해줘."
+- **분석 및 구현 내용**:
+  1. **파일 불러오기 기능 탑재 (이미지 2 지정 위치)**:
+     - `src/pages/smart_dispatch4.tsx`: 카톡/문자 텍스트 붙여넣기 아코디언 내 하단 `[ 닫기 ]` 좌측에 `[📁 파일 불러오기]` 버튼 배치.
+     - `txtFileInputRef` 및 `handleTextFileChange` 연동: `.txt`, `.csv`, `.log` 등 텍스트 의뢰 파일을 선택하면 `FileReader`로 읽어 textarea에 자동 로드 및 파싱 존 자동 확장.
+     - 우측 실행 버튼 라벨을 `[⚡ 폼 데이터 변환 (추출)]`로 명확화.
+  2. **데이터와 9대 필수 스키마 실드 간 상관관계 100% 매핑 고도화**:
+     - 기존에 단순 장비/고객/상차시간만 추출하던 파서를 전면 개편하여 9대 스키마 실드와 1:1 완벽 정합:
+       - **WHO (고객사)**: DB 고객사 정규화 매칭 또는 신규 고객사 모드 자동 전환.
+       - **WHERE (현장/상세주소/인수자)**: 현장명, 현장 상세주소/배송지, 현장 인수자 성명, 9자리 이상 휴대폰 번호 분리 추출.
+       - **WHAT (장비 규격/수량)**: 모델명 및 수량 곱셈/대수 추출.
+       - **WHEN (상차/하차 일정 및 시간)**: 출고일자 및 시간(ASAP, 오전, 오후, 시간지정) 덮어쓰기 방지 분리 추출 및 하차일자 자동 연동.
+       - **OPTIONS (운송비/안전옵션/대차)**: 당사부담/고객부담/반반 귀속선 판별, 9종 안전옵션(과부하, 협착, 경광등 등) 자동 감지, 대차 시 회수자산/모름 자동 매핑.
+       - **업무 유형 자동 감지**: 텍스트 내 '대차/교체' 감지 시 `EXCHANGE`, '신규' 감지 시 `NEW_CUSTOMER`, 기본 `ADDITIONAL` 자동 전환.
+- **검증 결과**:
+  - `scratch/test_text_parse_correlations.cjs`: WTT 3/3 PASS (100.0%)
+  - `npm run build`: 0 Error 통과.
+
+---
+- **요구사항**: "PC 모드에서 "출고요청(신설)", "출고요청(재설계)" 메뉴는 제거."
+- **조치 내역**:
+  1. `src/App.tsx`:
+     - `SmartDispatch2` (`smart_dispatch2`), `SmartDispatch3` (`smart_dispatch3`) 컴포넌트 import 및 `menuGroups` (영업관리) 등록 제거.
+  2. `src/config/menu_config.ts`:
+     - `smart_dispatch2` (출고 요청 (신설)), `smart_dispatch3` (출고 요청 (재설계)) 항목 제거.
+  3. `src/config/menuConfig.ts`:
+     - `smart_dispatch2` (출고 요청 (신설)), `smart_dispatch3` (출고 요청 (재설계)) 항목 제거.
+  4. `src/context/AppContext.tsx`:
+     - `MODULE_COLLECTIONS_MAP` 내 미사용 키 정리.
+  5. 트리셰이킹 효과: 미사용 컴포넌트 정리로 클라이언트 번들 크기 82KB 절감 (6,483 kB ➔ 6,401 kB).
+- **검증 결과**:
+  - `npm run build`: 0 Error 통과.
+
+---
+- **요구사항**: "웹앱에서 통화파일 선택 기능이 작동안함. 터치 시 깜빡 한 후에 탐색기로 연결이 안됨."
+- **증상 분석**: 모바일 웹 브라우저(삼성 인터넷, 크롬, 인앱 웹뷰 등)에서 통화 녹음 파일 선택 영역 터치 시, 화면이 '깜빡(flash)'한 후 OS 파일 탐색기가 열리지 않고 취소되는 현상 발생.
+- **근본 원인 분석**:
+  1. `accept="audio/*,.m4a,...` MIME 속성 인텐트 충돌: 안드로이드 OS가 `audio/*`에 대해 파일 탐색기가 아닌 오디오 레코더 인텐트를 띄우려 하거나, 확장자 혼용 필터 파싱에 실패하여 즉시 `RESULT_CANCELED`를 반환(깜빡임 후 닫힘).
+  2. `display: none` 인풋에 대한 JS `click()` 호출 한계: 모바일 브라우저 보안 정책상 사용자 터치 제스처가 직접 닿지 않은 hidden 엘리먼트에 대한 JS 트리거 차단 및 2중 클릭 간섭.
+- **조치 내역 (`src/components/CallAudioUploadModal.tsx`)**:
+  1. `<label htmlFor="call-audio-file-input">` 구조로 전면 개편: 브라우저 C++ 렌더러의 네이티브 포인터 이벤트 엔진이 직접 인풋을 활성화하도록 전환 (Untrusted 차단 원천 해소).
+  2. `accept` 속성 안드로이드 호환 최적화: `accept="audio/*,audio/mp4,audio/x-m4a,audio/m4a,audio/mpeg,audio/wav,audio/aac,audio/amr,.m4a,.mp3,.wav,.aac,.amr,*/*"`로 지정하여 시스템 파일 탐색기(내 파일, 최근, 다운로드 등)가 안정적으로 열리도록 보장.
+  3. 인풋 스타일을 `display: none` 대신 CSS 표준 `Visually Hidden` (`position: absolute, width: 1px, opacity: 0`)으로 전환.
+  4. 파일 선택 완료 후 오디오 재생 플레이어와 `[다른 파일로 변경]` 버튼 분리: 재생 바 조작 시 파일 탐색기가 재발동되는 간섭 방지 및 동일 파일 재선택을 위한 input value 리셋 추가.
+  5. `handleFileChange` 오디오 파일 형식/MIME 유효성 검사 보강 및 스마트폰 통화 녹음 폴더 위치 안내 추가.
+- **검증 결과**:
+  - `npm run build`: 0 Error 통과.
+
+---
+- **요구사항**: "3개 파일 데이터 분석한거 대시보드.html 로 만들어줘"
+- **조치 내역**:
+  1. 원천 데이터 3개 파일(총 7,121건) 전수 분석 데이터 반영:
+     - `(출고요청)`: 940건 (유상옵션 208건/42종, 무상옵션 396건/78종, 보양 541건, 서류 189건, 고객요구 25개 불릿 전수)
+     - `(AS)`: 5,633건 (고장증상 2,267종, 장비 관리번호 2,160대, 208개 거래처, 231개 현장, 층수/위치)
+     - `(임차자산입출고)`: 548건 (입고 252, 출고 299, 반납 585, 협력사 롯데/포스/한국/AJ/한솔, 37개 상차지, 26개 하차지)
+  2. 단일 독립형 `대시보드.html` 생성 (`d:\01.AntiGravity\Kiyuen_Lift\대시보드.html` 및 `public/대시보드.html`):
+     - 다크 테마 고밀도 엔터프라이즈 UI (헌장 3.1 무수식어, 3.2 줄바꿈 방지 적용)
+     - 4대 KPI 요약 카드 + 5개 전문 탭 (종합 개요, 출고요청, AS·정비, 임차자산, 무압축 전수 검색기)
+     - Chart.js 시각화 차트 4종 (3대 데이터 비중 도넛, AS 고장증상 Top 10 바, 임차 협력사 점유율 파이, 거래처별 AS 빈도 바)
+     - 7,121건 전수 실시간 키워드 검색기 (Live Search & Filter) 탑재
+- **검증 결과**:
+  - `대시보드.html` 178KB 단일 독립 파일 생성 완료 (웹 브라우저 즉시 열기 지원).
+  - `npm run build`: 0 Error 통과.
+
+---
+
+## [완료] 출고의뢰 업무 유형 순서 조정, '기존현장 출고' 명칭 변경 및 대차 회수전자산 조건부 표시 완결 (v1.9.5.Build.6)
+- **요구사항**: "표시한 두개의 유형(현장출고, 신규고객출고) 는 탭의 배치순서를 바꾸고 현장출고 는 이름도 기존현장출고 로 변경. 이 두 메뉴는 회수 전자산(대차전용) 을 표시할 필요가 없으므로 교체(대차) 일때만 표시되도록 해"
+- **조치 내역**:
+  1. 업무 유형 탭 배치 순서 변경: `[신규고객 출고]` ➔ `[기존현장 출고]` ➔ `[교체(대차)]`
+  2. 명칭 정규화: `현장 출고` ➔ `기존현장 출고`로 라벨 변경 (`src/pages/smart_dispatch4.tsx`)
+  3. 회수 전자산 조건부 표시 및 검증 완결:
+     - 우측 스키마 실드 검증 항목에서 `회수 전자산 (대차전용)` 항목은 `selectedContext === 'EXCHANGE'`(교체 대차)일 때만 배열에 동적 추가 (신규고객 출고 / 기존현장 출고 시 8개 고정 검증, 교체 대차 시 9개 확장 검증).
+     - 5단계 서식 블록 헤더: 교체(대차)일 때만 `5. 안전옵션 · 대차회수 · 운송비 귀속선`, 일반 출고 시 `5. 안전옵션 · 운송비 귀속선`으로 분기.
+     - 좌하단 요약 바: `회수 대상` 컬럼 역시 교체(대차)일 때만 표시되도록 제어.
+- **검증 결과**:
+  - `node scripts/run_wtt_30_dispatch_types.cjs`: 30/30 PASS (100.0%)
+    - [기존현장 출고] (ADDITIONAL) 10/10 PASS (실드 8/8 고정)
+    - [신규고객 출고] (NEW_CUSTOMER) 10/10 PASS (실드 8/8 고정)
+    - [교체 (대차)] (EXCHANGE) 10/10 PASS (실드 9/9 확장)
+  - `npm run build`: 0 Error 통과.
+
+---
+
 ## [완료] 모바일 APK 다운로드 파일명 CallTransfer.apk 동기화 및 밴드 3대 원천 데이터 무압축 옵션 파서 고도화 (v1.9.5.Build.5)
 - **요구사항 1**: "APK 다운로드가 아직도 "kiyuenCallCapture" 인데 "Calltransfer" 로 변경해줘"
 - **요구사항 2**: "폴더의 파일들은 밴드에서 게시글 본문 전체를 읽어온 자료야. 읽고 초기DB 업로드에서 업데이트 할 때 항목들을 다시 파악하고, 특히 옵션 항목들에 대해서 파악하고, 몇대핵심 요청사항 같은거 만들어내지 말고, 고객의 요구를 처리한다 몇개던지 상관없다는 관점을 유지해. AS, 임차자산, 출고요청 유형에서 뽑아낼수 있는 모든 정보를 파악해"

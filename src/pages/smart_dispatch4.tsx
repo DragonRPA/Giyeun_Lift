@@ -11,7 +11,7 @@
 // │  6. 다수 장비 시차 출고 분할 메모 지원                                   │
 // │  7. 9대 필수 스키마 실시간 방어 차단 실드 & 정형화 서식 뷰 복원          │
 // └─────────────────────────────────────────────────────────────────────────┘
-import React, { useState, useMemo, useCallback, useEffect } from 'react';
+import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { useApp } from '../context/AppContext';
 import { db, Customer, CustomerSite, findCustomerByNormalizedName } from '../services/db';
 import { EQUIPMENT_SPEC_MATRIX } from '../services/voiceOrderDraftService';
@@ -26,7 +26,8 @@ import {
   ClipboardPaste, ArrowRight, Info, Merge,
   UploadCloud, ShieldCheck, ShieldAlert,
   AlertTriangle, Check, AlertCircle, RotateCcw,
-  Truck, Wrench, Shield, RefreshCw, Save, X, Search
+  Truck, Wrench, Shield, RefreshCw, Save, X, Search,
+  FolderOpen, Zap
 } from 'lucide-react';
 import { CallAudioUploadModal } from '../components/CallAudioUploadModal';
 import './smart_dispatch4.css';
@@ -86,8 +87,8 @@ type ActiveTab = 'NEW' | 'QUEUE';
 type BlockId = 'WHO' | 'WHERE' | 'WHAT' | 'WHEN' | 'SAFETY_COST';
 
 const CONTEXT_OPTIONS: { id: CallContext; label: string; color: string }[] = [
-  { id: 'ADDITIONAL',     label: '현장 출고',       color: '#2563eb' },
   { id: 'NEW_CUSTOMER',   label: '신규고객 출고',   color: '#7c3aed' },
+  { id: 'ADDITIONAL',     label: '기존현장 출고',   color: '#2563eb' },
   { id: 'EXCHANGE',       label: '교체(대차)',       color: '#0891b2' },
 ];
 
@@ -332,6 +333,24 @@ export const SmartDispatch4: React.FC = () => {
   // ── 붙여넣기 파싱 존 ──────────────────────────────────────────────────────
   const [pasteZoneOpen, setPasteZoneOpen] = useState(false);
   const [pasteText, setPasteText] = useState('');
+  const txtFileInputRef = useRef<HTMLInputElement>(null);
+
+  // 텍스트 파일(.txt, .csv, .log 등) 불러오기 핸들러 (출고 요청 메뉴 기능 연동)
+  const handleTextFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const text = ev.target?.result as string;
+      if (text !== undefined && text !== null) {
+        setPasteText(text);
+        setPasteZoneOpen(true);
+        showToast(`파일 '${file.name}'의 텍스트 내용을 불러왔습니다.`);
+      }
+    };
+    reader.readAsText(file, 'utf-8');
+    e.target.value = '';
+  };
 
   // ── 블록 열림 상태 (기본 접힘 & 개별 토글 & 전체 펼치기/접기) ──────────
   const [openBlocks, setOpenBlocks] = useState<Set<BlockId>>(new Set<BlockId>([]));
@@ -643,26 +662,108 @@ export const SmartDispatch4: React.FC = () => {
   };
 
 
-  // ── 붙여넣기 파싱 ─────────────────────────────────────────────────────────
+  // ── 폼 데이터 변환 (추출) 엔진 — 9대 스키마 상관관계 100% 매핑 ───────────
   const runParse = useCallback((text: string) => {
     if (!text.trim()) { showToast('텍스트를 입력하세요.', 'error'); return; }
     const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 0);
-    const extractPhone = (s: string) => (s.match(/(01[016789]\s*[-~]?\s*\d{3,4}\s*[-~]?\s*\d{4})/g) || [''])[0].replace(/\s+/g, '');
-    const extractName = (s: string) => s.split(/01[016789]/)[0].replace(/[:-]/g, '').replace(/선임|책임|담당자|소장|부장|팀장/g, '').trim();
 
-    let pc = '', ps = '', pscname = '', pscphone = '', pload = '';
+    // 전화번호 추출 Helper
+    const extractPhone = (s: string) => {
+      const m = s.match(/(01[016789]\s*[-~]?\s*\d{3,4}\s*[-~]?\s*\d{4})/g);
+      return m ? m[0].replace(/\s+/g, '') : '';
+    };
+
+    // 담당자 성명 추출 Helper
+    const extractName = (s: string) => {
+      let namePart = s.split(/01[016789]/)[0] || s;
+      namePart = namePart.split(/[a-zA-Z0-9._%+-]+@/)[0] || namePart;
+      return namePart.replace(/[:：\-]/g, '').replace(/선임|책임|담당자|소장|부장|과장|대리|팀장|반장|인수자/g, '').trim();
+    };
+
+    // 날짜 추출 Helper (YYYY-MM-DD 또는 M/D, MM.DD)
+    const extractDate = (s: string): string => {
+      const full = s.match(/(\d{4})[./년\s-](\d{1,2})[./월\s-](\d{1,2})/);
+      if (full) {
+        return `${full[1]}-${full[2].padStart(2, '0')}-${full[3].padStart(2, '0')}`;
+      }
+      const md = s.match(/(\d{1,2})[./월\s-](\d{1,2})/);
+      if (md) {
+        const y = new Date().getFullYear();
+        return `${y}-${md[1].padStart(2, '0')}-${md[2].padStart(2, '0')}`;
+      }
+      return '';
+    };
+
+    // 시간 추출 Helper (HH:mm)
+    const extractTime = (s: string): { type: 'ASAP' | 'MORNING' | 'AFTERNOON' | 'EXACT' | null; val: string } => {
+      if (/ASAP|즉시|당일|최우선|긴급/i.test(s)) return { type: 'ASAP', val: '' };
+      if (/오전/i.test(s) && !/\d{1,2}[.:시]/.test(s)) return { type: 'MORNING', val: '' };
+      if (/오후/i.test(s) && !/\d{1,2}[.:시]/.test(s)) return { type: 'AFTERNOON', val: '' };
+      const tm = s.match(/(\d{1,2})[.:시](\d{2})?/);
+      if (tm) {
+        let hour = parseInt(tm[1], 10);
+        if (/오후/i.test(s) && hour < 12) hour += 12;
+        const min = tm[2] || '00';
+        return { type: 'EXACT', val: `${String(hour).padStart(2, '0')}:${min}` };
+      }
+      return { type: null, val: '' };
+    };
+
+    let pc = '', ps = '', paddr = '', pscname = '', pscphone = '';
+    let ploadDate = '', ploadTimeStr = '';
+    let punloadDate = '', punloadTimeStr = '';
     const peqs: EquipmentItem[] = [];
+    let ppaidby: PaidBy | null = null;
+    let pretrieval: string[] = [];
     let pnote = '';
+    let pstaggered = '';
 
     lines.forEach(line => {
-      const val = line.includes(':') ? line.substring(line.indexOf(':') + 1).trim() : '';
-      if (/^(?:\d+[.)]\s*)?(?:고객사명?|고객명|업체명?|상호)/i.test(line)) pc = val;
-      else if (/^(?:\d+[.)]\s*)?(?:현장명?|현장)(?!\s*상세|\s*주소|\s*담당)/i.test(line)) ps = val;
-      else if (/^(?:\d+[.)]\s*)?(?:현장\s*담당자?|현장담당|소장|반장)/i.test(line)) {
-        pscname = extractName(val); pscphone = extractPhone(val);
+      const val = line.includes(':')
+        ? line.substring(line.indexOf(':') + 1).trim()
+        : (line.includes('：') ? line.substring(line.indexOf('：') + 1).trim() : '');
+
+      // 1. 고객사명 / 업체 / 상호 / 발주처
+      if (/^(?:\d+[.)]\s*)?(?:고객사명?|고객명|업체명?|상호명?|상호|발주처)/i.test(line)) {
+        pc = val || line.replace(/^(?:\d+[.)]\s*)?(?:고객사명?|고객명|업체명?|상호명?|상호|발주처)\s*[:：]?\s*/i, '');
       }
-      else if (/^(?:\d+[.)]\s*)?(?:상차\s*스케줄|상차\s*시간|상차시간|상차)/i.test(line)) pload = val;
-      else if (/^(?:\d+[.)]\s*)?(?:신청.*모델.*목록|신청모델|모델명?|장비명?|규격)/i.test(line) || /^\s*-\s*(?:GS|SJ|JCPT|HD)/i.test(line)) {
+      // 2. 현장 상세 주소 / 배송지 / 도착지 (현장명보다 먼저 매칭)
+      else if (/^(?:\d+[.)]\s*)?(?:현장\s*상세\s*주소|현장상세주소|현장\s*주소|주소|배송지|도착지)/i.test(line)) {
+        paddr = val || line.replace(/^(?:\d+[.)]\s*)?(?:현장\s*상세\s*주소|현장상세주소|현장\s*주소|주소|배송지|도착지)\s*[:：]?\s*/i, '');
+      }
+      // 3. 현장 담당자 / 소장 / 반장 / 인수자
+      else if (/^(?:\d+[.)]\s*)?(?:현장\s*담당자?|현장담당|소장|반장|인수자|현장소장|현장반장)/i.test(line) && !line.includes('청구') && !line.includes('영업')) {
+        pscname = extractName(val || line);
+        pscphone = extractPhone(val || line);
+      }
+      // 4. 현장명 / 현장
+      else if (/^(?:\d+[.)]\s*)?(?:현장명?|현장)(?!\s*상세|\s*주소|\s*담당|\s*소장|\s*도착)/i.test(line)) {
+        ps = val || line.replace(/^(?:\d+[.)]\s*)?(?:현장명?|현장)\s*[:：]?\s*/i, '');
+      }
+      // 5. 상차/출고 날짜
+      else if (/^(?:\d+[.)]\s*)?(?:출고\s*일자|출고일|상차\s*일자|상차일|작업\s*일자|작업일|일자|날짜)/i.test(line) && !line.includes('시간')) {
+        const d = extractDate(val || line);
+        if (d) ploadDate = d;
+      }
+      // 6. 상차/출고 시간
+      else if (/^(?:\d+[.)]\s*)?(?:상차\s*시간|상차시간|출고\s*시간|출고시간|상차\s*스케줄|상차)/i.test(line)) {
+        const d = extractDate(val || line);
+        if (d) ploadDate = d;
+        ploadTimeStr = val || line.replace(/^.*[:：]\s*/, '');
+      }
+      // 7. 하차/도착 날짜
+      else if (/^(?:\d+[.)]\s*)?(?:하차\s*일자|하차일|도착\s*일자|도착일)/i.test(line) && !line.includes('시간')) {
+        const d = extractDate(val || line);
+        if (d) punloadDate = d;
+      }
+      // 8. 하차/도착 시간
+      else if (/^(?:\d+[.)]\s*)?(?:하차\s*시간|하차시간|하차\s*스케줄|하차|도착\s*시간|도착시간|도착\s*일시|현장도착)/i.test(line)) {
+        const d = extractDate(val || line);
+        if (d) punloadDate = d;
+        punloadTimeStr = val || line.replace(/^.*[:：]\s*/, '');
+      }
+      // 7. 신청 모델 / 장비 규격 및 수량
+      else if (/^(?:\d+[.)]\s*)?(?:신청.*모델.*목록|신청모델|모델명?|장비명?|규격|기종|장비)/i.test(line) || /^\s*-\s*(?:GS|SJ|JCPT|HD|고소)/i.test(line)) {
         const raw = val || line.replace(/^.*[:：]/, '').replace(/^-\s*/, '');
         raw.split(/[/,]/).forEach(p => {
           const m = p.match(/(.+?)\s*[*xX대]\s*(\d+)/) || p.match(/(.+?)\s*(\d+)\s*대/);
@@ -670,9 +771,69 @@ export const SmartDispatch4: React.FC = () => {
           else if (p.trim()) peqs.push({ modelName: p.trim(), qty: 1 });
         });
       }
-      else if (/^(?:\d+[.)]\s*)?(?:특이사항|비고|메모)/i.test(line)) pnote = val;
+      // 8. 운송비 부담 귀속선
+      else if (/^(?:\d+[.)]\s*)?(?:운송비\s*부담|운송비|배차비|용차비)/i.test(line)) {
+        const target = (val || line).toLowerCase();
+        if (target.includes('당사') || target.includes('기연') || target.includes('당사부담') || target.includes('우리')) ppaidby = 'OURS';
+        else if (target.includes('고객') || target.includes('업체') || target.includes('거래처') || target.includes('착불')) ppaidby = 'CUSTOMER';
+        else if (target.includes('반반') || target.includes('50') || target.includes('절반')) ppaidby = 'SPLIT';
+      }
+      // 9. 대차 회수 장비 / 기존 장비
+      else if (/^(?:\d+[.)]\s*)?(?:회수\s*장비|회수\s*자산|기존\s*장비|대차\s*장비|교체\s*장비)/i.test(line)) {
+        const target = val || line.replace(/^.*[:：]\s*/, '');
+        if (target.includes('모름') || target.includes('확인필요')) {
+          pretrieval = ['UNKNOWN'];
+        } else {
+          const nums = target.match(/\d{3,5}/g);
+          if (nums && nums.length > 0) pretrieval = nums;
+        }
+      }
+      // 10. 특이사항 / 비고 / 메모
+      else if (/^(?:\d+[.)]\s*)?(?:특이사항|비고|메모|요청사항)/i.test(line)) {
+        pnote = val || line.replace(/^.*[:：]\s*/, '');
+      }
+      // 11. 시차 출고 메모
+      else if (/^(?:\d+[.)]\s*)?(?:시차|순차|게이트\s*진입)/i.test(line)) {
+        pstaggered = val || line.replace(/^.*[:：]\s*/, '');
+      }
     });
 
+    // ── 텍스트 전체 자연어 스캔 보강 (업무유형, 운송비, 안전옵션) ─────────
+    const textLower = text.toLowerCase().replace(/\s+/g, '');
+
+    // 업무 유형 자동 판별
+    let targetContext: CallContext = 'ADDITIONAL'; // 기본: 기존현장 출고
+    if (/대차|교체|맞교환|회수후출고/i.test(text)) {
+      targetContext = 'EXCHANGE';
+    } else if (/신규고객|신규업체|첫거래|신규출고/i.test(text)) {
+      targetContext = 'NEW_CUSTOMER';
+    }
+    setSelectedContext(targetContext);
+
+    // 운송비 귀속선 보강
+    if (!ppaidby) {
+      if (/당사부담|기연부담|당사비용|당사지출/i.test(textLower)) ppaidby = 'OURS';
+      else if (/고객부담|거래처부담|업체부담|착불/i.test(textLower)) ppaidby = 'CUSTOMER';
+      else if (/반반|50:50|절반/i.test(textLower)) ppaidby = 'SPLIT';
+    }
+    if (ppaidby) setPaidBy(ppaidby);
+
+    // 안전옵션 & 보양 자동 감지
+    const detectedSafety = new Set<string>();
+    if (/과부하/i.test(textLower)) detectedSafety.add('과부하방지장치');
+    if (/협착|감지봉|상부센서/i.test(textLower)) detectedSafety.add('협착방지대');
+    if (/경광등/i.test(textLower)) detectedSafety.add('경광등');
+    if (/소화기/i.test(textLower)) detectedSafety.add('소화기');
+    if (/러버패드|바닥보양|패드/i.test(textLower)) detectedSafety.add('러버패드');
+    if (/타이어커버|바퀴커버/i.test(textLower)) detectedSafety.add('타이어커버');
+    if (/도색|도장/i.test(textLower)) detectedSafety.add('도색');
+    if (/함석|철망/i.test(textLower)) detectedSafety.add('함석/철망');
+    if (/발판|보조발판/i.test(textLower)) detectedSafety.add('보조발판');
+    if (detectedSafety.size > 0) {
+      setSelectedSafetyOptions(prev => new Set([...prev, ...detectedSafety]));
+    }
+
+    // 고객사 & 현장 매칭 + 상세주소 연동 (스키마 정합성)
     if (pc) {
       const mc = findCustomerByNormalizedName(customers, pc);
       if (mc) {
@@ -681,29 +842,76 @@ export const SmartDispatch4: React.FC = () => {
           const cleanSite = ps.replace(/\s/g, '');
           const ms = sites.find(s => s.customerId === mc.id &&
             (s.name.replace(/\s/g, '') === cleanSite || s.name.includes(ps) || ps.includes(s.name)));
-          if (ms) { setSelectedSite(ms); applyInheritance(mc, ms); }
-          else { applyInheritance(mc, null); }
-        } else { applyInheritance(mc, null); }
+          if (ms) {
+            setSelectedSite(ms);
+            setSelectedSiteAddress(paddr || ms.address || '');
+            applyInheritance(mc, ms);
+            loadSiteSafetyOptions(ms, mc);
+          } else {
+            setIsRegisteringNewSite(true);
+            setNewSiteName(ps);
+            if (paddr) setNewSiteAddress(paddr);
+            applyInheritance(mc, null);
+          }
+        } else {
+          if (paddr) setSelectedSiteAddress(paddr);
+          applyInheritance(mc, null);
+        }
       } else {
-        showToast(`고객사 "${pc}"는 DB에 없습니다. 직접 선택하세요.`, 'error');
+        // DB 미등록 고객사일 경우 신규 고객 모드로 자동 지원
+        setSelectedContext('NEW_CUSTOMER');
+        setNewCustomerName(pc);
+        if (ps) setNewSiteName(ps);
+        if (paddr) {
+          setNewSiteAddress(paddr);
+          setNewCustomerAddress(paddr);
+        }
+      }
+    } else if (paddr) {
+      setSelectedSiteAddress(paddr);
+    }
+
+    // 담당자 및 연락처
+    if (pscname) setContactPerson(pscname);
+    if (pscphone) setContactPhone(pscphone);
+
+    // 장비 목록
+    if (peqs.length > 0) setEquipments(peqs);
+
+    // 상차 일정 및 시간
+    if (ploadDate) setLoadingDate(ploadDate);
+    if (ploadTimeStr) {
+      const lt = extractTime(ploadTimeStr);
+      if (lt.type) {
+        setLoadingTimeType(lt.type);
+        if (lt.val) setLoadingTimeVal(lt.val);
       }
     }
 
-    if (pscname) setContactPerson(pscname);
-    if (pscphone) setContactPhone(pscphone);
-    if (peqs.length > 0) setEquipments(peqs);
-    if (pnote) setNote(pnote);
+    // 하차 일정 및 시간
+    if (punloadDate) setUnloadingDate(punloadDate);
+    else if (ploadDate) setUnloadingDate(ploadDate);
 
-    if (pload) {
-      const dm = pload.match(/(\d{1,2})[./](\d{1,2})/);
-      if (dm) { const y = new Date().getFullYear(); setLoadingDate(`${y}-${dm[1].padStart(2, '0')}-${dm[2].padStart(2, '0')}`); }
-      const tm = pload.match(/(\d{1,2})[.:시](\d{2})?/);
-      if (tm) setLoadingTimeVal(`${tm[1].padStart(2, '0')}:${(tm[2] || '00')}`);
+    if (punloadTimeStr) {
+      const ut = extractTime(punloadTimeStr);
+      if (ut.type) {
+        setUnloadingTimeType(ut.type);
+        if (ut.val) setUnloadingTimeVal(ut.val);
+      }
     }
 
+    // 대차 회수 장비
+    if (pretrieval.length > 0) {
+      setRetrievalAssetIds(pretrieval);
+    }
+
+    // 메모
+    if (pnote) setNote(pnote);
+    if (pstaggered) setStaggeredMemo(pstaggered);
+
     setPasteZoneOpen(false);
-    showToast('텍스트 파싱 완료');
-  }, [customers, sites, applyInheritance, showToast]);
+    showToast('폼 데이터 변환 완료 — 9대 필수 스키마 실드가 자동 반영되었습니다.');
+  }, [customers, sites, applyInheritance, loadSiteSafetyOptions, showToast]);
 
   // ── 폼 초기화 ─────────────────────────────────────────────────────────────
   const resetForm = () => {
@@ -859,7 +1067,7 @@ export const SmartDispatch4: React.FC = () => {
     newSiteName, selectedSite, selectedSiteAddress, newSiteAddress, newCustomerAddress,
     selectedContext, equipments, totalQty,
     loadingDate, loadingTimeType, loadingTimeVal, contactPerson, contactPhone,
-    retrievalAssetIds, paidBy
+    retrievalAssetIds, isUnknownRetrieval, paidBy
   ]);
 
   const invalidRules = useMemo(() => validationRules.filter(r => r.status === 'INVALID'), [validationRules]);
@@ -1258,23 +1466,48 @@ export const SmartDispatch4: React.FC = () => {
                 <textarea
                   value={pasteText}
                   onChange={e => setPasteText(e.target.value)}
-                  placeholder="카톡, 문자, 이메일 의뢰 원문을 그대로 붙여넣고 [파싱 실행]을 누르세요."
+                  placeholder="카톡, 문자, 이메일 의뢰 원문을 붙여넣거나 [파일 불러오기]를 실행한 뒤 [폼 데이터 변환 (추출)]을 누르세요."
                   rows={5}
                   className="w-full bg-slate-950 border border-slate-700 rounded-lg p-3 text-xs font-mono text-slate-200 placeholder-slate-500 focus:outline-none focus:border-blue-500 resize-y"
                 />
-                <div className="flex items-center justify-end gap-2">
-                  <button
-                    onClick={() => { setPasteText(''); setPasteZoneOpen(false); }}
-                    className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 text-slate-400 hover:text-white transition"
-                  >
-                    닫기
-                  </button>
-                  <button
-                    onClick={() => runParse(pasteText)}
-                    className="px-4 py-1.5 rounded-lg text-xs font-bold bg-blue-600 hover:bg-blue-500 text-white transition shadow-sm"
-                  >
-                    파싱 실행
-                  </button>
+                <div className="flex items-center justify-between">
+                  {/* 파일 불러오기 버튼 (이미지 1 기능 연동) */}
+                  <div className="flex items-center gap-2">
+                    <input
+                      ref={txtFileInputRef}
+                      type="file"
+                      accept=".txt,.csv,.log,text/plain"
+                      style={{ display: 'none' }}
+                      onChange={handleTextFileChange}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => txtFileInputRef.current?.click()}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-slate-800 hover:bg-slate-700 text-amber-300 border border-slate-700 hover:border-amber-500/50 transition shadow-sm cursor-pointer"
+                    >
+                      <FolderOpen className="w-3.5 h-3.5 text-amber-400" />
+                      <span>파일 불러오기</span>
+                    </button>
+                  </div>
+
+                  {/* 우측 닫기 & 폼 데이터 변환(추출) 버튼 */}
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => { setPasteText(''); setPasteZoneOpen(false); }}
+                      className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 text-slate-400 hover:text-white transition cursor-pointer"
+                    >
+                      닫기
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => runParse(pasteText)}
+                      className="flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-xs font-bold bg-blue-600 hover:bg-blue-500 text-white transition shadow-sm cursor-pointer"
+                    >
+                      <Zap className="w-3.5 h-3.5" />
+                      <span>폼 데이터 변환 (추출)</span>
+                    </button>
+                  </div>
                 </div>
               </div>
             )}
@@ -1789,57 +2022,106 @@ export const SmartDispatch4: React.FC = () => {
 
                 {equipments.length > 0 ? (
                   <div className="mt-1 flex flex-col gap-1.5 p-2 bg-slate-950 rounded-lg border border-slate-800">
-                    <div className="text-[11px] font-bold text-slate-400 px-1">선택된 출고 장비 목록:</div>
-                    {equipments.map((eq, idx) => (
-                      <div key={idx} className="flex items-center justify-between bg-slate-900 px-3 py-1.5 rounded-lg border border-slate-700/80 shadow-sm">
-                        <div className="flex items-center gap-2">
-                          <Package className="w-3.5 h-3.5 text-emerald-400 flex-shrink-0" />
-                          <span className="text-xs font-black text-white">{eq.modelName}</span>
-                        </div>
-                        {/* 🌟 수량 조절 -, + 및 직접 숫자 입력 및 삭제(휴지통) 아이콘 버튼군 */}
-                        <div className="flex items-center gap-1.5 bg-slate-950 px-2 py-0.5 rounded-lg border border-slate-700">
-                          <button
-                            type="button"
-                            onClick={() => changeQty(idx, -1)}
-                            className="w-6 h-6 rounded bg-slate-800 hover:bg-slate-700 active:bg-slate-600 border border-slate-600 flex items-center justify-center text-white font-bold transition select-none shadow-sm"
-                            title="수량 1대 감소"
-                          >
-                            <Minus className="w-3 h-3 text-white stroke-[2.5]" />
-                          </button>
-                          <div className="flex items-center justify-center min-w-[48px] px-1 font-mono">
-                            <input
-                              type="number"
-                              min={1}
-                              value={eq.qty}
-                              onChange={e => setModelQty(idx, parseInt(e.target.value) || 1)}
-                              className="w-10 bg-slate-900 border border-slate-700 rounded px-1 py-0.5 text-xs text-center font-mono font-bold text-emerald-400 focus:outline-none focus:border-emerald-500"
-                            />
-                            <span className="text-[10px] text-slate-400 font-bold ml-0.5">대</span>
+                    <div className="flex items-center justify-between px-1">
+                      <span className="text-[11px] font-bold text-slate-400">
+                        선택된 출고 장비 목록 ({equipments.length}종 / 총 {totalQty}대):
+                      </span>
+                    </div>
+                    {equipments.map((eq, idx) => {
+                      const spec = EQUIPMENT_SPEC_MATRIX.find(s => s.modelName === eq.modelName);
+                      return (
+                        <div
+                          key={idx}
+                          className="flex items-center justify-between bg-slate-900 hover:bg-slate-850 px-3 py-2 rounded-lg border border-slate-700/80 shadow-sm transition-colors gap-2"
+                        >
+                          {/* 좌측: 장비 모델명, 제원 힌트 배지(ft, 협폭/광폭) */}
+                          <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                            <div className="w-6 h-6 rounded bg-emerald-950/70 border border-emerald-500/40 flex items-center justify-center flex-shrink-0">
+                              <Package size={13} className="text-emerald-400" style={{ width: 13, height: 13, display: 'block' }} />
+                            </div>
+                            <div className="flex items-center gap-1.5 min-w-0 flex-wrap">
+                              <span className="text-xs font-black text-white tracking-tight truncate">{eq.modelName}</span>
+                              {spec?.ft && (
+                                <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-slate-800 text-slate-300 border border-slate-700 flex-shrink-0">
+                                  {spec.ft}
+                                </span>
+                              )}
+                              {spec?.widthType && spec.widthType !== 'STANDARD' && (
+                                <span
+                                  className={`text-[9.5px] font-bold px-1 py-0.2 rounded border flex-shrink-0 ${
+                                    spec.widthType === 'NARROW'
+                                      ? 'bg-amber-950/60 text-amber-300 border-amber-700/60'
+                                      : 'bg-blue-950/60 text-blue-300 border-blue-700/60'
+                                  }`}
+                                >
+                                  {spec.widthType === 'NARROW' ? '협폭' : '광폭'}
+                                </span>
+                              )}
+                            </div>
                           </div>
-                          <button
-                            type="button"
-                            onClick={() => changeQty(idx, 1)}
-                            className="w-6 h-6 rounded bg-slate-800 hover:bg-slate-700 active:bg-slate-600 border border-slate-600 flex items-center justify-center text-white font-bold transition select-none shadow-sm"
-                            title="수량 1대 증가"
-                          >
-                            <Plus className="w-3 h-3 text-white stroke-[2.5]" />
-                          </button>
-                          <div className="w-[1px] h-3.5 bg-slate-700 mx-0.5" />
-                          <button
-                            type="button"
-                            onClick={() => removeEquipment(idx)}
-                            className="w-6 h-6 rounded bg-red-950/80 hover:bg-red-900 active:bg-red-800 border border-red-700/80 flex items-center justify-center text-red-300 transition select-none shadow-sm"
-                            title="장비 삭제"
-                          >
-                            <Trash2 className="w-3 h-3 text-red-400 stroke-[2.5]" />
-                          </button>
+
+                          {/* 우측: 고밀도 엔터프라이즈 수량 조절기 & 삭제 액션 */}
+                          <div className="flex items-center gap-1.5 bg-slate-950 px-2 py-1 rounded-lg border border-slate-800 shadow-inner flex-shrink-0">
+                            {/* 감산 버튼 [-] */}
+                            <button
+                              type="button"
+                              onClick={() => changeQty(idx, -1)}
+                              disabled={eq.qty <= 1}
+                              className="dispatch4-qty-btn"
+                              title={eq.qty <= 1 ? "최소 수량은 1대입니다 (삭제는 우측 휴지통)" : "수량 1대 감소"}
+                              aria-label="수량 1대 감소"
+                            >
+                              <Minus size={14} strokeWidth={2.5} color="currentColor" style={{ width: 14, height: 14, display: 'block' }} />
+                            </button>
+
+                            {/* 수량 직접 입력 및 '대' 단위 */}
+                            <div className="flex items-center justify-center min-w-[52px] px-0.5">
+                              <input
+                                type="number"
+                                min={1}
+                                max={999}
+                                value={eq.qty}
+                                onChange={e => setModelQty(idx, parseInt(e.target.value) || 1)}
+                                className="dispatch4-qty-input"
+                                title="수량 직접 입력"
+                                aria-label={`${eq.modelName} 수량`}
+                              />
+                              <span className="text-[11px] text-slate-400 font-bold ml-1 select-none">대</span>
+                            </div>
+
+                            {/* 가산 버튼 [+] */}
+                            <button
+                              type="button"
+                              onClick={() => changeQty(idx, 1)}
+                              className="dispatch4-qty-btn"
+                              title="수량 1대 증가"
+                              aria-label="수량 1대 증가"
+                            >
+                              <Plus size={14} strokeWidth={2.5} color="currentColor" style={{ width: 14, height: 14, display: 'block' }} />
+                            </button>
+
+                            {/* 세로 구분선 */}
+                            <div className="w-[1px] h-4 bg-slate-700/80 mx-0.5 flex-shrink-0" />
+
+                            {/* 삭제 버튼 [휴지통] */}
+                            <button
+                              type="button"
+                              onClick={() => removeEquipment(idx)}
+                              className="dispatch4-delete-btn group"
+                              title={`${eq.modelName} 출고 목록에서 삭제`}
+                              aria-label={`${eq.modelName} 삭제`}
+                            >
+                              <Trash2 size={14} strokeWidth={2.2} color="currentColor" style={{ width: 14, height: 14, display: 'block' }} className="transition-colors group-hover:text-red-400" />
+                            </button>
+                          </div>
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 ) : (
-                  <div className="text-center py-3 text-xs text-slate-500">
-                    위에서 모델을 클릭해 출고 장비를 1대 이상 추가하세요.
+                  <div className="text-center py-4 px-3 bg-slate-950/60 rounded-lg border border-dashed border-slate-800 flex flex-col items-center justify-center gap-1.5 text-xs text-slate-500">
+                    <Package size={20} className="text-slate-600" />
+                    <span>상단 규격 탭(19ft, 26ft 등)에서 모델을 클릭하여 출고 장비를 추가하세요.</span>
                   </div>
                 )}
               </div>
@@ -2002,7 +2284,7 @@ export const SmartDispatch4: React.FC = () => {
             >
               <div className="flex items-center gap-2 text-xs font-bold text-slate-100">
                 <Shield className="w-4 h-4 text-purple-400" />
-                <span>5. 안전옵션 · 대차회수 · 운송비 귀속선</span>
+                <span>5. {isExchangeMode ? '안전옵션 · 대차회수 · 운송비 귀속선' : '안전옵션 · 운송비 귀속선'}</span>
                 {isExchangeMode && (
                   <span className={`text-[11px] font-semibold px-2 py-0.5 rounded border ${
                     retrievalAssetIds.length > 0 ? 'bg-cyan-950 text-cyan-300 border-cyan-800' : 'bg-red-950 text-red-300 border-red-800'
@@ -2259,13 +2541,17 @@ export const SmartDispatch4: React.FC = () => {
                 <span className="text-slate-500 text-[10px] block">출고 신청</span>
                 <span className="font-bold text-emerald-400 font-mono text-xs">{totalQty}대</span>
               </div>
-              <div className="w-px h-5 bg-slate-800" />
-              <div>
-                <span className="text-slate-500 text-[10px] block">회수 대상</span>
-                <span className="font-bold text-cyan-400 font-mono text-xs">
-                  {isExchangeMode ? `${retrievalAssetIds.length}대` : '-'}
-                </span>
-              </div>
+              {isExchangeMode && (
+                <>
+                  <div className="w-px h-5 bg-slate-800" />
+                  <div>
+                    <span className="text-slate-500 text-[10px] block">회수 대상</span>
+                    <span className="font-bold text-cyan-400 font-mono text-xs">
+                      {isUnknownRetrieval ? '모름(현장확인)' : `${retrievalAssetIds.length}대`}
+                    </span>
+                  </div>
+                </>
+              )}
               <div className="w-px h-5 bg-slate-800" />
               <div>
                 <span className="text-slate-500 text-[10px] block">운송비</span>

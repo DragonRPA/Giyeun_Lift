@@ -886,7 +886,7 @@ scenarios.forEach((sc, index) => {
 console.log(`\n=============================================================`);
 console.log(`📊 [WTT 30회 도메인 관통 스트레스 테스트 최종 결과]`);
 console.log(`총 시나리오: ${scenarios.length}건 | 통과: ${passedCount}건 | 실패: ${failedCount}건 (통과율: ${(passedCount / scenarios.length * 100).toFixed(1)}%)`);
-console.log(` - [현장 출고]     (ADDITIONAL)   : ${reportResults.filter(r => r.type === 'ADDITIONAL' && r.passed).length} / 10 PASS (실드 8/8 고정)`);
+console.log(` - [기존현장 출고] (ADDITIONAL)   : ${reportResults.filter(r => r.type === 'ADDITIONAL' && r.passed).length} / 10 PASS (실드 8/8 고정)`);
 console.log(` - [신규고객 출고] (NEW_CUSTOMER) : ${reportResults.filter(r => r.type === 'NEW_CUSTOMER' && r.passed).length} / 10 PASS (실드 8/8 고정)`);
 console.log(` - [교체 (대차)]   (EXCHANGE)     : ${reportResults.filter(r => r.type === 'EXCHANGE' && r.passed).length} / 10 PASS (실드 9/9 확장)`);
 console.log(`=============================================================\n`);

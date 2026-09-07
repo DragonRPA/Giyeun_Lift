@@ -224,7 +224,7 @@
 /* ─────────────────────────────────────────────────────────────────────────────
    고밀도 입력 폼 전용 규격
    ───────────────────────────────────────────────────────────────────────────── */
-.dispatch4-left-pane input:not([type="checkbox"]):not([type="radio"]),
+.dispatch4-left-pane input:not([type="checkbox"]):not([type="radio"]):not(.dispatch4-qty-input),
 .dispatch4-left-pane select {
   height: 36px !important;
   min-height: 36px !important;
@@ -235,6 +235,108 @@
   border-radius: 6px !important;
   color: #f8fafc !important;
   box-sizing: border-box !important;
+}
+
+/* 🌟 수량 조절 전용 고밀도 인풋 & 컨트롤러 규격 (선택된 장비 목록 완벽 방어) */
+.dispatch4-left-pane input.dispatch4-qty-input,
+.dispatch4-qty-input {
+  width: 44px !important;
+  height: 28px !important;
+  min-height: 28px !important;
+  max-height: 28px !important;
+  padding: 2px 4px !important;
+  font-size: 13px !important;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace !important;
+  font-weight: 800 !important;
+  text-align: center !important;
+  background-color: #020617 !important;
+  border: 1px solid #334155 !important;
+  border-radius: 6px !important;
+  color: #34d399 !important; /* emerald-400 */
+  box-sizing: border-box !important;
+  line-height: 1 !important;
+  -moz-appearance: textfield !important;
+}
+
+.dispatch4-qty-input:focus {
+  border-color: #10b981 !important;
+  box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.25) !important;
+  outline: none !important;
+}
+
+.dispatch4-qty-input::-webkit-outer-spin-button,
+.dispatch4-qty-input::-webkit-inner-spin-button {
+  -webkit-appearance: none !important;
+  margin: 0 !important;
+}
+
+/* 수량 조절 버튼군 [-], [+] 공통 규격 */
+.dispatch4-qty-btn {
+  width: 28px !important;
+  height: 28px !important;
+  min-width: 28px !important;
+  min-height: 28px !important;
+  border-radius: 6px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  cursor: pointer !important;
+  user-select: none !important;
+  transition: all 0.15s ease !important;
+  flex-shrink: 0 !important;
+  border: 1px solid #475569 !important;
+  background-color: #1e293b !important;
+  color: #f8fafc !important;
+  padding: 0 !important;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2) !important;
+}
+
+.dispatch4-qty-btn:hover:not(:disabled) {
+  background-color: #334155 !important;
+  border-color: #64748b !important;
+  color: #ffffff !important;
+}
+
+.dispatch4-qty-btn:active:not(:disabled) {
+  background-color: #0f172a !important;
+  transform: scale(0.95);
+}
+
+.dispatch4-qty-btn:disabled {
+  opacity: 0.35 !important;
+  cursor: not-allowed !important;
+  border-color: #334155 !important;
+}
+
+/* 삭제 액션 버튼 [휴지통] — 고시인성 위험 피드백 */
+.dispatch4-delete-btn {
+  width: 28px !important;
+  height: 28px !important;
+  min-width: 28px !important;
+  min-height: 28px !important;
+  border-radius: 6px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  cursor: pointer !important;
+  user-select: none !important;
+  transition: all 0.15s ease !important;
+  flex-shrink: 0 !important;
+  border: 1px solid #475569 !important;
+  background-color: #0f172a !important;
+  color: #94a3b8 !important;
+  padding: 0 !important;
+}
+
+.dispatch4-delete-btn:hover {
+  background-color: #450a0a !important; /* red-950 */
+  border-color: #dc2626 !important;     /* red-600 */
+  color: #f87171 !important;             /* red-400 */
+}
+
+.dispatch4-delete-btn:active {
+  background-color: #7f1d1d !important;
+  transform: scale(0.95);
 }
 
 .dispatch4-left-pane input:focus,

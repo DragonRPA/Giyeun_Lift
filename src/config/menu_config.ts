@@ -28,8 +28,6 @@ export const SYSTEM_MENU_CONFIG: MenuGroupConfig[] = [
       { id: 'billing', name: '청구/수납 관리' },
       { id: 'receivable', name: '외상미수금 대장' },
       { id: 'smart_dispatch', name: '출고 요청' },
-      { id: 'smart_dispatch2', name: '출고 요청 (신설)' },
-      { id: 'smart_dispatch3', name: '출고 요청 (재설계)' },
       { id: 'smart_dispatch4', name: '출고의뢰 (통합)' },
       { id: 'smart_return', name: '회수 요청' },
       { id: 'smart_as_request', name: 'AS 요청' }

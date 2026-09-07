@@ -30,6 +30,103 @@ export function normalizeEndDate(endDate?: string | null): string {
   return endDate;
 }
 
+export interface TenantBusinessType {
+  bizType: string; // 업태 (예: 사업지원및임대서비스업)
+  bizItem: string; // 종목 (예: 고소장비임대업)
+}
+
+export interface TenantBankAccount {
+  bankName: string;       // 은행명 (예: 신한은행, 기업은행)
+  accountNumber: string;  // 계좌번호 (예: 140-010-007060)
+  accountHolder: string;  // 예금주 (예: 주식회사 기연리프트)
+  isDefault?: boolean;    // 대표 입금계좌 여부
+}
+
+/** 🏢 본사 및 지점/사업장 엔티티 */
+export interface TenantWorkplace {
+  id: string;                          // 사업장 고유 ID (예: 'wp-01')
+  workplaceCode?: string;              // 사업장 식별 코드 (예: 'HQ', 'BR-01')
+  name: string;                        // 사업장 명칭 (예: '용인 본사 (본점)', '서울 지사')
+  isHeadquarter: boolean;              // 본사 여부 (true: 본점/본사, false: 지점/사업장)
+  businessNumber?: string;             // 사업장별 사업자등록번호 (본사 동일 또는 지점 별도 번호)
+  subBizNumber?: string;               // 사업자단위과세 종사업장 식별번호 4자리 (예: '0000', '0001')
+  address: string;                     // 사업장 소재지 (도로명 주소)
+  addressDetail?: string;              // 상세 주소
+  zipCode?: string;                    // 우편번호
+  tel?: string;                        // 사업장 대표 전화번호
+  fax?: string;                        // 사업장 팩스번호
+  managerName?: string;                // 사업장 책임자 성명
+  managerPhone?: string;               // 책임자 연락처
+  managerEmail?: string;               // 책임자 이메일
+  memo?: string;                       // 사업장 특이사항 및 메모
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+/** 🚜 다수 장비 주기장(야드) 엔티티 */
+export interface TenantYard {
+  id: string;                          // 주기장 고유 ID (예: 'yard-01')
+  yardCode?: string;                   // 주기장 식별 코드 (예: 'YARD-HWASUNG', 'YARD-YONGIN')
+  name: string;                        // 주기장 명칭 (예: '기연리프트 화성 주기장', '용인 본사 주기장')
+  isDefault: boolean;                  // 기본 상하차 주기장 여부 (출고/입고 시 디폴트 선택)
+  address: string;                     // 주기장 소재지 (도로명 주소)
+  addressDetail?: string;              // 상세 주소
+  zipCode?: string;                    // 우편번호
+  operatingCapacity?: number;          // 수용 가능 장비 대수 (예: 200대)
+  managerName?: string;                // 주기장 관리자 / 야드 장 성명
+  managerPhone?: string;               // 관리자 연락처
+  tel?: string;                        // 주기장 일반 전화
+  operatingHours?: string;             // 운영 시간 (예: '07:00 ~ 18:00')
+  memo?: string;                       // 진입로 규격, 트레일러/셀프로더 진입 여부 등 특이사항
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+/** 🌟 전사 공식 법인 직인 Base64 데이터 */
+export const OFFICIAL_STAMP_BASE64 = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADIAAAAyCAYAAAAeP4ixAAAAAXNSR0IArs4c6QAAAAlwSFlzAAALEwAACxMBAJqcGAAAAadJREFUaEPtmWFOwzAMhW/uA+4/90HACUgIEoc0ad26/lhq1STN19hOqN9SJfFjO/4e3pI3S5F3fFw8bFp97dZz8/G2abfB2wZ7D6/J+69bWJ6L52P7mHy+Xz8+Lx+fr6v6Xv5m9fP69Vrfy//2Wl/L217ra/s5t4/J91+vybE9bHl9TNu3vVbeXsszW/k59pq2r3up1+TYHk2Ove61/e01ObaHLa+PyWvbq63PseW5eE2OpvXl1XNl9dxyZe7/7M9V33t7eW/sPbfvjXXeW8u5+PzcXq7P5er293v7b8u5+O/rZ/bZ+97bf1vXz+yzz/f+3FauXN6eKz/n8q51/cw+++zzvT+3lSuXt+fKz7m8a10/s88++3zvz23lyuXtufJzLu9a18/ss88++3zvz23lyuXtufJzLu9a18/ss88++3zvz23lyuXtufJzLu9a18/ss88++3zvz23lyuXtufJzLu9a18/ss88++3zvz23lyuXtufJzLu9a18/ss88++3zvz23lyuXtufJzLu9a18/ss88++3zvz23lyuXtufJzLu9a/wdzK+i+0EagAAAAABJRU5ErkJggg==';
+
+export interface Tenant {
+  id: string;                          // 테넌트 고유 ID (예: 'tenant-1' 또는 'tenant-kiyeun')
+  tenantCode: string;                  // 테넌트 영문 코드 (예: 'KIYEUN')
+  systemName: string;                  // 시스템 기본 명칭 ('e-Bro System')
+  displayName: string;                 // 시스템 표출 회사명 (예: '기연리프트')
+  corporateName: string;               // 법인명(단체명): '주식회사 기연리프트'
+  tradeName?: string;                  // 상호/약칭: '(주)기연리프트'
+  businessNumber: string;              // 사업자등록번호: '138-81-83251'
+  corporateRegistrationNumber?: string;// 법인등록번호: '134111-0236287'
+  representativeName: string;          // 대표자 성명: '이수용'
+  openingDate: string;                 // 개업연월일: '2013-04-03'
+  businessAddress: string;             // 사업장 소재지 (본사)
+  headOfficeAddress?: string;          // 본점 소재지
+  businessCategory: string;            // 주 업태 ('사업지원및임대서비스업')
+  businessItem: string;                // 주 종목 ('고소장비임대업')
+  businessTypes?: TenantBusinessType[];// 전체 업태/종목 리스트
+  isUnitTaxation: boolean;             // 사업자단위과세 적용 여부 (false: 부)
+  taxEmail: string;                    // 전자세금계산서 전용 이메일
+  taxOffice: string;                   // 관할 세무서 ('용인세무서장')
+  certificateIssueDate?: string;       // 사업자등록증 발급일자 ('2025-11-26')
+  tel: string;                         // 대표 전화번호: '031-334-5295'
+  fax: string;                         // 팩스 번호: '031-335-5297'
+  salesPhone?: string;                 // 영업/고객센터 대표번호
+  email?: string;                      // 대표 이메일
+  websiteUrl?: string;                 // 대표 웹사이트
+  
+  // 🏢 사업장 목록 (본사 및 다수의 사업장)
+  workplaces: TenantWorkplace[];
+
+  // 🚜 주기장 목록 (다수의 주기장)
+  yards: TenantYard[];
+
+  mainYardAddress?: string;            // 대표 주기장(야드) 주소 (하위 호환)
+  bankAccounts?: TenantBankAccount[];  // 주 입금 계좌 목록
+  logoUrl?: string;                    // 로고 이미지 URL
+  stampImageUrl?: string;              // 정식 등록 법인 인감/도장 이미지 URL (또는 Base64)
+  status: 'ACTIVE' | 'SUSPENDED' | 'TERMINATED';
+  isDefault: boolean;                  // 기본 테넌트 여부
+  createdAt: string;
+  updatedAt?: string;
+}
+
 export interface User {
   id: string;
   loginId?: string;
@@ -2919,7 +3016,116 @@ const generateMockContracts = (customers: Customer[], contacts: CustomerContact[
 const mockDataProducts = generateMockProducts();
 const mockDataCust = generateMockCustomers();
 const mockDataAssets = generateMockAssets(mockDataProducts);
-const mockDataCont = generateMockContracts(mockDataCust.customers, mockDataCust.contacts, mockDataCust.sites, mockDataAssets);
+export const SEED_TENANTS: Tenant[] = [
+  {
+    id: 'tenant-1',
+    tenantCode: 'KIYEUN',
+    systemName: 'e-Bro System',
+    displayName: '기연리프트',
+    corporateName: '주식회사 기연리프트',
+    tradeName: '(주)기연리프트',
+    businessNumber: '138-81-83251',
+    corporateRegistrationNumber: '134111-0236287',
+    representativeName: '이수용',
+    openingDate: '2013-04-03',
+    businessAddress: '경기도 용인시 처인구 모현읍 갈담로112번길 21-3',
+    headOfficeAddress: '경기도 용인시 처인구 모현읍 갈담로112번길 21-3',
+    businessCategory: '사업지원및임대서비스업',
+    businessItem: '고소장비임대업',
+    businessTypes: [
+      { bizType: '사업지원및임대서비스업', bizItem: '고소장비임대업' },
+      { bizType: '도매및소매업', bizItem: '건설기계·부품및수리업' },
+      { bizType: '도매및소매업', bizItem: '컴퓨터및주변장치도매업' },
+      { bizType: '제조업', bizItem: '건설기계장비 및 고소장비 수리,유지관리업' },
+    ],
+    isUnitTaxation: false,
+    taxEmail: 'giyeonlift@naver.com',
+    taxOffice: '용인세무서장',
+    certificateIssueDate: '2025-11-26',
+    tel: '031-334-5295',
+    fax: '031-335-5297',
+    salesPhone: '031-334-5296 / 010-9402-5296',
+    email: 'giyeonlift@naver.com',
+    websiteUrl: '',
+    
+    // 🏢 본사 및 사업장 목록 (다수 사업장 체계)
+    workplaces: [
+      {
+        id: 'wp-01',
+        workplaceCode: 'HQ',
+        name: '용인 본사 (본점)',
+        isHeadquarter: true,
+        businessNumber: '138-81-83251',
+        subBizNumber: '0000',
+        address: '경기도 용인시 처인구 모현읍 갈담로112번길 21-3',
+        addressDetail: '',
+        tel: '031-334-5295',
+        fax: '031-335-5297',
+        managerName: '이수용',
+        managerPhone: '031-334-5295',
+        managerEmail: 'giyeonlift@naver.com',
+        memo: '법인 본점 및 주사업장',
+        createdAt: '2013-04-03T00:00:00.000Z',
+      }
+    ],
+
+    // 🚜 장비 주기장 목록 (다수 주기장 체계)
+    yards: [
+      {
+        id: 'yard-01',
+        yardCode: 'YARD-HWASUNG',
+        name: '기연리프트 화성 주기장',
+        isDefault: true,
+        address: '기연리프트 화성 주기장',
+        addressDetail: '',
+        operatingCapacity: 200,
+        managerName: '야드관리팀',
+        managerPhone: '031-334-5296',
+        tel: '031-334-5296',
+        operatingHours: '07:00 ~ 18:00',
+        memo: '주력 출고/입고/정비 복합 주기장 (트레일러/셀프로더 진입 가능)',
+        createdAt: '2013-04-03T00:00:00.000Z',
+      },
+      {
+        id: 'yard-02',
+        yardCode: 'YARD-YONGIN',
+        name: '용인 본사 주기장',
+        isDefault: false,
+        address: '경기도 용인시 처인구 모현읍 갈담로112번길 21-3',
+        addressDetail: '본사 주기장',
+        operatingCapacity: 50,
+        managerName: '이수용',
+        managerPhone: '031-334-5295',
+        tel: '031-334-5295',
+        operatingHours: '08:30 ~ 17:30',
+        memo: '본사 부속 대기/수리 주기장',
+        createdAt: '2013-04-03T00:00:00.000Z',
+      }
+    ],
+
+    mainYardAddress: '기연리프트 화성 주기장',
+    bankAccounts: [
+      {
+        bankName: '신한은행',
+        accountNumber: '140-010-007060',
+        accountHolder: '주식회사 기연리프트',
+        isDefault: true,
+      },
+      {
+        bankName: '기업은행',
+        accountNumber: '144-082875-01-017',
+        accountHolder: '(주)기연리프트',
+        isDefault: false,
+      },
+    ],
+    logoUrl: '',
+    stampImageUrl: OFFICIAL_STAMP_BASE64,
+    status: 'ACTIVE',
+    isDefault: true,
+    createdAt: '2013-04-03T00:00:00.000Z',
+    updatedAt: new Date().toISOString(),
+  },
+];
 
 const SEED_USERS: User[] = [];
 const SEED_DEPARTMENTS: Department[] = [];
@@ -3495,7 +3701,7 @@ export const SEED_VEHICLE_FUEL_LOGS: VehicleFuelLog[] = [
 ];
 
 export const ALL_DB_KEYS = [
-  'users', 'departments', 'permissions', 'customers', 'contacts', 'sites', 
+  'tenants', 'users', 'departments', 'permissions', 'customers', 'contacts', 'sites', 
   'products', 'assets', 'consumables', 'consumableLogs', 'consumablePurchases',
   'contracts', 'contractAssets', 'contractHistory', 'deliveries', 
   'transportCompanies', 'transportDrivers', 'vendors',
@@ -3543,6 +3749,20 @@ class LocalDB {
     } catch (e: any) {
       console.warn(`[LocalDB Quota Exceeded] localStorage 용량 한도(5MB) 초과로 erp_${key} 키를 인메모리에 안전하게 보존합니다:`, e?.message || e);
     }
+  }
+
+  get tenants() { return this.get<Tenant>('tenants', SEED_TENANTS); }
+  set tenants(val: Tenant[]) { this.set('tenants', val); }
+
+  get currentTenant(): Tenant {
+    const list = this.tenants;
+    const activeTenantId = typeof window !== 'undefined' ? localStorage.getItem('erp_current_tenant_id') : null;
+    if (activeTenantId) {
+      const found = list.find(t => t.id === activeTenantId || t.tenantCode === activeTenantId);
+      if (found) return found;
+    }
+    const defaultTenant = list.find(t => t.isDefault) || list[0];
+    return defaultTenant || SEED_TENANTS[0];
   }
 
   get users() { return this.get<User>('users', SEED_USERS); }
@@ -3785,6 +4005,7 @@ class LocalDB {
   // Supabase 테이블 맵핑
   private mapToSupabaseTable(key: string): string {
     const mapping: Record<string, string> = {
+      tenants: 'tenants',
       prepaidTransactions: 'prepaid_transactions',
       delinquencyActionLogs: 'delinquency_action_logs',
       legalNoticeLogs: 'legal_notice_logs',
@@ -4102,6 +4323,7 @@ class LocalDB {
 
     let prefix = '';
     switch (key) {
+      case 'tenants':            prefix = 'TNT-';    break;
       case 'products':           prefix = 'PROD-';   break;
       case 'customers':          prefix = 'CUST-';   break;
       case 'assets':             prefix = 'ASSET-';  break;

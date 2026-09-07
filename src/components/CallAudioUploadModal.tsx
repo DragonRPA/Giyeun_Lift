@@ -37,6 +37,16 @@ export const CallAudioUploadModal: React.FC<CallAudioUploadModalProps> = ({
 
   const handleFileChange = (selected: File | null) => {
     if (!selected) return;
+    const fileName = selected.name.toLowerCase();
+    const isAudioExt = /\.(m4a|mp3|wav|ogg|aac|amr|flac|wma|3gp|m4r)$/i.test(fileName);
+    const isAudioMime = selected.type && selected.type.startsWith('audio/');
+
+    // 오디오 확장자도 아니고 오디오 MIME도 아닌 경우 안내
+    if (!isAudioExt && !isAudioMime && selected.type) {
+      setErrorMsg('오디오 파일(.m4a, .mp3, .wav 등)만 업로드할 수 있습니다.');
+      return;
+    }
+
     setErrorMsg(null);
     setFile(selected);
     if (audioUrl) {
@@ -165,59 +175,143 @@ export const CallAudioUploadModal: React.FC<CallAudioUploadModalProps> = ({
             <div style={{ fontSize: 11, fontWeight: 700, color: '#cbd5e1', marginBottom: 8 }}>
               1. 음성 파일 선택 <span style={{ color: '#f87171' }}>*</span>
             </div>
-            <div
-              onDragOver={e => { e.preventDefault(); setIsDragging(true); }}
-              onDragLeave={() => setIsDragging(false)}
-              onDrop={handleDrop}
-              onClick={() => fileInputRef.current?.click()}
+
+            {/* 네이티브 파일 인풋 (Visually Hidden: 모바일 브라우저/웹뷰 터치 연동 100% 호환) */}
+            <input
+              id="call-audio-file-input"
+              ref={fileInputRef}
+              type="file"
+              accept="audio/*,audio/mp4,audio/x-m4a,audio/m4a,audio/mpeg,audio/wav,audio/aac,audio/amr,.m4a,.mp3,.wav,.aac,.amr,*/*"
               style={{
-                border: `2px dashed ${isDragging ? '#3b82f6' : file ? '#10b981' : '#334155'}`,
-                borderRadius: 12,
-                padding: '16px 12px',
-                textAlign: 'center',
-                cursor: 'pointer',
-                background: isDragging ? 'rgba(59,130,246,0.08)' : file ? 'rgba(16,185,129,0.07)' : 'rgba(30,41,59,0.5)',
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                gap: 8,
-                transition: 'border-color 0.2s',
+                position: 'absolute',
+                width: '1px',
+                height: '1px',
+                padding: 0,
+                margin: '-1px',
+                overflow: 'hidden',
+                clip: 'rect(0, 0, 0, 0)',
+                whiteSpace: 'nowrap',
+                border: 0,
+                opacity: 0,
+                pointerEvents: 'none',
               }}
-            >
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="audio/*,.m4a,.mp3,.wav,.ogg,.aac,.amr"
-                style={{ display: 'none' }}
-                onChange={e => {
-                  if (e.target.files && e.target.files[0]) handleFileChange(e.target.files[0]);
+              onClick={e => {
+                (e.target as HTMLInputElement).value = '';
+              }}
+              onChange={e => {
+                if (e.target.files && e.target.files[0]) {
+                  handleFileChange(e.target.files[0]);
+                }
+              }}
+            />
+
+            {!file ? (
+              <label
+                htmlFor="call-audio-file-input"
+                onDragOver={e => { e.preventDefault(); setIsDragging(true); }}
+                onDragLeave={() => setIsDragging(false)}
+                onDrop={handleDrop}
+                style={{
+                  border: `2px dashed ${isDragging ? '#3b82f6' : '#334155'}`,
+                  borderRadius: 12,
+                  padding: '20px 14px',
+                  textAlign: 'center',
+                  cursor: 'pointer',
+                  background: isDragging ? 'rgba(59,130,246,0.08)' : 'rgba(30,41,59,0.5)',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  gap: 8,
+                  transition: 'all 0.2s',
+                  userSelect: 'none',
+                  WebkitTapHighlightColor: 'transparent',
                 }}
-              />
-              {file ? (
-                <div style={{ width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
-                  <div style={{ width: 36, height: 36, borderRadius: '50%', background: 'rgba(16,185,129,0.18)', color: '#34d399', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    <Check style={{ width: 18, height: 18 }} />
+              >
+                <div style={{ width: 42, height: 42, borderRadius: '50%', background: 'rgba(59,130,246,0.12)', color: '#60a5fa', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <UploadCloud style={{ width: 22, height: 22 }} />
+                </div>
+                <div>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: '#fff' }}>탭하여 음성/녹음 파일 선택</div>
+                  <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 4 }}>
+                    .m4a · .mp3 · .wav · .aac · .amr
                   </div>
-                  <div>
+                </div>
+                <div style={{ fontSize: 10, color: '#64748b', marginTop: 2, background: 'rgba(15,23,42,0.6)', padding: '3px 8px', borderRadius: 6 }}>
+                  스마트폰: [내 파일] ➔ [Recordings] ➔ [Call]
+                </div>
+              </label>
+            ) : (
+              <div
+                style={{
+                  border: '2px solid #10b981',
+                  borderRadius: 12,
+                  padding: '16px 14px',
+                  background: 'rgba(16,185,129,0.08)',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  gap: 10,
+                }}
+              >
+                <div style={{ width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
+                  <div style={{ width: 38, height: 38, borderRadius: '50%', background: 'rgba(16,185,129,0.2)', color: '#34d399', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <Check style={{ width: 20, height: 20 }} />
+                  </div>
+                  <div style={{ textAlign: 'center', maxWidth: '100%' }}>
                     <div style={{ fontSize: 13, fontWeight: 700, color: '#fff', wordBreak: 'break-all' }}>{file.name}</div>
-                    <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 2 }}>{(file.size / (1024 * 1024)).toFixed(2)} MB · 탭하여 다른 파일로 변경</div>
+                    <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 2 }}>{(file.size / (1024 * 1024)).toFixed(2)} MB</div>
                   </div>
                   {audioUrl && (
-                    <audio src={audioUrl} controls style={{ width: '100%', height: 36, borderRadius: 8, marginTop: 4 }} onClick={e => e.stopPropagation()} />
+                    <audio src={audioUrl} controls style={{ width: '100%', height: 38, borderRadius: 8, marginTop: 4 }} />
                   )}
                 </div>
-              ) : (
-                <>
-                  <div style={{ width: 36, height: 36, borderRadius: '50%', background: 'rgba(59,130,246,0.1)', color: '#60a5fa', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    <UploadCloud style={{ width: 18, height: 18 }} />
-                  </div>
-                  <div>
-                    <div style={{ fontSize: 13, fontWeight: 600, color: '#fff' }}>탭하여 파일 선택</div>
-                    <div style={{ fontSize: 11, color: '#64748b', marginTop: 2 }}>.m4a / .mp3 / .wav / .aac</div>
-                  </div>
-                </>
-              )}
-            </div>
+
+                <div style={{ display: 'flex', gap: 8, marginTop: 4, width: '100%' }}>
+                  <label
+                    htmlFor="call-audio-file-input"
+                    style={{
+                      flex: 1,
+                      padding: '8px 12px',
+                      borderRadius: 8,
+                      fontSize: 12,
+                      fontWeight: 600,
+                      background: '#1e293b',
+                      border: '1px solid #334155',
+                      color: '#93c5fd',
+                      textAlign: 'center',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: 4,
+                      userSelect: 'none',
+                    }}
+                  >
+                    <span>다른 파일로 변경</span>
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setFile(null);
+                      if (audioUrl) URL.revokeObjectURL(audioUrl);
+                      setAudioUrl(null);
+                    }}
+                    style={{
+                      padding: '8px 14px',
+                      borderRadius: 8,
+                      fontSize: 12,
+                      fontWeight: 600,
+                      background: 'rgba(239,68,68,0.15)',
+                      border: '1px solid rgba(239,68,68,0.3)',
+                      color: '#fca5a5',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    제거
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* 2. 업무 맥락 */}

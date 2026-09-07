@@ -1,0 +1,2345 @@
+<!DOCTYPE html>
+<html lang="ko" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>네이버 밴드 3대 원천 데이터 전수 분석 대시보드</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            slate: {
+              750: '#293548',
+              850: '#172033',
+              950: '#0b0f19',
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Pretendard Variable", Pretendard, "Malgun Gothic", sans-serif;
+      background-color: #0b0f19;
+      color: #f1f5f9;
+      margin: 0;
+      padding: 0;
+    }
+    .table-nowrap th, .table-nowrap td {
+      white-space: nowrap !important;
+    }
+    .custom-scrollbar::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    .custom-scrollbar::-webkit-scrollbar-track {
+      background: #0f172a;
+    }
+    .custom-scrollbar::-webkit-scrollbar-thumb {
+      background: #334155;
+      border-radius: 3px;
+    }
+    .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+      background: #475569;
+    }
+    .tab-btn.active {
+      background-color: #1e293b;
+      color: #38bdf8;
+      border-bottom: 2px solid #38bdf8;
+    }
+  </style>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen flex flex-col">
+
+  <!-- 상단 네비게이션 헤더 -->
+  <header class="bg-slate-900 border-b border-slate-800 sticky top-0 z-50 shadow-md">
+    <div class="max-w-7xl mx-auto px-4 py-3 flex flex-wrap items-center justify-between gap-4">
+      <div class="flex items-center gap-3">
+        <div class="w-9 h-9 rounded-lg bg-blue-600/20 border border-blue-500/40 flex items-center justify-center text-blue-400 font-black text-base">
+          📊
+        </div>
+        <div>
+          <h1 class="text-base font-extrabold text-white tracking-tight flex items-center gap-2">
+            <span>네이버 밴드 3대 원천 데이터 전수 분석 대시보드</span>
+            <span class="text-[10px] bg-blue-950 text-blue-300 border border-blue-800 px-2 py-0.5 rounded font-mono font-bold">무압축 전수 분석</span>
+          </h1>
+          <p class="text-xs text-slate-400">
+            출고요청 940건 · AS/정비 5,633건 · 임차자산 548건 (총 7,121건 전수 집계)
+          </p>
+        </div>
+      </div>
+      <div class="flex items-center gap-2 text-xs font-mono">
+        <span class="text-slate-400">기준 일자:</span>
+        <span class="text-emerald-400 font-bold bg-emerald-950/60 border border-emerald-800/60 px-2 py-0.5 rounded">2026-09-07</span>
+        <span class="text-slate-500">|</span>
+        <span class="text-slate-400">시스템:</span>
+        <span class="text-cyan-300 font-bold">Kiyuen Lift ERP SSOT</span>
+      </div>
+    </div>
+
+    <!-- 탭 컨트롤 바 -->
+    <div class="max-w-7xl mx-auto px-4 flex gap-1 border-t border-slate-800/80 overflow-x-auto text-xs font-bold">
+      <button onclick="switchTab('overview')" id="tab-overview" class="tab-btn active px-4 py-2.5 transition text-slate-300 hover:text-white flex items-center gap-1.5 whitespace-nowrap">
+        <span>📈 종합 개요</span>
+        <span class="text-[10px] bg-slate-800 px-1.5 py-0.2 rounded font-mono">3대 유형</span>
+      </button>
+      <button onclick="switchTab('dispatch')" id="tab-dispatch" class="tab-btn px-4 py-2.5 transition text-slate-300 hover:text-white flex items-center gap-1.5 whitespace-nowrap">
+        <span>🚚 출고요청 분석</span>
+        <span class="text-[10px] bg-blue-900/60 text-blue-300 border border-blue-700/50 px-1.5 py-0.2 rounded font-mono">940건</span>
+      </button>
+      <button onclick="switchTab('as')" id="tab-as" class="tab-btn px-4 py-2.5 transition text-slate-300 hover:text-white flex items-center gap-1.5 whitespace-nowrap">
+        <span>🔧 AS·정비 접수 분석</span>
+        <span class="text-[10px] bg-amber-900/60 text-amber-300 border border-amber-700/50 px-1.5 py-0.2 rounded font-mono">5,633건</span>
+      </button>
+      <button onclick="switchTab('lease')" id="tab-lease" class="tab-btn px-4 py-2.5 transition text-slate-300 hover:text-white flex items-center gap-1.5 whitespace-nowrap">
+        <span>🤝 임차자산 입출고 분석</span>
+        <span class="text-[10px] bg-purple-900/60 text-purple-300 border border-purple-700/50 px-1.5 py-0.2 rounded font-mono">548건</span>
+      </button>
+      <button onclick="switchTab('search')" id="tab-search" class="tab-btn px-4 py-2.5 transition text-slate-300 hover:text-white flex items-center gap-1.5 whitespace-nowrap">
+        <span>🔍 무압축 전수 검색기</span>
+        <span class="text-[10px] bg-emerald-900/60 text-emerald-300 border border-emerald-700/50 px-1.5 py-0.2 rounded font-mono">Live Search</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- 메인 본문 컨테이너 -->
+  <main class="max-w-7xl mx-auto px-4 py-6 flex-1 w-full space-y-6">
+
+    <!-- 🌟 최상단 4대 핵심 요약 카드 -->
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div class="bg-slate-900 border border-slate-800 rounded-xl p-4 shadow-sm relative overflow-hidden">
+        <div class="absolute right-3 top-3 text-2xl opacity-20">📦</div>
+        <span class="text-xs font-bold text-slate-400">총 분석 게시글</span>
+        <div class="text-2xl font-black text-white font-mono mt-1">7,121<span class="text-sm font-normal text-slate-400 ml-1">건</span></div>
+        <div class="text-[11px] text-slate-400 mt-2 flex items-center gap-1 font-mono">
+          <span class="text-blue-400">출고 940</span> · <span class="text-amber-400">AS 5,633</span> · <span class="text-purple-400">임차 548</span>
+        </div>
+      </div>
+
+      <div class="bg-slate-900 border border-slate-800 rounded-xl p-4 shadow-sm relative overflow-hidden">
+        <div class="absolute right-3 top-3 text-2xl opacity-20">🏢</div>
+        <span class="text-xs font-bold text-slate-400">식별된 거래처 및 현장</span>
+        <div class="text-2xl font-black text-emerald-400 font-mono mt-1">208<span class="text-sm font-normal text-slate-400 ml-1">개사</span> / 231<span class="text-sm font-normal text-slate-400 ml-1">개소</span></div>
+        <div class="text-[11px] text-slate-400 mt-2 truncate font-mono">
+          세보엠이씨, 화성, 유창이엔씨, SK하이닉스 등
+        </div>
+      </div>
+
+      <div class="bg-slate-900 border border-slate-800 rounded-xl p-4 shadow-sm relative overflow-hidden">
+        <div class="absolute right-3 top-3 text-2xl opacity-20">⚙️</div>
+        <span class="text-xs font-bold text-slate-400">옵션 및 작업 요구사항</span>
+        <div class="text-2xl font-black text-cyan-400 font-mono mt-1">297<span class="text-sm font-normal text-slate-400 ml-1">종</span> / 25<span class="text-sm font-normal text-slate-400 ml-1">개 불릿</span></div>
+        <div class="text-[11px] text-slate-400 mt-2 truncate font-mono">
+          협착난간대, 감지봉, 보양제, 속도셋팅 전수
+        </div>
+      </div>
+
+      <div class="bg-slate-900 border border-slate-800 rounded-xl p-4 shadow-sm relative overflow-hidden">
+        <div class="absolute right-3 top-3 text-2xl opacity-20">🛠️</div>
+        <span class="text-xs font-bold text-slate-400">AS 고장 증상 및 관리장비</span>
+        <div class="text-2xl font-black text-amber-400 font-mono mt-1">2,267<span class="text-sm font-normal text-slate-400 ml-1">종</span> / 2,160<span class="text-sm font-normal text-slate-400 ml-1">대</span></div>
+        <div class="text-[11px] text-slate-400 mt-2 truncate font-mono">
+          방지봉단선, 작동안됨, 오일누유, 충전불량 등
+        </div>
+      </div>
+    </div>
+
+    <!-- ───────────────────────────────────────────────────────────── -->
+    <!-- 탭 1: 종합 개요 (Overview) -->
+    <!-- ───────────────────────────────────────────────────────────── -->
+    <div id="section-overview" class="space-y-6">
+      
+      <!-- 상단 차트 2열 -->
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <!-- Chart 1: 3대 원천 데이터 비중 -->
+        <div class="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-sm flex flex-col">
+          <div class="flex items-center justify-between mb-4">
+            <h3 class="text-sm font-bold text-white flex items-center gap-2">
+              <span class="w-2.5 h-2.5 rounded-full bg-blue-500"></span>
+              <span>3대 원천 데이터 구성 비중</span>
+            </h3>
+            <span class="text-xs text-slate-400 font-mono">총 7,121건</span>
+          </div>
+          <div class="relative flex-1 flex items-center justify-center min-h-[260px]">
+            <canvas id="chartDataRatio"></canvas>
+          </div>
+          <div class="grid grid-cols-3 gap-2 mt-4 pt-3 border-t border-slate-800 text-center text-xs">
+            <div class="p-2 rounded bg-slate-950/60 border border-slate-800/80">
+              <span class="text-slate-400 block text-[11px]">출고요청</span>
+              <strong class="text-blue-400 font-mono">940건 (13.2%)</strong>
+            </div>
+            <div class="p-2 rounded bg-slate-950/60 border border-slate-800/80">
+              <span class="text-slate-400 block text-[11px]">AS/정비</span>
+              <strong class="text-amber-400 font-mono">5,633건 (79.1%)</strong>
+            </div>
+            <div class="p-2 rounded bg-slate-950/60 border border-slate-800/80">
+              <span class="text-slate-400 block text-[11px]">임차입출고</span>
+              <strong class="text-purple-400 font-mono">548건 (7.7%)</strong>
+            </div>
+          </div>
+        </div>
+
+        <!-- Chart 2: AS 상위 고장증상 Top 10 -->
+        <div class="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-sm flex flex-col">
+          <div class="flex items-center justify-between mb-4">
+            <h3 class="text-sm font-bold text-white flex items-center gap-2">
+              <span class="w-2.5 h-2.5 rounded-full bg-amber-500"></span>
+              <span>AS 주요 고장 증상 Top 10</span>
+            </h3>
+            <span class="text-xs text-slate-400 font-mono">빈도 순</span>
+          </div>
+          <div class="relative flex-1 min-h-[260px]">
+            <canvas id="chartTopSymptoms"></canvas>
+          </div>
+        </div>
+      </div>
+
+      <!-- 하단 차트 2열 -->
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <!-- Chart 3: 임차 협력사별 점유율 -->
+        <div class="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-sm flex flex-col">
+          <div class="flex items-center justify-between mb-4">
+            <h3 class="text-sm font-bold text-white flex items-center gap-2">
+              <span class="w-2.5 h-2.5 rounded-full bg-purple-500"></span>
+              <span>외부 임차 협력사(원 임대사) 점유율</span>
+            </h3>
+            <span class="text-xs text-slate-400 font-mono">548건 전수</span>
+          </div>
+          <div class="relative flex-1 flex items-center justify-center min-h-[260px]">
+            <canvas id="chartLeaseVendors"></canvas>
+          </div>
+          <p class="text-xs text-slate-400 text-center mt-3 pt-2 border-t border-slate-800 font-mono">
+            롯데렌탈(488건)과 포스렌탈(62건)이 전체 임차 조달의 98.5% 차지
+          </p>
+        </div>
+
+        <!-- Chart 4: 주요 거래처별 AS 발생 빈도 Top 10 -->
+        <div class="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-sm flex flex-col">
+          <div class="flex items-center justify-between mb-4">
+            <h3 class="text-sm font-bold text-white flex items-center gap-2">
+              <span class="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
+              <span>거래처별 AS 접수 빈도 Top 10</span>
+            </h3>
+            <span class="text-xs text-slate-400 font-mono">단위: 건</span>
+          </div>
+          <div class="relative flex-1 min-h-[260px]">
+            <canvas id="chartCustAs"></canvas>
+          </div>
+        </div>
+      </div>
+
+      <!-- 도메인 핵심 시사점 카드 -->
+      <div class="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-sm">
+        <h3 class="text-sm font-bold text-white mb-3 flex items-center gap-2">
+          <span>📋 밴드 데이터 3대 도메인 인사이트</span>
+        </h3>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
+          <div class="p-3 bg-slate-950 rounded-lg border border-slate-800 space-y-1.5">
+            <span class="font-black text-blue-400 block text-xs">1. 출고요청 옵션의 다변화</span>
+            <p class="text-slate-300 leading-relaxed">
+              임의의 표준옵션 4~5개로는 현장 요구를 50%도 수용할 수 없음. 세보엠이씨 등 대형사는 '협착난간대 10만원', '튜브소화기 T50', '작업높이 80% 셋팅', '감지봉 4EA 보양', '3면 함석' 등 정밀 커스텀 옵션을 무조건 전수로 요구함.
+            </p>
+          </div>
+          <div class="p-3 bg-slate-950 rounded-lg border border-slate-800 space-y-1.5">
+            <span class="font-black text-amber-400 block text-xs">2. AS 고장의 60% 이상이 안전센서/단선</span>
+            <p class="text-slate-300 leading-relaxed">
+              장비 엔진/모터 자체의 결함보다 '방지봉 단선(279건)', '감지봉 단선/파손(131건)', '충전선 단선/파손(89건)', 'LD/CL 센서에러(186건)' 등 안전옵션 부속 파손이 AS의 압도적 다수를 차지함. 출고 시 완벽한 보양과 케이블 결속이 핵심임.
+            </p>
+          </div>
+          <div class="p-3 bg-slate-950 rounded-lg border border-slate-800 space-y-1.5">
+            <span class="font-black text-purple-400 block text-xs">3. 임차 조달의 롯데렌탈 안성/아산 집중</span>
+            <p class="text-slate-300 leading-relaxed">
+              임차자산은 롯데렌탈(안성 미양면 67회, 아산 인주면 44회)에서 상차되어 기연 주기장(223회)으로 입고되거나 현장으로 직송되는 물류 동선이 확고함. 외부 임차 장비의 이력과 반납 기한 관리가 원가 통제의 핵심임.
+            </p>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- ───────────────────────────────────────────────────────────── -->
+    <!-- 탭 2: 출고요청 분석 (940건) -->
+    <!-- ───────────────────────────────────────────────────────────── -->
+    <div id="section-dispatch" class="hidden space-y-6">
+
+      <!-- 상단 2열 그리드: 유상옵션 vs 무상옵션/부착물 -->
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <!-- 유상옵션 랭킹 -->
+        <div class="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-sm">
+          <div class="flex items-center justify-between mb-3 border-b border-slate-800 pb-2">
+            <h3 class="text-sm font-bold text-white flex items-center gap-2">
+              <span class="w-2 h-2 rounded-full bg-emerald-400"></span>
+              <span>유상 옵션 요구사항 Top 15 (Paid Options)</span>
+            </h3>
+            <span class="text-xs text-slate-400 font-mono">단위: 건</span>
+          </div>
+          <div class="overflow-x-auto table-nowrap custom-scrollbar">
+            <table class="w-full text-xs text-left">
+              <thead class="bg-slate-950 text-slate-400 font-semibold border-b border-slate-800">
+                <tr>
+                  <th class="py-2 px-3">순위</th>
+                  <th class="py-2 px-3">유상옵션 명칭</th>
+                  <th class="py-2 px-3 text-right">빈도수</th>
+                  <th class="py-2 px-3 text-right">비율</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-slate-800/60 font-mono">
+                
+    <tr class="hover:bg-slate-800/40 transition">
+      <td class="py-2 px-3 text-slate-400">#1</td>
+      <td class="py-2 px-3 font-bold text-slate-100 font-sans">보양비(임대료 포함)</td>
+      <td class="py-2 px-3 text-right text-emerald-400 font-bold">54건</td>
+      <td class="py-2 px-3 text-right text-slate-400">5.7%</td>
+    </tr>
+    
+    <tr class="hover:bg-slate-800/40 transition">
+      <td class="py-2 px-3 text-slate-400">#2</td>
+      <td class="py-2 px-3 font-bold text-slate-100 font-sans">없음</td>
+      <td class="py-2 px-3 text-right text-emerald-400 font-bold">39건</td>
+      <td class="py-2 px-3 text-right text-slate-400">4.1%</td>
+    </tr>
+    
+    <tr class="hover:bg-slate-800/40 transition">
+      <td class="py-2 px-3 text-slate-400">#3</td>
+      <td class="py-2 px-3 font-bold text-slate-100 font-sans">협착, 보양:임대료에 포함(모서리8면,감지봉,사다리 타이거 보양)</td>
+      <td class="py-2 px-3 text-right text-emerald-400 font-bold">31건</td>
+      <td class="py-2 px-3 text-right text-slate-400">3.3%</td>
+    </tr>
+    
+    <tr class="hover:bg-slate-800/40 transition">
+      <td class="py-2 px-3 text-slate-400">#4</td>
+      <td class="py-2 px-3 font-bold text-slate-100 font-sans">협착난간대 * 1대</td>
+      <td class="py-2 px-3 text-right text-emerald-400 font-bold">16건</td>
+      <td class="py-2 px-3 text-right text-slate-400">1.7%</td>
+    </tr>
+    
+    <tr class="hover:bg-slate-800/40 transition">
+      <td class="py-2 px-3 text-slate-400">#5</td>
+      <td class="py-2 px-3 font-bold text-slate-100 font-sans">보양비(임대료에 포함)</td>
+      <td class="py-2 px-3 text-right text-emerald-400 font-bold">15건</td>
+      <td class="py-2 px-3 text-right text-slate-400">1.6%</td>
+    </tr>
+    
+    <tr class="hover:bg-slate-800/40 transition">
+      <td class="py-2 px-3 text-slate-400">#6</td>
+      <td class="py-2 px-3 font-bold text-slate-100 font-sans">협착난간대 * 2대</td>
+      <td class="py-2 px-3 text-right text-emerald-400 font-bold">15건</td>
+      <td class="py-2 px-3 text-right text-slate-400">1.6%</td>
+    </tr>
+    
+    <tr class="hover:bg-slate-800/40 transition">
+      <td class="py-2 px-3 text-slate-400">#7</td>
+      <td class="py-2 px-3 font-bold text-slate-100 font-sans">협착난간대 * 2</td>
+      <td class="py-2 px-3 text-right text-emerald-400 font-bold">14건</td>
+      <td class="py-2 px-3 text-right text-slate-400">1.5%</td>
+    </tr>
+    
+    <tr class="hover:bg-slate-800/40 transition">
+      <td class="py-2 px-3 text-slate-400">#8</td>
+      <td class="py-2 px-3 font-bold text-slate-100 font-sans">협착난간대 2ea</td>
+      <td class="py-2 px-3 text-right text-emerald-400 font-bold">13건</td>
+      <td class="py-2 px-3 text-right text-slate-400">1.4%</td>
+    </tr>
+    
+    <tr class="hover:bg-slate-800/40 transition">
+      <td class="py-2 px-3 text-slate-400">#9</td>
+      <td class="py-2 px-3 font-bold text-slate-100 font-sans">협착난간대 * 1</td>
+      <td class="py-2 px-3 text-right text-emerald-400 font-bold">11건</td>
+      <td class="py-2 px-3 text-right text-slate-400">1.2%</td>
+    </tr>
+    
+    <tr class="hover:bg-slate-800/40 transition">
+      <td class="py-2 px-3 text-slate-400">#10</td>
+      <td class="py-2 px-3 font-bold text-slate-100 font-sans">협착, 보양 (모서리8면,감지봉,사다리 타이거 보양)</td>
+      <td class="py-2 px-3 text-right text-emerald-400 font-bold">11건</td>
+      <td class="py-2 px-3 text-right text-slate-400">1.2%</td>
+    </tr>
+    
+    <tr class="hover:bg-slate-800/40 transition">
+      <td class="py-2 px-3 text-slate-400">#11</td>
+      <td class="py-2 px-3 font-bold text-slate-100 font-sans">협착난간대 1ea</td>
+      <td class="py-2 px-3 text-right text-emerald-400 font-bold">10건</td>
+      <td class="py-2 px-3 text-right text-slate-400">1.1%</td>
+    </tr>
+    
+    <tr class="hover:bg-slate-800/40 transition">
+      <td class="py-2 px-3 text-slate-400">#12</td>
+      <td class="py-2 px-3 font-bold text-slate-100 font-sans">협착 난간대 2 ea</td>
+      <td class="py-2 px-3 text-right text-emerald-400 font-bold">9건</td>
+      <td class="py-2 px-3 text-right text-slate-400">1.0%</td>
+    </tr>
+    
+    <tr class="hover:bg-slate-800/40 transition">
+      <td class="py-2 px-3 text-slate-400">#13</td>
+      <td class="py-2 px-3 font-bold text-slate-100 font-sans">협착 난간대 2 EA</td>
+      <td class="py-2 px-3 text-right text-emerald-400 font-bold">9건</td>
+      <td class="py-2 px-3 text-right text-slate-400">1.0%</td>
+    </tr>
+    
+    <tr class="hover:bg-slate-800/40 transition">
+      <td class="py-2 px-3 text-slate-400">#14</td>
+      <td class="py-2 px-3 font-bold text-slate-100 font-sans">협착 난간대 2 대</td>
+      <td class="py-2 px-3 text-right text-emerald-400 font-bold">8건</td>
+      <td class="py-2 px-3 text-right text-slate-400">0.9%</td>
+    </tr>
+    
+    <tr class="hover:bg-slate-800/40 transition">
+      <td class="py-2 px-3 text-slate-400">#15</td>
+      <td class="py-2 px-3 font-bold text-slate-100 font-sans">협착난간대 * 1ea</td>
+      <td class="py-2 px-3 text-right text-emerald-400 font-bold">7건</td>
+      <td class="py-2 px-3 text-right text-slate-400">0.7%</td>
+    </tr>
+    
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- 무상옵션 랭킹 -->
+        <div class="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-sm">
+          <div class="flex items-center justify-between mb-3 border-b border-slate-800 pb-2">
+            <h3 class="text-sm font-bold text-white flex items-center gap-2">
+              <span class="w-2 h-2 rounded-full bg-blue-400"></span>
+              <span>무상 옵션 요구사항 Top 15 (Free Options)</span>
+            </h3>
+            <span class="text-xs text-slate-400 font-mono">단위: 건</span>
+          </div>
+          <div class="overflow-x-auto table-nowrap custom-scrollbar">
+            <table class="w-full text-xs text-left">
+              <thead class="bg-slate-950 text-slate-400 font-semibold border-b border-slate-800">
+                <tr>
+                  <th class="py-2 px-3">순위</th>
+                  <th class="py-2 px-3">무상옵션 명칭</th>
+                  <th class="py-2 px-3 text-right">빈도수</th>
+                  <th class="py-2 px-3 text-right">비율</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-slate-800/60 font-mono">
+                
+    <tr class="hover:bg-slate-800/40 transition">
+      <td class="py-2 px-3 text-slate-400">#1</td>
+      <td class="py-2 px-3 font-bold text-slate-100 font-sans">감지봉 4 , 3면 함석</td>
+      <td class="py-2 px-3 text-right text-blue-400 font-bold">106건</td>
+      <td class="py-2 px-3 text-right text-slate-400">11.3%</td>
+    </tr>
+    
+    <tr class="hover:bg-slate-800/40 transition">
+      <td class="py-2 px-3 text-slate-400">#2</td>
+      <td class="py-2 px-3 font-bold text-slate-100 font-sans">감지봉 4 , 양옆면 함석, 앞뒤면 아크릴, 확장부 철망</td>
+      <td class="py-2 px-3 text-right text-blue-400 font-bold">32건</td>
+      <td class="py-2 px-3 text-right text-slate-400">3.4%</td>
+    </tr>
+    
+    <tr class="hover:bg-slate-800/40 transition">
+      <td class="py-2 px-3 text-slate-400">#3</td>
+      <td class="py-2 px-3 font-bold text-slate-100 font-sans">감지봉 4, 3면 함석</td>
+      <td class="py-2 px-3 text-right text-blue-400 font-bold">30건</td>
+      <td class="py-2 px-3 text-right text-slate-400">3.2%</td>
+    </tr>
+    
+    <tr class="hover:bg-slate-800/40 transition">
+      <td class="py-2 px-3 text-slate-400">#4</td>
+      <td class="py-2 px-3 font-bold text-slate-100 font-sans">감지봉 4 , 3면 함석 , 풋스위치 고정 , 소화기함</td>
+      <td class="py-2 px-3 text-right text-blue-400 font-bold">22건</td>
+      <td class="py-2 px-3 text-right text-slate-400">2.3%</td>
+    </tr>
+    
+    <tr class="hover:bg-slate-800/40 transition">
+      <td class="py-2 px-3 text-slate-400">#5</td>
+      <td class="py-2 px-3 font-bold text-slate-100 font-sans">감지봉 4개, 3면 함석</td>
+      <td class="py-2 px-3 text-right text-blue-400 font-bold">21건</td>
+      <td class="py-2 px-3 text-right text-slate-400">2.2%</td>
+    </tr>
+    
+    <tr class="hover:bg-slate-800/40 transition">
+      <td class="py-2 px-3 text-slate-400">#6</td>
+      <td class="py-2 px-3 font-bold text-slate-100 font-sans">3면함석 , 감지봉 4, 소화기함</td>
+      <td class="py-2 px-3 text-right text-blue-400 font-bold">20건</td>
+      <td class="py-2 px-3 text-right text-slate-400">2.1%</td>
+    </tr>
+    
+    <tr class="hover:bg-slate-800/40 transition">
+      <td class="py-2 px-3 text-slate-400">#7</td>
+      <td class="py-2 px-3 font-bold text-slate-100 font-sans">감지봉 4 , 4면 철망</td>
+      <td class="py-2 px-3 text-right text-blue-400 font-bold">16건</td>
+      <td class="py-2 px-3 text-right text-slate-400">1.7%</td>
+    </tr>
+    
+    <tr class="hover:bg-slate-800/40 transition">
+      <td class="py-2 px-3 text-slate-400">#8</td>
+      <td class="py-2 px-3 font-bold text-slate-100 font-sans">감지봉 4 , 3면 함석 , 소화기함</td>
+      <td class="py-2 px-3 text-right text-blue-400 font-bold">11건</td>
+      <td class="py-2 px-3 text-right text-slate-400">1.2%</td>
+    </tr>
+    
+    <tr class="hover:bg-slate-800/40 transition">
+      <td class="py-2 px-3 text-slate-400">#9</td>
+      <td class="py-2 px-3 font-bold text-slate-100 font-sans">풋스위치고정, 풋스위치덮개, 과상승방지봉4, 아크릴4면,</td>
+      <td class="py-2 px-3 text-right text-blue-400 font-bold">10건</td>
+      <td class="py-2 px-3 text-right text-slate-400">1.1%</td>
+    </tr>
+    
+    <tr class="hover:bg-slate-800/40 transition">
+      <td class="py-2 px-3 text-slate-400">#10</td>
+      <td class="py-2 px-3 font-bold text-slate-100 font-sans">감지봉 4EA , 3면 함석, 소화기함</td>
+      <td class="py-2 px-3 text-right text-blue-400 font-bold">9건</td>
+      <td class="py-2 px-3 text-right text-slate-400">1.0%</td>
+    </tr>
+    
+    <tr class="hover:bg-slate-800/40 transition">
+      <td class="py-2 px-3 text-slate-400">#11</td>
+      <td class="py-2 px-3 font-bold text-slate-100 font-sans">감지봉 4EA , 3면 함석, 소화기함,센터접지</td>
+      <td class="py-2 px-3 text-right text-blue-400 font-bold">8건</td>
+      <td class="py-2 px-3 text-right text-slate-400">0.9%</td>
+    </tr>
+    
+    <tr class="hover:bg-slate-800/40 transition">
+      <td class="py-2 px-3 text-slate-400">#12</td>
+      <td class="py-2 px-3 font-bold text-slate-100 font-sans">풋스위치고정, 풋스위치덮개, 과상승방지봉4, 아크릴4면,확장부 철망</td>
+      <td class="py-2 px-3 text-right text-blue-400 font-bold">7건</td>
+      <td class="py-2 px-3 text-right text-slate-400">0.7%</td>
+    </tr>
+    
+    <tr class="hover:bg-slate-800/40 transition">
+      <td class="py-2 px-3 text-slate-400">#13</td>
+      <td class="py-2 px-3 font-bold text-slate-100 font-sans">감지봉 4 , 3면 함석, 외관상태 깔끔</td>
+      <td class="py-2 px-3 text-right text-blue-400 font-bold">7건</td>
+      <td class="py-2 px-3 text-right text-slate-400">0.7%</td>
+    </tr>
+    
+    <tr class="hover:bg-slate-800/40 transition">
+      <td class="py-2 px-3 text-slate-400">#14</td>
+      <td class="py-2 px-3 font-bold text-slate-100 font-sans">감지봉 4 , 3면 함석 , 타이어 A급 , 정비철저 요망.</td>
+      <td class="py-2 px-3 text-right text-blue-400 font-bold">7건</td>
+      <td class="py-2 px-3 text-right text-slate-400">0.7%</td>
+    </tr>
+    
+    <tr class="hover:bg-slate-800/40 transition">
+      <td class="py-2 px-3 text-slate-400">#15</td>
+      <td class="py-2 px-3 font-bold text-slate-100 font-sans">감지봉 4EA , 3면 함석, 소화기함, 센터접지</td>
+      <td class="py-2 px-3 text-right text-blue-400 font-bold">6건</td>
+      <td class="py-2 px-3 text-right text-slate-400">0.6%</td>
+    </tr>
+    
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- 중단 2열 그리드: 보양작업 vs 출고서류/부착물 -->
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <!-- 보양작업 요구사항 -->
+        <div class="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-sm">
+          <div class="flex items-center justify-between mb-3 border-b border-slate-800 pb-2">
+            <h3 class="text-sm font-bold text-white flex items-center gap-2">
+              <span class="w-2 h-2 rounded-full bg-amber-400"></span>
+              <span>현장 보양 요구사항 Top 10 (Protection)</span>
+            </h3>
+            <span class="text-xs text-slate-400 font-mono">단위: 건</span>
+          </div>
+          <div class="overflow-x-auto table-nowrap custom-scrollbar">
+            <table class="w-full text-xs text-left">
+              <thead class="bg-slate-950 text-slate-400 font-semibold border-b border-slate-800">
+                <tr>
+                  <th class="py-2 px-3">순위</th>
+                  <th class="py-2 px-3">보양 규격 및 부위</th>
+                  <th class="py-2 px-3 text-right">건수</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-slate-800/60 font-mono">
+                
+    <tr class="hover:bg-slate-800/40 transition">
+      <td class="py-2 px-3 text-slate-400">#1</td>
+      <td class="py-2 px-3 font-bold text-slate-100 font-sans">미끄럼방지 패드부착,상,하부 모서리 8개소 보양,전면부 2개소 보양</td>
+      <td class="py-2 px-3 text-right text-amber-400 font-bold">237건</td>
+    </tr>
+    
+    <tr class="hover:bg-slate-800/40 transition">
+      <td class="py-2 px-3 text-slate-400">#2</td>
+      <td class="py-2 px-3 font-bold text-slate-100 font-sans">탑승구 사다리 보양</td>
+      <td class="py-2 px-3 text-right text-amber-400 font-bold">218건</td>
+    </tr>
+    
+    <tr class="hover:bg-slate-800/40 transition">
+      <td class="py-2 px-3 text-slate-400">#3</td>
+      <td class="py-2 px-3 font-bold text-slate-100 font-sans">(모서리보양 3T 이상)</td>
+      <td class="py-2 px-3 text-right text-amber-400 font-bold">178건</td>
+    </tr>
+    
+    <tr class="hover:bg-slate-800/40 transition">
+      <td class="py-2 px-3 text-slate-400">#4</td>
+      <td class="py-2 px-3 font-bold text-slate-100 font-sans">: 감지봉 4개(보양)</td>
+      <td class="py-2 px-3 text-right text-amber-400 font-bold">80건</td>
+    </tr>
+    
+    <tr class="hover:bg-slate-800/40 transition">
+      <td class="py-2 px-3 text-slate-400">#5</td>
+      <td class="py-2 px-3 font-bold text-slate-100 font-sans">: 감지봉 4개(보양) / 모서리보양 라인테이프 X</td>
+      <td class="py-2 px-3 text-right text-amber-400 font-bold">63건</td>
+    </tr>
+    
+    <tr class="hover:bg-slate-800/40 transition">
+      <td class="py-2 px-3 text-slate-400">#6</td>
+      <td class="py-2 px-3 font-bold text-slate-100 font-sans">: 보양:임대료에 포함(모서리8면,감지봉,사다리 타이거 보양)</td>
+      <td class="py-2 px-3 text-right text-amber-400 font-bold">58건</td>
+    </tr>
+    
+    <tr class="hover:bg-slate-800/40 transition">
+      <td class="py-2 px-3 text-slate-400">#7</td>
+      <td class="py-2 px-3 font-bold text-slate-100 font-sans">탑승구 사다리 보양 , 감지봉 보양</td>
+      <td class="py-2 px-3 text-right text-amber-400 font-bold">57건</td>
+    </tr>
+    
+    <tr class="hover:bg-slate-800/40 transition">
+      <td class="py-2 px-3 text-slate-400">#8</td>
+      <td class="py-2 px-3 font-bold text-slate-100 font-sans">미끄럼방지 패드부착,상,하부 모서리 16개소 보양,전면부 2개소 보양</td>
+      <td class="py-2 px-3 text-right text-amber-400 font-bold">46건</td>
+    </tr>
+    
+    <tr class="hover:bg-slate-800/40 transition">
+      <td class="py-2 px-3 text-slate-400">#9</td>
+      <td class="py-2 px-3 font-bold text-slate-100 font-sans">(모서리보양 5T 이상)</td>
+      <td class="py-2 px-3 text-right text-amber-400 font-bold">46건</td>
+    </tr>
+    
+    <tr class="hover:bg-slate-800/40 transition">
+      <td class="py-2 px-3 text-slate-400">#10</td>
+      <td class="py-2 px-3 font-bold text-slate-100 font-sans">임대료에 포함(모서리8면,감지봉,사다리 타이거 보양)</td>
+      <td class="py-2 px-3 text-right text-amber-400 font-bold">43건</td>
+    </tr>
+    
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- 출고서류 요구사항 -->
+        <div class="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-sm">
+          <div class="flex items-center justify-between mb-3 border-b border-slate-800 pb-2">
+            <h3 class="text-sm font-bold text-white flex items-center gap-2">
+              <span class="w-2 h-2 rounded-full bg-purple-400"></span>
+              <span>출고 서류 및 직인 요구사항 Top 10 (Documents)</span>
+            </h3>
+            <span class="text-xs text-slate-400 font-mono">단위: 건</span>
+          </div>
+          <div class="overflow-x-auto table-nowrap custom-scrollbar">
+            <table class="w-full text-xs text-left">
+              <thead class="bg-slate-950 text-slate-400 font-semibold border-b border-slate-800">
+                <tr>
+                  <th class="py-2 px-3">순위</th>
+                  <th class="py-2 px-3">서류 명칭 및 요구조건</th>
+                  <th class="py-2 px-3 text-right">건수</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-slate-800/60 font-mono">
+                
+    <tr class="hover:bg-slate-800/40 transition">
+      <td class="py-2 px-3 text-slate-400">#1</td>
+      <td class="py-2 px-3 font-bold text-slate-100 font-sans">반입 전 체크 리스트,인증서,보험 증권,제원표</td>
+      <td class="py-2 px-3 text-right text-purple-400 font-bold">101건</td>
+    </tr>
+    
+    <tr class="hover:bg-slate-800/40 transition">
+      <td class="py-2 px-3 text-slate-400">#2</td>
+      <td class="py-2 px-3 font-bold text-slate-100 font-sans">안전점검결과서 점검자 직인날인</td>
+      <td class="py-2 px-3 text-right text-purple-400 font-bold">74건</td>
+    </tr>
+    
+    <tr class="hover:bg-slate-800/40 transition">
+      <td class="py-2 px-3 text-slate-400">#3</td>
+      <td class="py-2 px-3 font-bold text-slate-100 font-sans">인증서,보험 증권,제원표</td>
+      <td class="py-2 px-3 text-right text-purple-400 font-bold">15건</td>
+    </tr>
+    
+    <tr class="hover:bg-slate-800/40 transition">
+      <td class="py-2 px-3 text-slate-400">#4</td>
+      <td class="py-2 px-3 font-bold text-slate-100 font-sans">인증서,보험 증권,제원표, 반입전 CHECK LIST, 고소작업대 안전점검 결과서</td>
+      <td class="py-2 px-3 text-right text-purple-400 font-bold">14건</td>
+    </tr>
+    
+    <tr class="hover:bg-slate-800/40 transition">
+      <td class="py-2 px-3 text-slate-400">#5</td>
+      <td class="py-2 px-3 font-bold text-slate-100 font-sans">보험증권,제원표,사업자등록증,인증서,반입전체크리스트,장비작동법,비상하강작동법,안전수칙</td>
+      <td class="py-2 px-3 text-right text-purple-400 font-bold">11건</td>
+    </tr>
+    
+    <tr class="hover:bg-slate-800/40 transition">
+      <td class="py-2 px-3 text-slate-400">#6</td>
+      <td class="py-2 px-3 font-bold text-slate-100 font-sans">인증서,보험 증권,제원표,반입전체크리스트,안전점검결과서</td>
+      <td class="py-2 px-3 text-right text-purple-400 font-bold">5건</td>
+    </tr>
+    
+    <tr class="hover:bg-slate-800/40 transition">
+      <td class="py-2 px-3 text-slate-400">#7</td>
+      <td class="py-2 px-3 font-bold text-slate-100 font-sans">인증서, 보험증권, 제원표</td>
+      <td class="py-2 px-3 text-right text-purple-400 font-bold">2건</td>
+    </tr>
+    
+    <tr class="hover:bg-slate-800/40 transition">
+      <td class="py-2 px-3 text-slate-400">#8</td>
+      <td class="py-2 px-3 font-bold text-slate-100 font-sans">반입 전 체크 리스트,인증서,보험 증권,제원표,예비키 10개요청</td>
+      <td class="py-2 px-3 text-right text-purple-400 font-bold">1건</td>
+    </tr>
+    
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- 🌟 무압축 고객 요구사항 25개 커스텀 불릿 전수 대장 -->
+      <div class="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-sm">
+        <div class="flex items-center justify-between mb-3 border-b border-slate-800 pb-2">
+          <div>
+            <h3 class="text-sm font-bold text-white flex items-center gap-2">
+              <span class="text-amber-400">⚡</span>
+              <span>현장 무압축 전수 보존 세부 불릿 요구사항 (25종 전수)</span>
+            </h3>
+            <p class="text-xs text-slate-400 mt-0.5">
+              요약/압축하지 않고 고객 요구사항 있는 그대로 마스터 DB 및 배차 의뢰에 100% 저장되는 정밀 불릿 항목
+            </p>
+          </div>
+          <span class="text-xs font-mono px-2 py-0.5 rounded bg-amber-950/60 text-amber-300 border border-amber-800/60">
+            무누락 SSOT
+          </span>
+        </div>
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2.5 pt-2">
+          
+    <div class="p-2.5 rounded-lg bg-slate-950 border border-slate-800 flex items-start gap-2 hover:border-slate-700 transition">
+      <span class="text-amber-400 mt-0.5 font-bold">✓</span>
+      <span class="text-xs text-slate-200 font-mono break-all">조이스틱 커버 연장</span>
+    </div>
+    
+    <div class="p-2.5 rounded-lg bg-slate-950 border border-slate-800 flex items-start gap-2 hover:border-slate-700 transition">
+      <span class="text-amber-400 mt-0.5 font-bold">✓</span>
+      <span class="text-xs text-slate-200 font-mono break-all">타이어 A급</span>
+    </div>
+    
+    <div class="p-2.5 rounded-lg bg-slate-950 border border-slate-800 flex items-start gap-2 hover:border-slate-700 transition">
+      <span class="text-amber-400 mt-0.5 font-bold">✓</span>
+      <span class="text-xs text-slate-200 font-mono break-all">배터리 단자 커버설치</span>
+    </div>
+    
+    <div class="p-2.5 rounded-lg bg-slate-950 border border-slate-800 flex items-start gap-2 hover:border-slate-700 transition">
+      <span class="text-amber-400 mt-0.5 font-bold">✓</span>
+      <span class="text-xs text-slate-200 font-mono break-all">주행속도 고속 60,저속 45 셋팅</span>
+    </div>
+    
+    <div class="p-2.5 rounded-lg bg-slate-950 border border-slate-800 flex items-start gap-2 hover:border-slate-700 transition">
+      <span class="text-amber-400 mt-0.5 font-bold">✓</span>
+      <span class="text-xs text-slate-200 font-mono break-all">소화기함 설치,작동설명 및 기타 스티커물 부착,탑승구 손잡이 설치</span>
+    </div>
+    
+    <div class="p-2.5 rounded-lg bg-slate-950 border border-slate-800 flex items-start gap-2 hover:border-slate-700 transition">
+      <span class="text-amber-400 mt-0.5 font-bold">✓</span>
+      <span class="text-xs text-slate-200 font-mono break-all">배터리 단자 풀림 확인 마킹</span>
+    </div>
+    
+    <div class="p-2.5 rounded-lg bg-slate-950 border border-slate-800 flex items-start gap-2 hover:border-slate-700 transition">
+      <span class="text-amber-400 mt-0.5 font-bold">✓</span>
+      <span class="text-xs text-slate-200 font-mono break-all">오버로드 셋팅</span>
+    </div>
+    
+    <div class="p-2.5 rounded-lg bg-slate-950 border border-slate-800 flex items-start gap-2 hover:border-slate-700 transition">
+      <span class="text-amber-400 mt-0.5 font-bold">✓</span>
+      <span class="text-xs text-slate-200 font-mono break-all">점멸등, 비상하강장치, 비상정지장치 청결</span>
+    </div>
+    
+    <div class="p-2.5 rounded-lg bg-slate-950 border border-slate-800 flex items-start gap-2 hover:border-slate-700 transition">
+      <span class="text-amber-400 mt-0.5 font-bold">✓</span>
+      <span class="text-xs text-slate-200 font-mono break-all">미끄럼방지 패드부착,상,하부 모서리 8개소 보양,전면부 2개소 보양</span>
+    </div>
+    
+    <div class="p-2.5 rounded-lg bg-slate-950 border border-slate-800 flex items-start gap-2 hover:border-slate-700 transition">
+      <span class="text-amber-400 mt-0.5 font-bold">✓</span>
+      <span class="text-xs text-slate-200 font-mono break-all">* 부착물 : 제원표, 비상하강사용법, 보험증권,인증서</span>
+    </div>
+    
+    <div class="p-2.5 rounded-lg bg-slate-950 border border-slate-800 flex items-start gap-2 hover:border-slate-700 transition">
+      <span class="text-amber-400 mt-0.5 font-bold">✓</span>
+      <span class="text-xs text-slate-200 font-mono break-all">무상옵션 : 감지봉 4 , 3면 함석</span>
+    </div>
+    
+    <div class="p-2.5 rounded-lg bg-slate-950 border border-slate-800 flex items-start gap-2 hover:border-slate-700 transition">
+      <span class="text-amber-400 mt-0.5 font-bold">✓</span>
+      <span class="text-xs text-slate-200 font-mono break-all">기타준비사항 : 반입 전 체크 리스트,인증서,보험 증권,제원표</span>
+    </div>
+    
+    <div class="p-2.5 rounded-lg bg-slate-950 border border-slate-800 flex items-start gap-2 hover:border-slate-700 transition">
+      <span class="text-amber-400 mt-0.5 font-bold">✓</span>
+      <span class="text-xs text-slate-200 font-mono break-all">비상정지스위치 부착, 비상하강꼬리표 부착,</span>
+    </div>
+    
+    <div class="p-2.5 rounded-lg bg-slate-950 border border-slate-800 flex items-start gap-2 hover:border-slate-700 transition">
+      <span class="text-amber-400 mt-0.5 font-bold">✓</span>
+      <span class="text-xs text-slate-200 font-mono break-all">시저구간 접촉금지 협착위험 스티커 부착</span>
+    </div>
+    
+    <div class="p-2.5 rounded-lg bg-slate-950 border border-slate-800 flex items-start gap-2 hover:border-slate-700 transition">
+      <span class="text-amber-400 mt-0.5 font-bold">✓</span>
+      <span class="text-xs text-slate-200 font-mono break-all">: 감지봉 4개(보양)</span>
+    </div>
+    
+    <div class="p-2.5 rounded-lg bg-slate-950 border border-slate-800 flex items-start gap-2 hover:border-slate-700 transition">
+      <span class="text-amber-400 mt-0.5 font-bold">✓</span>
+      <span class="text-xs text-slate-200 font-mono break-all">작업높이 80프로 셋팅(발판높이기준),</span>
+    </div>
+    
+    <div class="p-2.5 rounded-lg bg-slate-950 border border-slate-800 flex items-start gap-2 hover:border-slate-700 transition">
+      <span class="text-amber-400 mt-0.5 font-bold">✓</span>
+      <span class="text-xs text-slate-200 font-mono break-all">*** 출고서류 : 안전점검결과서 점검자 직인날인***</span>
+    </div>
+    
+    <div class="p-2.5 rounded-lg bg-slate-950 border border-slate-800 flex items-start gap-2 hover:border-slate-700 transition">
+      <span class="text-amber-400 mt-0.5 font-bold">✓</span>
+      <span class="text-xs text-slate-200 font-mono break-all">: 감지봉 4개(보양) / 모서리보양 라인테이프 X</span>
+    </div>
+    
+    <div class="p-2.5 rounded-lg bg-slate-950 border border-slate-800 flex items-start gap-2 hover:border-slate-700 transition">
+      <span class="text-amber-400 mt-0.5 font-bold">✓</span>
+      <span class="text-xs text-slate-200 font-mono break-all">: 보양:임대료에 포함(모서리8면,감지봉,사다리 타이거 보양)</span>
+    </div>
+    
+    <div class="p-2.5 rounded-lg bg-slate-950 border border-slate-800 flex items-start gap-2 hover:border-slate-700 transition">
+      <span class="text-amber-400 mt-0.5 font-bold">✓</span>
+      <span class="text-xs text-slate-200 font-mono break-all">옵션 : 감지봉 4 , 양옆면 함석, 앞뒤면 아크릴, 확장부 철망</span>
+    </div>
+    
+    <div class="p-2.5 rounded-lg bg-slate-950 border border-slate-800 flex items-start gap-2 hover:border-slate-700 transition">
+      <span class="text-amber-400 mt-0.5 font-bold">✓</span>
+      <span class="text-xs text-slate-200 font-mono break-all">양옆면 함석, 앞뒤면 아크릴, 확장대 철망, 감지봉 4개,원판설치</span>
+    </div>
+    
+    <div class="p-2.5 rounded-lg bg-slate-950 border border-slate-800 flex items-start gap-2 hover:border-slate-700 transition">
+      <span class="text-amber-400 mt-0.5 font-bold">✓</span>
+      <span class="text-xs text-slate-200 font-mono break-all">탑승구 사다리 보양 , 감지봉 보양</span>
+    </div>
+    
+    <div class="p-2.5 rounded-lg bg-slate-950 border border-slate-800 flex items-start gap-2 hover:border-slate-700 transition">
+      <span class="text-amber-400 mt-0.5 font-bold">✓</span>
+      <span class="text-xs text-slate-200 font-mono break-all">7. 한국산업안전 택배 발송</span>
+    </div>
+    
+    <div class="p-2.5 rounded-lg bg-slate-950 border border-slate-800 flex items-start gap-2 hover:border-slate-700 transition">
+      <span class="text-amber-400 mt-0.5 font-bold">✓</span>
+      <span class="text-xs text-slate-200 font-mono break-all">작업높이 80프로 셋팅(발판높이기준), 0~80%,80~100% 구간 라인테이프(양옆),</span>
+    </div>
+    
+    <div class="p-2.5 rounded-lg bg-slate-950 border border-slate-800 flex items-start gap-2 hover:border-slate-700 transition">
+      <span class="text-amber-400 mt-0.5 font-bold">✓</span>
+      <span class="text-xs text-slate-200 font-mono break-all">점멸등, 비상하강장치, 비상정지장치 청결, 소화기함</span>
+    </div>
+    
+    <div class="p-2.5 rounded-lg bg-slate-950 border border-slate-800 flex items-start gap-2 hover:border-slate-700 transition">
+      <span class="text-amber-400 mt-0.5 font-bold">✓</span>
+      <span class="text-xs text-slate-200 font-mono break-all">작업높이 80프로 셋팅(발판높이기준)</span>
+    </div>
+    
+    <div class="p-2.5 rounded-lg bg-slate-950 border border-slate-800 flex items-start gap-2 hover:border-slate-700 transition">
+      <span class="text-amber-400 mt-0.5 font-bold">✓</span>
+      <span class="text-xs text-slate-200 font-mono break-all">미끄럼방지 패드부착,상,하부 모서리 16개소 보양,전면부 2개소 보양</span>
+    </div>
+    
+        </div>
+      </div>
+
+      <!-- 출고 상위 고객사 및 현장 2열 -->
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div class="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-sm">
+          <h3 class="text-sm font-bold text-white mb-3 flex items-center gap-2">
+            <span>🏢 출고요청 최다 거래처 Top 10</span>
+          </h3>
+          <div class="overflow-x-auto table-nowrap custom-scrollbar">
+            <table class="w-full text-xs text-left">
+              <thead class="bg-slate-950 text-slate-400 font-semibold border-b border-slate-800">
+                <tr>
+                  <th class="py-2 px-3">순위</th>
+                  <th class="py-2 px-3">고객사 상호</th>
+                  <th class="py-2 px-3 text-right">출고요청 건수</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-slate-800/60 font-mono">
+                
+    <tr class="hover:bg-slate-800/40 transition">
+      <td class="py-2 px-3 text-slate-400">#1</td>
+      <td class="py-2 px-3 font-bold text-slate-100 font-sans">세보엠이씨</td>
+      <td class="py-2 px-3 text-right text-emerald-400 font-bold">140건</td>
+    </tr>
+    
+    <tr class="hover:bg-slate-800/40 transition">
+      <td class="py-2 px-3 text-slate-400">#2</td>
+      <td class="py-2 px-3 font-bold text-slate-100 font-sans">(주)유창이엔씨</td>
+      <td class="py-2 px-3 text-right text-emerald-400 font-bold">59건</td>
+    </tr>
+    
+    <tr class="hover:bg-slate-800/40 transition">
+      <td class="py-2 px-3 text-slate-400">#3</td>
+      <td class="py-2 px-3 font-bold text-slate-100 font-sans">화성엔지니어링</td>
+      <td class="py-2 px-3 text-right text-emerald-400 font-bold">55건</td>
+    </tr>
+    
+    <tr class="hover:bg-slate-800/40 transition">
+      <td class="py-2 px-3 text-slate-400">#4</td>
+      <td class="py-2 px-3 font-bold text-slate-100 font-sans">(주) 세보엠이씨</td>
+      <td class="py-2 px-3 text-right text-emerald-400 font-bold">53건</td>
+    </tr>
+    
+    <tr class="hover:bg-slate-800/40 transition">
+      <td class="py-2 px-3 text-slate-400">#5</td>
+      <td class="py-2 px-3 font-bold text-slate-100 font-sans">(주)세보엠이씨</td>
+      <td class="py-2 px-3 text-right text-emerald-400 font-bold">47건</td>
+    </tr>
+    
+    <tr class="hover:bg-slate-800/40 transition">
+      <td class="py-2 px-3 text-slate-400">#6</td>
+      <td class="py-2 px-3 font-bold text-slate-100 font-sans">유창이엔씨</td>
+      <td class="py-2 px-3 text-right text-emerald-400 font-bold">23건</td>
+    </tr>
+    
+    <tr class="hover:bg-slate-800/40 transition">
+      <td class="py-2 px-3 text-slate-400">#7</td>
+      <td class="py-2 px-3 font-bold text-slate-100 font-sans">(주) 우진아이엔에스</td>
+      <td class="py-2 px-3 text-right text-emerald-400 font-bold">22건</td>
+    </tr>
+    
+    <tr class="hover:bg-slate-800/40 transition">
+      <td class="py-2 px-3 text-slate-400">#8</td>
+      <td class="py-2 px-3 font-bold text-slate-100 font-sans">(주) 삼영기업</td>
+      <td class="py-2 px-3 text-right text-emerald-400 font-bold">20건</td>
+    </tr>
+    
+    <tr class="hover:bg-slate-800/40 transition">
+      <td class="py-2 px-3 text-slate-400">#9</td>
+      <td class="py-2 px-3 font-bold text-slate-100 font-sans">(주)대한이엔지</td>
+      <td class="py-2 px-3 text-right text-emerald-400 font-bold">19건</td>
+    </tr>
+    
+    <tr class="hover:bg-slate-800/40 transition">
+      <td class="py-2 px-3 text-slate-400">#10</td>
+      <td class="py-2 px-3 font-bold text-slate-100 font-sans">주식회사 경우이엔씨</td>
+      <td class="py-2 px-3 text-right text-emerald-400 font-bold">16건</td>
+    </tr>
+    
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-sm">
+          <h3 class="text-sm font-bold text-white mb-3 flex items-center gap-2">
+            <span>📍 출고요청 최다 현장 Top 10</span>
+          </h3>
+          <div class="overflow-x-auto table-nowrap custom-scrollbar">
+            <table class="w-full text-xs text-left">
+              <thead class="bg-slate-950 text-slate-400 font-semibold border-b border-slate-800">
+                <tr>
+                  <th class="py-2 px-3">순위</th>
+                  <th class="py-2 px-3">현장명</th>
+                  <th class="py-2 px-3 text-right">출고요청 건수</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-slate-800/60 font-mono">
+                
+    <tr class="hover:bg-slate-800/40 transition">
+      <td class="py-2 px-3 text-slate-400">#1</td>
+      <td class="py-2 px-3 font-bold text-slate-100 font-sans">용인 SK하이닉스 / 팹동</td>
+      <td class="py-2 px-3 text-right text-cyan-400 font-bold">47건</td>
+    </tr>
+    
+    <tr class="hover:bg-slate-800/40 transition">
+      <td class="py-2 px-3 text-slate-400">#2</td>
+      <td class="py-2 px-3 font-bold text-slate-100 font-sans">평택삼성전자 P4</td>
+      <td class="py-2 px-3 text-right text-cyan-400 font-bold">47건</td>
+    </tr>
+    
+    <tr class="hover:bg-slate-800/40 transition">
+      <td class="py-2 px-3 text-slate-400">#3</td>
+      <td class="py-2 px-3 font-bold text-slate-100 font-sans">용인 SK하이닉스 / 비보안동 2공구</td>
+      <td class="py-2 px-3 text-right text-cyan-400 font-bold">39건</td>
+    </tr>
+    
+    <tr class="hover:bg-slate-800/40 transition">
+      <td class="py-2 px-3 text-slate-400">#4</td>
+      <td class="py-2 px-3 font-bold text-slate-100 font-sans">용인 SK하이닉스 / 비보안동 1공구</td>
+      <td class="py-2 px-3 text-right text-cyan-400 font-bold">30건</td>
+    </tr>
+    
+    <tr class="hover:bg-slate-800/40 transition">
+      <td class="py-2 px-3 text-slate-400">#5</td>
+      <td class="py-2 px-3 font-bold text-slate-100 font-sans">군포 지식산업센터 현장</td>
+      <td class="py-2 px-3 text-right text-cyan-400 font-bold">27건</td>
+    </tr>
+    
+    <tr class="hover:bg-slate-800/40 transition">
+      <td class="py-2 px-3 text-slate-400">#6</td>
+      <td class="py-2 px-3 font-bold text-slate-100 font-sans">청주M8개조공사</td>
+      <td class="py-2 px-3 text-right text-cyan-400 font-bold">26건</td>
+    </tr>
+    
+    <tr class="hover:bg-slate-800/40 transition">
+      <td class="py-2 px-3 text-slate-400">#7</td>
+      <td class="py-2 px-3 font-bold text-slate-100 font-sans">송도 Global R&amp;PD Center</td>
+      <td class="py-2 px-3 text-right text-cyan-400 font-bold">23건</td>
+    </tr>
+    
+    <tr class="hover:bg-slate-800/40 transition">
+      <td class="py-2 px-3 text-slate-400">#8</td>
+      <td class="py-2 px-3 font-bold text-slate-100 font-sans">인천 검단신도시 101 역세권 개발 사업</td>
+      <td class="py-2 px-3 text-right text-cyan-400 font-bold">22건</td>
+    </tr>
+    
+    <tr class="hover:bg-slate-800/40 transition">
+      <td class="py-2 px-3 text-slate-400">#9</td>
+      <td class="py-2 px-3 font-bold text-slate-100 font-sans">용산 더 파크 사이드 서울</td>
+      <td class="py-2 px-3 text-right text-cyan-400 font-bold">20건</td>
+    </tr>
+    
+    <tr class="hover:bg-slate-800/40 transition">
+      <td class="py-2 px-3 text-slate-400">#10</td>
+      <td class="py-2 px-3 font-bold text-slate-100 font-sans">부평 데이터센터</td>
+      <td class="py-2 px-3 text-right text-cyan-400 font-bold">19건</td>
+    </tr>
+    
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- ───────────────────────────────────────────────────────────── -->
+    <!-- 탭 3: AS·정비 접수 분석 (5,633건) -->
+    <!-- ───────────────────────────────────────────────────────────── -->
+    <div id="section-as" class="hidden space-y-6">
+
+      <!-- 고장 증상 랭킹 그리드 -->
+      <div class="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-sm">
+        <div class="flex items-center justify-between mb-4 border-b border-slate-800 pb-2">
+          <div>
+            <h3 class="text-sm font-bold text-white flex items-center gap-2">
+              <span class="w-2.5 h-2.5 rounded-full bg-amber-500"></span>
+              <span>고장 증상별 접수 빈도 Top 30 (5,633건 중 전수 분석)</span>
+            </h3>
+            <p class="text-xs text-slate-400 mt-0.5">센서 단선, 유압 누유, 전기 계통 불량이 3대 핵심 고장 유형</p>
+          </div>
+          <span class="text-xs font-mono text-slate-400">총 2,267종 고유 증상</span>
+        </div>
+        <div class="overflow-x-auto table-nowrap custom-scrollbar">
+          <table class="w-full text-xs text-left">
+            <thead class="bg-slate-950 text-slate-400 font-semibold border-b border-slate-800">
+              <tr>
+                <th class="py-2 px-3">순위</th>
+                <th class="py-2 px-3">고장 증상 원문</th>
+                <th class="py-2 px-3 text-right">발생 건수</th>
+                <th class="py-2 px-3">발생 비율</th>
+                <th class="py-2 px-3">고장 분류 카테고리</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-800/60 font-mono">
+              
+    <tr class="hover:bg-slate-800/40 transition">
+      <td class="py-2 px-3 text-slate-400">#1</td>
+      <td class="py-2 px-3 font-bold text-slate-100 font-sans">방지봉 단선</td>
+      <td class="py-2 px-3 text-right text-amber-400 font-bold">279건</td>
+      <td class="py-2 px-3 w-48">
+        <div class="w-full bg-slate-800 rounded-full h-2 overflow-hidden">
+          <div class="bg-amber-500 h-2 rounded-full" style="width: 100.0%"></div>
+        </div>
+      </td>
+      <td class="py-2 px-3 text-slate-300 font-sans">
+        <span class="px-2 py-0.5 rounded text-[10px] font-bold border bg-red-950/60 text-red-300 border-red-800/60">
+          배선/단선 파손
+        </span>
+      </td>
+    </tr>
+    
+    <tr class="hover:bg-slate-800/40 transition">
+      <td class="py-2 px-3 text-slate-400">#2</td>
+      <td class="py-2 px-3 font-bold text-slate-100 font-sans">작동안됨</td>
+      <td class="py-2 px-3 text-right text-amber-400 font-bold">259건</td>
+      <td class="py-2 px-3 w-48">
+        <div class="w-full bg-slate-800 rounded-full h-2 overflow-hidden">
+          <div class="bg-amber-500 h-2 rounded-full" style="width: 92.8%"></div>
+        </div>
+      </td>
+      <td class="py-2 px-3 text-slate-300 font-sans">
+        <span class="px-2 py-0.5 rounded text-[10px] font-bold border bg-blue-950/60 text-blue-300 border-blue-800/60">
+          구동/유압 상승 불량
+        </span>
+      </td>
+    </tr>
+    
+    <tr class="hover:bg-slate-800/40 transition">
+      <td class="py-2 px-3 text-slate-400">#3</td>
+      <td class="py-2 px-3 font-bold text-slate-100 font-sans">상승안됨</td>
+      <td class="py-2 px-3 text-right text-amber-400 font-bold">211건</td>
+      <td class="py-2 px-3 w-48">
+        <div class="w-full bg-slate-800 rounded-full h-2 overflow-hidden">
+          <div class="bg-amber-500 h-2 rounded-full" style="width: 75.6%"></div>
+        </div>
+      </td>
+      <td class="py-2 px-3 text-slate-300 font-sans">
+        <span class="px-2 py-0.5 rounded text-[10px] font-bold border bg-blue-950/60 text-blue-300 border-blue-800/60">
+          구동/유압 상승 불량
+        </span>
+      </td>
+    </tr>
+    
+    <tr class="hover:bg-slate-800/40 transition">
+      <td class="py-2 px-3 text-slate-400">#4</td>
+      <td class="py-2 px-3 font-bold text-slate-100 font-sans">오일누유</td>
+      <td class="py-2 px-3 text-right text-amber-400 font-bold">153건</td>
+      <td class="py-2 px-3 w-48">
+        <div class="w-full bg-slate-800 rounded-full h-2 overflow-hidden">
+          <div class="bg-amber-500 h-2 rounded-full" style="width: 54.8%"></div>
+        </div>
+      </td>
+      <td class="py-2 px-3 text-slate-300 font-sans">
+        <span class="px-2 py-0.5 rounded text-[10px] font-bold border bg-cyan-950/60 text-cyan-300 border-cyan-800/60">
+          유압/오일 누유
+        </span>
+      </td>
+    </tr>
+    
+    <tr class="hover:bg-slate-800/40 transition">
+      <td class="py-2 px-3 text-slate-400">#5</td>
+      <td class="py-2 px-3 font-bold text-slate-100 font-sans">충전안됨</td>
+      <td class="py-2 px-3 text-right text-amber-400 font-bold">116건</td>
+      <td class="py-2 px-3 w-48">
+        <div class="w-full bg-slate-800 rounded-full h-2 overflow-hidden">
+          <div class="bg-amber-500 h-2 rounded-full" style="width: 41.6%"></div>
+        </div>
+      </td>
+      <td class="py-2 px-3 text-slate-300 font-sans">
+        <span class="px-2 py-0.5 rounded text-[10px] font-bold border bg-purple-950/60 text-purple-300 border-purple-800/60">
+          배터리/충전 계통
+        </span>
+      </td>
+    </tr>
+    
+    <tr class="hover:bg-slate-800/40 transition">
+      <td class="py-2 px-3 text-slate-400">#6</td>
+      <td class="py-2 px-3 font-bold text-slate-100 font-sans">감지봉 단선</td>
+      <td class="py-2 px-3 text-right text-amber-400 font-bold">81건</td>
+      <td class="py-2 px-3 w-48">
+        <div class="w-full bg-slate-800 rounded-full h-2 overflow-hidden">
+          <div class="bg-amber-500 h-2 rounded-full" style="width: 29.0%"></div>
+        </div>
+      </td>
+      <td class="py-2 px-3 text-slate-300 font-sans">
+        <span class="px-2 py-0.5 rounded text-[10px] font-bold border bg-red-950/60 text-red-300 border-red-800/60">
+          배선/단선 파손
+        </span>
+      </td>
+    </tr>
+    
+    <tr class="hover:bg-slate-800/40 transition">
+      <td class="py-2 px-3 text-slate-400">#7</td>
+      <td class="py-2 px-3 font-bold text-slate-100 font-sans">누유</td>
+      <td class="py-2 px-3 text-right text-amber-400 font-bold">72건</td>
+      <td class="py-2 px-3 w-48">
+        <div class="w-full bg-slate-800 rounded-full h-2 overflow-hidden">
+          <div class="bg-amber-500 h-2 rounded-full" style="width: 25.8%"></div>
+        </div>
+      </td>
+      <td class="py-2 px-3 text-slate-300 font-sans">
+        <span class="px-2 py-0.5 rounded text-[10px] font-bold border bg-cyan-950/60 text-cyan-300 border-cyan-800/60">
+          유압/오일 누유
+        </span>
+      </td>
+    </tr>
+    
+    <tr class="hover:bg-slate-800/40 transition">
+      <td class="py-2 px-3 text-slate-400">#8</td>
+      <td class="py-2 px-3 font-bold text-slate-100 font-sans">LD</td>
+      <td class="py-2 px-3 text-right text-amber-400 font-bold">62건</td>
+      <td class="py-2 px-3 w-48">
+        <div class="w-full bg-slate-800 rounded-full h-2 overflow-hidden">
+          <div class="bg-amber-500 h-2 rounded-full" style="width: 22.2%"></div>
+        </div>
+      </td>
+      <td class="py-2 px-3 text-slate-300 font-sans">
+        <span class="px-2 py-0.5 rounded text-[10px] font-bold border bg-slate-800 text-slate-300 border-slate-700">
+          센서/일반 점검
+        </span>
+      </td>
+    </tr>
+    
+    <tr class="hover:bg-slate-800/40 transition">
+      <td class="py-2 px-3 text-slate-400">#9</td>
+      <td class="py-2 px-3 font-bold text-slate-100 font-sans">작동불량</td>
+      <td class="py-2 px-3 text-right text-amber-400 font-bold">62건</td>
+      <td class="py-2 px-3 w-48">
+        <div class="w-full bg-slate-800 rounded-full h-2 overflow-hidden">
+          <div class="bg-amber-500 h-2 rounded-full" style="width: 22.2%"></div>
+        </div>
+      </td>
+      <td class="py-2 px-3 text-slate-300 font-sans">
+        <span class="px-2 py-0.5 rounded text-[10px] font-bold border bg-blue-950/60 text-blue-300 border-blue-800/60">
+          구동/유압 상승 불량
+        </span>
+      </td>
+    </tr>
+    
+    <tr class="hover:bg-slate-800/40 transition">
+      <td class="py-2 px-3 text-slate-400">#10</td>
+      <td class="py-2 px-3 font-bold text-slate-100 font-sans">주행안됨</td>
+      <td class="py-2 px-3 text-right text-amber-400 font-bold">60건</td>
+      <td class="py-2 px-3 w-48">
+        <div class="w-full bg-slate-800 rounded-full h-2 overflow-hidden">
+          <div class="bg-amber-500 h-2 rounded-full" style="width: 21.5%"></div>
+        </div>
+      </td>
+      <td class="py-2 px-3 text-slate-300 font-sans">
+        <span class="px-2 py-0.5 rounded text-[10px] font-bold border bg-blue-950/60 text-blue-300 border-blue-800/60">
+          구동/유압 상승 불량
+        </span>
+      </td>
+    </tr>
+    
+    <tr class="hover:bg-slate-800/40 transition">
+      <td class="py-2 px-3 text-slate-400">#11</td>
+      <td class="py-2 px-3 font-bold text-slate-100 font-sans">상승중 멈춤</td>
+      <td class="py-2 px-3 text-right text-amber-400 font-bold">55건</td>
+      <td class="py-2 px-3 w-48">
+        <div class="w-full bg-slate-800 rounded-full h-2 overflow-hidden">
+          <div class="bg-amber-500 h-2 rounded-full" style="width: 19.7%"></div>
+        </div>
+      </td>
+      <td class="py-2 px-3 text-slate-300 font-sans">
+        <span class="px-2 py-0.5 rounded text-[10px] font-bold border bg-blue-950/60 text-blue-300 border-blue-800/60">
+          구동/유압 상승 불량
+        </span>
+      </td>
+    </tr>
+    
+    <tr class="hover:bg-slate-800/40 transition">
+      <td class="py-2 px-3 text-slate-400">#12</td>
+      <td class="py-2 px-3 font-bold text-slate-100 font-sans">LD에러</td>
+      <td class="py-2 px-3 text-right text-amber-400 font-bold">49건</td>
+      <td class="py-2 px-3 w-48">
+        <div class="w-full bg-slate-800 rounded-full h-2 overflow-hidden">
+          <div class="bg-amber-500 h-2 rounded-full" style="width: 17.6%"></div>
+        </div>
+      </td>
+      <td class="py-2 px-3 text-slate-300 font-sans">
+        <span class="px-2 py-0.5 rounded text-[10px] font-bold border bg-slate-800 text-slate-300 border-slate-700">
+          센서/일반 점검
+        </span>
+      </td>
+    </tr>
+    
+    <tr class="hover:bg-slate-800/40 transition">
+      <td class="py-2 px-3 text-slate-400">#13</td>
+      <td class="py-2 px-3 font-bold text-slate-100 font-sans">충전선 단선</td>
+      <td class="py-2 px-3 text-right text-amber-400 font-bold">48건</td>
+      <td class="py-2 px-3 w-48">
+        <div class="w-full bg-slate-800 rounded-full h-2 overflow-hidden">
+          <div class="bg-amber-500 h-2 rounded-full" style="width: 17.2%"></div>
+        </div>
+      </td>
+      <td class="py-2 px-3 text-slate-300 font-sans">
+        <span class="px-2 py-0.5 rounded text-[10px] font-bold border bg-red-950/60 text-red-300 border-red-800/60">
+          배선/단선 파손
+        </span>
+      </td>
+    </tr>
+    
+    <tr class="hover:bg-slate-800/40 transition">
+      <td class="py-2 px-3 text-slate-400">#14</td>
+      <td class="py-2 px-3 font-bold text-slate-100 font-sans">조향안됨</td>
+      <td class="py-2 px-3 text-right text-amber-400 font-bold">44건</td>
+      <td class="py-2 px-3 w-48">
+        <div class="w-full bg-slate-800 rounded-full h-2 overflow-hidden">
+          <div class="bg-amber-500 h-2 rounded-full" style="width: 15.8%"></div>
+        </div>
+      </td>
+      <td class="py-2 px-3 text-slate-300 font-sans">
+        <span class="px-2 py-0.5 rounded text-[10px] font-bold border bg-slate-800 text-slate-300 border-slate-700">
+          센서/일반 점검
+        </span>
+      </td>
+    </tr>
+    
+    <tr class="hover:bg-slate-800/40 transition">
+      <td class="py-2 px-3 text-slate-400">#15</td>
+      <td class="py-2 px-3 font-bold text-slate-100 font-sans">충전선 파손</td>
+      <td class="py-2 px-3 text-right text-amber-400 font-bold">41건</td>
+      <td class="py-2 px-3 w-48">
+        <div class="w-full bg-slate-800 rounded-full h-2 overflow-hidden">
+          <div class="bg-amber-500 h-2 rounded-full" style="width: 14.7%"></div>
+        </div>
+      </td>
+      <td class="py-2 px-3 text-slate-300 font-sans">
+        <span class="px-2 py-0.5 rounded text-[10px] font-bold border bg-red-950/60 text-red-300 border-red-800/60">
+          배선/단선 파손
+        </span>
+      </td>
+    </tr>
+    
+    <tr class="hover:bg-slate-800/40 transition">
+      <td class="py-2 px-3 text-slate-400">#16</td>
+      <td class="py-2 px-3 font-bold text-slate-100 font-sans">충전 안됨</td>
+      <td class="py-2 px-3 text-right text-amber-400 font-bold">40건</td>
+      <td class="py-2 px-3 w-48">
+        <div class="w-full bg-slate-800 rounded-full h-2 overflow-hidden">
+          <div class="bg-amber-500 h-2 rounded-full" style="width: 14.3%"></div>
+        </div>
+      </td>
+      <td class="py-2 px-3 text-slate-300 font-sans">
+        <span class="px-2 py-0.5 rounded text-[10px] font-bold border bg-purple-950/60 text-purple-300 border-purple-800/60">
+          배터리/충전 계통
+        </span>
+      </td>
+    </tr>
+    
+    <tr class="hover:bg-slate-800/40 transition">
+      <td class="py-2 px-3 text-slate-400">#17</td>
+      <td class="py-2 px-3 font-bold text-slate-100 font-sans">CL에러</td>
+      <td class="py-2 px-3 text-right text-amber-400 font-bold">39건</td>
+      <td class="py-2 px-3 w-48">
+        <div class="w-full bg-slate-800 rounded-full h-2 overflow-hidden">
+          <div class="bg-amber-500 h-2 rounded-full" style="width: 14.0%"></div>
+        </div>
+      </td>
+      <td class="py-2 px-3 text-slate-300 font-sans">
+        <span class="px-2 py-0.5 rounded text-[10px] font-bold border bg-slate-800 text-slate-300 border-slate-700">
+          센서/일반 점검
+        </span>
+      </td>
+    </tr>
+    
+    <tr class="hover:bg-slate-800/40 transition">
+      <td class="py-2 px-3 text-slate-400">#18</td>
+      <td class="py-2 px-3 font-bold text-slate-100 font-sans">CL</td>
+      <td class="py-2 px-3 text-right text-amber-400 font-bold">36건</td>
+      <td class="py-2 px-3 w-48">
+        <div class="w-full bg-slate-800 rounded-full h-2 overflow-hidden">
+          <div class="bg-amber-500 h-2 rounded-full" style="width: 12.9%"></div>
+        </div>
+      </td>
+      <td class="py-2 px-3 text-slate-300 font-sans">
+        <span class="px-2 py-0.5 rounded text-[10px] font-bold border bg-slate-800 text-slate-300 border-slate-700">
+          센서/일반 점검
+        </span>
+      </td>
+    </tr>
+    
+    <tr class="hover:bg-slate-800/40 transition">
+      <td class="py-2 px-3 text-slate-400">#19</td>
+      <td class="py-2 px-3 font-bold text-slate-100 font-sans">상승 안됨</td>
+      <td class="py-2 px-3 text-right text-amber-400 font-bold">36건</td>
+      <td class="py-2 px-3 w-48">
+        <div class="w-full bg-slate-800 rounded-full h-2 overflow-hidden">
+          <div class="bg-amber-500 h-2 rounded-full" style="width: 12.9%"></div>
+        </div>
+      </td>
+      <td class="py-2 px-3 text-slate-300 font-sans">
+        <span class="px-2 py-0.5 rounded text-[10px] font-bold border bg-blue-950/60 text-blue-300 border-blue-800/60">
+          구동/유압 상승 불량
+        </span>
+      </td>
+    </tr>
+    
+    <tr class="hover:bg-slate-800/40 transition">
+      <td class="py-2 px-3 text-slate-400">#20</td>
+      <td class="py-2 px-3 font-bold text-slate-100 font-sans">사용시간 짧음</td>
+      <td class="py-2 px-3 text-right text-amber-400 font-bold">34건</td>
+      <td class="py-2 px-3 w-48">
+        <div class="w-full bg-slate-800 rounded-full h-2 overflow-hidden">
+          <div class="bg-amber-500 h-2 rounded-full" style="width: 12.2%"></div>
+        </div>
+      </td>
+      <td class="py-2 px-3 text-slate-300 font-sans">
+        <span class="px-2 py-0.5 rounded text-[10px] font-bold border bg-slate-800 text-slate-300 border-slate-700">
+          센서/일반 점검
+        </span>
+      </td>
+    </tr>
+    
+    <tr class="hover:bg-slate-800/40 transition">
+      <td class="py-2 px-3 text-slate-400">#21</td>
+      <td class="py-2 px-3 font-bold text-slate-100 font-sans">작동 안됨</td>
+      <td class="py-2 px-3 text-right text-amber-400 font-bold">31건</td>
+      <td class="py-2 px-3 w-48">
+        <div class="w-full bg-slate-800 rounded-full h-2 overflow-hidden">
+          <div class="bg-amber-500 h-2 rounded-full" style="width: 11.1%"></div>
+        </div>
+      </td>
+      <td class="py-2 px-3 text-slate-300 font-sans">
+        <span class="px-2 py-0.5 rounded text-[10px] font-bold border bg-blue-950/60 text-blue-300 border-blue-800/60">
+          구동/유압 상승 불량
+        </span>
+      </td>
+    </tr>
+    
+    <tr class="hover:bg-slate-800/40 transition">
+      <td class="py-2 px-3 text-slate-400">#22</td>
+      <td class="py-2 px-3 font-bold text-slate-100 font-sans">방지봉 불량</td>
+      <td class="py-2 px-3 text-right text-amber-400 font-bold">29건</td>
+      <td class="py-2 px-3 w-48">
+        <div class="w-full bg-slate-800 rounded-full h-2 overflow-hidden">
+          <div class="bg-amber-500 h-2 rounded-full" style="width: 10.4%"></div>
+        </div>
+      </td>
+      <td class="py-2 px-3 text-slate-300 font-sans">
+        <span class="px-2 py-0.5 rounded text-[10px] font-bold border bg-slate-800 text-slate-300 border-slate-700">
+          센서/일반 점검
+        </span>
+      </td>
+    </tr>
+    
+    <tr class="hover:bg-slate-800/40 transition">
+      <td class="py-2 px-3 text-slate-400">#23</td>
+      <td class="py-2 px-3 font-bold text-slate-100 font-sans">충전불량</td>
+      <td class="py-2 px-3 text-right text-amber-400 font-bold">27건</td>
+      <td class="py-2 px-3 w-48">
+        <div class="w-full bg-slate-800 rounded-full h-2 overflow-hidden">
+          <div class="bg-amber-500 h-2 rounded-full" style="width: 9.7%"></div>
+        </div>
+      </td>
+      <td class="py-2 px-3 text-slate-300 font-sans">
+        <span class="px-2 py-0.5 rounded text-[10px] font-bold border bg-purple-950/60 text-purple-300 border-purple-800/60">
+          배터리/충전 계통
+        </span>
+      </td>
+    </tr>
+    
+    <tr class="hover:bg-slate-800/40 transition">
+      <td class="py-2 px-3 text-slate-400">#24</td>
+      <td class="py-2 px-3 font-bold text-slate-100 font-sans">감지봉 파손</td>
+      <td class="py-2 px-3 text-right text-amber-400 font-bold">26건</td>
+      <td class="py-2 px-3 w-48">
+        <div class="w-full bg-slate-800 rounded-full h-2 overflow-hidden">
+          <div class="bg-amber-500 h-2 rounded-full" style="width: 9.3%"></div>
+        </div>
+      </td>
+      <td class="py-2 px-3 text-slate-300 font-sans">
+        <span class="px-2 py-0.5 rounded text-[10px] font-bold border bg-red-950/60 text-red-300 border-red-800/60">
+          배선/단선 파손
+        </span>
+      </td>
+    </tr>
+    
+    <tr class="hover:bg-slate-800/40 transition">
+      <td class="py-2 px-3 text-slate-400">#25</td>
+      <td class="py-2 px-3 font-bold text-slate-100 font-sans">조향 안됨</td>
+      <td class="py-2 px-3 text-right text-amber-400 font-bold">25건</td>
+      <td class="py-2 px-3 w-48">
+        <div class="w-full bg-slate-800 rounded-full h-2 overflow-hidden">
+          <div class="bg-amber-500 h-2 rounded-full" style="width: 9.0%"></div>
+        </div>
+      </td>
+      <td class="py-2 px-3 text-slate-300 font-sans">
+        <span class="px-2 py-0.5 rounded text-[10px] font-bold border bg-slate-800 text-slate-300 border-slate-700">
+          센서/일반 점검
+        </span>
+      </td>
+    </tr>
+    
+    <tr class="hover:bg-slate-800/40 transition">
+      <td class="py-2 px-3 text-slate-400">#26</td>
+      <td class="py-2 px-3 font-bold text-slate-100 font-sans">감지봉단선</td>
+      <td class="py-2 px-3 text-right text-amber-400 font-bold">24건</td>
+      <td class="py-2 px-3 w-48">
+        <div class="w-full bg-slate-800 rounded-full h-2 overflow-hidden">
+          <div class="bg-amber-500 h-2 rounded-full" style="width: 8.6%"></div>
+        </div>
+      </td>
+      <td class="py-2 px-3 text-slate-300 font-sans">
+        <span class="px-2 py-0.5 rounded text-[10px] font-bold border bg-red-950/60 text-red-300 border-red-800/60">
+          배선/단선 파손
+        </span>
+      </td>
+    </tr>
+    
+    <tr class="hover:bg-slate-800/40 transition">
+      <td class="py-2 px-3 text-slate-400">#27</td>
+      <td class="py-2 px-3 font-bold text-slate-100 font-sans">협착휨</td>
+      <td class="py-2 px-3 text-right text-amber-400 font-bold">23건</td>
+      <td class="py-2 px-3 w-48">
+        <div class="w-full bg-slate-800 rounded-full h-2 overflow-hidden">
+          <div class="bg-amber-500 h-2 rounded-full" style="width: 8.2%"></div>
+        </div>
+      </td>
+      <td class="py-2 px-3 text-slate-300 font-sans">
+        <span class="px-2 py-0.5 rounded text-[10px] font-bold border bg-slate-800 text-slate-300 border-slate-700">
+          센서/일반 점검
+        </span>
+      </td>
+    </tr>
+    
+    <tr class="hover:bg-slate-800/40 transition">
+      <td class="py-2 px-3 text-slate-400">#28</td>
+      <td class="py-2 px-3 font-bold text-slate-100 font-sans">점검</td>
+      <td class="py-2 px-3 text-right text-amber-400 font-bold">23건</td>
+      <td class="py-2 px-3 w-48">
+        <div class="w-full bg-slate-800 rounded-full h-2 overflow-hidden">
+          <div class="bg-amber-500 h-2 rounded-full" style="width: 8.2%"></div>
+        </div>
+      </td>
+      <td class="py-2 px-3 text-slate-300 font-sans">
+        <span class="px-2 py-0.5 rounded text-[10px] font-bold border bg-slate-800 text-slate-300 border-slate-700">
+          센서/일반 점검
+        </span>
+      </td>
+    </tr>
+    
+    <tr class="hover:bg-slate-800/40 transition">
+      <td class="py-2 px-3 text-slate-400">#29</td>
+      <td class="py-2 px-3 font-bold text-slate-100 font-sans">전원 안켜짐</td>
+      <td class="py-2 px-3 text-right text-amber-400 font-bold">23건</td>
+      <td class="py-2 px-3 w-48">
+        <div class="w-full bg-slate-800 rounded-full h-2 overflow-hidden">
+          <div class="bg-amber-500 h-2 rounded-full" style="width: 8.2%"></div>
+        </div>
+      </td>
+      <td class="py-2 px-3 text-slate-300 font-sans">
+        <span class="px-2 py-0.5 rounded text-[10px] font-bold border bg-slate-800 text-slate-300 border-slate-700">
+          센서/일반 점검
+        </span>
+      </td>
+    </tr>
+    
+    <tr class="hover:bg-slate-800/40 transition">
+      <td class="py-2 px-3 text-slate-400">#30</td>
+      <td class="py-2 px-3 font-bold text-slate-100 font-sans">오일 누유</td>
+      <td class="py-2 px-3 text-right text-amber-400 font-bold">23건</td>
+      <td class="py-2 px-3 w-48">
+        <div class="w-full bg-slate-800 rounded-full h-2 overflow-hidden">
+          <div class="bg-amber-500 h-2 rounded-full" style="width: 8.2%"></div>
+        </div>
+      </td>
+      <td class="py-2 px-3 text-slate-300 font-sans">
+        <span class="px-2 py-0.5 rounded text-[10px] font-bold border bg-cyan-950/60 text-cyan-300 border-cyan-800/60">
+          유압/오일 누유
+        </span>
+      </td>
+    </tr>
+    
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- 다발 고장 장비 번호 & 현장 위치 2열 -->
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <!-- 다발 접수 장비 번호 -->
+        <div class="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-sm">
+          <h3 class="text-sm font-bold text-white mb-3 flex items-center gap-2">
+            <span>🏷️ AS 최다 접수 장비 번호 Top 15</span>
+          </h3>
+          <div class="overflow-x-auto table-nowrap custom-scrollbar">
+            <table class="w-full text-xs text-left">
+              <thead class="bg-slate-950 text-slate-400 font-semibold border-b border-slate-800">
+                <tr>
+                  <th class="py-2 px-3">순위</th>
+                  <th class="py-2 px-3">장비 관리번호</th>
+                  <th class="py-2 px-3 text-right">접수 건수</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-slate-800/60 font-mono">
+                
+    <tr class="hover:bg-slate-800/40 transition">
+      <td class="py-2 px-3 text-slate-400">#1</td>
+      <td class="py-2 px-3 font-bold text-cyan-300 font-mono">#확인중</td>
+      <td class="py-2 px-3 text-right text-amber-400 font-bold">50건</td>
+    </tr>
+    
+    <tr class="hover:bg-slate-800/40 transition">
+      <td class="py-2 px-3 text-slate-400">#2</td>
+      <td class="py-2 px-3 font-bold text-cyan-300 font-mono">#현장확인</td>
+      <td class="py-2 px-3 text-right text-amber-400 font-bold">46건</td>
+    </tr>
+    
+    <tr class="hover:bg-slate-800/40 transition">
+      <td class="py-2 px-3 text-slate-400">#3</td>
+      <td class="py-2 px-3 font-bold text-cyan-300 font-mono">#모든장비</td>
+      <td class="py-2 px-3 text-right text-amber-400 font-bold">25건</td>
+    </tr>
+    
+    <tr class="hover:bg-slate-800/40 transition">
+      <td class="py-2 px-3 text-slate-400">#4</td>
+      <td class="py-2 px-3 font-bold text-cyan-300 font-mono">#전체장비</td>
+      <td class="py-2 px-3 text-right text-amber-400 font-bold">23건</td>
+    </tr>
+    
+    <tr class="hover:bg-slate-800/40 transition">
+      <td class="py-2 px-3 text-slate-400">#5</td>
+      <td class="py-2 px-3 font-bold text-cyan-300 font-mono">#G19047</td>
+      <td class="py-2 px-3 text-right text-amber-400 font-bold">20건</td>
+    </tr>
+    
+    <tr class="hover:bg-slate-800/40 transition">
+      <td class="py-2 px-3 text-slate-400">#6</td>
+      <td class="py-2 px-3 font-bold text-cyan-300 font-mono">#G15147</td>
+      <td class="py-2 px-3 text-right text-amber-400 font-bold">19건</td>
+    </tr>
+    
+    <tr class="hover:bg-slate-800/40 transition">
+      <td class="py-2 px-3 text-slate-400">#7</td>
+      <td class="py-2 px-3 font-bold text-cyan-300 font-mono">#G19211</td>
+      <td class="py-2 px-3 text-right text-amber-400 font-bold">19건</td>
+    </tr>
+    
+    <tr class="hover:bg-slate-800/40 transition">
+      <td class="py-2 px-3 text-slate-400">#8</td>
+      <td class="py-2 px-3 font-bold text-cyan-300 font-mono">#G19173</td>
+      <td class="py-2 px-3 text-right text-amber-400 font-bold">18건</td>
+    </tr>
+    
+    <tr class="hover:bg-slate-800/40 transition">
+      <td class="py-2 px-3 text-slate-400">#9</td>
+      <td class="py-2 px-3 font-bold text-cyan-300 font-mono">#G14019</td>
+      <td class="py-2 px-3 text-right text-amber-400 font-bold">17건</td>
+    </tr>
+    
+    <tr class="hover:bg-slate-800/40 transition">
+      <td class="py-2 px-3 text-slate-400">#10</td>
+      <td class="py-2 px-3 font-bold text-cyan-300 font-mono">#2대</td>
+      <td class="py-2 px-3 text-right text-amber-400 font-bold">17건</td>
+    </tr>
+    
+    <tr class="hover:bg-slate-800/40 transition">
+      <td class="py-2 px-3 text-slate-400">#11</td>
+      <td class="py-2 px-3 font-bold text-cyan-300 font-mono">#G19150</td>
+      <td class="py-2 px-3 text-right text-amber-400 font-bold">17건</td>
+    </tr>
+    
+    <tr class="hover:bg-slate-800/40 transition">
+      <td class="py-2 px-3 text-slate-400">#12</td>
+      <td class="py-2 px-3 font-bold text-cyan-300 font-mono">#G19036</td>
+      <td class="py-2 px-3 text-right text-amber-400 font-bold">15건</td>
+    </tr>
+    
+    <tr class="hover:bg-slate-800/40 transition">
+      <td class="py-2 px-3 text-slate-400">#13</td>
+      <td class="py-2 px-3 font-bold text-cyan-300 font-mono">#G19035</td>
+      <td class="py-2 px-3 text-right text-amber-400 font-bold">15건</td>
+    </tr>
+    
+    <tr class="hover:bg-slate-800/40 transition">
+      <td class="py-2 px-3 text-slate-400">#14</td>
+      <td class="py-2 px-3 font-bold text-cyan-300 font-mono">#G19209</td>
+      <td class="py-2 px-3 text-right text-amber-400 font-bold">14건</td>
+    </tr>
+    
+    <tr class="hover:bg-slate-800/40 transition">
+      <td class="py-2 px-3 text-slate-400">#15</td>
+      <td class="py-2 px-3 font-bold text-cyan-300 font-mono">#G06005</td>
+      <td class="py-2 px-3 text-right text-amber-400 font-bold">14건</td>
+    </tr>
+    
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- 현장 내 장비 위치 / 층수 -->
+        <div class="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-sm">
+          <h3 class="text-sm font-bold text-white mb-3 flex items-center gap-2">
+            <span>🏢 현장 내 작업 층수 및 위치 분포 Top 15</span>
+          </h3>
+          <div class="overflow-x-auto table-nowrap custom-scrollbar">
+            <table class="w-full text-xs text-left">
+              <thead class="bg-slate-950 text-slate-400 font-semibold border-b border-slate-800">
+                <tr>
+                  <th class="py-2 px-3">순위</th>
+                  <th class="py-2 px-3">장비 위치</th>
+                  <th class="py-2 px-3 text-right">접수 건수</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-slate-800/60 font-mono">
+                
+    <tr class="hover:bg-slate-800/40 transition">
+      <td class="py-2 px-3 text-slate-400">#1</td>
+      <td class="py-2 px-3 font-bold text-slate-200 font-sans">1층</td>
+      <td class="py-2 px-3 text-right text-emerald-400 font-bold">208건</td>
+    </tr>
+    
+    <tr class="hover:bg-slate-800/40 transition">
+      <td class="py-2 px-3 text-slate-400">#2</td>
+      <td class="py-2 px-3 font-bold text-slate-200 font-sans">3층</td>
+      <td class="py-2 px-3 text-right text-emerald-400 font-bold">101건</td>
+    </tr>
+    
+    <tr class="hover:bg-slate-800/40 transition">
+      <td class="py-2 px-3 text-slate-400">#3</td>
+      <td class="py-2 px-3 font-bold text-slate-200 font-sans">지하1층</td>
+      <td class="py-2 px-3 text-right text-emerald-400 font-bold">98건</td>
+    </tr>
+    
+    <tr class="hover:bg-slate-800/40 transition">
+      <td class="py-2 px-3 text-slate-400">#4</td>
+      <td class="py-2 px-3 font-bold text-slate-200 font-sans">4층</td>
+      <td class="py-2 px-3 text-right text-emerald-400 font-bold">77건</td>
+    </tr>
+    
+    <tr class="hover:bg-slate-800/40 transition">
+      <td class="py-2 px-3 text-slate-400">#5</td>
+      <td class="py-2 px-3 font-bold text-slate-200 font-sans">지하2층</td>
+      <td class="py-2 px-3 text-right text-emerald-400 font-bold">63건</td>
+    </tr>
+    
+    <tr class="hover:bg-slate-800/40 transition">
+      <td class="py-2 px-3 text-slate-400">#6</td>
+      <td class="py-2 px-3 font-bold text-slate-200 font-sans">2층</td>
+      <td class="py-2 px-3 text-right text-emerald-400 font-bold">62건</td>
+    </tr>
+    
+    <tr class="hover:bg-slate-800/40 transition">
+      <td class="py-2 px-3 text-slate-400">#7</td>
+      <td class="py-2 px-3 font-bold text-slate-200 font-sans">지하 1층</td>
+      <td class="py-2 px-3 text-right text-emerald-400 font-bold">55건</td>
+    </tr>
+    
+    <tr class="hover:bg-slate-800/40 transition">
+      <td class="py-2 px-3 text-slate-400">#8</td>
+      <td class="py-2 px-3 font-bold text-slate-200 font-sans">관리번호 :</td>
+      <td class="py-2 px-3 text-right text-emerald-400 font-bold">46건</td>
+    </tr>
+    
+    <tr class="hover:bg-slate-800/40 transition">
+      <td class="py-2 px-3 text-slate-400">#9</td>
+      <td class="py-2 px-3 font-bold text-slate-200 font-sans">현장확인</td>
+      <td class="py-2 px-3 text-right text-emerald-400 font-bold">26건</td>
+    </tr>
+    
+    <tr class="hover:bg-slate-800/40 transition">
+      <td class="py-2 px-3 text-slate-400">#10</td>
+      <td class="py-2 px-3 font-bold text-slate-200 font-sans">지하 2층</td>
+      <td class="py-2 px-3 text-right text-emerald-400 font-bold">26건</td>
+    </tr>
+    
+    <tr class="hover:bg-slate-800/40 transition">
+      <td class="py-2 px-3 text-slate-400">#11</td>
+      <td class="py-2 px-3 font-bold text-slate-200 font-sans">5층</td>
+      <td class="py-2 px-3 text-right text-emerald-400 font-bold">25건</td>
+    </tr>
+    
+    <tr class="hover:bg-slate-800/40 transition">
+      <td class="py-2 px-3 text-slate-400">#12</td>
+      <td class="py-2 px-3 font-bold text-slate-200 font-sans">13층</td>
+      <td class="py-2 px-3 text-right text-emerald-400 font-bold">25건</td>
+    </tr>
+    
+    <tr class="hover:bg-slate-800/40 transition">
+      <td class="py-2 px-3 text-slate-400">#13</td>
+      <td class="py-2 px-3 font-bold text-slate-200 font-sans">모든 장비</td>
+      <td class="py-2 px-3 text-right text-emerald-400 font-bold">23건</td>
+    </tr>
+    
+    <tr class="hover:bg-slate-800/40 transition">
+      <td class="py-2 px-3 text-slate-400">#14</td>
+      <td class="py-2 px-3 font-bold text-slate-200 font-sans">2동 지하1층</td>
+      <td class="py-2 px-3 text-right text-emerald-400 font-bold">23건</td>
+    </tr>
+    
+    <tr class="hover:bg-slate-800/40 transition">
+      <td class="py-2 px-3 text-slate-400">#15</td>
+      <td class="py-2 px-3 font-bold text-slate-200 font-sans">지하3층</td>
+      <td class="py-2 px-3 text-right text-emerald-400 font-bold">20건</td>
+    </tr>
+    
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- ───────────────────────────────────────────────────────────── -->
+    <!-- 탭 4: 임차자산 입출고 분석 (548건) -->
+    <!-- ───────────────────────────────────────────────────────────── -->
+    <div id="section-lease" class="hidden space-y-6">
+
+      <!-- 협력사별 점유율 & 이벤트 분류 카드 -->
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <!-- 협력사 리스트 -->
+        <div class="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-sm">
+          <h3 class="text-sm font-bold text-white mb-3 flex items-center gap-2">
+            <span>🏢 외부 원 임대사(협력사) 현황</span>
+          </h3>
+          <div class="overflow-x-auto table-nowrap custom-scrollbar">
+            <table class="w-full text-xs text-left">
+              <thead class="bg-slate-950 text-slate-400 font-semibold border-b border-slate-800">
+                <tr>
+                  <th class="py-2 px-3">순위</th>
+                  <th class="py-2 px-3">협력사명</th>
+                  <th class="py-2 px-3 text-right">임차/입출고 건수</th>
+                  <th class="py-2 px-3 text-right">비율</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-slate-800/60 font-mono">
+                
+    <tr class="hover:bg-slate-800/40 transition">
+      <td class="py-2 px-3 text-slate-400">#1</td>
+      <td class="py-2 px-3 font-bold text-purple-300 font-sans">롯데</td>
+      <td class="py-2 px-3 text-right text-purple-400 font-bold">245건</td>
+      <td class="py-2 px-3 text-right text-slate-400">44.7%</td>
+    </tr>
+    
+    <tr class="hover:bg-slate-800/40 transition">
+      <td class="py-2 px-3 text-slate-400">#2</td>
+      <td class="py-2 px-3 font-bold text-purple-300 font-sans">롯데렌탈</td>
+      <td class="py-2 px-3 text-right text-purple-400 font-bold">243건</td>
+      <td class="py-2 px-3 text-right text-slate-400">44.3%</td>
+    </tr>
+    
+    <tr class="hover:bg-slate-800/40 transition">
+      <td class="py-2 px-3 text-slate-400">#3</td>
+      <td class="py-2 px-3 font-bold text-purple-300 font-sans">포스렌탈</td>
+      <td class="py-2 px-3 text-right text-purple-400 font-bold">31건</td>
+      <td class="py-2 px-3 text-right text-slate-400">5.7%</td>
+    </tr>
+    
+    <tr class="hover:bg-slate-800/40 transition">
+      <td class="py-2 px-3 text-slate-400">#4</td>
+      <td class="py-2 px-3 font-bold text-purple-300 font-sans">포스</td>
+      <td class="py-2 px-3 text-right text-purple-400 font-bold">31건</td>
+      <td class="py-2 px-3 text-right text-slate-400">5.7%</td>
+    </tr>
+    
+    <tr class="hover:bg-slate-800/40 transition">
+      <td class="py-2 px-3 text-slate-400">#5</td>
+      <td class="py-2 px-3 font-bold text-purple-300 font-sans">한국렌탈</td>
+      <td class="py-2 px-3 text-right text-purple-400 font-bold">11건</td>
+      <td class="py-2 px-3 text-right text-slate-400">2.0%</td>
+    </tr>
+    
+    <tr class="hover:bg-slate-800/40 transition">
+      <td class="py-2 px-3 text-slate-400">#6</td>
+      <td class="py-2 px-3 font-bold text-purple-300 font-sans">AJ</td>
+      <td class="py-2 px-3 text-right text-purple-400 font-bold">3건</td>
+      <td class="py-2 px-3 text-right text-slate-400">0.5%</td>
+    </tr>
+    
+    <tr class="hover:bg-slate-800/40 transition">
+      <td class="py-2 px-3 text-slate-400">#7</td>
+      <td class="py-2 px-3 font-bold text-purple-300 font-sans">한솔렌탈</td>
+      <td class="py-2 px-3 text-right text-purple-400 font-bold">2건</td>
+      <td class="py-2 px-3 text-right text-slate-400">0.4%</td>
+    </tr>
+    
+    <tr class="hover:bg-slate-800/40 transition">
+      <td class="py-2 px-3 text-slate-400">#8</td>
+      <td class="py-2 px-3 font-bold text-purple-300 font-sans">한솔</td>
+      <td class="py-2 px-3 text-right text-purple-400 font-bold">2건</td>
+      <td class="py-2 px-3 text-right text-slate-400">0.4%</td>
+    </tr>
+    
+    <tr class="hover:bg-slate-800/40 transition">
+      <td class="py-2 px-3 text-slate-400">#9</td>
+      <td class="py-2 px-3 font-bold text-purple-300 font-sans">AJ렌탈</td>
+      <td class="py-2 px-3 text-right text-purple-400 font-bold">1건</td>
+      <td class="py-2 px-3 text-right text-slate-400">0.2%</td>
+    </tr>
+    
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- 주요 임차 모델 -->
+        <div class="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-sm">
+          <h3 class="text-sm font-bold text-white mb-3 flex items-center gap-2">
+            <span>🚜 주요 외부 임차 조달 모델 Top 10</span>
+          </h3>
+          <div class="overflow-x-auto table-nowrap custom-scrollbar">
+            <table class="w-full text-xs text-left">
+              <thead class="bg-slate-950 text-slate-400 font-semibold border-b border-slate-800">
+                <tr>
+                  <th class="py-2 px-3">순위</th>
+                  <th class="py-2 px-3">모델명 및 규격</th>
+                  <th class="py-2 px-3 text-right">빈도</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-slate-800/60 font-mono">
+                
+    <tr class="hover:bg-slate-800/40 transition">
+      <td class="py-2 px-3 text-slate-400">#1</td>
+      <td class="py-2 px-3 font-bold text-cyan-300 font-mono">GS1432 * 2</td>
+      <td class="py-2 px-3 text-right text-cyan-400 font-bold">2건</td>
+    </tr>
+    
+    <tr class="hover:bg-slate-800/40 transition">
+      <td class="py-2 px-3 text-slate-400">#2</td>
+      <td class="py-2 px-3 font-bold text-cyan-300 font-mono">GS1432 * 1</td>
+      <td class="py-2 px-3 text-right text-cyan-400 font-bold">2건</td>
+    </tr>
+    
+    <tr class="hover:bg-slate-800/40 transition">
+      <td class="py-2 px-3 text-slate-400">#3</td>
+      <td class="py-2 px-3 font-bold text-cyan-300 font-mono">star6 * 2대</td>
+      <td class="py-2 px-3 text-right text-cyan-400 font-bold">2건</td>
+    </tr>
+    
+    <tr class="hover:bg-slate-800/40 transition">
+      <td class="py-2 px-3 text-slate-400">#4</td>
+      <td class="py-2 px-3 font-bold text-cyan-300 font-mono">GS1432 * 1대</td>
+      <td class="py-2 px-3 text-right text-cyan-400 font-bold">2건</td>
+    </tr>
+    
+    <tr class="hover:bg-slate-800/40 transition">
+      <td class="py-2 px-3 text-slate-400">#5</td>
+      <td class="py-2 px-3 font-bold text-cyan-300 font-mono">S1614AC+*2대</td>
+      <td class="py-2 px-3 text-right text-cyan-400 font-bold">2건</td>
+    </tr>
+    
+    <tr class="hover:bg-slate-800/40 transition">
+      <td class="py-2 px-3 text-slate-400">#6</td>
+      <td class="py-2 px-3 font-bold text-cyan-300 font-mono">JCPT1008 * 4대</td>
+      <td class="py-2 px-3 text-right text-cyan-400 font-bold">2건</td>
+    </tr>
+    
+    <tr class="hover:bg-slate-800/40 transition">
+      <td class="py-2 px-3 text-slate-400">#7</td>
+      <td class="py-2 px-3 font-bold text-cyan-300 font-mono">JCPT1012AC * 3</td>
+      <td class="py-2 px-3 text-right text-cyan-400 font-bold">1건</td>
+    </tr>
+    
+    <tr class="hover:bg-slate-800/40 transition">
+      <td class="py-2 px-3 text-slate-400">#8</td>
+      <td class="py-2 px-3 font-bold text-cyan-300 font-mono">GTBZ16AE * 2</td>
+      <td class="py-2 px-3 text-right text-cyan-400 font-bold">1건</td>
+    </tr>
+    
+    <tr class="hover:bg-slate-800/40 transition">
+      <td class="py-2 px-3 text-slate-400">#9</td>
+      <td class="py-2 px-3 font-bold text-cyan-300 font-mono">GS2646E * 3</td>
+      <td class="py-2 px-3 text-right text-cyan-400 font-bold">1건</td>
+    </tr>
+    
+    <tr class="hover:bg-slate-800/40 transition">
+      <td class="py-2 px-3 text-slate-400">#10</td>
+      <td class="py-2 px-3 font-bold text-cyan-300 font-mono">GS1930E * 2</td>
+      <td class="py-2 px-3 text-right text-cyan-400 font-bold">1건</td>
+    </tr>
+    
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- 상차지 vs 하차지 물류 거점 2열 -->
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <!-- 상차지 -->
+        <div class="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-sm">
+          <h3 class="text-sm font-bold text-white mb-3 flex items-center gap-2">
+            <span>🚚 주요 상차지 물류 허브 Top 10</span>
+          </h3>
+          <div class="overflow-x-auto table-nowrap custom-scrollbar">
+            <table class="w-full text-xs text-left">
+              <thead class="bg-slate-950 text-slate-400 font-semibold border-b border-slate-800">
+                <tr>
+                  <th class="py-2 px-3">순위</th>
+                  <th class="py-2 px-3">상차지 주소 / 주기장</th>
+                  <th class="py-2 px-3 text-right">상차 횟수</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-slate-800/60 font-mono">
+                
+    <tr class="hover:bg-slate-800/40 transition">
+      <td class="py-2 px-3 text-slate-400">#1</td>
+      <td class="py-2 px-3 font-bold text-slate-200 font-sans">경기 안성시 미양면 양변길 170</td>
+      <td class="py-2 px-3 text-right text-blue-400 font-bold">67건</td>
+    </tr>
+    
+    <tr class="hover:bg-slate-800/40 transition">
+      <td class="py-2 px-3 text-slate-400">#2</td>
+      <td class="py-2 px-3 font-bold text-slate-200 font-sans">충남 아산시 인주면 서해로 532번길 111-3</td>
+      <td class="py-2 px-3 text-right text-blue-400 font-bold">44건</td>
+    </tr>
+    
+    <tr class="hover:bg-slate-800/40 transition">
+      <td class="py-2 px-3 text-slate-400">#3</td>
+      <td class="py-2 px-3 font-bold text-slate-200 font-sans">경기도 남양주시 진접읍 주곡로 211</td>
+      <td class="py-2 px-3 text-right text-blue-400 font-bold">32건</td>
+    </tr>
+    
+    <tr class="hover:bg-slate-800/40 transition">
+      <td class="py-2 px-3 text-slate-400">#4</td>
+      <td class="py-2 px-3 font-bold text-slate-200 font-sans">경기 용인 처인구 포곡읍 선장1로 73-17</td>
+      <td class="py-2 px-3 text-right text-blue-400 font-bold">23건</td>
+    </tr>
+    
+    <tr class="hover:bg-slate-800/40 transition">
+      <td class="py-2 px-3 text-slate-400">#5</td>
+      <td class="py-2 px-3 font-bold text-slate-200 font-sans">경기 용인 양지면 주복리481</td>
+      <td class="py-2 px-3 text-right text-blue-400 font-bold">20건</td>
+    </tr>
+    
+    <tr class="hover:bg-slate-800/40 transition">
+      <td class="py-2 px-3 text-slate-400">#6</td>
+      <td class="py-2 px-3 font-bold text-slate-200 font-sans">경기도 용인시 처인구 중부대로 2453-38</td>
+      <td class="py-2 px-3 text-right text-blue-400 font-bold">18건</td>
+    </tr>
+    
+    <tr class="hover:bg-slate-800/40 transition">
+      <td class="py-2 px-3 text-slate-400">#7</td>
+      <td class="py-2 px-3 font-bold text-slate-200 font-sans">경기도 안성시 보개면 오두리 188-18</td>
+      <td class="py-2 px-3 text-right text-blue-400 font-bold">15건</td>
+    </tr>
+    
+    <tr class="hover:bg-slate-800/40 transition">
+      <td class="py-2 px-3 text-slate-400">#8</td>
+      <td class="py-2 px-3 font-bold text-slate-200 font-sans">경기도 포천시 내촌면 금강로2076번길 9-104</td>
+      <td class="py-2 px-3 text-right text-blue-400 font-bold">14건</td>
+    </tr>
+    
+    <tr class="hover:bg-slate-800/40 transition">
+      <td class="py-2 px-3 text-slate-400">#9</td>
+      <td class="py-2 px-3 font-bold text-slate-200 font-sans">경기 용인시 처인구 양지면 주북로 5번길 101</td>
+      <td class="py-2 px-3 text-right text-blue-400 font-bold">9건</td>
+    </tr>
+    
+    <tr class="hover:bg-slate-800/40 transition">
+      <td class="py-2 px-3 text-slate-400">#10</td>
+      <td class="py-2 px-3 font-bold text-slate-200 font-sans">경기도 이천시 부발읍 신원리 638-1</td>
+      <td class="py-2 px-3 text-right text-blue-400 font-bold">5건</td>
+    </tr>
+    
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- 하차지 -->
+        <div class="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-sm">
+          <h3 class="text-sm font-bold text-white mb-3 flex items-center gap-2">
+            <span>📍 주요 하차지 (반납/입고 거점) Top 10</span>
+          </h3>
+          <div class="overflow-x-auto table-nowrap custom-scrollbar">
+            <table class="w-full text-xs text-left">
+              <thead class="bg-slate-950 text-slate-400 font-semibold border-b border-slate-800">
+                <tr>
+                  <th class="py-2 px-3">순위</th>
+                  <th class="py-2 px-3">하차지 주소 / 주기장</th>
+                  <th class="py-2 px-3 text-right">하차 횟수</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-slate-800/60 font-mono">
+                
+    <tr class="hover:bg-slate-800/40 transition">
+      <td class="py-2 px-3 text-slate-400">#1</td>
+      <td class="py-2 px-3 font-bold text-slate-200 font-sans">기연</td>
+      <td class="py-2 px-3 text-right text-emerald-400 font-bold">223건</td>
+    </tr>
+    
+    <tr class="hover:bg-slate-800/40 transition">
+      <td class="py-2 px-3 text-slate-400">#2</td>
+      <td class="py-2 px-3 font-bold text-slate-200 font-sans">경기 안성시 미양면 양변길 170</td>
+      <td class="py-2 px-3 text-right text-emerald-400 font-bold">84건</td>
+    </tr>
+    
+    <tr class="hover:bg-slate-800/40 transition">
+      <td class="py-2 px-3 text-slate-400">#3</td>
+      <td class="py-2 px-3 font-bold text-slate-200 font-sans">경기도 남양주시 진접읍 주곡로 211</td>
+      <td class="py-2 px-3 text-right text-emerald-400 font-bold">49건</td>
+    </tr>
+    
+    <tr class="hover:bg-slate-800/40 transition">
+      <td class="py-2 px-3 text-slate-400">#4</td>
+      <td class="py-2 px-3 font-bold text-slate-200 font-sans">경기도 포천시 내촌면 금강로2076번길 9-104</td>
+      <td class="py-2 px-3 text-right text-emerald-400 font-bold">31건</td>
+    </tr>
+    
+    <tr class="hover:bg-slate-800/40 transition">
+      <td class="py-2 px-3 text-slate-400">#5</td>
+      <td class="py-2 px-3 font-bold text-slate-200 font-sans">충남 아산시 인주면 서해로 532번길 111-3</td>
+      <td class="py-2 px-3 text-right text-emerald-400 font-bold">29건</td>
+    </tr>
+    
+    <tr class="hover:bg-slate-800/40 transition">
+      <td class="py-2 px-3 text-slate-400">#6</td>
+      <td class="py-2 px-3 font-bold text-slate-200 font-sans">경기도 안성시 보개면 오두리 188-18</td>
+      <td class="py-2 px-3 text-right text-emerald-400 font-bold">24건</td>
+    </tr>
+    
+    <tr class="hover:bg-slate-800/40 transition">
+      <td class="py-2 px-3 text-slate-400">#7</td>
+      <td class="py-2 px-3 font-bold text-slate-200 font-sans">경기도 용인시 처인구 중부대로 2453-38</td>
+      <td class="py-2 px-3 text-right text-emerald-400 font-bold">10건</td>
+    </tr>
+    
+    <tr class="hover:bg-slate-800/40 transition">
+      <td class="py-2 px-3 text-slate-400">#8</td>
+      <td class="py-2 px-3 font-bold text-slate-200 font-sans">경기 용인 처인구 포곡읍 선장1로 73-17</td>
+      <td class="py-2 px-3 text-right text-emerald-400 font-bold">7건</td>
+    </tr>
+    
+    <tr class="hover:bg-slate-800/40 transition">
+      <td class="py-2 px-3 text-slate-400">#9</td>
+      <td class="py-2 px-3 font-bold text-slate-200 font-sans">경기 포천시 내촌면 금강로2076번길 9-104</td>
+      <td class="py-2 px-3 text-right text-emerald-400 font-bold">6건</td>
+    </tr>
+    
+    <tr class="hover:bg-slate-800/40 transition">
+      <td class="py-2 px-3 text-slate-400">#10</td>
+      <td class="py-2 px-3 font-bold text-slate-200 font-sans">경기도 용인시 처인구 양지면 중부대로 2254-9</td>
+      <td class="py-2 px-3 text-right text-emerald-400 font-bold">5건</td>
+    </tr>
+    
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- ───────────────────────────────────────────────────────────── -->
+    <!-- 탭 5: 무압축 전수 검색기 (Live Search) -->
+    <!-- ───────────────────────────────────────────────────────────── -->
+    <div id="section-search" class="hidden space-y-6">
+
+      <div class="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-sm">
+        <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-4">
+          <div>
+            <h3 class="text-sm font-bold text-white flex items-center gap-2">
+              <span class="text-emerald-400">🔍</span>
+              <span>원천 데이터 전수 인스펙터 & 실시간 필터</span>
+            </h3>
+            <p class="text-xs text-slate-400 mt-0.5">
+              3개 밴드 파일에서 추출된 모든 옵션, 고장증상, 고객사, 현장, 협력사를 키워드로 실시간 검색
+            </p>
+          </div>
+          <div class="flex items-center gap-2 text-xs font-mono">
+            <span class="text-slate-400">검색 결과:</span>
+            <span id="searchResultCount" class="text-emerald-400 font-bold">0건</span>
+          </div>
+        </div>
+
+        <!-- 검색창 및 카테고리 필터 -->
+        <div class="grid grid-cols-1 sm:grid-cols-4 gap-3 mb-4">
+          <div class="sm:col-span-3">
+            <input
+              id="liveSearchInput"
+              type="text"
+              oninput="filterSearchItems()"
+              placeholder="검색어 입력 (예: 협착난간대, 방지봉, 세보, 롯데, SK하이닉스, 충전, 주행 등)..."
+              class="w-full bg-slate-950 border border-slate-700 text-white rounded-lg px-3 py-2 text-xs focus:outline-none focus:border-blue-500 font-mono"
+            />
+          </div>
+          <div>
+            <select
+              id="liveSearchCategory"
+              onchange="filterSearchItems()"
+              class="w-full bg-slate-950 border border-slate-700 text-white rounded-lg px-3 py-2 text-xs focus:outline-none focus:border-blue-500"
+            >
+              <option value="ALL">전체 카테고리</option>
+              <option value="출고">출고요청 (옵션/보양/서류)</option>
+              <option value="AS">AS·정비 (증상/위치/장비)</option>
+              <option value="임차">임차자산 (협력사/물류)</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- 검색 결과 고밀도 테이블 -->
+        <div class="overflow-x-auto table-nowrap custom-scrollbar max-h-[600px] border border-slate-800 rounded-lg">
+          <table class="w-full text-xs text-left">
+            <thead class="bg-slate-950 text-slate-400 font-semibold sticky top-0 border-b border-slate-800">
+              <tr>
+                <th class="py-2.5 px-3">카테고리</th>
+                <th class="py-2.5 px-3">추출 항목 명칭 (원문)</th>
+                <th class="py-2.5 px-3 text-right">발생 빈도</th>
+                <th class="py-2.5 px-3">항목 속성 / 메타</th>
+              </tr>
+            </thead>
+            <tbody id="searchResultsBody" class="divide-y divide-slate-800/60 font-mono">
+              <!-- JS로 렌더링 -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+    </div>
+
+  </main>
+
+  <!-- 하단 푸터 -->
+  <footer class="bg-slate-900 border-t border-slate-800 py-4 text-center text-xs text-slate-500 font-mono">
+    <span>Kiyuen Lift ERP Enterprise System · 전사 시스템 개발 표준 헌장 준수 · 7,121건 무압축 분석 완결</span>
+  </footer>
+
+  <!-- 인라인 데이터 및 스크립트 -->
+  <script>
+    // 탭 전환 로직
+    function switchTab(tabId) {
+      const tabs = ['overview', 'dispatch', 'as', 'lease', 'search'];
+      tabs.forEach(t => {
+        const btn = document.getElementById('tab-' + t);
+        const sec = document.getElementById('section-' + t);
+        if (t === tabId) {
+          btn.classList.add('active');
+          sec.classList.remove('hidden');
+        } else {
+          btn.classList.remove('active');
+          sec.classList.add('hidden');
+        }
+      });
+      if (tabId === 'overview') {
+        renderCharts();
+      }
+    }
+
+    // 검색 데이터
+    const searchData = [{"cat": "출고 (유상옵션)", "name": "보양비(임대료 포함)", "count": 54, "meta": "유상 옵션 항목"}, {"cat": "출고 (유상옵션)", "name": "없음", "count": 39, "meta": "유상 옵션 항목"}, {"cat": "출고 (유상옵션)", "name": "협착, 보양:임대료에 포함(모서리8면,감지봉,사다리 타이거 보양)", "count": 31, "meta": "유상 옵션 항목"}, {"cat": "출고 (유상옵션)", "name": "협착난간대 * 1대", "count": 16, "meta": "유상 옵션 항목"}, {"cat": "출고 (유상옵션)", "name": "보양비(임대료에 포함)", "count": 15, "meta": "유상 옵션 항목"}, {"cat": "출고 (유상옵션)", "name": "협착난간대 * 2대", "count": 15, "meta": "유상 옵션 항목"}, {"cat": "출고 (유상옵션)", "name": "협착난간대 * 2", "count": 14, "meta": "유상 옵션 항목"}, {"cat": "출고 (유상옵션)", "name": "협착난간대 2ea", "count": 13, "meta": "유상 옵션 항목"}, {"cat": "출고 (유상옵션)", "name": "협착난간대 * 1", "count": 11, "meta": "유상 옵션 항목"}, {"cat": "출고 (유상옵션)", "name": "협착, 보양 (모서리8면,감지봉,사다리 타이거 보양)", "count": 11, "meta": "유상 옵션 항목"}, {"cat": "출고 (유상옵션)", "name": "협착난간대 1ea", "count": 10, "meta": "유상 옵션 항목"}, {"cat": "출고 (유상옵션)", "name": "협착 난간대 2 ea", "count": 9, "meta": "유상 옵션 항목"}, {"cat": "출고 (유상옵션)", "name": "협착 난간대 2 EA", "count": 9, "meta": "유상 옵션 항목"}, {"cat": "출고 (유상옵션)", "name": "협착 난간대 2 대", "count": 8, "meta": "유상 옵션 항목"}, {"cat": "출고 (유상옵션)", "name": "협착난간대 * 1ea", "count": 7, "meta": "유상 옵션 항목"}, {"cat": "출고 (유상옵션)", "name": "협착난간대 * 3대", "count": 7, "meta": "유상 옵션 항목"}, {"cat": "출고 (유상옵션)", "name": "협착, 보양(모서리8면,감지봉,사다리 타이거 보양)", "count": 7, "meta": "유상 옵션 항목"}, {"cat": "출고 (유상옵션)", "name": "협착*4,확장대 고정 와이어*4(1개설치/U볼트 4개 체결/앞2뒤2)", "count": 6, "meta": "유상 옵션 항목"}, {"cat": "출고 (유상옵션)", "name": "협착난간대 * 4ea, 튜브소화기 *4ea(소화기 T50)", "count": 6, "meta": "유상 옵션 항목"}, {"cat": "출고 (유상옵션)", "name": "협착난간대 *2ea", "count": 6, "meta": "유상 옵션 항목"}, {"cat": "출고 (유상옵션)", "name": "협착난간대 * 1 ea", "count": 6, "meta": "유상 옵션 항목"}, {"cat": "출고 (유상옵션)", "name": "협착*4, 보양:임대료에 포함(모서리8면,감지봉,사다리 타이거 보양)", "count": 5, "meta": "유상 옵션 항목"}, {"cat": "출고 (유상옵션)", "name": "협착난간대 2ea / 보양제 2ea(라인테이프)", "count": 5, "meta": "유상 옵션 항목"}, {"cat": "출고 (유상옵션)", "name": "불티방지막 * 2, 모서리보양 * 2", "count": 5, "meta": "유상 옵션 항목"}, {"cat": "출고 (유상옵션)", "name": "협착난간대 * 3", "count": 5, "meta": "유상 옵션 항목"}, {"cat": "출고 (유상옵션)", "name": "협착*3,확장대 고정 와이어*3(1개설치)", "count": 5, "meta": "유상 옵션 항목"}, {"cat": "출고 (유상옵션)", "name": "협착 난간대 4 EA", "count": 5, "meta": "유상 옵션 항목"}, {"cat": "출고 (유상옵션)", "name": "협착4ea ,확장대 고정 와이어*4(1개설치)", "count": 5, "meta": "유상 옵션 항목"}, {"cat": "출고 (유상옵션)", "name": "협착 난간대 * 2대(임대료에 협착비 포함)", "count": 5, "meta": "유상 옵션 항목"}, {"cat": "출고 (유상옵션)", "name": "협착*6,확장대 고정 와이어*6(1개설치/U볼트 4개 체결/앞2뒤2)", "count": 4, "meta": "유상 옵션 항목"}, {"cat": "출고 (무상옵션)", "name": "감지봉 4 , 3면 함석", "count": 106, "meta": "무상 옵션 및 부착"}, {"cat": "출고 (무상옵션)", "name": "감지봉 4 , 양옆면 함석, 앞뒤면 아크릴, 확장부 철망", "count": 32, "meta": "무상 옵션 및 부착"}, {"cat": "출고 (무상옵션)", "name": "감지봉 4, 3면 함석", "count": 30, "meta": "무상 옵션 및 부착"}, {"cat": "출고 (무상옵션)", "name": "감지봉 4 , 3면 함석 , 풋스위치 고정 , 소화기함", "count": 22, "meta": "무상 옵션 및 부착"}, {"cat": "출고 (무상옵션)", "name": "감지봉 4개, 3면 함석", "count": 21, "meta": "무상 옵션 및 부착"}, {"cat": "출고 (무상옵션)", "name": "3면함석 , 감지봉 4, 소화기함", "count": 20, "meta": "무상 옵션 및 부착"}, {"cat": "출고 (무상옵션)", "name": "감지봉 4 , 4면 철망", "count": 16, "meta": "무상 옵션 및 부착"}, {"cat": "출고 (무상옵션)", "name": "감지봉 4 , 3면 함석 , 소화기함", "count": 11, "meta": "무상 옵션 및 부착"}, {"cat": "출고 (무상옵션)", "name": "풋스위치고정, 풋스위치덮개, 과상승방지봉4, 아크릴4면,", "count": 10, "meta": "무상 옵션 및 부착"}, {"cat": "출고 (무상옵션)", "name": "감지봉 4EA , 3면 함석, 소화기함", "count": 9, "meta": "무상 옵션 및 부착"}, {"cat": "출고 (무상옵션)", "name": "감지봉 4EA , 3면 함석, 소화기함,센터접지", "count": 8, "meta": "무상 옵션 및 부착"}, {"cat": "출고 (무상옵션)", "name": "풋스위치고정, 풋스위치덮개, 과상승방지봉4, 아크릴4면,확장부 철망", "count": 7, "meta": "무상 옵션 및 부착"}, {"cat": "출고 (무상옵션)", "name": "감지봉 4 , 3면 함석, 외관상태 깔끔", "count": 7, "meta": "무상 옵션 및 부착"}, {"cat": "출고 (무상옵션)", "name": "감지봉 4 , 3면 함석 , 타이어 A급 , 정비철저 요망.", "count": 7, "meta": "무상 옵션 및 부착"}, {"cat": "출고 (무상옵션)", "name": "감지봉 4EA , 3면 함석, 소화기함, 센터접지", "count": 6, "meta": "무상 옵션 및 부착"}, {"cat": "출고 (무상옵션)", "name": "감지봉 4, 3면 함석, 소화기함", "count": 5, "meta": "무상 옵션 및 부착"}, {"cat": "출고 (무상옵션)", "name": "감지봉 4 , 3면 함석, 소화기함", "count": 5, "meta": "무상 옵션 및 부착"}, {"cat": "출고 (무상옵션)", "name": "4면보양 , 4면철망 , 감지봉 4조보양", "count": 5, "meta": "무상 옵션 및 부착"}, {"cat": "출고 (무상옵션)", "name": "감지봉 4 , 3면 함석 , 풋스위치 고정 , 소화기함, 감지봉보양", "count": 4, "meta": "무상 옵션 및 부착"}, {"cat": "출고 (무상옵션)", "name": "감지봉 4 , 3면 함석 , 풋스위치 고정 , 소화기함, 감지봉 보양", "count": 4, "meta": "무상 옵션 및 부착"}, {"cat": "출고 (무상옵션)", "name": "감지봉 4개, 3면 함석,소화기함", "count": 4, "meta": "무상 옵션 및 부착"}, {"cat": "출고 (무상옵션)", "name": "감지봉 4 , 함석", "count": 4, "meta": "무상 옵션 및 부착"}, {"cat": "출고 (무상옵션)", "name": "3면철망, 감지봉 4, 소화기함", "count": 3, "meta": "무상 옵션 및 부착"}, {"cat": "출고 (무상옵션)", "name": "3면 함석 , 감지봉 4EA", "count": 3, "meta": "무상 옵션 및 부착"}, {"cat": "출고 (무상옵션)", "name": "감지봉 4EA , 3면 함석,확장부 철망, 소화기함", "count": 3, "meta": "무상 옵션 및 부착"}, {"cat": "출고 (무상옵션)", "name": "3면 함석, 감지봉4, 소화기함,", "count": 3, "meta": "무상 옵션 및 부착"}, {"cat": "출고 (무상옵션)", "name": "소화기 2개(잔여 구매분은 추후 청구 예정, 나머지는 보유중인 소화기로 대체)", "count": 3, "meta": "무상 옵션 및 부착"}, {"cat": "출고 (무상옵션)", "name": "감지봉 4 , 3면 함석 , 확장부 70% 표시제한 스티커.", "count": 3, "meta": "무상 옵션 및 부착"}, {"cat": "출고 (무상옵션)", "name": "감지봉 4 , 3면 함석 , 풋스위치 고정 , 소화기함, 감지봉 보양(세보옵션 동일)", "count": 2, "meta": "무상 옵션 및 부착"}, {"cat": "출고 (무상옵션)", "name": "3면 함석 , 감지봉 4EA, 풋스위치 고정", "count": 2, "meta": "무상 옵션 및 부착"}, {"cat": "출고 (보양작업)", "name": "미끄럼방지 패드부착,상,하부 모서리 8개소 보양,전면부 2개소 보양", "count": 237, "meta": "현장 보양 요구사항"}, {"cat": "출고 (보양작업)", "name": "탑승구 사다리 보양", "count": 218, "meta": "현장 보양 요구사항"}, {"cat": "출고 (보양작업)", "name": "(모서리보양 3T 이상)", "count": 178, "meta": "현장 보양 요구사항"}, {"cat": "출고 (보양작업)", "name": ": 감지봉 4개(보양)", "count": 80, "meta": "현장 보양 요구사항"}, {"cat": "출고 (보양작업)", "name": ": 감지봉 4개(보양) / 모서리보양 라인테이프 X", "count": 63, "meta": "현장 보양 요구사항"}, {"cat": "출고 (보양작업)", "name": ": 보양:임대료에 포함(모서리8면,감지봉,사다리 타이거 보양)", "count": 58, "meta": "현장 보양 요구사항"}, {"cat": "출고 (보양작업)", "name": "탑승구 사다리 보양 , 감지봉 보양", "count": 57, "meta": "현장 보양 요구사항"}, {"cat": "출고 (보양작업)", "name": "미끄럼방지 패드부착,상,하부 모서리 16개소 보양,전면부 2개소 보양", "count": 46, "meta": "현장 보양 요구사항"}, {"cat": "출고 (보양작업)", "name": "(모서리보양 5T 이상)", "count": 46, "meta": "현장 보양 요구사항"}, {"cat": "출고 (보양작업)", "name": "임대료에 포함(모서리8면,감지봉,사다리 타이거 보양)", "count": 43, "meta": "현장 보양 요구사항"}, {"cat": "출고 (보양작업)", "name": "임대료에 포함(모서리8면,감지봉,사다리 타이거 보양), 감지봉 4개(보양) / 모서리보양 라인테이프 X", "count": 30, "meta": "현장 보양 요구사항"}, {"cat": "출고 (보양작업)", "name": "상,하부 모서리 8개소 보양", "count": 24, "meta": "현장 보양 요구사항"}, {"cat": "출고 (보양작업)", "name": "탑승구 사다리 보양(타이거 무늬 보양제)", "count": 19, "meta": "현장 보양 요구사항"}, {"cat": "출고 (보양작업)", "name": "감지봉 리미트스위치 보양(노란색 테잎처리)", "count": 19, "meta": "현장 보양 요구사항"}, {"cat": "출고 (보양작업)", "name": ": 보양:임대료에 포함(모서리8면,감지봉,사다리 타이거 보양),", "count": 13, "meta": "현장 보양 요구사항"}, {"cat": "출고 (보양작업)", "name": ": 보양 임대료에 포함(모서리8면,감지봉,사다리 타이거 보양)", "count": 10, "meta": "현장 보양 요구사항"}, {"cat": "출고 (보양작업)", "name": "감지봉 리미트스위치 보양(노란색 테잎처리),감지봉대 전체 보양", "count": 5, "meta": "현장 보양 요구사항"}, {"cat": "출고 (보양작업)", "name": ": 감지봉 4개(보양), 확장대 50%구간 와이어 설치", "count": 4, "meta": "현장 보양 요구사항"}, {"cat": "출고 (보양작업)", "name": "사다리 보양 [ 타이거 ]", "count": 4, "meta": "현장 보양 요구사항"}, {"cat": "출고 (보양작업)", "name": "감지봉 보양", "count": 4, "meta": "현장 보양 요구사항"}, {"cat": "출고 (보양작업)", "name": "상/하부 모서리8,앞면2 쿠션보양(두께4cm이상유지)", "count": 4, "meta": "현장 보양 요구사항"}, {"cat": "출고 (보양작업)", "name": ": 오버로드셋팅, 조이스틱 상승,하강 스티커 부착, 출입구 손잡이 위쪽 장착(큰장비), 감지봉 보양", "count": 3, "meta": "현장 보양 요구사항"}, {"cat": "출고 (보양작업)", "name": "4. 모델명: 바퀴 보양 캡 GS1432 사이즈 4개", "count": 3, "meta": "현장 보양 요구사항"}, {"cat": "출고 (보양작업)", "name": "4. 모델명: 바퀴 보양 캡 GS3246 사이즈 24개", "count": 2, "meta": "현장 보양 요구사항"}, {"cat": "출고 (보양작업)", "name": "바퀴 랩 보양", "count": 2, "meta": "현장 보양 요구사항"}, {"cat": "출고 (보양작업)", "name": "4. 모델명: 바퀴 보양 캡 GS1930 사이즈 16개", "count": 2, "meta": "현장 보양 요구사항"}, {"cat": "출고 (보양작업)", "name": "4. 모델명: 바퀴 보양 캡 GS1930 사이즈 20개", "count": 2, "meta": "현장 보양 요구사항"}, {"cat": "출고 (보양작업)", "name": "4. 모델명: 바퀴 보양 캡 GS1930 사이즈 24개", "count": 2, "meta": "현장 보양 요구사항"}, {"cat": "출고 (보양작업)", "name": "4. 모델명: 바퀴 보양 캡 GS1930 사이즈 12개", "count": 2, "meta": "현장 보양 요구사항"}, {"cat": "출고 (보양작업)", "name": "4. 모델명: 바퀴 보양 캡 GS1930 사이즈 32개", "count": 2, "meta": "현장 보양 요구사항"}, {"cat": "출고 (서류요구)", "name": "반입 전 체크 리스트,인증서,보험 증권,제원표", "count": 101, "meta": "출고 서류 및 직인"}, {"cat": "출고 (서류요구)", "name": "안전점검결과서 점검자 직인날인", "count": 74, "meta": "출고 서류 및 직인"}, {"cat": "출고 (서류요구)", "name": "인증서,보험 증권,제원표", "count": 15, "meta": "출고 서류 및 직인"}, {"cat": "출고 (서류요구)", "name": "인증서,보험 증권,제원표, 반입전 CHECK LIST, 고소작업대 안전점검 결과서", "count": 14, "meta": "출고 서류 및 직인"}, {"cat": "출고 (서류요구)", "name": "보험증권,제원표,사업자등록증,인증서,반입전체크리스트,장비작동법,비상하강작동법,안전수칙", "count": 11, "meta": "출고 서류 및 직인"}, {"cat": "출고 (서류요구)", "name": "인증서,보험 증권,제원표,반입전체크리스트,안전점검결과서", "count": 5, "meta": "출고 서류 및 직인"}, {"cat": "출고 (서류요구)", "name": "인증서, 보험증권, 제원표", "count": 2, "meta": "출고 서류 및 직인"}, {"cat": "출고 (서류요구)", "name": "반입 전 체크 리스트,인증서,보험 증권,제원표,예비키 10개요청", "count": 1, "meta": "출고 서류 및 직인"}, {"cat": "출고 (세부요구)", "name": "조이스틱 커버 연장", "count": 1, "meta": "고객사 현장 개별 불릿"}, {"cat": "출고 (세부요구)", "name": "타이어 A급", "count": 1, "meta": "고객사 현장 개별 불릿"}, {"cat": "출고 (세부요구)", "name": "배터리 단자 커버설치", "count": 1, "meta": "고객사 현장 개별 불릿"}, {"cat": "출고 (세부요구)", "name": "주행속도 고속 60,저속 45 셋팅", "count": 1, "meta": "고객사 현장 개별 불릿"}, {"cat": "출고 (세부요구)", "name": "소화기함 설치,작동설명 및 기타 스티커물 부착,탑승구 손잡이 설치", "count": 1, "meta": "고객사 현장 개별 불릿"}, {"cat": "출고 (세부요구)", "name": "배터리 단자 풀림 확인 마킹", "count": 1, "meta": "고객사 현장 개별 불릿"}, {"cat": "출고 (세부요구)", "name": "오버로드 셋팅", "count": 1, "meta": "고객사 현장 개별 불릿"}, {"cat": "출고 (세부요구)", "name": "점멸등, 비상하강장치, 비상정지장치 청결", "count": 1, "meta": "고객사 현장 개별 불릿"}, {"cat": "출고 (세부요구)", "name": "미끄럼방지 패드부착,상,하부 모서리 8개소 보양,전면부 2개소 보양", "count": 1, "meta": "고객사 현장 개별 불릿"}, {"cat": "출고 (세부요구)", "name": "* 부착물 : 제원표, 비상하강사용법, 보험증권,인증서", "count": 1, "meta": "고객사 현장 개별 불릿"}, {"cat": "출고 (세부요구)", "name": "무상옵션 : 감지봉 4 , 3면 함석", "count": 1, "meta": "고객사 현장 개별 불릿"}, {"cat": "출고 (세부요구)", "name": "기타준비사항 : 반입 전 체크 리스트,인증서,보험 증권,제원표", "count": 1, "meta": "고객사 현장 개별 불릿"}, {"cat": "출고 (세부요구)", "name": "비상정지스위치 부착, 비상하강꼬리표 부착,", "count": 1, "meta": "고객사 현장 개별 불릿"}, {"cat": "출고 (세부요구)", "name": "시저구간 접촉금지 협착위험 스티커 부착", "count": 1, "meta": "고객사 현장 개별 불릿"}, {"cat": "출고 (세부요구)", "name": ": 감지봉 4개(보양)", "count": 1, "meta": "고객사 현장 개별 불릿"}, {"cat": "출고 (세부요구)", "name": "작업높이 80프로 셋팅(발판높이기준),", "count": 1, "meta": "고객사 현장 개별 불릿"}, {"cat": "출고 (세부요구)", "name": "*** 출고서류 : 안전점검결과서 점검자 직인날인***", "count": 1, "meta": "고객사 현장 개별 불릿"}, {"cat": "출고 (세부요구)", "name": ": 감지봉 4개(보양) / 모서리보양 라인테이프 X", "count": 1, "meta": "고객사 현장 개별 불릿"}, {"cat": "출고 (세부요구)", "name": ": 보양:임대료에 포함(모서리8면,감지봉,사다리 타이거 보양)", "count": 1, "meta": "고객사 현장 개별 불릿"}, {"cat": "출고 (세부요구)", "name": "옵션 : 감지봉 4 , 양옆면 함석, 앞뒤면 아크릴, 확장부 철망", "count": 1, "meta": "고객사 현장 개별 불릿"}, {"cat": "출고 (세부요구)", "name": "양옆면 함석, 앞뒤면 아크릴, 확장대 철망, 감지봉 4개,원판설치", "count": 1, "meta": "고객사 현장 개별 불릿"}, {"cat": "출고 (세부요구)", "name": "탑승구 사다리 보양 , 감지봉 보양", "count": 1, "meta": "고객사 현장 개별 불릿"}, {"cat": "출고 (세부요구)", "name": "7. 한국산업안전 택배 발송", "count": 1, "meta": "고객사 현장 개별 불릿"}, {"cat": "출고 (세부요구)", "name": "작업높이 80프로 셋팅(발판높이기준), 0~80%,80~100% 구간 라인테이프(양옆),", "count": 1, "meta": "고객사 현장 개별 불릿"}, {"cat": "출고 (세부요구)", "name": "점멸등, 비상하강장치, 비상정지장치 청결, 소화기함", "count": 1, "meta": "고객사 현장 개별 불릿"}, {"cat": "출고 (세부요구)", "name": "작업높이 80프로 셋팅(발판높이기준)", "count": 1, "meta": "고객사 현장 개별 불릿"}, {"cat": "출고 (세부요구)", "name": "미끄럼방지 패드부착,상,하부 모서리 16개소 보양,전면부 2개소 보양", "count": 1, "meta": "고객사 현장 개별 불릿"}, {"cat": "출고 (세부요구)", "name": "하부상승제한, 확장대 50%지점 표식만 부착", "count": 1, "meta": "고객사 현장 개별 불릿"}, {"cat": "출고 (세부요구)", "name": "보양:임대료에 포함(모서리8면,감지봉,사다리 타이거 보양)", "count": 1, "meta": "고객사 현장 개별 불릿"}, {"cat": "출고 (세부요구)", "name": "옵션 : 옆면(2) 함석 , 앞면 뒤면(아크릴), 확장대 철망, 감지봉 4개,원판설치", "count": 1, "meta": "고객사 현장 개별 불릿"}, {"cat": "출고 (세부요구)", "name": "부착물 : 반입전체크리스트,인증서,보험,제원표", "count": 1, "meta": "고객사 현장 개별 불릿"}, {"cat": "출고 (세부요구)", "name": "옵션 : 감지봉 4 , 3면 함석", "count": 1, "meta": "고객사 현장 개별 불릿"}, {"cat": "출고 (세부요구)", "name": "제원표 , 안전점검결과서 ,체크리스트 ,인증서 , 보험증권 , 안전가이드", "count": 1, "meta": "고객사 현장 개별 불릿"}, {"cat": "출고 (세부요구)", "name": "확장부 손잡이 장착", "count": 1, "meta": "고객사 현장 개별 불릿"}, {"cat": "출고 (세부요구)", "name": "부착물 : 인증서,제원표,보험증권,반입전 체크리스트", "count": 1, "meta": "고객사 현장 개별 불릿"}, {"cat": "출고 (세부요구)", "name": "하부상승제한, 확장대 50% 고정(라인표식부착),", "count": 1, "meta": "고객사 현장 개별 불릿"}, {"cat": "출고 (세부요구)", "name": "무상옵션 : 감지봉 4 , 양옆면 함석, 앞뒤면 아크릴, 확장부 철망", "count": 1, "meta": "고객사 현장 개별 불릿"}, {"cat": "출고 (세부요구)", "name": "유상옵션 : 협착, 보양:임대료에 포함(모서리8면,감지봉,사다리 타이거 보양)", "count": 1, "meta": "고객사 현장 개별 불릿"}, {"cat": "출고 (세부요구)", "name": "* 부착물 : 제원표 , 보험증권 ,인증서, 사업자등록증", "count": 1, "meta": "고객사 현장 개별 불릿"}, {"cat": "출고 (세부요구)", "name": "보양:임대료에 포함(모서리8면,감지봉,사다리 타이거 보양), 감지봉 4개(보양) / 모서리보양 라인테이프 X", "count": 1, "meta": "고객사 현장 개별 불릿"}, {"cat": "출고 (세부요구)", "name": "무상옵션 : 감지봉 4, 3면 함석", "count": 1, "meta": "고객사 현장 개별 불릿"}, {"cat": "출고 (세부요구)", "name": "하부상승제한, 확장대 50%지점 표식 부착", "count": 1, "meta": "고객사 현장 개별 불릿"}, {"cat": "출고 (세부요구)", "name": "작업높이 80프로 셋팅(발판높이기준), 0~80%,80~100% 초록, 빨강으로 라인구분,", "count": 1, "meta": "고객사 현장 개별 불릿"}, {"cat": "출고 (세부요구)", "name": "비상정지스위치 부착, 비상하강꼬리표 부착,모터사양스티커 부착", "count": 1, "meta": "고객사 현장 개별 불릿"}, {"cat": "출고 (세부요구)", "name": "부착물 : 반입전체크리스트,인증서,제원표,보험증권", "count": 1, "meta": "고객사 현장 개별 불릿"}, {"cat": "출고 (세부요구)", "name": "특이사항 : 확장대 와이어 설치 X", "count": 1, "meta": "고객사 현장 개별 불릿"}, {"cat": "출고 (세부요구)", "name": "부착물 : 인증서,제원표,보험증권", "count": 1, "meta": "고객사 현장 개별 불릿"}, {"cat": "출고 (세부요구)", "name": "3면 함석 , 감지봉 4EA", "count": 1, "meta": "고객사 현장 개별 불릿"}, {"cat": "출고 (세부요구)", "name": "미끄럼방지 패드부착", "count": 1, "meta": "고객사 현장 개별 불릿"}, {"cat": "출고 (세부요구)", "name": "소화기함 설치,작동설명 및 기타 스티커물 부착", "count": 1, "meta": "고객사 현장 개별 불릿"}, {"cat": "출고 (세부요구)", "name": "* 부착물 : 제원표, 비상하강사용법, 보험증권,인증서(코팅후 기사님 전달 붙이지마세요)", "count": 1, "meta": "고객사 현장 개별 불릿"}, {"cat": "출고 (세부요구)", "name": "무상옵션 : 감지봉 4 , 3면 함석 , 풋스위치 고정 , 소화기함", "count": 1, "meta": "고객사 현장 개별 불릿"}, {"cat": "출고 (세부요구)", "name": "오버로드 셋팅(1미터 상승시 에러작동)", "count": 1, "meta": "고객사 현장 개별 불릿"}, {"cat": "출고 (세부요구)", "name": "무상옵션 : 감지봉 4개, 3면 함석", "count": 1, "meta": "고객사 현장 개별 불릿"}, {"cat": "출고 (세부요구)", "name": "점멸등, 비상하강장치, 비상정지장치 청결, 출입문 하단 고무판 처리", "count": 1, "meta": "고객사 현장 개별 불릿"}, {"cat": "출고 (세부요구)", "name": "무상옵션 :3면함석 , 감지봉 4, 소화기함", "count": 1, "meta": "고객사 현장 개별 불릿"}, {"cat": "출고 (세부요구)", "name": "* 부착물 : 제원표 , 보험증권 ,인증서", "count": 1, "meta": "고객사 현장 개별 불릿"}, {"cat": "출고 (세부요구)", "name": "주행속도 고속 60 저속 40", "count": 1, "meta": "고객사 현장 개별 불릿"}, {"cat": "출고 (세부요구)", "name": "손잡이 설치(출입문 2개)", "count": 1, "meta": "고객사 현장 개별 불릿"}, {"cat": "출고 (세부요구)", "name": "감지봉 리미트스위치 보양(노란색 테잎처리)", "count": 1, "meta": "고객사 현장 개별 불릿"}, {"cat": "출고 (세부요구)", "name": "감지봉 경계표시(빨간색 원판기준 아래로 20cm)", "count": 1, "meta": "고객사 현장 개별 불릿"}, {"cat": "출고 (세부요구)", "name": "부착물 : 인증서 보험증권 제원표 반입전체크리스트", "count": 1, "meta": "고객사 현장 개별 불릿"}, {"cat": "출고 (세부요구)", "name": "하부상승제한, 확장대 50% 고정(50%지점 표식부착),", "count": 1, "meta": "고객사 현장 개별 불릿"}, {"cat": "출고 (세부요구)", "name": "부착물 : 반입전 체크리스트,제원표,인증서,보험증권 ,안전점검 결과서", "count": 1, "meta": "고객사 현장 개별 불릿"}, {"cat": "출고 (세부요구)", "name": "배터리 단자 풀림 확인 마킹,배터리 단자 커버설치", "count": 1, "meta": "고객사 현장 개별 불릿"}, {"cat": "출고 (세부요구)", "name": "감지봉 원판기준 아래로 60cm 표시", "count": 1, "meta": "고객사 현장 개별 불릿"}, {"cat": "출고 (세부요구)", "name": "비상정지스위치 부착, 비상하강꼬리표 부착", "count": 1, "meta": "고객사 현장 개별 불릿"}, {"cat": "출고 (세부요구)", "name": "옵션 : 3면 철망 , 감지봉 4EA", "count": 1, "meta": "고객사 현장 개별 불릿"}, {"cat": "출고 (세부요구)", "name": "유상옵션 : 협착난간대 * 1대", "count": 1, "meta": "고객사 현장 개별 불릿"}, {"cat": "출고 (세부요구)", "name": "무상옵션 : 감지봉 4 , 4면 철망", "count": 1, "meta": "고객사 현장 개별 불릿"}, {"cat": "출고 (세부요구)", "name": "옵션 : 감지봉 4 , 4면 철망", "count": 1, "meta": "고객사 현장 개별 불릿"}, {"cat": "출고 (세부요구)", "name": "모터사양스티커 부착 게시글 수정", "count": 1, "meta": "고객사 현장 개별 불릿"}, {"cat": "출고 (세부요구)", "name": "담당자 메일 : skhs2195@daum.net (이경은 안전과장)", "count": 1, "meta": "고객사 현장 개별 불릿"}, {"cat": "출고 (세부요구)", "name": "기타준비사항 : 인증서,보험 증권,제원표", "count": 1, "meta": "고객사 현장 개별 불릿"}, {"cat": "출고 (세부요구)", "name": "하부상승제한, 확장대 50% 고정, 비상정지스위치 부착, 비상하강꼬리표 부착", "count": 1, "meta": "고객사 현장 개별 불릿"}, {"cat": "출고 (세부요구)", "name": "사다리미끄럼방지, 비상하강스위치 조이스틱 반대쪽,오버로드셋팅, 하부상승제한. 비상하강벨브 작동(부드럽게),협착방지대 스프링 1개 제거", "count": 1, "meta": "고객사 현장 개별 불릿"}, {"cat": "출고 (세부요구)", "name": "유상옵션 : 협착난간대 * 2대", "count": 1, "meta": "고객사 현장 개별 불릿"}, {"cat": "출고 (세부요구)", "name": "감지봉 4개 , 3면 함석 , 소화기함", "count": 1, "meta": "고객사 현장 개별 불릿"}, {"cat": "출고 (세부요구)", "name": "유상옵션 : 협착난간대 * 2", "count": 1, "meta": "고객사 현장 개별 불릿"}, {"cat": "출고 (세부요구)", "name": "옵션 : 4면 철망(확장대 철망), 감지봉 4개,원판설치", "count": 1, "meta": "고객사 현장 개별 불릿"}, {"cat": "출고 (고객사)", "name": "세보엠이씨", "count": 140, "meta": "출고 의뢰 거래처"}, {"cat": "출고 (고객사)", "name": "(주)유창이엔씨", "count": 59, "meta": "출고 의뢰 거래처"}, {"cat": "출고 (고객사)", "name": "화성엔지니어링", "count": 55, "meta": "출고 의뢰 거래처"}, {"cat": "출고 (고객사)", "name": "(주) 세보엠이씨", "count": 53, "meta": "출고 의뢰 거래처"}, {"cat": "출고 (고객사)", "name": "(주)세보엠이씨", "count": 47, "meta": "출고 의뢰 거래처"}, {"cat": "출고 (고객사)", "name": "유창이엔씨", "count": 23, "meta": "출고 의뢰 거래처"}, {"cat": "출고 (고객사)", "name": "(주) 우진아이엔에스", "count": 22, "meta": "출고 의뢰 거래처"}, {"cat": "출고 (고객사)", "name": "(주) 삼영기업", "count": 20, "meta": "출고 의뢰 거래처"}, {"cat": "출고 (고객사)", "name": "(주)대한이엔지", "count": 19, "meta": "출고 의뢰 거래처"}, {"cat": "출고 (고객사)", "name": "주식회사 경우이엔씨", "count": 16, "meta": "출고 의뢰 거래처"}, {"cat": "출고 (고객사)", "name": "(주) 우민전기", "count": 14, "meta": "출고 의뢰 거래처"}, {"cat": "출고 (고객사)", "name": "덕신건업", "count": 12, "meta": "출고 의뢰 거래처"}, {"cat": "출고 (고객사)", "name": "(주) 두성", "count": 11, "meta": "출고 의뢰 거래처"}, {"cat": "출고 (고객사)", "name": "(주) 광신전설", "count": 10, "meta": "출고 의뢰 거래처"}, {"cat": "출고 (고객사)", "name": "에이치엘비일렉 주식회사", "count": 10, "meta": "출고 의뢰 거래처"}, {"cat": "출고 (고객사)", "name": "준제 이엔씨(주) 인천지점", "count": 10, "meta": "출고 의뢰 거래처"}, {"cat": "출고 (고객사)", "name": "(주) 구보공영", "count": 10, "meta": "출고 의뢰 거래처"}, {"cat": "출고 (고객사)", "name": "두원이에프씨(주)", "count": 9, "meta": "출고 의뢰 거래처"}, {"cat": "출고 (고객사)", "name": "(주)한국이엔씨", "count": 9, "meta": "출고 의뢰 거래처"}, {"cat": "출고 (고객사)", "name": "(자) 동화", "count": 9, "meta": "출고 의뢰 거래처"}, {"cat": "출고 (현장)", "name": "용인 SK하이닉스 / 팹동", "count": 47, "meta": "출고 투입 현장"}, {"cat": "출고 (현장)", "name": "평택삼성전자 P4", "count": 47, "meta": "출고 투입 현장"}, {"cat": "출고 (현장)", "name": "용인 SK하이닉스 / 비보안동 2공구", "count": 39, "meta": "출고 투입 현장"}, {"cat": "출고 (현장)", "name": "용인 SK하이닉스 / 비보안동 1공구", "count": 30, "meta": "출고 투입 현장"}, {"cat": "출고 (현장)", "name": "군포 지식산업센터 현장", "count": 27, "meta": "출고 투입 현장"}, {"cat": "출고 (현장)", "name": "청주M8개조공사", "count": 26, "meta": "출고 투입 현장"}, {"cat": "출고 (현장)", "name": "송도 Global R&PD Center", "count": 23, "meta": "출고 투입 현장"}, {"cat": "출고 (현장)", "name": "인천 검단신도시 101 역세권 개발 사업", "count": 22, "meta": "출고 투입 현장"}, {"cat": "출고 (현장)", "name": "용산 더 파크 사이드 서울", "count": 20, "meta": "출고 투입 현장"}, {"cat": "출고 (현장)", "name": "부평 데이터센터", "count": 19, "meta": "출고 투입 현장"}, {"cat": "출고 (현장)", "name": "평택 P5 그린동", "count": 19, "meta": "출고 투입 현장"}, {"cat": "출고 (현장)", "name": "강릉 ITS 세계총회 대회의장", "count": 19, "meta": "출고 투입 현장"}, {"cat": "출고 (현장)", "name": "삼선5구역 주택 재개발 정비사업", "count": 18, "meta": "출고 투입 현장"}, {"cat": "출고 (현장)", "name": "은하삼 지구", "count": 17, "meta": "출고 투입 현장"}, {"cat": "출고 (현장)", "name": "판교 NC-SOFT PJT 현장(기계설비)", "count": 15, "meta": "출고 투입 현장"}, {"cat": "출고 (현장)", "name": "마곡D18-B 지식산업센터 신축공사", "count": 15, "meta": "출고 투입 현장"}, {"cat": "출고 (현장)", "name": "용인 SK하이닉스/비보안1공구", "count": 14, "meta": "출고 투입 현장"}, {"cat": "출고 (현장)", "name": "청주 마스크팹", "count": 14, "meta": "출고 투입 현장"}, {"cat": "출고 (현장)", "name": "파주 P10", "count": 14, "meta": "출고 투입 현장"}, {"cat": "출고 (현장)", "name": "힐스테이트 송도센터파크현장", "count": 14, "meta": "출고 투입 현장"}, {"cat": "AS (고장증상)", "name": "방지봉 단선", "count": 279, "meta": "고장 및 이상 증상"}, {"cat": "AS (고장증상)", "name": "작동안됨", "count": 259, "meta": "고장 및 이상 증상"}, {"cat": "AS (고장증상)", "name": "상승안됨", "count": 211, "meta": "고장 및 이상 증상"}, {"cat": "AS (고장증상)", "name": "오일누유", "count": 153, "meta": "고장 및 이상 증상"}, {"cat": "AS (고장증상)", "name": "충전안됨", "count": 116, "meta": "고장 및 이상 증상"}, {"cat": "AS (고장증상)", "name": "감지봉 단선", "count": 81, "meta": "고장 및 이상 증상"}, {"cat": "AS (고장증상)", "name": "누유", "count": 72, "meta": "고장 및 이상 증상"}, {"cat": "AS (고장증상)", "name": "LD", "count": 62, "meta": "고장 및 이상 증상"}, {"cat": "AS (고장증상)", "name": "작동불량", "count": 62, "meta": "고장 및 이상 증상"}, {"cat": "AS (고장증상)", "name": "주행안됨", "count": 60, "meta": "고장 및 이상 증상"}, {"cat": "AS (고장증상)", "name": "상승중 멈춤", "count": 55, "meta": "고장 및 이상 증상"}, {"cat": "AS (고장증상)", "name": "LD에러", "count": 49, "meta": "고장 및 이상 증상"}, {"cat": "AS (고장증상)", "name": "충전선 단선", "count": 48, "meta": "고장 및 이상 증상"}, {"cat": "AS (고장증상)", "name": "조향안됨", "count": 44, "meta": "고장 및 이상 증상"}, {"cat": "AS (고장증상)", "name": "충전선 파손", "count": 41, "meta": "고장 및 이상 증상"}, {"cat": "AS (고장증상)", "name": "충전 안됨", "count": 40, "meta": "고장 및 이상 증상"}, {"cat": "AS (고장증상)", "name": "CL에러", "count": 39, "meta": "고장 및 이상 증상"}, {"cat": "AS (고장증상)", "name": "CL", "count": 36, "meta": "고장 및 이상 증상"}, {"cat": "AS (고장증상)", "name": "상승 안됨", "count": 36, "meta": "고장 및 이상 증상"}, {"cat": "AS (고장증상)", "name": "사용시간 짧음", "count": 34, "meta": "고장 및 이상 증상"}, {"cat": "AS (고장증상)", "name": "작동 안됨", "count": 31, "meta": "고장 및 이상 증상"}, {"cat": "AS (고장증상)", "name": "방지봉 불량", "count": 29, "meta": "고장 및 이상 증상"}, {"cat": "AS (고장증상)", "name": "충전불량", "count": 27, "meta": "고장 및 이상 증상"}, {"cat": "AS (고장증상)", "name": "감지봉 파손", "count": 26, "meta": "고장 및 이상 증상"}, {"cat": "AS (고장증상)", "name": "조향 안됨", "count": 25, "meta": "고장 및 이상 증상"}, {"cat": "AS (고장증상)", "name": "감지봉단선", "count": 24, "meta": "고장 및 이상 증상"}, {"cat": "AS (고장증상)", "name": "협착휨", "count": 23, "meta": "고장 및 이상 증상"}, {"cat": "AS (고장증상)", "name": "점검", "count": 23, "meta": "고장 및 이상 증상"}, {"cat": "AS (고장증상)", "name": "전원 안켜짐", "count": 23, "meta": "고장 및 이상 증상"}, {"cat": "AS (고장증상)", "name": "오일 누유", "count": 23, "meta": "고장 및 이상 증상"}, {"cat": "AS (고장증상)", "name": "점검요청", "count": 22, "meta": "고장 및 이상 증상"}, {"cat": "AS (고장증상)", "name": "81", "count": 21, "meta": "고장 및 이상 증상"}, {"cat": "AS (고장증상)", "name": "주행 안됨", "count": 20, "meta": "고장 및 이상 증상"}, {"cat": "AS (고장증상)", "name": "방지봉 선 빠짐", "count": 19, "meta": "고장 및 이상 증상"}, {"cat": "AS (고장증상)", "name": "협착파이프 휨", "count": 18, "meta": "고장 및 이상 증상"}, {"cat": "AS (고장증상)", "name": "작동 불량", "count": 18, "meta": "고장 및 이상 증상"}, {"cat": "AS (고장증상)", "name": "방지봉단선", "count": 18, "meta": "고장 및 이상 증상"}, {"cat": "AS (고장증상)", "name": "전원 안들어옴", "count": 17, "meta": "고장 및 이상 증상"}, {"cat": "AS (고장증상)", "name": "협착 파이프 휨", "count": 17, "meta": "고장 및 이상 증상"}, {"cat": "AS (고장증상)", "name": "OL에러", "count": 17, "meta": "고장 및 이상 증상"}, {"cat": "AS (고장증상)", "name": "애러뜨고 작동안됨", "count": 17, "meta": "고장 및 이상 증상"}, {"cat": "AS (고장증상)", "name": "LO에러", "count": 16, "meta": "고장 및 이상 증상"}, {"cat": "AS (고장증상)", "name": "F129", "count": 16, "meta": "고장 및 이상 증상"}, {"cat": "AS (고장증상)", "name": "레버 돌아감", "count": 16, "meta": "고장 및 이상 증상"}, {"cat": "AS (고장증상)", "name": "에러뜨고 작동안됨", "count": 15, "meta": "고장 및 이상 증상"}, {"cat": "AS (고장증상)", "name": "C021", "count": 15, "meta": "고장 및 이상 증상"}, {"cat": "AS (고장증상)", "name": "거북이 안꺼짐", "count": 14, "meta": "고장 및 이상 증상"}, {"cat": "AS (고장증상)", "name": "감지봉 불량", "count": 13, "meta": "고장 및 이상 증상"}, {"cat": "AS (고장증상)", "name": "OL", "count": 13, "meta": "고장 및 이상 증상"}, {"cat": "AS (고장증상)", "name": "방지봉 파이프 휨", "count": 12, "meta": "고장 및 이상 증상"}, {"cat": "AS (접수업체)", "name": "세보엠이씨", "count": 877, "meta": "AS 접수 거래처"}, {"cat": "AS (접수업체)", "name": "세보", "count": 627, "meta": "AS 접수 거래처"}, {"cat": "AS (접수업체)", "name": "화성", "count": 461, "meta": "AS 접수 거래처"}, {"cat": "AS (접수업체)", "name": "유창이엔씨", "count": 397, "meta": "AS 접수 거래처"}, {"cat": "AS (접수업체)", "name": "유창 E&C", "count": 218, "meta": "AS 접수 거래처"}, {"cat": "AS (접수업체)", "name": "대한이엔지", "count": 156, "meta": "AS 접수 거래처"}, {"cat": "AS (접수업체)", "name": "우진아이앤에스", "count": 155, "meta": "AS 접수 거래처"}, {"cat": "AS (접수업체)", "name": "구보공영", "count": 136, "meta": "AS 접수 거래처"}, {"cat": "AS (접수업체)", "name": "덕신건업", "count": 124, "meta": "AS 접수 거래처"}, {"cat": "AS (접수업체)", "name": "동화", "count": 120, "meta": "AS 접수 거래처"}, {"cat": "AS (접수업체)", "name": "화인메컨", "count": 97, "meta": "AS 접수 거래처"}, {"cat": "AS (접수업체)", "name": "삼영", "count": 96, "meta": "AS 접수 거래처"}, {"cat": "AS (접수업체)", "name": "가안", "count": 92, "meta": "AS 접수 거래처"}, {"cat": "AS (접수업체)", "name": "유창", "count": 86, "meta": "AS 접수 거래처"}, {"cat": "AS (접수업체)", "name": "준제이엔씨", "count": 81, "meta": "AS 접수 거래처"}, {"cat": "AS (접수업체)", "name": "백산이엔씨", "count": 68, "meta": "AS 접수 거래처"}, {"cat": "AS (접수업체)", "name": "우진", "count": 67, "meta": "AS 접수 거래처"}, {"cat": "AS (접수업체)", "name": "성보엔지니어링", "count": 66, "meta": "AS 접수 거래처"}, {"cat": "AS (접수업체)", "name": "무경", "count": 62, "meta": "AS 접수 거래처"}, {"cat": "AS (접수업체)", "name": "엠케이이엔지", "count": 55, "meta": "AS 접수 거래처"}, {"cat": "AS (접수업체)", "name": "두성", "count": 55, "meta": "AS 접수 거래처"}, {"cat": "AS (접수업체)", "name": "성화설비", "count": 54, "meta": "AS 접수 거래처"}, {"cat": "AS (접수업체)", "name": "건향개발", "count": 52, "meta": "AS 접수 거래처"}, {"cat": "AS (접수업체)", "name": "대한이앤지", "count": 50, "meta": "AS 접수 거래처"}, {"cat": "AS (접수업체)", "name": "태우이엔지", "count": 45, "meta": "AS 접수 거래처"}, {"cat": "AS (접수업체)", "name": "광신전설", "count": 42, "meta": "AS 접수 거래처"}, {"cat": "AS (접수업체)", "name": "대영이앤디", "count": 41, "meta": "AS 접수 거래처"}, {"cat": "AS (접수업체)", "name": "우민전기", "count": 40, "meta": "AS 접수 거래처"}, {"cat": "AS (접수업체)", "name": "HDC랩스", "count": 38, "meta": "AS 접수 거래처"}, {"cat": "AS (접수업체)", "name": "한국이엔씨", "count": 37, "meta": "AS 접수 거래처"}, {"cat": "AS (현장)", "name": "용인  SK하이닉스", "count": 511, "meta": "AS 발생 현장"}, {"cat": "AS (현장)", "name": "용인  SK하이닉스 원삼", "count": 339, "meta": "AS 발생 현장"}, {"cat": "AS (현장)", "name": "평택 kcc 사무 3동", "count": 325, "meta": "AS 발생 현장"}, {"cat": "AS (현장)", "name": "평택삼성전자 P4", "count": 309, "meta": "AS 발생 현장"}, {"cat": "AS (현장)", "name": "용인 SK하이닉스", "count": 299, "meta": "AS 발생 현장"}, {"cat": "AS (현장)", "name": "송도 global R&PD Center", "count": 259, "meta": "AS 발생 현장"}, {"cat": "AS (현장)", "name": "군포역세권복합개발사업 지식산업센터", "count": 162, "meta": "AS 발생 현장"}, {"cat": "AS (현장)", "name": "인천 검단신도시 101 역세권 개발사업", "count": 154, "meta": "AS 발생 현장"}, {"cat": "AS (현장)", "name": "판교 NC-soft 현장", "count": 148, "meta": "AS 발생 현장"}, {"cat": "AS (현장)", "name": "용인 SK하이닉스 원삼", "count": 141, "meta": "AS 발생 현장"}, {"cat": "AS (현장)", "name": "청주m8개조공사", "count": 140, "meta": "AS 발생 현장"}, {"cat": "AS (현장)", "name": "용산 더사이드파크", "count": 131, "meta": "AS 발생 현장"}, {"cat": "AS (현장)", "name": "삼선5구역 주택 재개발", "count": 95, "meta": "AS 발생 현장"}, {"cat": "AS (현장)", "name": "춘천레이크시티아이파크현장", "count": 93, "meta": "AS 발생 현장"}, {"cat": "AS (현장)", "name": "장위 푸르지오 라디우스파크 현장", "count": 90, "meta": "AS 발생 현장"}, {"cat": "AS (현장)", "name": "포스코 아산탕정 3BL", "count": 77, "meta": "AS 발생 현장"}, {"cat": "AS (현장)", "name": "마곡 D18-B 지식산업센터 신축공사", "count": 75, "meta": "AS 발생 현장"}, {"cat": "AS (현장)", "name": "용인 은하삼 지구", "count": 71, "meta": "AS 발생 현장"}, {"cat": "AS (현장)", "name": "파주p10", "count": 67, "meta": "AS 발생 현장"}, {"cat": "AS (현장)", "name": "힐스테이트 송도현장", "count": 59, "meta": "AS 발생 현장"}, {"cat": "AS (현장)", "name": "일산 덕이동 데이터 센터", "count": 59, "meta": "AS 발생 현장"}, {"cat": "AS (현장)", "name": "한화포레나 천안아산역", "count": 52, "meta": "AS 발생 현장"}, {"cat": "AS (현장)", "name": "청주 지웰푸르지오 테크노폴리스센트럴현장", "count": 52, "meta": "AS 발생 현장"}, {"cat": "AS (현장)", "name": "수원지동 중흥 s클래스", "count": 52, "meta": "AS 발생 현장"}, {"cat": "AS (현장)", "name": "대전 문화 자이SK뷰 신축현장", "count": 51, "meta": "AS 발생 현장"}, {"cat": "AS (현장)", "name": "평택삼성전자 P5", "count": 49, "meta": "AS 발생 현장"}, {"cat": "AS (현장)", "name": "청량리 7구역", "count": 49, "meta": "AS 발생 현장"}, {"cat": "AS (현장)", "name": "송림동현장", "count": 46, "meta": "AS 발생 현장"}, {"cat": "AS (현장)", "name": "용인sk하이닉스", "count": 44, "meta": "AS 발생 현장"}, {"cat": "AS (현장)", "name": "ADC현장", "count": 44, "meta": "AS 발생 현장"}, {"cat": "AS (장비번호)", "name": "자산 #확인중", "count": 50, "meta": "다발 접수 장비"}, {"cat": "AS (장비번호)", "name": "자산 #현장확인", "count": 46, "meta": "다발 접수 장비"}, {"cat": "AS (장비번호)", "name": "자산 #모든장비", "count": 25, "meta": "다발 접수 장비"}, {"cat": "AS (장비번호)", "name": "자산 #전체장비", "count": 23, "meta": "다발 접수 장비"}, {"cat": "AS (장비번호)", "name": "자산 #G19047", "count": 20, "meta": "다발 접수 장비"}, {"cat": "AS (장비번호)", "name": "자산 #G15147", "count": 19, "meta": "다발 접수 장비"}, {"cat": "AS (장비번호)", "name": "자산 #G19211", "count": 19, "meta": "다발 접수 장비"}, {"cat": "AS (장비번호)", "name": "자산 #G19173", "count": 18, "meta": "다발 접수 장비"}, {"cat": "AS (장비번호)", "name": "자산 #G14019", "count": 17, "meta": "다발 접수 장비"}, {"cat": "AS (장비번호)", "name": "자산 #2대", "count": 17, "meta": "다발 접수 장비"}, {"cat": "AS (장비번호)", "name": "자산 #G19150", "count": 17, "meta": "다발 접수 장비"}, {"cat": "AS (장비번호)", "name": "자산 #G19036", "count": 15, "meta": "다발 접수 장비"}, {"cat": "AS (장비번호)", "name": "자산 #G19035", "count": 15, "meta": "다발 접수 장비"}, {"cat": "AS (장비번호)", "name": "자산 #G19209", "count": 14, "meta": "다발 접수 장비"}, {"cat": "AS (장비번호)", "name": "자산 #G06005", "count": 14, "meta": "다발 접수 장비"}, {"cat": "AS (장비번호)", "name": "자산 #G0916", "count": 13, "meta": "다발 접수 장비"}, {"cat": "AS (장비번호)", "name": "자산 #G19148", "count": 13, "meta": "다발 접수 장비"}, {"cat": "AS (장비번호)", "name": "자산 #G26019", "count": 13, "meta": "다발 접수 장비"}, {"cat": "AS (장비번호)", "name": "자산 #G19117", "count": 13, "meta": "다발 접수 장비"}, {"cat": "AS (장비번호)", "name": "자산 #G19003", "count": 13, "meta": "다발 접수 장비"}, {"cat": "AS (장비번호)", "name": "자산 #G19103", "count": 13, "meta": "다발 접수 장비"}, {"cat": "AS (장비번호)", "name": "자산 #G19158", "count": 12, "meta": "다발 접수 장비"}, {"cat": "AS (장비번호)", "name": "자산 #G14012", "count": 12, "meta": "다발 접수 장비"}, {"cat": "AS (장비번호)", "name": "자산 #J1383", "count": 12, "meta": "다발 접수 장비"}, {"cat": "AS (장비번호)", "name": "자산 #G14009", "count": 12, "meta": "다발 접수 장비"}, {"cat": "AS (장비번호)", "name": "자산 #G15139", "count": 12, "meta": "다발 접수 장비"}, {"cat": "AS (장비번호)", "name": "자산 #G19132", "count": 11, "meta": "다발 접수 장비"}, {"cat": "AS (장비번호)", "name": "자산 #G19203", "count": 11, "meta": "다발 접수 장비"}, {"cat": "AS (장비번호)", "name": "자산 #H3379", "count": 11, "meta": "다발 접수 장비"}, {"cat": "AS (장비번호)", "name": "자산 #G19009", "count": 11, "meta": "다발 접수 장비"}, {"cat": "AS (장비위치)", "name": "1층", "count": 208, "meta": "현장 내 층수 및 구역"}, {"cat": "AS (장비위치)", "name": "3층", "count": 101, "meta": "현장 내 층수 및 구역"}, {"cat": "AS (장비위치)", "name": "지하1층", "count": 98, "meta": "현장 내 층수 및 구역"}, {"cat": "AS (장비위치)", "name": "4층", "count": 77, "meta": "현장 내 층수 및 구역"}, {"cat": "AS (장비위치)", "name": "지하2층", "count": 63, "meta": "현장 내 층수 및 구역"}, {"cat": "AS (장비위치)", "name": "2층", "count": 62, "meta": "현장 내 층수 및 구역"}, {"cat": "AS (장비위치)", "name": "지하 1층", "count": 55, "meta": "현장 내 층수 및 구역"}, {"cat": "AS (장비위치)", "name": "관리번호 :", "count": 46, "meta": "현장 내 층수 및 구역"}, {"cat": "AS (장비위치)", "name": "현장확인", "count": 26, "meta": "현장 내 층수 및 구역"}, {"cat": "AS (장비위치)", "name": "지하 2층", "count": 26, "meta": "현장 내 층수 및 구역"}, {"cat": "AS (장비위치)", "name": "5층", "count": 25, "meta": "현장 내 층수 및 구역"}, {"cat": "AS (장비위치)", "name": "13층", "count": 25, "meta": "현장 내 층수 및 구역"}, {"cat": "AS (장비위치)", "name": "모든 장비", "count": 23, "meta": "현장 내 층수 및 구역"}, {"cat": "AS (장비위치)", "name": "2동 지하1층", "count": 23, "meta": "현장 내 층수 및 구역"}, {"cat": "AS (장비위치)", "name": "지하3층", "count": 20, "meta": "현장 내 층수 및 구역"}, {"cat": "AS (장비위치)", "name": "전화요망", "count": 20, "meta": "현장 내 층수 및 구역"}, {"cat": "AS (장비위치)", "name": "9층", "count": 18, "meta": "현장 내 층수 및 구역"}, {"cat": "AS (장비위치)", "name": "8층", "count": 16, "meta": "현장 내 층수 및 구역"}, {"cat": "AS (장비위치)", "name": "관리번호 : 전체장비", "count": 16, "meta": "현장 내 층수 및 구역"}, {"cat": "AS (장비위치)", "name": "8동 지하1층", "count": 16, "meta": "현장 내 층수 및 구역"}, {"cat": "AS (장비위치)", "name": "확인중", "count": 15, "meta": "현장 내 층수 및 구역"}, {"cat": "AS (장비위치)", "name": "6층", "count": 15, "meta": "현장 내 층수 및 구역"}, {"cat": "AS (장비위치)", "name": "5층 3번코어", "count": 15, "meta": "현장 내 층수 및 구역"}, {"cat": "AS (장비위치)", "name": "4동 지하1층", "count": 13, "meta": "현장 내 층수 및 구역"}, {"cat": "AS (장비위치)", "name": "팹동 8층", "count": 13, "meta": "현장 내 층수 및 구역"}, {"cat": "AS (장비위치)", "name": "1동 지하1층", "count": 13, "meta": "현장 내 층수 및 구역"}, {"cat": "AS (장비위치)", "name": "3동 지하3층", "count": 12, "meta": "현장 내 층수 및 구역"}, {"cat": "AS (장비위치)", "name": "호텔동 8층", "count": 12, "meta": "현장 내 층수 및 구역"}, {"cat": "AS (장비위치)", "name": "3동 지하1층", "count": 12, "meta": "현장 내 층수 및 구역"}, {"cat": "AS (장비위치)", "name": "4동 지하2층", "count": 12, "meta": "현장 내 층수 및 구역"}, {"cat": "AS (조치내용)", "name": "내일방문", "count": 41, "meta": "현장 방문 및 조치 내용"}, {"cat": "AS (조치내용)", "name": "내일 오전 방문", "count": 36, "meta": "현장 방문 및 조치 내용"}, {"cat": "AS (조치내용)", "name": "내일 방문", "count": 34, "meta": "현장 방문 및 조치 내용"}, {"cat": "AS (조치내용)", "name": "내일 처리 하기로 함", "count": 34, "meta": "현장 방문 및 조치 내용"}, {"cat": "AS (조치내용)", "name": "내일 오전방문", "count": 24, "meta": "현장 방문 및 조치 내용"}, {"cat": "AS (조치내용)", "name": "내일 처리 하기로 함.", "count": 21, "meta": "현장 방문 및 조치 내용"}, {"cat": "AS (조치내용)", "name": "내일방문 통화완료", "count": 14, "meta": "현장 방문 및 조치 내용"}, {"cat": "AS (조치내용)", "name": "익일방문", "count": 13, "meta": "현장 방문 및 조치 내용"}, {"cat": "AS (조치내용)", "name": "월요일 방문", "count": 11, "meta": "현장 방문 및 조치 내용"}, {"cat": "AS (조치내용)", "name": "익일방문 통화완료", "count": 11, "meta": "현장 방문 및 조치 내용"}, {"cat": "AS (조치내용)", "name": "익일 진행", "count": 10, "meta": "현장 방문 및 조치 내용"}, {"cat": "AS (조치내용)", "name": "내일 오전 처리 하기로 함", "count": 10, "meta": "현장 방문 및 조치 내용"}, {"cat": "AS (조치내용)", "name": "내일 오전 처리 하기로 함.", "count": 10, "meta": "현장 방문 및 조치 내용"}, {"cat": "AS (조치내용)", "name": "월요일 진행", "count": 8, "meta": "현장 방문 및 조치 내용"}, {"cat": "AS (조치내용)", "name": "월요일 요청", "count": 6, "meta": "현장 방문 및 조치 내용"}, {"cat": "AS (조치내용)", "name": "내일 방문 하기로 함.", "count": 6, "meta": "현장 방문 및 조치 내용"}, {"cat": "AS (조치내용)", "name": "방문시간 통화요망", "count": 5, "meta": "현장 방문 및 조치 내용"}, {"cat": "AS (조치내용)", "name": "익일 아침 요청", "count": 5, "meta": "현장 방문 및 조치 내용"}, {"cat": "AS (조치내용)", "name": "내일 중으로 처리 하기로 함", "count": 5, "meta": "현장 방문 및 조치 내용"}, {"cat": "AS (조치내용)", "name": "계룡 안전담당자 참관하에 점검 진행", "count": 4, "meta": "현장 방문 및 조치 내용"}, {"cat": "AS (조치내용)", "name": "담당자 통화 후 일정 확인후 진행", "count": 4, "meta": "현장 방문 및 조치 내용"}, {"cat": "AS (조치내용)", "name": "월요일 오전 방문", "count": 4, "meta": "현장 방문 및 조치 내용"}, {"cat": "AS (조치내용)", "name": "월요일 처리", "count": 4, "meta": "현장 방문 및 조치 내용"}, {"cat": "AS (조치내용)", "name": "월요일방문 요청", "count": 3, "meta": "현장 방문 및 조치 내용"}, {"cat": "AS (조치내용)", "name": "월요일방문 통화완료", "count": 3, "meta": "현장 방문 및 조치 내용"}, {"cat": "AS (조치내용)", "name": "익일진행", "count": 3, "meta": "현장 방문 및 조치 내용"}, {"cat": "AS (조치내용)", "name": "월요일 오전방문 요청", "count": 3, "meta": "현장 방문 및 조치 내용"}, {"cat": "AS (조치내용)", "name": "월요일 11시 30~ 13 시 장비 최대한 모아둔다고 함 그때 방문", "count": 3, "meta": "현장 방문 및 조치 내용"}, {"cat": "AS (조치내용)", "name": ": 점검인원 1인 방문", "count": 3, "meta": "현장 방문 및 조치 내용"}, {"cat": "AS (조치내용)", "name": "월요일 오전방문", "count": 3, "meta": "현장 방문 및 조치 내용"}, {"cat": "임차 (협력사)", "name": "롯데", "count": 245, "meta": "원 임대사 / 전대사"}, {"cat": "임차 (협력사)", "name": "롯데렌탈", "count": 243, "meta": "원 임대사 / 전대사"}, {"cat": "임차 (협력사)", "name": "포스렌탈", "count": 31, "meta": "원 임대사 / 전대사"}, {"cat": "임차 (협력사)", "name": "포스", "count": 31, "meta": "원 임대사 / 전대사"}, {"cat": "임차 (협력사)", "name": "한국렌탈", "count": 11, "meta": "원 임대사 / 전대사"}, {"cat": "임차 (협력사)", "name": "AJ", "count": 3, "meta": "원 임대사 / 전대사"}, {"cat": "임차 (협력사)", "name": "한솔렌탈", "count": 2, "meta": "원 임대사 / 전대사"}, {"cat": "임차 (협력사)", "name": "한솔", "count": 2, "meta": "원 임대사 / 전대사"}, {"cat": "임차 (협력사)", "name": "AJ렌탈", "count": 1, "meta": "원 임대사 / 전대사"}, {"cat": "임차 (상차지)", "name": "경기 안성시 미양면 양변길 170", "count": 67, "meta": "장비 상차 물류 거점"}, {"cat": "임차 (상차지)", "name": "충남 아산시 인주면 서해로 532번길 111-3", "count": 44, "meta": "장비 상차 물류 거점"}, {"cat": "임차 (상차지)", "name": "경기도 남양주시 진접읍 주곡로 211", "count": 32, "meta": "장비 상차 물류 거점"}, {"cat": "임차 (상차지)", "name": "경기 용인 처인구 포곡읍 선장1로 73-17", "count": 23, "meta": "장비 상차 물류 거점"}, {"cat": "임차 (상차지)", "name": "경기 용인 양지면 주복리481", "count": 20, "meta": "장비 상차 물류 거점"}, {"cat": "임차 (상차지)", "name": "경기도 용인시 처인구 중부대로 2453-38", "count": 18, "meta": "장비 상차 물류 거점"}, {"cat": "임차 (상차지)", "name": "경기도 안성시 보개면 오두리 188-18", "count": 15, "meta": "장비 상차 물류 거점"}, {"cat": "임차 (상차지)", "name": "경기도 포천시 내촌면 금강로2076번길 9-104", "count": 14, "meta": "장비 상차 물류 거점"}, {"cat": "임차 (상차지)", "name": "경기 용인시 처인구 양지면 주북로 5번길 101", "count": 9, "meta": "장비 상차 물류 거점"}, {"cat": "임차 (상차지)", "name": "경기도 이천시 부발읍 신원리 638-1", "count": 5, "meta": "장비 상차 물류 거점"}, {"cat": "임차 (상차지)", "name": "경기 안성시 미양면 양변길 170 [롯데렌탈]", "count": 5, "meta": "장비 상차 물류 거점"}, {"cat": "임차 (상차지)", "name": "충청북도 청주시 서원구 남이면 척산3길 6-18", "count": 4, "meta": "장비 상차 물류 거점"}, {"cat": "임차 (상차지)", "name": "경기 용인 처인구 모현읍 갈담리176-1", "count": 3, "meta": "장비 상차 물류 거점"}, {"cat": "임차 (상차지)", "name": "JLG", "count": 2, "meta": "장비 상차 물류 거점"}, {"cat": "임차 (상차지)", "name": "경기도 용인시 처인구 경기동로 751번길", "count": 2, "meta": "장비 상차 물류 거점"}, {"cat": "임차 (상차지)", "name": "유엔네트웍스", "count": 2, "meta": "장비 상차 물류 거점"}, {"cat": "임차 (상차지)", "name": "포천 금강로 2076번길 9-104", "count": 2, "meta": "장비 상차 물류 거점"}, {"cat": "임차 (상차지)", "name": "지니코리아 창고", "count": 2, "meta": "장비 상차 물류 거점"}, {"cat": "임차 (상차지)", "name": "LGMG 주기장", "count": 2, "meta": "장비 상차 물류 거점"}, {"cat": "임차 (상차지)", "name": "경기 포천시 내촌면 금강로2076번길 9-104", "count": 2, "meta": "장비 상차 물류 거점"}, {"cat": "임차 (하차지)", "name": "기연", "count": 223, "meta": "장비 하차 주기장 및 현장"}, {"cat": "임차 (하차지)", "name": "경기 안성시 미양면 양변길 170", "count": 84, "meta": "장비 하차 주기장 및 현장"}, {"cat": "임차 (하차지)", "name": "경기도 남양주시 진접읍 주곡로 211", "count": 49, "meta": "장비 하차 주기장 및 현장"}, {"cat": "임차 (하차지)", "name": "경기도 포천시 내촌면 금강로2076번길 9-104", "count": 31, "meta": "장비 하차 주기장 및 현장"}, {"cat": "임차 (하차지)", "name": "충남 아산시 인주면 서해로 532번길 111-3", "count": 29, "meta": "장비 하차 주기장 및 현장"}, {"cat": "임차 (하차지)", "name": "경기도 안성시 보개면 오두리 188-18", "count": 24, "meta": "장비 하차 주기장 및 현장"}, {"cat": "임차 (하차지)", "name": "경기도 용인시 처인구 중부대로 2453-38", "count": 10, "meta": "장비 하차 주기장 및 현장"}, {"cat": "임차 (하차지)", "name": "경기 용인 처인구 포곡읍 선장1로 73-17", "count": 7, "meta": "장비 하차 주기장 및 현장"}, {"cat": "임차 (하차지)", "name": "경기 포천시 내촌면 금강로2076번길 9-104", "count": 6, "meta": "장비 하차 주기장 및 현장"}, {"cat": "임차 (하차지)", "name": "경기도 용인시 처인구 양지면 중부대로 2254-9", "count": 5, "meta": "장비 하차 주기장 및 현장"}, {"cat": "임차 (하차지)", "name": "경기도 이천시 부발읍 신원리 638-1", "count": 4, "meta": "장비 하차 주기장 및 현장"}, {"cat": "임차 (하차지)", "name": "경기 용인 양지면 주북리481", "count": 4, "meta": "장비 하차 주기장 및 현장"}, {"cat": "임차 (하차지)", "name": "현대렌탈서비스", "count": 4, "meta": "장비 하차 주기장 및 현장"}, {"cat": "임차 (하차지)", "name": "유창이엔씨", "count": 3, "meta": "장비 하차 주기장 및 현장"}, {"cat": "임차 (하차지)", "name": "세보엠이씨 / 용인SK하이닉스 비보안2", "count": 2, "meta": "장비 하차 주기장 및 현장"}, {"cat": "임차 (하차지)", "name": "우민전기", "count": 2, "meta": "장비 하차 주기장 및 현장"}, {"cat": "임차 (하차지)", "name": "세보엠이씨 용인SK하이닉스/팹동", "count": 1, "meta": "장비 하차 주기장 및 현장"}, {"cat": "임차 (하차지)", "name": "용인SK하이닉스", "count": 1, "meta": "장비 하차 주기장 및 현장"}, {"cat": "임차 (하차지)", "name": "경기 용인 양지면 주복리481", "count": 1, "meta": "장비 하차 주기장 및 현장"}, {"cat": "임차 (하차지)", "name": "기연(신원리)", "count": 1, "meta": "장비 하차 주기장 및 현장"}, {"cat": "임차 (모델)", "name": "GS1432 * 2", "count": 2, "meta": "외부 임차 조달 모델"}, {"cat": "임차 (모델)", "name": "GS1432 * 1", "count": 2, "meta": "외부 임차 조달 모델"}, {"cat": "임차 (모델)", "name": "star6 * 2대", "count": 2, "meta": "외부 임차 조달 모델"}, {"cat": "임차 (모델)", "name": "GS1432 * 1대", "count": 2, "meta": "외부 임차 조달 모델"}, {"cat": "임차 (모델)", "name": "S1614AC+*2대", "count": 2, "meta": "외부 임차 조달 모델"}, {"cat": "임차 (모델)", "name": "JCPT1008 * 4대", "count": 2, "meta": "외부 임차 조달 모델"}, {"cat": "임차 (모델)", "name": "JCPT1012AC * 3", "count": 1, "meta": "외부 임차 조달 모델"}, {"cat": "임차 (모델)", "name": "GTBZ16AE * 2", "count": 1, "meta": "외부 임차 조달 모델"}, {"cat": "임차 (모델)", "name": "GS2646E * 3", "count": 1, "meta": "외부 임차 조달 모델"}, {"cat": "임차 (모델)", "name": "GS1930E * 2", "count": 1, "meta": "외부 임차 조달 모델"}, {"cat": "임차 (모델)", "name": "JCPT1212AC * 3", "count": 1, "meta": "외부 임차 조달 모델"}, {"cat": "임차 (모델)", "name": "JCPT1008AC * 1", "count": 1, "meta": "외부 임차 조달 모델"}, {"cat": "임차 (모델)", "name": "JCPT1008AC * 3", "count": 1, "meta": "외부 임차 조달 모델"}, {"cat": "임차 (모델)", "name": "GS1432 * 4", "count": 1, "meta": "외부 임차 조달 모델"}, {"cat": "임차 (모델)", "name": "JCPT1008 * 2", "count": 1, "meta": "외부 임차 조달 모델"}, {"cat": "임차 (모델)", "name": "GS1432 * 2대", "count": 1, "meta": "외부 임차 조달 모델"}, {"cat": "임차 (모델)", "name": "GS1432 * 3대", "count": 1, "meta": "외부 임차 조달 모델"}, {"cat": "임차 (모델)", "name": "S1412AC+ * 2", "count": 1, "meta": "외부 임차 조달 모델"}, {"cat": "임차 (모델)", "name": "JCPT1614ACZ * 3", "count": 1, "meta": "외부 임차 조달 모델"}, {"cat": "임차 (모델)", "name": "S1614AC+ * 1", "count": 1, "meta": "외부 임차 조달 모델"}];
+
+    function filterSearchItems() {
+      const query = document.getElementById('liveSearchInput').value.trim().toLowerCase();
+      const cat = document.getElementById('liveSearchCategory').value;
+      const tbody = document.getElementById('searchResultsBody');
+      const countEl = document.getElementById('searchResultCount');
+
+      const filtered = searchData.filter(item => {
+        const matchQuery = !query || item.name.toLowerCase().includes(query) || item.cat.toLowerCase().includes(query) || item.meta.toLowerCase().includes(query);
+        const matchCat = cat === 'ALL' || item.cat.includes(cat);
+        return matchQuery && matchCat;
+      });
+
+      countEl.innerText = filtered.length.toLocaleString() + '건';
+
+      if (filtered.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="4" class="text-center py-6 text-slate-500 italic font-sans">일치하는 항목이 없습니다.</td></tr>';
+        return;
+      }
+
+      const html = filtered.slice(0, 150).map((item, idx) => {
+        const catBadge = item.cat.startsWith('출고') ? 'bg-blue-950 text-blue-300 border-blue-800' :
+                         item.cat.startsWith('AS') ? 'bg-amber-950 text-amber-300 border-amber-800' :
+                         'bg-purple-950 text-purple-300 border-purple-800';
+        return `
+          <tr class="hover:bg-slate-800/40 transition">
+            <td class="py-2 px-3">
+              <span class="px-2 py-0.5 rounded text-[10px] font-bold border ${catBadge} font-sans">${item.cat}</span>
+            </td>
+            <td class="py-2 px-3 font-bold text-slate-100 font-sans">${item.name}</td>
+            <td class="py-2 px-3 text-right font-bold text-emerald-400">${item.count > 1 ? item.count.toLocaleString() + '건' : '-'}</td>
+            <td class="py-2 px-3 text-slate-400 font-sans">${item.meta}</td>
+          </tr>
+        `;
+      }).join('');
+
+      tbody.innerHTML = html;
+    }
+
+    // 차트 초기화
+    let chartsRendered = false;
+    function renderCharts() {
+      if (chartsRendered) return;
+      if (typeof Chart === 'undefined') return;
+
+      // 1. Chart Data Ratio (도넛)
+      new Chart(document.getElementById('chartDataRatio'), {
+        type: 'doughnut',
+        data: {
+          labels: ['출고요청 (940건)', 'AS·정비 (5,633건)', '임차입출고 (548건)'],
+          datasets: [{
+            data: [940, 5633, 548],
+            backgroundColor: ['#3b82f6', '#f59e0b', '#a855f7'],
+            borderColor: '#0f172a',
+            borderWidth: 2
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { position: 'bottom', labels: { color: '#94a3b8', font: { family: 'sans-serif' } } }
+          }
+        }
+      });
+
+      // 2. Chart Top Symptoms (가로 바)
+      new Chart(document.getElementById('chartTopSymptoms'), {
+        type: 'bar',
+        data: {
+          labels: ["방지봉 단선", "작동안됨", "상승안됨", "오일누유", "충전안됨", "감지봉 단선", "누유", "LD", "작동불량", "주행안됨"],
+          datasets: [{
+            label: '접수 건수',
+            data: [279, 259, 211, 153, 116, 81, 72, 62, 62, 60],
+            backgroundColor: '#f59e0b',
+            borderRadius: 4
+          }]
+        },
+        options: {
+          indexAxis: 'y',
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { display: false }
+          },
+          scales: {
+            x: { grid: { color: '#1e293b' }, ticks: { color: '#94a3b8' } },
+            y: { grid: { display: false }, ticks: { color: '#f1f5f9' } }
+          }
+        }
+      });
+
+      // 3. Chart Lease Vendors (파이)
+      new Chart(document.getElementById('chartLeaseVendors'), {
+        type: 'pie',
+        data: {
+          labels: ["롯데", "롯데렌탈", "포스렌탈", "포스", "한국렌탈", "AJ"],
+          datasets: [{
+            data: [245, 243, 31, 31, 11, 3],
+            backgroundColor: ['#a855f7', '#06b6d4', '#10b981', '#f59e0b', '#3b82f6', '#ec4899'],
+            borderColor: '#0f172a',
+            borderWidth: 2
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { position: 'bottom', labels: { color: '#94a3b8' } }
+          }
+        }
+      });
+
+      // 4. Chart Customer AS (바)
+      new Chart(document.getElementById('chartCustAs'), {
+        type: 'bar',
+        data: {
+          labels: ["세보엠이씨", "세보", "화성", "유창이엔씨", "유창 E&C", "대한이엔지", "우진아이앤에스", "구보공영", "덕신건업", "동화"],
+          datasets: [{
+            label: 'AS 접수 건수',
+            data: [877, 627, 461, 397, 218, 156, 155, 136, 124, 120],
+            backgroundColor: '#10b981',
+            borderRadius: 4
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { display: false }
+          },
+          scales: {
+            x: { grid: { display: false }, ticks: { color: '#f1f5f9', maxRotation: 45, minRotation: 45 } },
+            y: { grid: { color: '#1e293b' }, ticks: { color: '#94a3b8' } }
+          }
+        }
+      });
+
+      chartsRendered = true;
+    }
+
+    // 초기 실행
+    window.addEventListener('DOMContentLoaded', () => {
+      renderCharts();
+      filterSearchItems();
+    });
+  </script>
+</body>
+</html>

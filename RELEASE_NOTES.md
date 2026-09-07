@@ -1,3 +1,35 @@
+## [v1.10.0.Build.20] - 2026-09-08 07:54
+
+### 🤖 [Groq 2단계 파이프라인 연동 — 출고의뢰 초안 AI 추출 고도화]
+- **요구사항**:
+  - "A안 유지. 그록에 리퀘스트를 텍스트와 파일의 존재상태에 따라서 잘 조합해서 던지고 잘 받으면, 파싱에만 단독으로 의존하는것보다 강력하지 않을까? 어떻게 처리하는게 오류가능성을 가장 낮추고, 최대 효과를 볼수 있을까?"
+
+- **신규 Vercel API 엔드포인트 (`api/call-draft-ai.ts`)**:
+  - Groq Whisper STT + LLaMA 3.3 JSON 추출을 단일 서버사이드 파이프라인으로 완결.
+  - 클라이언트는 `storagePath`만 전달 → Vercel Function 내부에서 Supabase Storage 직접 다운로드 → Whisper 전사 → LLaMA 3.3 JSON 추출 → 단일 응답 반환.
+  - 대용량 음성 파일을 클라이언트가 재전송하는 낭비 없음 (서버사이드 Storage 직접 접근).
+  - 3가지 입력 상태 자동 분기:
+    - `AUDIO_ONLY`: `storagePath` 있음, `summaryText` 없음 → Whisper → LLaMA 3.3
+    - `TEXT_ONLY`: `storagePath` 없음, `summaryText` 있음 → LLaMA 3.3 직행 (Whisper 생략)
+    - `HYBRID`: `storagePath` + `summaryText` 병행 → Whisper 전사 + 텍스트 병합 → LLaMA 3.3
+  - 고소작업대 도메인 특화 LLaMA 3.3 시스템 프롬프트 (장비명 정규화 규칙, 날짜 YYYY-MM-DD 변환, 구어체 장비명 → ft 형식, confidence 자체 평가).
+  - API 타임아웃: Storage 15초, Whisper 30초, LLaMA 15초 (AbortSignal.timeout 독립 적용).
+  - 각 단계 독립 try/catch — 어느 단계 실패해도 `fallbackNeeded: true` 반환으로 폴백 트리거.
+
+- **`src/services/callUploadService.ts` 3단계 파이프라인 개편**:
+  - `mapAiResultToParsed()`: AI JSON 결과 → `ParsedSummaryInfo` 변환. AI null 필드는 로컬 파서 보완.
+  - `fetchAiDraftExtraction()`: `/api/call-draft-ai` 호출 헬퍼. 45초 타임아웃, 실패 시 `null` 반환.
+  - `convertUploadToDraft()` 3단계 파이프라인:
+    1. **[1단계]** `/api/call-draft-ai` Groq AI 추출 시도
+    2. **[2단계]** AI 성공 시 → AI 결과 + 로컬 파서 병합 (`mapAiResultToParsed`)
+    3. **[3단계]** AI 실패 시 → 로컬 정규식 파서 단독 폴백 (`parseCallSummaryText`)
+  - 파이프라인 로그에 `ai_pipeline_used`, `ai_steps` 필드 추가 → 운영 추적 가능.
+
+- **검증 결과**:
+  - `npm run build`: **0 Error 통과** (`built in 1.13s`).
+
+---
+
 ## [v1.10.0.Build.19] - 2026-09-07 18:45
 
 ### 🔍 [출고의뢰 및 AS 밴드 실데이터 1,605건 전수 검증 기반 정규식 파서 고도화 및 전파]

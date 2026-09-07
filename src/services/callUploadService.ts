@@ -745,6 +745,8 @@ export interface ParsedSummaryInfo {
   safetyOptions: string[];
   retrievalAssetIds: string[];
   paidBy?: 'OURS' | 'CUSTOMER' | 'SPLIT';
+  rentalPeriod?: string;
+  specialNote?: string;
 }
 
 export function parseCallSummaryText(text: string, fileName?: string): ParsedSummaryInfo {
@@ -763,11 +765,63 @@ export function parseCallSummaryText(text: string, fileName?: string): ParsedSum
     return result;
   }
 
-  // ── [A. 라벨 기반 1순위 구조화 파싱 (밴드 및 정형 서식 대응)] ──
-  // 1. 고객명 라벨
+  // ── [A. 라벨 및 대화록(Dialogue) 기반 구조화 파싱] ──
+  // 1. 고객명 라벨 및 KEYWORD/파일명 메타 추출
   const custLabelMatch = rawText.match(/(?:고객사명?|고객명|업체명?|상호명?|상호)\s*[:：]\s*([^\n\r]+)/i);
   if (custLabelMatch && custLabelMatch[1]) {
     result.customerName = custLabelMatch[1].trim();
+  }
+
+  // 1-1. KEYWORD: 상호_문의 헤더 추출 (예: KEYWORD: 삼화페인트_기연리프트렌탈문의)
+  if (!result.customerName) {
+    const kwMatch = rawText.match(/KEYWORD\s*[:：]\s*([가-힣a-zA-Z0-9]+)(?:_([^\n\r]+))?/i);
+    if (kwMatch) {
+      const part1 = kwMatch[1].trim();
+      const part2 = kwMatch[2] ? kwMatch[2].trim() : '';
+      const isSelf1 = /기연|리프트|렌탈|출고|배차/i.test(part1);
+      const isSelf2 = /기연|리프트|렌탈|출고|배차/i.test(part2);
+      if (!isSelf1 && part1) result.customerName = part1;
+      else if (!isSelf2 && part2) result.customerName = part2.replace(/(?:렌탈|문의|출고|배차|요청)$/, '');
+    }
+  }
+
+  // 1-2. 파일명 토큰에서 상호 추출 (예: dialogue_0001_삼화페인트_기연리프트렌탈문의.m4a)
+  if (!result.customerName && rawFile) {
+    const noExt = rawFile.replace(/\.[^.]+$/, '');
+    const tokens = noExt.split(/[_\-\s]+/);
+    for (const tok of tokens) {
+      if (/^(?:dialogue|call|audio|\d+|rec|record)$/i.test(tok)) continue;
+      if (/기연|리프트|렌탈|출고|배차/i.test(tok)) continue;
+      if (tok.length >= 2) {
+        result.customerName = tok;
+        break;
+      }
+    }
+  }
+
+  // 1-3. 대화록(Multi-speaker Dialogue) 화자 분석 (기연 측 vs 고객 측 분리)
+  if (/\[화자\d+\]|화자\d+\s*[:：]/.test(rawText)) {
+    const speakerBlocks = rawText.split(/(?=\[화자\d+\]|화자\d+\s*[:：])/);
+    for (const blk of speakerBlocks) {
+      const isInternal = /기연|기연리프트|기연렌탈/i.test(blk) && /(?:입니다|상담원|대리|과장|안내)/.test(blk);
+      // 상대방 화자에서 상호 및 담당자 추출 (예: "삼화페인트의 박준우입니다", "삼화페인트 박준우입니다")
+      const introMatch = blk.match(/([가-힣a-zA-Z0-9]{2,20})\s*(?:의|에\s*근무하는|소속)?\s*([가-힣]{2,4})\s*(?:입니다|이구요|인데요)/);
+      if (introMatch) {
+        if (!isInternal) {
+          if (!result.customerName && introMatch[1] && !/기연/i.test(introMatch[1])) {
+            result.customerName = introMatch[1].trim();
+          }
+          if (!result.contactPerson && introMatch[2]) {
+            result.contactPerson = introMatch[2].trim();
+          }
+        }
+      }
+      // 상대방 상호 호칭 (예: "삼화페인트 담당자님")
+      const partnerCallMatch = blk.match(/([가-힣a-zA-Z0-9]{2,20})\s*담당자(?:님)?/);
+      if (partnerCallMatch && !result.customerName && !/기연/i.test(partnerCallMatch[1])) {
+        result.customerName = partnerCallMatch[1].trim();
+      }
+    }
   }
 
   // 2. 현장명 라벨 (개행 없는 한 줄 우선 매칭)
@@ -822,29 +876,34 @@ export function parseCallSummaryText(text: string, fileName?: string): ParsedSum
     }
   }
 
-  // 6. 담당자 이름 폴백 (라벨 미존재 시 직책 기반 유추)
+  // 6. 담당자 이름 폴백 (라벨 미존재 시 직책 기반 유추 또는 대화 소개)
   if (!result.contactPerson) {
     const explicitMatch = rawText.match(/(?:담당자|인수자|소장)\s*[:：]?\s*([가-힣]{2,4})/);
     const titleMatch = rawText.match(/([가-힣]{1,4}\s*(?:소장님?|반장님?|과장님?|부장님?|팀장님?|대리님?|책임|선임|차장|이사))/);
+    const selfIntro = rawText.match(/(?:저는|저)?\s*([가-힣]{2,4})\s*(?:입니다|이구요|인데요)(?!\s*(?:감사|알겠|확인|준비))/);
     if (titleMatch && titleMatch[0]) {
       const candidate = titleMatch[0].trim().replace(/님$/, '');
       if (!['내일', '모레', '아침', '오전', '오후', '현대', '삼성', '대우'].some(w => candidate.startsWith(w))) {
         result.contactPerson = candidate;
       }
+    } else if (selfIntro && !/기연|리프트|상담/.test(selfIntro[1])) {
+      result.contactPerson = selfIntro[1].trim();
     } else if (explicitMatch && explicitMatch[1]) {
       result.contactPerson = explicitMatch[1].trim();
     }
   }
 
-  // 7. 현장명 폴백 (라벨 미존재 시 키워드 매칭, 개행문자 절대 미포함)
+  // 7. 현장명 폴백 (라벨 미존재 시 키워드 매칭, 미발견 시 고객사명 연계)
   if (!result.siteName) {
     const siteMatch = rawText.match(/([가-힣a-zA-Z0-9]{2,20}\s*(?:신축현장|신축공사|공사현장|물류센터|물류창고|물류단지|데이터센터|오피스텔|아파트|발전소|플랜트|빌딩|타워|공장|단지|창고|공항|팹동|PJT|PJ|현장|공사))/);
     if (siteMatch && siteMatch[0]) {
       result.siteName = siteMatch[0].trim();
+    } else if (result.customerName) {
+      result.siteName = `${result.customerName} (현장확인요망)`;
     }
   }
 
-  // ── [B. 날짜 추출 (스케줄 라벨 우선, MM.DD 점 날짜, 요일, 상대일 종합)] ──
+  // ── [B. 날짜 추출 (M월 D일 우선, Anti-Float 가드, 요일/상대일 종합)] ──
   const now = new Date();
   const getFormattedDate = (target: Date) => target.toISOString().split('T')[0];
 
@@ -856,11 +915,11 @@ export function parseCallSummaryText(text: string, fileName?: string): ParsedSum
     '월': 1, '화': 2, '수': 3, '목': 4, '금': 5, '토': 6, '일': 0
   };
 
-  // 1) MM.DD 또는 M.D 포맷 우선 확인 (예: "09.08(화)", "07.20 (월)", "8.12", "08.01일")
-  const dotDateMatch = dateScanTarget.match(/(?:^|[^\d])(\d{1,2})\.(\d{1,2})(?:일)?(?:\s*\([월화수목금토일]\))?/);
-  if (dotDateMatch) {
-    const m = parseInt(dotDateMatch[1], 10);
-    const d = parseInt(dotDateMatch[2], 10);
+  // 1) 한국어 명시적 날짜 최우선 검사 (예: "9월 4일", "09월 08일")
+  const mdMatch = dateScanTarget.match(/(\d{1,2})월\s*(\d{1,2})일/);
+  if (mdMatch) {
+    const m = parseInt(mdMatch[1], 10);
+    const d = parseInt(mdMatch[2], 10);
     if (m >= 1 && m <= 12 && d >= 1 && d <= 31) {
       result.loadingDate = `${now.getFullYear()}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
     }
@@ -917,15 +976,19 @@ export function parseCallSummaryText(text: string, fileName?: string): ParsedSum
     const d = new Date(now.getFullYear(), now.getMonth() + 1, 1);
     result.loadingDate = getFormattedDate(d);
   } else {
+    // YYYY-MM-DD
     const ymdMatch = dateScanTarget.match(/(\d{4})[-./](\d{1,2})[-./](\d{1,2})/);
     if (ymdMatch) {
       result.loadingDate = `${ymdMatch[1]}-${String(ymdMatch[2]).padStart(2, '0')}-${String(ymdMatch[3]).padStart(2, '0')}`;
     } else {
-      const mdMatch = dateScanTarget.match(/(\d{1,2})월\s*(\d{1,2})일/);
-      if (mdMatch) {
-        const m = parseInt(mdMatch[1], 10);
-        const d = parseInt(mdMatch[2], 10);
-        result.loadingDate = `${now.getFullYear()}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+      // 🛡️ [Anti-Float 가드] 단위(m/s, m, cm, mm, kg, 톤, t, v, a, w, k, hz, % 등)가 붙은 소수점 숫자는 날짜에서 100% 제외
+      const dotDateMatch = dateScanTarget.match(/(?:^|[^\d])(\d{1,2})\.(\d{1,2})(?!\s*(?:m\/s|km\/h|m|cm|mm|kg|톤|t|v|a|w|k|hz|%|대|개|회|배|ft|피트))(?:일)?(?:\s*\([월화수목금토일]\))?/i);
+      if (dotDateMatch) {
+        const m = parseInt(dotDateMatch[1], 10);
+        const d = parseInt(dotDateMatch[2], 10);
+        if (m >= 1 && m <= 12 && d >= 1 && d <= 31) {
+          result.loadingDate = `${now.getFullYear()}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+        }
       } else {
         const slashMdMatch = dateScanTarget.match(/(?:^|[^\d])(\d{1,2})\/(\d{1,2})(?:[^\d]|$)/);
         if (slashMdMatch) {
@@ -950,8 +1013,10 @@ export function parseCallSummaryText(text: string, fileName?: string): ParsedSum
   } else if (/오후\s*중/i.test(timeScanTarget)) {
     result.loadingTime = '14:00';
   } else {
+    // 과거 '게시된 문의 시각'인지 확인 (예: "오전 11시 31분에 게시된 문의")
+    const isPostedNoticeTime = /(?:게시|작성|등록)(?:된)?\s*문의/.test(timeScanTarget);
     const timeMatch = timeScanTarget.match(/(아침|새벽|오전|오후|낮|저녁)?\s*(\d{1,2})시(?:\s*(\d{1,2})분|\s*(반))?/);
-    if (timeMatch) {
+    if (timeMatch && !isPostedNoticeTime) {
       const ampm = timeMatch[1] || '';
       let hour = parseInt(timeMatch[2], 10);
       let minute = 0;
@@ -964,7 +1029,7 @@ export function parseCallSummaryText(text: string, fileName?: string): ParsedSum
         hour += 12;
       }
       result.loadingTime = `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
-    } else {
+    } else if (!isPostedNoticeTime) {
       const colonTimeMatch = timeScanTarget.match(/(\d{1,2}):(\d{2})/);
       if (colonTimeMatch) {
         result.loadingTime = `${String(colonTimeMatch[1]).padStart(2, '0')}:${colonTimeMatch[2]}`;
@@ -972,7 +1037,7 @@ export function parseCallSummaryText(text: string, fileName?: string): ParsedSum
     }
   }
 
-  // ── [D. 장비 모델 및 수량 추출 (라벨 우선, * 곱하기, 외산/소형/붐 매핑)] ──
+  // ── [D. 장비 모델 및 수량 추출 (라벨 우선, * 곱하기, 30계열 STT 보정, 복창 중복 방어)] ──
   const modelLabelMatch = rawText.match(/모델명\s*[:：]\s*([^\n\r]+)/i);
   const modelTextToScan = modelLabelMatch ? modelLabelMatch[1].trim() : (rawText.length > 0 ? rawText : rawFile.replace(/01[016789]\d{7,8}/g, '').replace(/\d{8}_\d{6}/g, ''));
 
@@ -990,7 +1055,8 @@ export function parseCallSummaryText(text: string, fileName?: string): ParsedSum
 
   const detectedEquipments: EquipmentItem[] = [];
 
-  const modelRegex = /(1330L?|ES1330L?|1432|GS1432|3215|SJ3215|1230|1230ES|1930|2632|2646|3219|3226|3246|4047|4626|4632|4655|GS4655|0812|0808|1012|0608|1412|1612|JCPT1008AC|JCPT1012AC|JCPT\d{4}|S0808E|S0812E|S1212E|0608ME|0808E|1012E|GTJZ0808E|Z45|19피트|26피트|32피트|40피트|46피트|53피트|19ft|26ft|32ft|40ft|46ft|53ft|sj3219|sj3226|sj4632|sj4740|gs1930|gs2632|gs3246|gs4047|(?<!\d)(?:19|26|32|40|46|53)(?!\d)(?:\s*(?:피트|ft|짜리))?(?=\s*(?:\d+|한|두|세|네|다섯|여섯|일곱|여덟|아홉|열)?\s*(?:대|개)))/gi;
+  // 🛡️ [30계열 STT 음성 변형 보정] 고소작업대에는 '톤' 단위가 없으므로 30톤/30톤용/30폭/30피트 ➔ 30ft 매핑
+  const modelRegex = /(1330L?|ES1330L?|1432|GS1432|3215|SJ3215|1230|1230ES|1930|2632|2646|3219|3226|3246|4047|4626|4632|4655|GS4655|0812|0808|1012|0608|1412|1612|JCPT1008AC|JCPT1012AC|JCPT\d{4}|S0808E|S0812E|S1212E|0608ME|0808E|1012E|GTJZ0808E|Z45|30톤용?|30폭|30피트|30ft|3230|SJ3230|19피트|26피트|32피트|40피트|46피트|53피트|19ft|26ft|32ft|40ft|46ft|53ft|sj3219|sj3226|sj4632|sj4740|gs1930|gs2632|gs3246|gs4047|(?<!\d)(?:19|26|30|32|40|46|53)(?!\d)(?:\s*(?:피트|ft|톤용?|폭|짜리))?(?=\s*(?:용)?\s*(?:기연리프트|고소작업대|리프트|렌탈|장비)?\s*(?:\d+|한|두|세|네|다섯|여섯|일곱|여덟|아홉|열)?\s*(?:대|개)))/gi;
 
   let m: RegExpExecArray | null;
   while ((m = modelRegex.exec(modelTextToScan)) !== null) {
@@ -1002,34 +1068,33 @@ export function parseCallSummaryText(text: string, fileName?: string): ParsedSum
     else if (rawKey.includes('3215') || rawKey.includes('1230')) modelName = '15ft';
     else if (rawKey.includes('19') || rawKey.includes('0608')) modelName = '19ft';
     else if (rawKey.includes('26') || rawKey.includes('0812') || rawKey.includes('0808') || rawKey.includes('1008')) modelName = '26ft';
+    else if (rawKey.includes('30') || rawKey.includes('3230')) modelName = '30ft';
     else if (rawKey.includes('32') || rawKey.includes('1012')) modelName = '32ft';
     else if (rawKey.includes('40') || rawKey.includes('4047') || rawKey.includes('1212')) modelName = '40ft';
     else if (rawKey.includes('46') || rawKey.includes('4655') || rawKey.includes('1412')) modelName = '46ft';
     else if (rawKey.includes('53') || rawKey.includes('1612')) modelName = '53ft';
     else if (rawKey.includes('Z45')) modelName = 'Z45 (굴절붐)';
 
-    // 후방 슬라이스에서 수량 파싱 (* N, x N, N대, 한대 등)
-    const afterMatch = modelTextToScan.substring(m.index + m[0].length, m.index + m[0].length + 25);
+    // 후방 슬라이스에서 수량 파싱 (* N, x N, N대, 한대 등 - 중간 리프트 수식어 건너뛰기 지원)
+    const afterMatch = modelTextToScan.substring(m.index + m[0].length, m.index + m[0].length + 40);
     
     let qty = 1;
     const multiplyMatch = afterMatch.match(/^\s*[*xX]\s*(\d+)/);
     if (multiplyMatch) {
       qty = Math.max(1, parseInt(multiplyMatch[1], 10));
     } else {
-      const countMatch = afterMatch.match(/^\s*(\d+)\s*(?:대|개)?/) 
-        || afterMatch.match(/^\s*(한|두|세|네|다섯|여섯|일곱|여덟|아홉|열)\s*대/)
-        || afterMatch.match(/(\d+)\s*(?:대|개)/)
-        || afterMatch.match(/(한|두|세|네|다섯|여섯|일곱|여덟|아홉|열)\s*대/);
+      const countMatch = afterMatch.match(/^\s*(?:용)?\s*(?:기연리프트|고소작업대|리프트|렌탈|장비)?\s*(?:[*xX]\s*(\d+)|(\d+)\s*(?:대|개)|(한|두|세|네|다섯|여섯|일곱|여덟|아홉|열)\s*대)/);
       if (countMatch) {
-        const rawNum = countMatch[1];
-        if (countMap[rawNum]) qty = countMap[rawNum];
-        else if (!isNaN(parseInt(rawNum, 10))) qty = Math.max(1, parseInt(rawNum, 10));
+        if (countMatch[1]) qty = parseInt(countMatch[1], 10);
+        else if (countMatch[2]) qty = parseInt(countMatch[2], 10);
+        else if (countMatch[3]) qty = countMap[countMatch[3]] || 1;
       }
     }
 
     const existing = detectedEquipments.find(e => e.modelName === modelName);
     if (existing) {
-      existing.qty += qty;
+      // 대화에서 같은 말을 반복 확인한 경우(예: [화자1] 2대? -> [화자2] 네 2대) 중복 가산 방지
+      if (existing.qty !== qty) existing.qty = Math.max(existing.qty, qty);
     } else {
       detectedEquipments.push({ modelName, qty });
     }
@@ -1048,20 +1113,34 @@ export function parseCallSummaryText(text: string, fileName?: string): ParsedSum
   if (/(?:경광등|경광\s*램프|경보등)/i.test(clean)) result.safetyOptions.push('경광등');
   if (/소화기|소화기함/i.test(clean)) result.safetyOptions.push('소화기');
   if (/(?:논\s*마킹|넌\s*마킹|노마킹|백색\s*바퀴)\s*(?:타이어|바퀴)?/i.test(clean)) result.safetyOptions.push('논마킹 타이어');
-  if (/(?:비닐|도색|바닥)?\s*보양(?:작업)?/i.test(clean)) result.safetyOptions.push('비닐보양');
+  if (/(?:비닐|도색|바닥)?\s*보양(?:작업|포장)?/i.test(clean)) result.safetyOptions.push('비닐보양');
   if (/(?:과부하\s*(?:방지|경보|경보장치))/i.test(clean)) result.safetyOptions.push('과부하방지장치');
   if (/감지봉/i.test(clean)) result.safetyOptions.push('감지봉');
   if (/함석/i.test(clean)) result.safetyOptions.push('함석');
+  if (/볼트\s*마킹/i.test(clean) && !/볼트\s*마킹은?\s*필요\s*없/i.test(clean)) {
+    result.safetyOptions.push('볼트마킹');
+  }
 
   result.safetyOptions = Array.from(new Set(result.safetyOptions));
 
-  // ── [F. 🛡️ 대차 회수자산번호 추출] ──
+  // ── [F. 🛡️ 렌탈 기간 및 특이세팅 메타데이터 추출] ──
+  const periodMatch = clean.match(/(\d+)\s*(?:개)?월\s*(?:렌탈|임대|사용|계약)/);
+  if (periodMatch) {
+    result.rentalPeriod = `${periodMatch[1]}개월`;
+  }
+
+  const speedMatch = clean.match(/속도\s*(?:세팅|설정)?(?:은|이|을)?\s*[:：]?\s*([0-9.]+\s*(?:m\/s|km\/h))/i);
+  if (speedMatch) {
+    result.specialNote = `속도 ${speedMatch[1]}`;
+  }
+
+  // ── [G. 🛡️ 대차 회수자산번호 추출] ──
   const assetMatches = clean.matchAll(/([A-Za-z0-9]{1,5}(?:-[A-Za-z0-9]{1,4})?)\s*호기/g);
   for (const am of assetMatches) {
     result.retrievalAssetIds.push(am[1]);
   }
 
-  // ── [G. 🛡️ 운송비 부담 귀속선 추출] ──
+  // ── [H. 🛡️ 운송비 부담 귀속선 추출] ──
   if (/(?:당사\s*부담|회사\s*부담|우리가\s*(?:낼게|부담|부담할게|부담함|냄)|무료\s*(?:배차|운송|지원)?|서비스\s*배차|지원\s*배차)/i.test(clean)) {
     result.paidBy = 'OURS';
   } else if (/(?:고객\s*(?:청구|부담)|현장\s*(?:청구|부담)|업체\s*(?:청구|부담)|사장님\s*(?:한테|에게)?\s*청구|손님\s*부담)/i.test(clean)) {
@@ -1071,6 +1150,94 @@ export function parseCallSummaryText(text: string, fileName?: string): ParsedSum
   }
 
   return result;
+}
+
+// ─── AI 초안 추출 결과 → ParsedSummaryInfo 변환 헬퍼 ─────────
+function mapAiResultToParsed(
+  ai: Record<string, unknown>,
+  localFallback: ParsedSummaryInfo
+): ParsedSummaryInfo {
+  const safeStr = (v: unknown) => (typeof v === 'string' && v.trim() ? v.trim() : undefined);
+  const safeArr = (v: unknown): string[] =>
+    Array.isArray(v) ? (v as unknown[]).filter(x => typeof x === 'string') as string[] : [];
+
+  const aiEquips = Array.isArray(ai.equipments)
+    ? (ai.equipments as Array<{ modelName?: unknown; qty?: unknown }>)
+        .filter(e => e && typeof e.modelName === 'string')
+        .map(e => ({
+          modelName: (e.modelName as string).trim(),
+          qty: typeof e.qty === 'number' ? e.qty : 1,
+        }))
+    : [];
+
+  return {
+    customerName:       safeStr(ai.customerName)       ?? localFallback.customerName,
+    siteName:           safeStr(ai.siteName)            ?? localFallback.siteName,
+    siteAddress:        safeStr(ai.siteAddress)         ?? localFallback.siteAddress,
+    contactPerson:      safeStr(ai.contactPerson)       ?? localFallback.contactPerson,
+    contactPhone:       safeStr(ai.contactPhone)        ?? localFallback.contactPhone,
+    loadingDate:        safeStr(ai.loadingDate)         ?? localFallback.loadingDate,
+    loadingTime:        safeStr(ai.loadingTime)         ?? localFallback.loadingTime,
+    rentalPeriod:       safeStr(ai.rentalPeriod)        ?? localFallback.rentalPeriod,
+    specialNote:        safeStr(ai.specialNote)         ?? localFallback.specialNote,
+    paidBy: (['OURS','CUSTOMER','SPLIT'].includes(ai.paidBy as string)
+      ? ai.paidBy as 'OURS' | 'CUSTOMER' | 'SPLIT'
+      : localFallback.paidBy),
+    equipments:         aiEquips.length > 0             ? aiEquips          : localFallback.equipments,
+    safetyOptions:      safeArr(ai.safetyOptions).length > 0
+                          ? safeArr(ai.safetyOptions)   : localFallback.safetyOptions,
+    retrievalAssetIds:  safeArr(ai.retrievalAssetIds).length > 0
+                          ? safeArr(ai.retrievalAssetIds) : localFallback.retrievalAssetIds,
+  };
+}
+
+// ─── /api/call-draft-ai 호출 헬퍼 ────────────────────────────
+async function fetchAiDraftExtraction(
+  storagePath: string | null,
+  summaryText: string,
+  fileName: string,
+  callContext: CallContext[]
+): Promise<{ parsed: Record<string, unknown>; transcript: string | null; steps: string[] } | null> {
+  try {
+    const baseUrl = typeof window !== 'undefined'
+      ? window.location.origin
+      : (process.env.VITE_APP_URL || 'https://giyuenlift.ebro.run');
+
+    const res = await fetch(`${baseUrl}/api/call-draft-ai`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        storagePath:  storagePath || null,
+        summaryText:  summaryText || '',
+        fileName:     fileName || 'unknown.m4a',
+        callContext:  callContext,
+      }),
+      signal: AbortSignal.timeout(45000),
+    });
+
+    if (!res.ok) {
+      console.warn('[fetchAiDraftExtraction] HTTP 오류:', res.status);
+      return null;
+    }
+
+    const json = await res.json() as {
+      success: boolean;
+      fallbackNeeded: boolean;
+      data?: Record<string, unknown>;
+      transcript?: string;
+      steps?: string[];
+    };
+
+    if (!json.success || json.fallbackNeeded || !json.data) {
+      console.warn('[fetchAiDraftExtraction] AI 추출 실패:', json);
+      return null;
+    }
+
+    return { parsed: json.data, transcript: json.transcript || null, steps: json.steps || [] };
+  } catch (e: any) {
+    console.warn('[fetchAiDraftExtraction] 예외 (폴백 전환):', e?.message);
+    return null;
+  }
 }
 
 // ─── 업로드된 통화 파일 ➔ 출고의뢰 초안 즉시 변환 ─────────
@@ -1088,10 +1255,34 @@ export async function convertUploadToDraft(
 
   if (fetchErr || !upload) throw new Error(`업로드 기록 조회 실패: ${fetchErr?.message}`);
 
-  // 🧠 [스마트 키워드 파싱] 텍스트 요약 및 파일명으로부터 파라미터 추출
-  const parsed = parseCallSummaryText(upload.summary_text || '', upload.file_name);
-  const phone = upload.caller_phone || parsed.contactPhone || parsePhoneFromFileName(upload.file_name);
   const context = (upload.call_context as CallContext[]) || ['ADDITIONAL'];
+
+  // ─── [파이프라인 1단계] Groq AI 추출 시도 ─────────────────
+  let parsed: ParsedSummaryInfo;
+  let aiPipelineUsed = false;
+  let aiSteps: string[] = [];
+
+  const aiResult = await fetchAiDraftExtraction(
+    upload.storage_path || null,
+    upload.summary_text || '',
+    upload.file_name || 'unknown.m4a',
+    context
+  );
+
+  if (aiResult) {
+    // ─── [파이프라인 2단계] AI 결과 + 로컬 파서 병합 ──────
+    const localParsed = parseCallSummaryText(upload.summary_text || '', upload.file_name);
+    parsed = mapAiResultToParsed(aiResult.parsed, localParsed);
+    aiPipelineUsed = true;
+    aiSteps = aiResult.steps;
+    console.log('[convertUploadToDraft] ✅ AI 파이프라인 성공:', aiSteps.join('→'));
+  } else {
+    // ─── [파이프라인 3단계] 로컬 정규식 파서 폴백 ──────────
+    parsed = parseCallSummaryText(upload.summary_text || '', upload.file_name);
+    console.warn('[convertUploadToDraft] ⚠️ AI 실패 → 로컬 파서 폴백 적용');
+  }
+
+  const phone = upload.caller_phone || parsed.contactPhone || parsePhoneFromFileName(upload.file_name);
 
   // 2. 고객 매칭 시도 (전화번호 기준 + 상호 텍스트 매칭)
   let matchedCustomerName = parsed.customerName || '';
@@ -1111,12 +1302,27 @@ export async function convertUploadToDraft(
     } catch { /* ignore */ }
   }
 
+  // 2-1. 상호명으로 고객 DB 2차 검색
+  if (!customerFound && matchedCustomerName) {
+    try {
+      const { data: custsByName } = await supabase
+        .from('customers')
+        .select('id, name')
+        .ilike('name', `%${matchedCustomerName}%`)
+        .limit(1);
+      if (custsByName && custsByName.length > 0) {
+        matchedCustomerName = custsByName[0].name;
+        customerFound = true;
+      }
+    } catch { /* ignore */ }
+  }
+
   // 3. DraftDispatchOrder 생성 (지능형 파싱 결과 즉시 바인딩)
   const finalEquipments = parsed.equipments.length > 0 ? parsed.equipments : [{ modelName: '19ft', qty: 1 }];
   const finalDate = parsed.loadingDate || new Date().toISOString().slice(0, 10);
   const finalTime = parsed.loadingTime || '08:00';
 
-  // 🛡️ [메타데이터 직렬화] 대차 회수대상, 운송비 귀속선, 안전옵션 100% 보존
+  // 🛡️ [메타데이터 직렬화] 대차 회수대상, 운송비 귀속선, 안전옵션, 계약특약 100% 보존
   const noteSegments: string[] = [];
   if (upload.summary_text) noteSegments.push(`[통화요약] ${upload.summary_text}`);
   else noteSegments.push(`[통화 녹음 파일] ${upload.file_name}`);
@@ -1126,6 +1332,12 @@ export async function convertUploadToDraft(
   }
   if (parsed.paidBy) {
     noteSegments.push(`[운송비부담] ${parsed.paidBy === 'OURS' ? '당사부담' : parsed.paidBy === 'CUSTOMER' ? '고객청구' : '편도지원'}`);
+  }
+  if (parsed.rentalPeriod) {
+    noteSegments.push(`[렌탈기간] ${parsed.rentalPeriod}`);
+  }
+  if (parsed.specialNote) {
+    noteSegments.push(`[특이세팅] ${parsed.specialNote}`);
   }
   if (parsed.siteAddress) {
     noteSegments.push(`[현장주소] ${parsed.siteAddress}`);
@@ -1191,7 +1403,7 @@ export async function convertUploadToDraft(
     draftId: newDraft.id,
     eventType: 'AUTO_DRAFT_CREATED',
     level: 'SUCCESS',
-    message: `출고의뢰 초안이 자동 생성되었습니다. (의뢰ID: ${newDraft.id.slice(0, 8)}..., 장비: ${finalEquipments.map(e => `${e.modelName}×${e.qty}`).join(', ')}, 연락처: ${phone || '미지정'})`,
+    message: `출고의뢰 초안 자동 생성 완료 [${aiPipelineUsed ? `AI: ${aiSteps.join('→')}` : '로컬파서폴백'}] (의뢰ID: ${newDraft.id.slice(0, 8)}..., 장비: ${finalEquipments.map(e => `${e.modelName}×${e.qty}`).join(', ')}, 연락처: ${phone || '미지정'})`,
     payload: {
       upload_id: uploadId,
       draft_id: newDraft.id,
@@ -1199,6 +1411,8 @@ export async function convertUploadToDraft(
       phone,
       customer: matchedCustomerName || '(미상)',
       equipments: finalEquipments,
+      ai_pipeline_used: aiPipelineUsed,
+      ai_steps: aiSteps,
     },
   });
 

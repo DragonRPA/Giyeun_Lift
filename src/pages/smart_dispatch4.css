@@ -437,22 +437,23 @@
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────
-   4형 (기준정보 드로어형) 고밀도 마스터 그리드 & 테이블 규격 (헌장 3.2, 3.6)
+   처리 대기 좌우 2열 분할 스튜디오 & 고밀도 마스터 그리드 (헌장 3.2, 3.6)
    ───────────────────────────────────────────────────────────────────────────── */
 .dispatch4-master-stage {
   flex: 1;
   min-height: 0;
   width: 100%;
   display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: 4px 6px;
+  flex-direction: row; /* 좌우 2열 분할 */
+  gap: 10px;
+  padding: 6px 8px;
   overflow: hidden;
   box-sizing: border-box;
 }
 
 .dispatch4-grid-section {
   flex: 1;
+  min-width: 0;
   min-height: 0;
   display: flex;
   flex-direction: column;
@@ -462,9 +463,17 @@
   overflow: hidden;
 }
 
+.dispatch4-grid-section.left-panel {
+  flex: 4.8;
+}
+
+.dispatch4-grid-section.right-panel {
+  flex: 5.2;
+}
+
 .dispatch4-section-header {
   flex-shrink: 0;
-  height: 36px;
+  height: 38px;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -497,14 +506,14 @@
   color: #94a3b8;
   font-weight: 700;
   text-align: left;
-  padding: 0 10px;
+  padding: 0 8px;
   border-bottom: 1px solid #1e293b;
   border-right: 1px solid #1e293b;
 }
 
 .dispatch4-table td {
-  height: 38px;
-  padding: 0 10px;
+  height: 36px;
+  padding: 0 8px;
   border-bottom: 1px solid #1e293b;
   border-right: 1px solid #1e293b;
   color: #e2e8f0;
@@ -514,15 +523,32 @@
   background-color: rgba(59, 130, 246, 0.08);
 }
 
+.dispatch4-table tr.selected td {
+  background-color: rgba(59, 130, 246, 0.16);
+}
+
 .dispatch4-col-sticky-0 {
   position: sticky;
   left: 0;
   z-index: 20;
   background-color: #0b1329 !important;
-  width: 64px;
-  min-width: 64px;
+  width: 58px;
+  min-width: 58px;
   text-align: center;
   border-right: 2px solid #1e293b !important;
+}
+
+/* 좌우 패널 하단 내장형 상세 인스펙터 */
+.dispatch4-panel-inspector {
+  flex-shrink: 0;
+  border-top: 1px solid #1e293b;
+  background-color: #080e1e;
+  padding: 8px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 200px;
+  overflow-y: auto;
 }
 
 .dispatch4-scrollbar::-webkit-scrollbar {

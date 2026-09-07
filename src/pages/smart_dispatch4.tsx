@@ -35,7 +35,6 @@ import {
   FolderOpen, Zap, Phone, Terminal, Activity
 } from 'lucide-react';
 import { CallAudioUploadModal } from '../components/CallAudioUploadModal';
-import { DispatchDrawer } from '../components/DispatchDrawer';
 import { PipelineConsole } from '../components/PipelineConsole';
 import './smart_dispatch4.css';
 
@@ -161,41 +160,13 @@ export const SmartDispatch4: React.FC = () => {
   const [isConvertingId, setIsConvertingId] = useState<string | null>(null);
   const logsEndRef = useRef<HTMLDivElement>(null);
 
-  // ── 4형(기준정보 드로어형) 상태 관리 ─────────────────────────────────────
+  // ── 좌우 2열 분할 스튜디오 선택 상태 관리 ──────────────────────────────
   const [viewFilter, setViewFilter] = useState<'ALL' | 'UPLOADS_ONLY' | 'DRAFTS_ONLY'>('ALL');
-  const [drawerState, setDrawerState] = useState<{
-    isOpen: boolean;
-    mode: 'UPLOAD' | 'DRAFT' | null;
-    upload: CallUploadRecord | null;
-    draft: DraftOrder | null;
-  }>({
-    isOpen: false,
-    mode: null,
-    upload: null,
-    draft: null,
-  });
+  const [selectedUploadId, setSelectedUploadId] = useState<string | null>(null);
+  const [selectedDraftId, setSelectedDraftId] = useState<string | null>(null);
 
-  const handleOpenUploadDrawer = useCallback((upload: CallUploadRecord) => {
-    setDrawerState({
-      isOpen: true,
-      mode: 'UPLOAD',
-      upload,
-      draft: null,
-    });
-  }, []);
-
-  const handleOpenDraftDrawer = useCallback((draft: DraftOrder) => {
-    setDrawerState({
-      isOpen: true,
-      mode: 'DRAFT',
-      upload: null,
-      draft,
-    });
-  }, []);
-
-  const handleCloseDrawer = useCallback(() => {
-    setDrawerState(prev => ({ ...prev, isOpen: false }));
-  }, []);
+  const selectedUpload = useMemo(() => callUploads.find(u => u.id === selectedUploadId) || null, [callUploads, selectedUploadId]);
+  const selectedDraft = useMemo(() => queue.find(d => d.id === selectedDraftId) || null, [queue, selectedDraftId]);
 
   // 🌟 [메모 직렬화 파서] DB note 필드에 보존된 배차 핵심 파라미터 역직렬화
   const parseNoteMeta = useCallback((noteText: string) => {
@@ -2933,6 +2904,9 @@ export const SmartDispatch4: React.FC = () => {
   // ─────────────────────────────────────────────────────────────────────────
   // 렌더: 처리 대기 큐 탭 (4형 기준정보 드로어형: 2단 파이프라인 그리드 + 우측 드로어)
   // ─────────────────────────────────────────────────────────────────────────
+  // ─────────────────────────────────────────────────────────────────────────
+  // 렌더: 처리 대기 큐 탭 (좌우 2열 분할 스튜디오: 좌측 통화녹음 + 우측 출고초안 + 하단 콘솔)
+  // ─────────────────────────────────────────────────────────────────────────
   const renderQueueTab = () => {
     const activeQueue = queue.filter(d => d.status === 'DRAFT' || d.status === 'REVIEWING');
     const showUploads = viewFilter === 'ALL' || viewFilter === 'UPLOADS_ONLY';
@@ -2940,9 +2914,9 @@ export const SmartDispatch4: React.FC = () => {
 
     return (
       <div className="flex-1 min-h-0 flex flex-col overflow-hidden bg-slate-950">
-        {/* 1. 상단 컴팩트 툴바 (42px) */}
+        {/* 1. 상단 컴팩트 툴바 (40px) */}
         <div className="flex-shrink-0 px-3 py-1.5 bg-slate-900 border-b border-slate-800 flex items-center justify-between flex-wrap gap-2">
-          {/* 좌측: 뷰 필터 칩 */}
+          {/* 좌측: 뷰 필터 */}
           <div className="flex items-center gap-2 flex-wrap">
             <div className="flex items-center bg-slate-950 p-0.5 rounded-lg border border-slate-800">
               <button
@@ -2952,7 +2926,7 @@ export const SmartDispatch4: React.FC = () => {
                   viewFilter === 'ALL' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200'
                 }`}
               >
-                전체 파이프라인
+                좌우 1:1 분할
               </button>
               <button
                 type="button"
@@ -2961,7 +2935,7 @@ export const SmartDispatch4: React.FC = () => {
                   viewFilter === 'UPLOADS_ONLY' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200'
                 }`}
               >
-                <span>통화 녹음</span>
+                <span>통화 녹음만</span>
                 <span className="font-mono text-[10px] px-1 rounded bg-slate-800/80 text-amber-300 font-bold">{callUploads.length}</span>
               </button>
               <button
@@ -2971,7 +2945,7 @@ export const SmartDispatch4: React.FC = () => {
                   viewFilter === 'DRAFTS_ONLY' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200'
                 }`}
               >
-                <span>출고 초안</span>
+                <span>출고 초안만</span>
                 <span className="font-mono text-[10px] px-1 rounded bg-slate-800/80 text-blue-300 font-bold">{activeQueue.length}</span>
               </button>
             </div>
@@ -3012,11 +2986,11 @@ export const SmartDispatch4: React.FC = () => {
           </div>
         </div>
 
-        {/* 2. 메인 마스터 작업대 (2단 분할 고밀도 그리드) */}
+        {/* 2. 메인 마스터 작업대 (좌우 2열 분할) */}
         <div className="dispatch4-master-stage">
-          {/* 섹션 1: 통화 녹음 수신 대장 */}
+          {/* ◀ 좌단: 통화 녹음 대장 */}
           {showUploads && (
-            <div className="dispatch4-grid-section">
+            <div className={`dispatch4-grid-section ${viewFilter === 'ALL' ? 'left-panel' : ''}`}>
               <div className="dispatch4-section-header">
                 <div className="flex items-center gap-2">
                   <Phone className="w-3.5 h-3.5 text-blue-400" />
@@ -3025,21 +2999,23 @@ export const SmartDispatch4: React.FC = () => {
                     {callUploads.length}건
                   </span>
                 </div>
-                <span className="text-[11px] text-slate-500 font-normal">행 클릭 시 우측 기준정보 드로어 전개</span>
+                <span className="text-[11px] text-slate-400 font-mono">
+                  {selectedUpload ? `선택: ${selectedUpload.callerPhone || selectedUpload.fileName}` : '행 클릭 시 상세 표출'}
+                </span>
               </div>
 
               <div className="dispatch4-table-container dispatch4-scrollbar">
                 <table className="dispatch4-table">
                   <thead>
                     <tr>
-                      <th className="dispatch4-col-sticky-0">상세</th>
-                      <th style={{ width: 85 }}>상태</th>
-                      <th style={{ width: 115 }}>수신일시</th>
-                      <th style={{ width: 125 }}>발신 번호</th>
-                      <th style={{ width: 110 }}>업무유형</th>
-                      <th style={{ width: 180 }}>파일명</th>
-                      <th>요약 내용</th>
-                      <th style={{ width: 80, textAlign: 'center' }}>삭제</th>
+                      <th style={{ width: 46, textAlign: 'center' }}>선택</th>
+                      <th style={{ width: 60 }}>상태</th>
+                      <th style={{ width: 95 }}>수신일시</th>
+                      <th style={{ width: 110 }}>발신번호</th>
+                      <th style={{ width: 85 }}>업무유형</th>
+                      <th>요약 / 파일명</th>
+                      <th style={{ width: 85, textAlign: 'center' }}>초안변환</th>
+                      <th style={{ width: 45, textAlign: 'center' }}>삭제</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -3052,23 +3028,27 @@ export const SmartDispatch4: React.FC = () => {
                     ) : (
                       callUploads.map(upload => {
                         const phone = upload.callerPhone || parsePhoneFromFileName(upload.fileName);
+                        const isSelected = selectedUploadId === upload.id;
+                        const isConverting = isConvertingId === upload.id;
                         return (
                           <tr
                             key={upload.id}
-                            onClick={() => handleOpenUploadDrawer(upload)}
-                            className="hover:bg-blue-950/20 transition cursor-pointer"
+                            onClick={() => setSelectedUploadId(prev => prev === upload.id ? null : upload.id)}
+                            className={`cursor-pointer transition ${isSelected ? 'selected' : ''}`}
                           >
-                            <td className="dispatch4-col-sticky-0" onClick={e => e.stopPropagation()}>
+                            <td style={{ textAlign: 'center' }} onClick={e => e.stopPropagation()}>
                               <button
                                 type="button"
-                                onClick={() => handleOpenUploadDrawer(upload)}
-                                className="px-2 py-0.5 rounded bg-blue-950 text-blue-300 hover:bg-blue-900 border border-blue-800 text-[11px] font-bold"
+                                onClick={() => setSelectedUploadId(prev => prev === upload.id ? null : upload.id)}
+                                className={`px-1.5 py-0.5 rounded text-[10.5px] font-bold border ${
+                                  isSelected ? 'bg-blue-600 text-white border-blue-500' : 'bg-slate-800 text-slate-400 border-slate-700 hover:text-white'
+                                }`}
                               >
-                                상세 ➔
+                                {isSelected ? '선택됨' : '선택'}
                               </button>
                             </td>
                             <td>
-                              <span className={`px-2 py-0.5 rounded text-[10px] font-bold border ${
+                              <span className={`px-1.5 py-0.2 rounded text-[10px] font-bold border ${
                                 upload.status === 'UPLOADED'
                                   ? 'bg-amber-950/80 text-amber-300 border-amber-800'
                                   : upload.status === 'PROCESSING'
@@ -3102,11 +3082,28 @@ export const SmartDispatch4: React.FC = () => {
                                 })}
                               </div>
                             </td>
-                            <td className="font-mono text-slate-300 max-w-[180px] truncate" title={upload.fileName}>
-                              {upload.fileName}
+                            <td className="text-slate-300 max-w-[220px] truncate" title={upload.summaryText || upload.fileName}>
+                              {upload.summaryText || upload.fileName}
                             </td>
-                            <td className="text-slate-400 max-w-[320px] truncate" title={upload.summaryText || ''}>
-                              {upload.summaryText || '-'}
+                            <td style={{ textAlign: 'center' }} onClick={e => e.stopPropagation()}>
+                              <button
+                                type="button"
+                                disabled={isConverting}
+                                onClick={() => handleConvertUploadToDraft(upload.id)}
+                                className="px-2 py-0.5 rounded bg-blue-600 hover:bg-blue-500 disabled:bg-blue-900 text-white font-bold text-[10.5px] transition flex items-center justify-center gap-1 mx-auto"
+                              >
+                                {isConverting ? (
+                                  <>
+                                    <RefreshCw className="w-3 h-3 animate-spin" />
+                                    <span>생성중</span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <Zap className="w-3 h-3 text-amber-300" />
+                                    <span>초안 ➔</span>
+                                  </>
+                                )}
+                              </button>
                             </td>
                             <td style={{ textAlign: 'center' }} onClick={e => e.stopPropagation()}>
                               <button
@@ -3125,12 +3122,93 @@ export const SmartDispatch4: React.FC = () => {
                   </tbody>
                 </table>
               </div>
+
+              {/* ◀ 좌단 하단: 선택된 통화 상세 인스펙터 */}
+              {selectedUpload ? (
+                <div className="dispatch4-panel-inspector dispatch4-scrollbar">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-black text-white flex items-center gap-1.5">
+                        <Phone className="w-3.5 h-3.5 text-blue-400" />
+                        <span>{selectedUpload.callerPhone || parsePhoneFromFileName(selectedUpload.fileName) || '발신 미상'}</span>
+                      </span>
+                      <span className="text-[10px] font-mono text-slate-400">
+                        ({new Date(selectedUpload.createdAt).toLocaleString('ko-KR')})
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedUploadId(null)}
+                      className="text-slate-500 hover:text-white text-xs font-bold"
+                      title="선택 해제"
+                    >
+                      닫기 ✕
+                    </button>
+                  </div>
+
+                  {selectedUpload.publicUrl ? (
+                    <audio controls src={selectedUpload.publicUrl} className="w-full h-7" preload="metadata" />
+                  ) : (
+                    <div className="text-[11px] text-slate-400 bg-slate-950 p-1.5 rounded">
+                      재생 URL 미등록 ({selectedUpload.fileName})
+                    </div>
+                  )}
+
+                  {selectedUpload.summaryText && (
+                    <div className="text-xs text-slate-300 bg-slate-950/80 p-2 rounded border border-slate-800/80 max-h-16 overflow-y-auto leading-relaxed whitespace-pre-wrap dispatch4-scrollbar">
+                      {selectedUpload.summaryText}
+                    </div>
+                  )}
+
+                  <div className="flex items-center justify-between pt-1">
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteUpload(selectedUpload)}
+                      className="px-2.5 py-1 rounded text-[11px] font-bold text-rose-300 bg-rose-950/40 hover:bg-rose-900/60 border border-rose-800/60 transition flex items-center gap-1"
+                    >
+                      <Trash2 className="w-3 h-3 text-rose-400" />
+                      <span>삭제</span>
+                    </button>
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => handleLoadUploadToForm(selectedUpload)}
+                        className="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 text-[11px] font-bold border border-slate-700 transition"
+                      >
+                        새의뢰 폼으로 복사
+                      </button>
+                      <button
+                        type="button"
+                        disabled={isConvertingId === selectedUpload.id}
+                        onClick={() => handleConvertUploadToDraft(selectedUpload.id)}
+                        className="px-3 py-1 rounded bg-blue-600 hover:bg-blue-500 text-white text-[11px] font-bold transition flex items-center gap-1 shadow-sm"
+                      >
+                        <Zap className="w-3 h-3 text-amber-300" />
+                        <span>초안 생성 ➔</span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex-shrink-0 px-3 py-2 bg-slate-950 border-t border-slate-800/60 text-[11px] text-slate-500 flex items-center justify-between">
+                  <span>통화 녹음 행을 선택하면 오디오 청취 및 상세 요약이 표시됩니다.</span>
+                  {callUploads.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setSelectedUploadId(callUploads[0].id)}
+                      className="text-blue-400 hover:underline font-bold text-[10.5px]"
+                    >
+                      첫 번째 녹음 선택
+                    </button>
+                  )}
+                </div>
+              )}
             </div>
           )}
 
-          {/* 섹션 2: 출고의뢰 초안 대장 */}
+          {/* ▶ 우단: 출고의뢰 초안 대장 */}
           {showDrafts && (
-            <div className="dispatch4-grid-section">
+            <div className={`dispatch4-grid-section ${viewFilter === 'ALL' ? 'right-panel' : ''}`}>
               <div className="dispatch4-section-header">
                 <div className="flex items-center gap-2">
                   <Package className="w-3.5 h-3.5 text-emerald-400" />
@@ -3139,23 +3217,25 @@ export const SmartDispatch4: React.FC = () => {
                     {activeQueue.length}건
                   </span>
                 </div>
-                <span className="text-[11px] text-slate-500 font-normal">배차 대장 등록 전 검토 및 확정 대기 목록</span>
+                <span className="text-[11px] text-slate-400 font-mono">
+                  {selectedDraft ? `선택: ${selectedDraft.customerName.value || '미정'}` : '행 클릭 시 상세 제원 표출'}
+                </span>
               </div>
 
               <div className="dispatch4-table-container dispatch4-scrollbar">
                 <table className="dispatch4-table">
                   <thead>
                     <tr>
-                      <th className="dispatch4-col-sticky-0">상세</th>
-                      <th style={{ width: 40, textAlign: 'center' }}>선택</th>
-                      <th style={{ width: 80 }}>긴급도</th>
-                      <th style={{ width: 115 }}>접수일시</th>
-                      <th style={{ width: 150 }}>고객사명</th>
-                      <th style={{ width: 160 }}>투입 현장명</th>
-                      <th style={{ width: 150 }}>신청 장비</th>
-                      <th style={{ width: 130 }}>상차일정</th>
-                      <th style={{ width: 140 }}>인수담당</th>
-                      <th style={{ width: 120, textAlign: 'center' }}>배차등록</th>
+                      <th style={{ width: 36, textAlign: 'center' }}>선택</th>
+                      <th style={{ width: 55 }}>긴급도</th>
+                      <th style={{ width: 95 }}>접수일시</th>
+                      <th style={{ width: 120 }}>고객사명</th>
+                      <th style={{ width: 130 }}>투입 현장명</th>
+                      <th style={{ width: 120 }}>신청 장비</th>
+                      <th style={{ width: 110 }}>상차일정</th>
+                      <th style={{ width: 100 }}>인수담당</th>
+                      <th style={{ width: 85, textAlign: 'center' }}>배차등록</th>
+                      <th style={{ width: 45, textAlign: 'center' }}>폐기</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -3167,27 +3247,18 @@ export const SmartDispatch4: React.FC = () => {
                       </tr>
                     ) : (
                       activeQueue.map(draft => {
-                        const isSelected = selectedQueueIds.has(draft.id);
-                        const phoneVal = typeof draft.contactPhone === 'string' ? draft.contactPhone : draft.contactPhone?.value || '-';
+                        const isSelected = selectedDraftId === draft.id;
+                        const isChecked = selectedQueueIds.has(draft.id);
                         return (
                           <tr
                             key={draft.id}
-                            onClick={() => handleOpenDraftDrawer(draft)}
-                            className="hover:bg-emerald-950/20 transition cursor-pointer"
+                            onClick={() => setSelectedDraftId(prev => prev === draft.id ? null : draft.id)}
+                            className={`cursor-pointer transition ${isSelected ? 'selected' : ''}`}
                           >
-                            <td className="dispatch4-col-sticky-0" onClick={e => e.stopPropagation()}>
-                              <button
-                                type="button"
-                                onClick={() => handleOpenDraftDrawer(draft)}
-                                className="px-2 py-0.5 rounded bg-emerald-950 text-emerald-300 hover:bg-emerald-900 border border-emerald-800 text-[11px] font-bold"
-                              >
-                                상세 ➔
-                              </button>
-                            </td>
                             <td style={{ textAlign: 'center' }} onClick={e => e.stopPropagation()}>
                               <input
                                 type="checkbox"
-                                checked={isSelected}
+                                checked={isChecked}
                                 onChange={() => {
                                   setSelectedQueueIds(prev => {
                                     const n = new Set(prev);
@@ -3196,11 +3267,11 @@ export const SmartDispatch4: React.FC = () => {
                                     return n;
                                   });
                                 }}
-                                className="w-3.5 h-3.5 rounded bg-slate-800 border-slate-700"
+                                className="w-3.5 h-3.5 rounded bg-slate-800 border-slate-700 text-blue-600 focus:ring-0"
                               />
                             </td>
                             <td>
-                              <span className={`px-2 py-0.5 rounded text-[10px] font-bold border ${
+                              <span className={`px-1.5 py-0.2 rounded text-[10px] font-bold border ${
                                 draft.urgency === 'HIGH'
                                   ? 'bg-red-950 text-red-300 border-red-800'
                                   : draft.urgency === 'MEDIUM'
@@ -3213,28 +3284,38 @@ export const SmartDispatch4: React.FC = () => {
                             <td className="font-mono text-slate-400 text-[11px]">
                               {new Date(draft.createdAt).toLocaleString('ko-KR', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}
                             </td>
-                            <td className="font-bold text-white max-w-[150px] truncate" title={draft.customerName.value || ''}>
+                            <td className="font-bold text-white max-w-[120px] truncate" title={draft.customerName.value || ''}>
                               {draft.customerName.value || '(미상)'}
                             </td>
-                            <td className="text-slate-300 max-w-[160px] truncate" title={draft.siteName.value || ''}>
+                            <td className="text-slate-300 max-w-[130px] truncate" title={draft.siteName.value || ''}>
                               {draft.siteName.value || '(현장 미정)'}
                             </td>
-                            <td className="text-emerald-400 font-bold max-w-[150px] truncate">
+                            <td className="text-emerald-400 font-bold max-w-[120px] truncate">
                               {draft.equipments.length > 0 ? draft.equipments.map(e => `${e.modelName}×${e.qty}`).join(', ') : '없음'}
                             </td>
                             <td className="font-mono text-slate-200 text-[11px]">
                               {draft.loadingDate.value || '미정'} {draft.loadingTime.value || ''}
                             </td>
-                            <td className="text-slate-300 text-[11px] max-w-[140px] truncate">
-                              {draft.contactPerson.value || '-'} ({phoneVal})
+                            <td className="text-slate-300 text-[11px] max-w-[100px] truncate">
+                              {draft.contactPerson.value || '-'}
                             </td>
                             <td style={{ textAlign: 'center' }} onClick={e => e.stopPropagation()}>
                               <button
                                 type="button"
                                 onClick={() => handleSubmitDraft(draft)}
-                                className="px-2.5 py-1 rounded bg-blue-600 hover:bg-blue-500 text-white font-bold text-[11px] transition shadow-sm"
+                                className="px-2 py-0.5 rounded bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-[10.5px] transition shadow-sm"
                               >
                                 배차등록 ➔
+                              </button>
+                            </td>
+                            <td style={{ textAlign: 'center' }} onClick={e => e.stopPropagation()}>
+                              <button
+                                type="button"
+                                onClick={() => handleDiscardDraft(draft.id)}
+                                className="p-1 rounded text-slate-500 hover:text-rose-400 hover:bg-rose-950/60 transition"
+                                title="폐기"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
                               </button>
                             </td>
                           </tr>
@@ -3244,6 +3325,107 @@ export const SmartDispatch4: React.FC = () => {
                   </tbody>
                 </table>
               </div>
+
+              {/* ▶ 우단 하단: 선택된 초안 상세 인스펙터 */}
+              {selectedDraft ? (
+                <div className="dispatch4-panel-inspector dispatch4-scrollbar">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-black text-white">
+                        {selectedDraft.customerName.value || '(고객사 미정)'} ➔ {selectedDraft.siteName.value || '(현장 미정)'}
+                      </span>
+                      <span className={`text-[10px] font-bold px-1.5 py-0.2 rounded border ${
+                        selectedDraft.urgency === 'HIGH' ? 'bg-red-950 text-red-300 border-red-800' : 'bg-emerald-950 text-emerald-300 border-emerald-800'
+                      }`}>
+                        {selectedDraft.urgency === 'HIGH' ? '긴급' : '보통'}
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedDraftId(null)}
+                      className="text-slate-500 hover:text-white text-xs font-bold"
+                      title="선택 해제"
+                    >
+                      닫기 ✕
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2 text-[11px] bg-slate-950/70 p-2 rounded border border-slate-800">
+                    <div>
+                      <span className="text-slate-500 block text-[10px]">현장 주소</span>
+                      <span className="text-slate-200 truncate block">{selectedDraft.siteAddress || '(주소 미등록)'}</span>
+                    </div>
+                    <div>
+                      <span className="text-slate-500 block text-[10px]">인수 담당자</span>
+                      <span className="text-slate-200">
+                        {selectedDraft.contactPerson.value || '-'} ({typeof selectedDraft.contactPhone === 'string' ? selectedDraft.contactPhone : (selectedDraft.contactPhone as any)?.value || '-'})
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-slate-500 block text-[10px]">상차/하차 일정</span>
+                      <span className="text-amber-300 font-mono">
+                        {selectedDraft.loadingDate.value} {selectedDraft.loadingTime.value || ''}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-slate-500 block text-[10px]">신청 장비 제원</span>
+                      <span className="text-emerald-400 font-bold">
+                        {selectedDraft.equipments.map(e => `${e.modelName}×${e.qty}대`).join(', ') || '없음'}
+                      </span>
+                    </div>
+                  </div>
+
+                  {(selectedDraft.safetyOptions?.length || selectedDraft.note) ? (
+                    <div className="text-[11px] text-slate-300 bg-slate-950/50 p-1.5 rounded border border-slate-850 truncate">
+                      {selectedDraft.safetyOptions && selectedDraft.safetyOptions.length > 0 && (
+                        <span className="text-amber-400 font-bold mr-2">[옵션: {selectedDraft.safetyOptions.join(', ')}]</span>
+                      )}
+                      {selectedDraft.note && <span className="text-slate-300">{selectedDraft.note}</span>}
+                    </div>
+                  ) : null}
+
+                  <div className="flex items-center justify-between pt-1">
+                    <button
+                      type="button"
+                      onClick={() => handleDiscardDraft(selectedDraft.id)}
+                      className="px-2.5 py-1 rounded text-[11px] font-bold text-rose-300 bg-rose-950/40 hover:bg-rose-900/60 border border-rose-800/60 transition flex items-center gap-1"
+                    >
+                      <Trash2 className="w-3 h-3 text-rose-400" />
+                      <span>폐기</span>
+                    </button>
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => handleLoadDraftToForm(selectedDraft)}
+                        className="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 text-[11px] font-bold border border-slate-700 transition"
+                      >
+                        새의뢰 작성으로 가져오기 ➔
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleSubmitDraft(selectedDraft)}
+                        className="px-3.5 py-1 rounded bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-black transition flex items-center gap-1 shadow-sm"
+                      >
+                        <ShieldCheck className="w-3.5 h-3.5" />
+                        <span>배차 대장 등록 ➔</span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex-shrink-0 px-3 py-2 bg-slate-950 border-t border-slate-800/60 text-[11px] text-slate-500 flex items-center justify-between">
+                  <span>출고 초안 행을 선택하면 상세 제원 및 배차 대장 등록이 활성화됩니다.</span>
+                  {activeQueue.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setSelectedDraftId(activeQueue[0].id)}
+                      className="text-emerald-400 hover:underline font-bold text-[10.5px]"
+                    >
+                      첫 번째 초안 선택
+                    </button>
+                  )}
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -3253,40 +3435,6 @@ export const SmartDispatch4: React.FC = () => {
           logs={pipelineLogs}
           onClearLogs={() => setPipelineLogs([])}
           onSendTestLog={handleSendTestLog}
-        />
-
-        {/* 4. 4형 기준정보 우측 슬라이드 드로어 */}
-        <DispatchDrawer
-          isOpen={drawerState.isOpen}
-          mode={drawerState.mode}
-          upload={drawerState.upload}
-          draft={drawerState.draft as any}
-          isConverting={isConvertingId === drawerState.upload?.id}
-          onClose={handleCloseDrawer}
-          onConvertToDraft={async (uploadId) => {
-            await handleConvertUploadToDraft(uploadId);
-            handleCloseDrawer();
-          }}
-          onLoadUploadToForm={(upload) => {
-            handleLoadUploadToForm(upload);
-            handleCloseDrawer();
-          }}
-          onDeleteUpload={async (upload) => {
-            await handleDeleteUpload(upload);
-            handleCloseDrawer();
-          }}
-          onSubmitDraft={async (draft) => {
-            await handleSubmitDraft(draft as any);
-            handleCloseDrawer();
-          }}
-          onLoadDraftToForm={(draft) => {
-            handleLoadDraftToForm(draft as any);
-            handleCloseDrawer();
-          }}
-          onDiscardDraft={async (draftId) => {
-            await handleDiscardDraft(draftId);
-            handleCloseDrawer();
-          }}
         />
       </div>
     );

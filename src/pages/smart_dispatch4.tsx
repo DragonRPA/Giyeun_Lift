@@ -209,8 +209,8 @@ export const SmartDispatch4: React.FC = () => {
         }
       } else if (p.startsWith('[차종]')) {
         vehicleType = p.replace('[차종]', '').trim();
-      } else if (p.startsWith('[현장상세주소]')) {
-        siteAddress = p.replace('[현장상세주소]', '').trim();
+      } else if (p.startsWith('[현장상세주소]') || p.startsWith('[현장주소]')) {
+        siteAddress = p.replace(/^\[(?:현장상세주소|현장주소)\]/, '').trim();
       } else if (p.startsWith('[옵션]') || p.startsWith('[안전옵션]')) {
         const optStr = p.replace(/^\[(?:옵션|안전옵션)\]/, '').trim();
         const items = optStr.split(/[,/|]/).map(s => s.trim()).filter(Boolean);

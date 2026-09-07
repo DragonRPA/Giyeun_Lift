@@ -733,11 +733,11 @@ export function subscribePipelineLogs(onNewLog: (log: PipelineLogRecord) => void
   return () => { supabase!.removeChannel(channel); };
 }
 
-// ─── 🧠 [스마트 키워드 파서] 통화 텍스트/삼성요약/메모에서 출고 파라미터 자동 추출 ──
 export interface ParsedSummaryInfo {
   equipments: EquipmentItem[];
   customerName?: string;
   siteName?: string;
+  siteAddress?: string;
   contactPerson?: string;
   contactPhone?: string;
   loadingDate?: string;
@@ -763,90 +763,224 @@ export function parseCallSummaryText(text: string, fileName?: string): ParsedSum
     return result;
   }
 
-  // 1. 전화번호 추출 (텍스트 우선, 파일명 보조)
-  const phoneMatch = rawText.match(/(01[016789][-.\s]?\d{3,4}[-.\s]?\d{4}|02[-.\s]?\d{3,4}[-.\s]?\d{4}|0[3-6]\d[-.\s]?\d{3,4}[-.\s]?\d{4})/)
-    || rawFile.match(/(01[016789][-.\s]?\d{3,4}[-.\s]?\d{4}|02[-.\s]?\d{3,4}[-.\s]?\d{4}|0[3-6]\d[-.\s]?\d{3,4}[-.\s]?\d{4})/);
-  
-  if (phoneMatch) {
-    const raw = phoneMatch[0].replace(/[-.\s]/g, '');
-    if (raw.startsWith('02')) {
-      result.contactPhone = raw.length === 9 ? `02-${raw.slice(2, 5)}-${raw.slice(5)}` : `02-${raw.slice(2, 6)}-${raw.slice(6)}`;
-    } else if (raw.length === 11) {
-      result.contactPhone = `${raw.slice(0, 3)}-${raw.slice(3, 7)}-${raw.slice(7)}`;
-    } else if (raw.length === 10) {
-      result.contactPhone = `${raw.slice(0, 3)}-${raw.slice(3, 6)}-${raw.slice(6)}`;
+  // ── [A. 라벨 기반 1순위 구조화 파싱 (밴드 및 정형 서식 대응)] ──
+  // 1. 고객명 라벨
+  const custLabelMatch = rawText.match(/(?:고객사명?|고객명|업체명?|상호명?|상호)\s*[:：]\s*([^\n\r]+)/i);
+  if (custLabelMatch && custLabelMatch[1]) {
+    result.customerName = custLabelMatch[1].trim();
+  }
+
+  // 2. 현장명 라벨 (개행 없는 한 줄 우선 매칭)
+  const siteLabelMatch = rawText.match(/(?:현장명?|현장)(?!\s*상세|\s*주소|\s*담당)\s*[:：]\s*([^\n\r]+)/i);
+  if (siteLabelMatch && siteLabelMatch[1]) {
+    result.siteName = siteLabelMatch[1].trim();
+  }
+
+  // 3. 현장 상세 주소 라벨
+  const addrLabelMatch = rawText.match(/(?:현장\s*상세\s*주소|현장상세주소|현장\s*주소|배송지)\s*[:：]\s*([^\n\r]+)/i);
+  if (addrLabelMatch && addrLabelMatch[1]) {
+    result.siteAddress = addrLabelMatch[1].trim();
+  }
+
+  // 4. 현장 담당자 라벨 (이름 및 전화번호 분리)
+  const contactLabelMatch = rawText.match(/(?:현장\s*담당자?|현장담당|인수자)\s*[:：]\s*([^\n\r]+)/i);
+  if (contactLabelMatch && contactLabelMatch[1]) {
+    const rawContact = contactLabelMatch[1].trim();
+    const pMatch = rawContact.match(/(01[016789][-.\s]?\d{3,4}[-.\s]?\d{4}|02[-.\s]?\d{3,4}[-.\s]?\d{4}|0[3-6]\d[-.\s]?\d{3,4}[-.\s]?\d{4}|070[-.\s]?\d{4}[-.\s]?\d{4}|050\d[-.\s]?\d{3,4}[-.\s]?\d{4})/);
+    if (pMatch) {
+      result.contactPhone = pMatch[0].trim();
+      const nameOnly = rawContact.replace(pMatch[0], '').replace(/[:\-]/g, '').trim();
+      if (nameOnly) result.contactPerson = nameOnly;
+    } else {
+      result.contactPerson = rawContact;
     }
-  } else if (rawFile) {
-    const pFromFn = parsePhoneFromFileName(rawFile);
-    if (pFromFn) result.contactPhone = pFromFn;
   }
 
-  // 2. 담당자 이름 추출 (1~4글자 성씨 + 직책 대응)
-  const explicitMatch = rawText.match(/(?:담당자|인수자|소장)\s*[:：]?\s*([가-힣]{2,4})/);
-  const titleMatch = rawText.match(/([가-힣]{1,4}\s*(?:소장님?|반장님?|과장님?|부장님?|팀장님?|대리님?))/);
-  if (titleMatch && titleMatch[0]) {
-    const candidate = titleMatch[0].trim().replace(/님$/, '');
-    if (!['내일', '모레', '아침', '오전', '오후', '현대', '삼성', '대우'].some(w => candidate.startsWith(w))) {
-      result.contactPerson = candidate;
+  // 5. 전화번호 폴백 (라벨 미존재 시 본문/파일명 스캔)
+  if (!result.contactPhone) {
+    const phoneRegex = /(01[016789][-.\s]?\d{3,4}[-.\s]?\d{4}|02[-.\s]?\d{3,4}[-.\s]?\d{4}|0[3-6]\d[-.\s]?\d{3,4}[-.\s]?\d{4}|070[-.\s]?\d{4}[-.\s]?\d{4}|050\d[-.\s]?\d{3,4}[-.\s]?\d{4})/;
+    const phoneMatch = rawText.match(phoneRegex) || rawFile.match(phoneRegex);
+    
+    if (phoneMatch) {
+      const raw = phoneMatch[0].replace(/[-.\s]/g, '');
+      if (raw.startsWith('02')) {
+        result.contactPhone = raw.length === 9 ? `02-${raw.slice(2, 5)}-${raw.slice(5)}` : `02-${raw.slice(2, 6)}-${raw.slice(6)}`;
+      } else if (raw.startsWith('070') && raw.length === 11) {
+        result.contactPhone = `070-${raw.slice(3, 7)}-${raw.slice(7)}`;
+      } else if (raw.startsWith('050') && raw.length >= 11) {
+        result.contactPhone = `${raw.slice(0, 4)}-${raw.slice(4, raw.length - 4)}-${raw.slice(raw.length - 4)}`;
+      } else if (raw.length === 11) {
+        result.contactPhone = `${raw.slice(0, 3)}-${raw.slice(3, 7)}-${raw.slice(7)}`;
+      } else if (raw.length === 10) {
+        result.contactPhone = `${raw.slice(0, 3)}-${raw.slice(3, 6)}-${raw.slice(6)}`;
+      } else {
+        result.contactPhone = phoneMatch[0];
+      }
+    } else if (rawFile) {
+      const pFromFn = parsePhoneFromFileName(rawFile);
+      if (pFromFn) result.contactPhone = pFromFn;
     }
-  } else if (explicitMatch && explicitMatch[1]) {
-    result.contactPerson = explicitMatch[1].trim();
   }
 
-  // 3. 현장명 추출
-  const siteMatch = rawText.match(/([가-힣a-zA-Z0-9]{2,15}\s*(?:현장|신축현장|PJ|플랜트))/);
-  if (siteMatch && siteMatch[0]) {
-    result.siteName = siteMatch[0].trim();
+  // 6. 담당자 이름 폴백 (라벨 미존재 시 직책 기반 유추)
+  if (!result.contactPerson) {
+    const explicitMatch = rawText.match(/(?:담당자|인수자|소장)\s*[:：]?\s*([가-힣]{2,4})/);
+    const titleMatch = rawText.match(/([가-힣]{1,4}\s*(?:소장님?|반장님?|과장님?|부장님?|팀장님?|대리님?|책임|선임|차장|이사))/);
+    if (titleMatch && titleMatch[0]) {
+      const candidate = titleMatch[0].trim().replace(/님$/, '');
+      if (!['내일', '모레', '아침', '오전', '오후', '현대', '삼성', '대우'].some(w => candidate.startsWith(w))) {
+        result.contactPerson = candidate;
+      }
+    } else if (explicitMatch && explicitMatch[1]) {
+      result.contactPerson = explicitMatch[1].trim();
+    }
   }
 
-  // 4. 날짜 추출
+  // 7. 현장명 폴백 (라벨 미존재 시 키워드 매칭, 개행문자 절대 미포함)
+  if (!result.siteName) {
+    const siteMatch = rawText.match(/([가-힣a-zA-Z0-9]{2,20}\s*(?:신축현장|신축공사|공사현장|물류센터|물류창고|물류단지|데이터센터|오피스텔|아파트|발전소|플랜트|빌딩|타워|공장|단지|창고|공항|팹동|PJT|PJ|현장|공사))/);
+    if (siteMatch && siteMatch[0]) {
+      result.siteName = siteMatch[0].trim();
+    }
+  }
+
+  // ── [B. 날짜 추출 (스케줄 라벨 우선, MM.DD 점 날짜, 요일, 상대일 종합)] ──
   const now = new Date();
-  if (clean.includes('내일')) {
-    const d = new Date();
-    d.setDate(d.getDate() + 1);
-    result.loadingDate = d.toISOString().split('T')[0];
-  } else if (clean.includes('모레') || clean.includes('내일모레')) {
-    const d = new Date();
-    d.setDate(d.getDate() + 2);
-    result.loadingDate = d.toISOString().split('T')[0];
+  const getFormattedDate = (target: Date) => target.toISOString().split('T')[0];
+
+  const schedLabelMatch = rawText.match(/(?:상차시간|배송\s*스케줄|배송스케줄|하차시간|승계\s*시작일)\s*[:：]?\s*([^\n\r]+)/i);
+  const schedText = schedLabelMatch ? schedLabelMatch[1].trim() : '';
+  const dateScanTarget = schedText ? `${schedText} ${clean}` : clean;
+
+  const weekdayMap: Record<string, number> = {
+    '월': 1, '화': 2, '수': 3, '목': 4, '금': 5, '토': 6, '일': 0
+  };
+
+  // 1) MM.DD 또는 M.D 포맷 우선 확인 (예: "09.08(화)", "07.20 (월)", "8.12", "08.01일")
+  const dotDateMatch = dateScanTarget.match(/(?:^|[^\d])(\d{1,2})\.(\d{1,2})(?:일)?(?:\s*\([월화수목금토일]\))?/);
+  if (dotDateMatch) {
+    const m = parseInt(dotDateMatch[1], 10);
+    const d = parseInt(dotDateMatch[2], 10);
+    if (m >= 1 && m <= 12 && d >= 1 && d <= 31) {
+      result.loadingDate = `${now.getFullYear()}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+    }
   } else if (clean.includes('오늘') || clean.includes('당일')) {
-    result.loadingDate = now.toISOString().split('T')[0];
+    result.loadingDate = getFormattedDate(now);
+  } else if (clean.includes('내일모레') || clean.includes('모레')) {
+    const d = new Date(now);
+    d.setDate(d.getDate() + 2);
+    result.loadingDate = getFormattedDate(d);
+  } else if (clean.includes('글피')) {
+    const d = new Date(now);
+    d.setDate(d.getDate() + 3);
+    result.loadingDate = getFormattedDate(d);
+  } else if (clean.includes('내일')) {
+    const d = new Date(now);
+    d.setDate(d.getDate() + 1);
+    result.loadingDate = getFormattedDate(d);
+  } else if (/다음\s*주\s*([월화수목금토일])(?:요일)?/.test(dateScanTarget)) {
+    const wMatch = dateScanTarget.match(/다음\s*주\s*([월화수목금토일])(?:요일)?/);
+    if (wMatch && weekdayMap[wMatch[1]] !== undefined) {
+      const targetDay = weekdayMap[wMatch[1]];
+      const currentDay = now.getDay();
+      let diff = (targetDay - currentDay + 7) % 7;
+      if (diff === 0) diff = 7;
+      const d = new Date(now);
+      d.setDate(d.getDate() + diff + 7);
+      result.loadingDate = getFormattedDate(d);
+    }
+  } else if (/이번\s*주\s*([월화수목금토일])(?:요일)?/.test(dateScanTarget)) {
+    const wMatch = dateScanTarget.match(/이번\s*주\s*([월화수목금토일])(?:요일)?/);
+    if (wMatch && weekdayMap[wMatch[1]] !== undefined) {
+      const targetDay = weekdayMap[wMatch[1]];
+      const currentDay = now.getDay();
+      const diff = targetDay - currentDay;
+      const d = new Date(now);
+      d.setDate(d.getDate() + diff);
+      result.loadingDate = getFormattedDate(d);
+    }
+  } else if (/([월화수목금토일])요일/.test(dateScanTarget)) {
+    const wMatch = dateScanTarget.match(/([월화수목금토일])요일/);
+    if (wMatch && weekdayMap[wMatch[1]] !== undefined) {
+      const targetDay = weekdayMap[wMatch[1]];
+      const currentDay = now.getDay();
+      let diff = (targetDay - currentDay + 7) % 7;
+      if (diff === 0) diff = 7;
+      const d = new Date(now);
+      d.setDate(d.getDate() + diff);
+      result.loadingDate = getFormattedDate(d);
+    }
+  } else if (clean.includes('월말') || clean.includes('이달말') || clean.includes('이번달 말')) {
+    const d = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+    result.loadingDate = getFormattedDate(d);
+  } else if (clean.includes('익월초') || clean.includes('다음달 초')) {
+    const d = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+    result.loadingDate = getFormattedDate(d);
   } else {
-    const ymdMatch = clean.match(/(\d{4})[-./](\d{1,2})[-./](\d{1,2})/);
+    const ymdMatch = dateScanTarget.match(/(\d{4})[-./](\d{1,2})[-./](\d{1,2})/);
     if (ymdMatch) {
       result.loadingDate = `${ymdMatch[1]}-${String(ymdMatch[2]).padStart(2, '0')}-${String(ymdMatch[3]).padStart(2, '0')}`;
     } else {
-      const mdMatch = clean.match(/(\d{1,2})월\s*(\d{1,2})일/);
+      const mdMatch = dateScanTarget.match(/(\d{1,2})월\s*(\d{1,2})일/);
       if (mdMatch) {
         const m = parseInt(mdMatch[1], 10);
         const d = parseInt(mdMatch[2], 10);
         result.loadingDate = `${now.getFullYear()}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+      } else {
+        const slashMdMatch = dateScanTarget.match(/(?:^|[^\d])(\d{1,2})\/(\d{1,2})(?:[^\d]|$)/);
+        if (slashMdMatch) {
+          const m = parseInt(slashMdMatch[1], 10);
+          const d = parseInt(slashMdMatch[2], 10);
+          if (m >= 1 && m <= 12 && d >= 1 && d <= 31) {
+            result.loadingDate = `${now.getFullYear()}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+          }
+        }
       }
     }
   }
 
-  // 5. 시간 추출
-  if (/ASAP|즉시|당장|긴급/i.test(clean)) {
+  // ── [C. 시간 추출 (반/30분, 첫차, 오전/오후 중 등 종합)] ──
+  const timeScanTarget = schedText || clean;
+  if (/ASAP|즉시|당장|긴급/i.test(timeScanTarget)) {
     result.loadingTime = 'ASAP';
+  } else if (/첫차|새벽일찍/i.test(timeScanTarget)) {
+    result.loadingTime = '07:00';
+  } else if (/오전\s*중/i.test(timeScanTarget)) {
+    result.loadingTime = '10:00';
+  } else if (/오후\s*중/i.test(timeScanTarget)) {
+    result.loadingTime = '14:00';
   } else {
-    const timeMatch = clean.match(/(아침|새벽|오전|오후|낮|저녁)?\s*(\d{1,2})시(?:\s*(\d{1,2})분)?/);
+    const timeMatch = timeScanTarget.match(/(아침|새벽|오전|오후|낮|저녁)?\s*(\d{1,2})시(?:\s*(\d{1,2})분|\s*(반))?/);
     if (timeMatch) {
       const ampm = timeMatch[1] || '';
       let hour = parseInt(timeMatch[2], 10);
-      const minute = timeMatch[3] ? parseInt(timeMatch[3], 10) : 0;
+      let minute = 0;
+      if (timeMatch[4] === '반') {
+        minute = 30;
+      } else if (timeMatch[3]) {
+        minute = parseInt(timeMatch[3], 10);
+      }
       if ((ampm === '오후' || ampm === '저녁' || ampm === '낮') && hour < 12) {
         hour += 12;
       }
       result.loadingTime = `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
     } else {
-      const colonTimeMatch = clean.match(/(\d{1,2}):(\d{2})/);
+      const colonTimeMatch = timeScanTarget.match(/(\d{1,2}):(\d{2})/);
       if (colonTimeMatch) {
         result.loadingTime = `${String(colonTimeMatch[1]).padStart(2, '0')}:${colonTimeMatch[2]}`;
       }
     }
   }
 
-  // 6. 🛡️ [WTT 검증 결함 해결] 장비 모델 및 수량 추출
+  // ── [D. 장비 모델 및 수량 추출 (라벨 우선, * 곱하기, 외산/소형/붐 매핑)] ──
+  const modelLabelMatch = rawText.match(/모델명\s*[:：]\s*([^\n\r]+)/i);
+  const modelTextToScan = modelLabelMatch ? modelLabelMatch[1].trim() : (rawText.length > 0 ? rawText : rawFile.replace(/01[016789]\d{7,8}/g, '').replace(/\d{8}_\d{6}/g, ''));
+
+  // 중간발판 분리
+  if (/중간발판/i.test(modelTextToScan)) {
+    result.safetyOptions.push('중간발판');
+  }
+
   const countMap: Record<string, number> = {
     '한': 1, '일': 1, '하나': 1, '두': 2, '이': 2, '둘': 2,
     '세': 3, '삼': 3, '셋': 3, '네': 4, '사': 4, '넷': 4,
@@ -855,33 +989,42 @@ export function parseCallSummaryText(text: string, fileName?: string): ParsedSum
   };
 
   const detectedEquipments: EquipmentItem[] = [];
-  // 텍스트가 있으면 텍스트만 스캔 (파일명의 전화번호/타임스탬프 오인식 방지)
-  const textToScan = rawText.length > 0 ? rawText : rawFile.replace(/01[016789]\d{7,8}/g, '').replace(/\d{8}_\d{6}/g, '');
 
-  const modelRegex = /(1930|2632|2646|3219|3226|3246|4047|4626|4632|0812|0808|1012|0608|1412|1612|19피트|26피트|32피트|40피트|46피트|53피트|19ft|26ft|32ft|40ft|46ft|53ft|sj3219|sj3226|sj4632|sj4740|gs1930|gs2632|gs3246|gs4047|\b19\b(?:\s*대)|\b26\b(?:\s*대)|\b32\b(?:\s*대))/gi;
+  const modelRegex = /(1330L?|ES1330L?|1432|GS1432|3215|SJ3215|1230|1230ES|1930|2632|2646|3219|3226|3246|4047|4626|4632|4655|GS4655|0812|0808|1012|0608|1412|1612|JCPT1008AC|JCPT1012AC|JCPT\d{4}|S0808E|S0812E|S1212E|0608ME|0808E|1012E|GTJZ0808E|Z45|19피트|26피트|32피트|40피트|46피트|53피트|19ft|26ft|32ft|40ft|46ft|53ft|sj3219|sj3226|sj4632|sj4740|gs1930|gs2632|gs3246|gs4047|(?<!\d)(?:19|26|32|40|46|53)(?!\d)(?:\s*(?:피트|ft|짜리))?(?=\s*(?:\d+|한|두|세|네|다섯|여섯|일곱|여덟|아홉|열)?\s*(?:대|개)))/gi;
+
   let m: RegExpExecArray | null;
-  while ((m = modelRegex.exec(textToScan)) !== null) {
+  while ((m = modelRegex.exec(modelTextToScan)) !== null) {
     const rawKey = m[0].toUpperCase();
     let modelName = '19ft';
-    if (rawKey.includes('19') || rawKey.includes('0608')) modelName = '19ft';
-    else if (rawKey.includes('26') || rawKey.includes('0812') || rawKey.includes('0808')) modelName = '26ft';
+    
+    if (rawKey.includes('1330')) modelName = '13ft';
+    else if (rawKey.includes('1432')) modelName = '14ft';
+    else if (rawKey.includes('3215') || rawKey.includes('1230')) modelName = '15ft';
+    else if (rawKey.includes('19') || rawKey.includes('0608')) modelName = '19ft';
+    else if (rawKey.includes('26') || rawKey.includes('0812') || rawKey.includes('0808') || rawKey.includes('1008')) modelName = '26ft';
     else if (rawKey.includes('32') || rawKey.includes('1012')) modelName = '32ft';
-    else if (rawKey.includes('40') || rawKey.includes('4047')) modelName = '40ft';
-    else if (rawKey.includes('46') || rawKey.includes('1412')) modelName = '46ft';
+    else if (rawKey.includes('40') || rawKey.includes('4047') || rawKey.includes('1212')) modelName = '40ft';
+    else if (rawKey.includes('46') || rawKey.includes('4655') || rawKey.includes('1412')) modelName = '46ft';
     else if (rawKey.includes('53') || rawKey.includes('1612')) modelName = '53ft';
+    else if (rawKey.includes('Z45')) modelName = 'Z45 (굴절붐)';
 
-    // 🛡️ [버그 수정]: 모델 매칭 문자열 '이후'부터 슬라이스하여 모델명 숫자(19, 26 등)가 수량으로 오인식되는 결함 원천 차단!
-    const afterMatch = textToScan.substring(m.index + m[0].length, m.index + m[0].length + 20);
-    const countMatch = afterMatch.match(/^\s*(\d+)\s*(?:대|개)?/) 
-      || afterMatch.match(/^\s*(한|두|세|네|다섯|여섯|일곱|여덟|아홉|열)\s*대/)
-      || afterMatch.match(/(\d+)\s*(?:대|개)/)
-      || afterMatch.match(/(한|두|세|네|다섯|여섯|일곱|여덟|아홉|열)\s*대/);
-
+    // 후방 슬라이스에서 수량 파싱 (* N, x N, N대, 한대 등)
+    const afterMatch = modelTextToScan.substring(m.index + m[0].length, m.index + m[0].length + 25);
+    
     let qty = 1;
-    if (countMatch) {
-      const rawNum = countMatch[1];
-      if (countMap[rawNum]) qty = countMap[rawNum];
-      else if (!isNaN(parseInt(rawNum, 10))) qty = Math.max(1, parseInt(rawNum, 10));
+    const multiplyMatch = afterMatch.match(/^\s*[*xX]\s*(\d+)/);
+    if (multiplyMatch) {
+      qty = Math.max(1, parseInt(multiplyMatch[1], 10));
+    } else {
+      const countMatch = afterMatch.match(/^\s*(\d+)\s*(?:대|개)?/) 
+        || afterMatch.match(/^\s*(한|두|세|네|다섯|여섯|일곱|여덟|아홉|열)\s*대/)
+        || afterMatch.match(/(\d+)\s*(?:대|개)/)
+        || afterMatch.match(/(한|두|세|네|다섯|여섯|일곱|여덟|아홉|열)\s*대/);
+      if (countMatch) {
+        const rawNum = countMatch[1];
+        if (countMap[rawNum]) qty = countMap[rawNum];
+        else if (!isNaN(parseInt(rawNum, 10))) qty = Math.max(1, parseInt(rawNum, 10));
+      }
     }
 
     const existing = detectedEquipments.find(e => e.modelName === modelName);
@@ -899,26 +1042,31 @@ export function parseCallSummaryText(text: string, fileName?: string): ParsedSum
 
   result.equipments = detectedEquipments;
 
-  // 7. 안전 옵션 탐색
-  if (clean.includes('협착방지') || clean.includes('협착방지봉')) result.safetyOptions.push('협착방지봉');
-  if (clean.includes('상부센서')) result.safetyOptions.push('상부센서');
-  if (clean.includes('경광등')) result.safetyOptions.push('경광등');
-  if (clean.includes('소화기')) result.safetyOptions.push('소화기');
-  if (clean.includes('논마킹')) result.safetyOptions.push('논마킹 타이어');
-  if (clean.includes('비닐보양') || clean.includes('도색보양') || clean.includes('보양')) result.safetyOptions.push('비닐보양');
+  // ── [E. 안전 옵션 탐색 (공백, 변형어, 오타, 밴드 옵션 허용)] ──
+  if (/(?:협착|협작)\s*방지\s*봉?|협착난간대/i.test(clean)) result.safetyOptions.push('협착방지봉');
+  if (/(?:상부|상단)\s*센서/i.test(clean)) result.safetyOptions.push('상부센서');
+  if (/(?:경광등|경광\s*램프|경보등)/i.test(clean)) result.safetyOptions.push('경광등');
+  if (/소화기|소화기함/i.test(clean)) result.safetyOptions.push('소화기');
+  if (/(?:논\s*마킹|넌\s*마킹|노마킹|백색\s*바퀴)\s*(?:타이어|바퀴)?/i.test(clean)) result.safetyOptions.push('논마킹 타이어');
+  if (/(?:비닐|도색|바닥)?\s*보양(?:작업)?/i.test(clean)) result.safetyOptions.push('비닐보양');
+  if (/(?:과부하\s*(?:방지|경보|경보장치))/i.test(clean)) result.safetyOptions.push('과부하방지장치');
+  if (/감지봉/i.test(clean)) result.safetyOptions.push('감지봉');
+  if (/함석/i.test(clean)) result.safetyOptions.push('함석');
 
-  // 8. 🛡️ [대차 회수자산번호 추출] (예: "101호기", "105호기", "305호기")
-  const assetMatches = clean.matchAll(/(\d{3,4})\s*호기/g);
+  result.safetyOptions = Array.from(new Set(result.safetyOptions));
+
+  // ── [F. 🛡️ 대차 회수자산번호 추출] ──
+  const assetMatches = clean.matchAll(/([A-Za-z0-9]{1,5}(?:-[A-Za-z0-9]{1,4})?)\s*호기/g);
   for (const am of assetMatches) {
     result.retrievalAssetIds.push(am[1]);
   }
 
-  // 9. 🛡️ [운송비 부담 귀속선 추출]
-  if (clean.includes('당사부담') || clean.includes('회사부담')) {
+  // ── [G. 🛡️ 운송비 부담 귀속선 추출] ──
+  if (/(?:당사\s*부담|회사\s*부담|우리가\s*(?:낼게|부담|부담할게|부담함|냄)|무료\s*(?:배차|운송|지원)?|서비스\s*배차|지원\s*배차)/i.test(clean)) {
     result.paidBy = 'OURS';
-  } else if (clean.includes('고객청구') || clean.includes('고객부담')) {
+  } else if (/(?:고객\s*(?:청구|부담)|현장\s*(?:청구|부담)|업체\s*(?:청구|부담)|사장님\s*(?:한테|에게)?\s*청구|손님\s*부담)/i.test(clean)) {
     result.paidBy = 'CUSTOMER';
-  } else if (clean.includes('편도지원') || clean.includes('반반') || clean.includes('50%')) {
+  } else if (/(?:편도\s*지원|반반|50%|반씩|1\/2|절반)/i.test(clean)) {
     result.paidBy = 'SPLIT';
   }
 
@@ -978,6 +1126,9 @@ export async function convertUploadToDraft(
   }
   if (parsed.paidBy) {
     noteSegments.push(`[운송비부담] ${parsed.paidBy === 'OURS' ? '당사부담' : parsed.paidBy === 'CUSTOMER' ? '고객청구' : '편도지원'}`);
+  }
+  if (parsed.siteAddress) {
+    noteSegments.push(`[현장주소] ${parsed.siteAddress}`);
   }
   if (parsed.safetyOptions.length > 0) {
     noteSegments.push(`[안전옵션] ${parsed.safetyOptions.join(', ')}`);

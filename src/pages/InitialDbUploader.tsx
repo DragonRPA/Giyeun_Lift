@@ -430,30 +430,44 @@ export const InitialDbUploader: React.FC = () => {
     let contact = '';
     let issue = '';
 
-    const lines = raw.split('\n');
+    const lines = raw.split('\n').map(l => l.trim()).filter(Boolean);
     for (const l of lines) {
-      if (l.includes('현장') || l.includes('현 장')) {
-        site = l.replace(/^[^:]*[:：]\s*/, '').trim();
-      } else if (l.includes('주소') || l.includes('상세주소') || l.includes('도로명')) {
-        address = l.replace(/^[^:]*[:：]\s*/, '').trim();
-      } else if (l.includes('업체') || l.includes('업 체')) {
-        contractor = l.replace(/^[^:]*[:：]\s*/, '').trim();
-      } else if (l.includes('장비') || l.includes('호기') || l.includes('관리번호') || l.includes('장 비')) {
-        assetNo = l.replace(/^[^:]*[:：]\s*/, '').trim();
-      } else if (l.includes('위치') || l.includes('위 치')) {
-        location = l.replace(/^[^:]*[:：]\s*/, '').trim();
-      } else if (l.includes('연락처') || l.includes('전화') || l.includes('연 락 처')) {
-        contact = l.replace(/^[^:]*[:：]\s*/, '').trim();
-      } else if (l.includes('증상') || l.includes('내용') || l.includes('고장')) {
-        issue = l.replace(/^[^:]*[:：]\s*/, '').trim();
+      const colonIdx = l.indexOf(':') !== -1 ? l.indexOf(':') : l.indexOf('：');
+      if (colonIdx === -1) continue;
+      const label = l.slice(0, colonIdx).replace(/\s+/g, '');
+      const val = l.slice(colonIdx + 1).trim();
+
+      if (label.includes('현장')) {
+        site = val;
+      } else if (label.includes('주소') || label.includes('도로명')) {
+        address = val;
+      } else if (label.includes('업체')) {
+        contractor = val;
+      } else if (label.includes('위치') || label.includes('장비위치')) {
+        // 🛡️ 위치를 먼저 파싱하여 장비번호(assetNo) 오염 원천 방지
+        location = val;
+      } else if (label.includes('관리번호') || label.includes('자산번호') || label.includes('호기') || label === '장비') {
+        assetNo = val;
+      } else if (label.includes('접수자') || label.includes('연락처') || label.includes('전화') || label.includes('담당자')) {
+        // 🛡️ 밴드 98% 빈도 '접수자' 라벨 완벽 지원
+        contact = val;
+      } else if (label.includes('고장내용') || label.includes('고장증상') || label.includes('증상') || label.includes('내용') || label.includes('고장')) {
+        issue = val;
       }
     }
 
+    // 폴백: 관리번호 미인식 시 본문 정규식 매칭
     if (!assetNo) {
-      const assetMatch = raw.match(/([A-Za-z]\d{3,5}|\d{5})/);
+      const assetMatch = raw.match(/([A-Za-z]{1,4}[- ]?\d{2,5}|\d{4,5})/);
       if (assetMatch) assetNo = assetMatch[1];
       else if (raw.includes('전체장비')) assetNo = '전체장비';
       else assetNo = '현장확인';
+    }
+
+    // 폴백: 연락처 미인식 시 본문 전화번호 매칭
+    if (!contact) {
+      const phoneMatch = raw.match(/(01[016789]\d{7,8}|01[016789][-.\s]\d{3,4}[-.\s]\d{4})/);
+      if (phoneMatch) contact = phoneMatch[0];
     }
 
     if (!site) {
@@ -464,26 +478,28 @@ export const InitialDbUploader: React.FC = () => {
     }
 
     if (!issue) {
-      issue = raw.slice(0, 100);
+      const issueMatch = raw.match(/(?:고장|증상)[^:\n]*[:：]?\s*([^\n]+)/);
+      if (issueMatch) issue = issueMatch[1].trim();
+      else issue = raw.slice(0, 100);
     }
 
     let inspectionItemCode = '';
     let degradationScore = 0;
     
-    // 💡 [Phase 1/2] 밴드 빅데이터 고장 증상 키워드 기반 정비 마스터 코드 및 노후도 점수 1:1 매핑 (Data Tagging)
+    // 💡 [Phase 1/2] 밴드 빅데이터 고장 증상 키워드 기반 정비 마스터 코드 및 노후도 점수 1:1 정밀 매핑
     const lowerIssue = issue.toLowerCase();
-    if (lowerIssue.includes('타이어') || lowerIssue.includes('바퀴') || lowerIssue.includes('주행') || lowerIssue.includes('궤도')) {
-      inspectionItemCode = 'CHK-000004'; // 주행/타이어
+    if (lowerIssue.includes('타이어') || lowerIssue.includes('바퀴') || lowerIssue.includes('주행') || lowerIssue.includes('조향') || lowerIssue.includes('거북이') || lowerIssue.includes('핸들') || lowerIssue.includes('전진') || lowerIssue.includes('후진')) {
+      inspectionItemCode = 'CHK-000004'; // 주행/타이어/조향
       degradationScore = 20;
-    } else if (lowerIssue.includes('배터리') || lowerIssue.includes('충전') || lowerIssue.includes('전기') || lowerIssue.includes('차단기')) {
-      inspectionItemCode = 'CHK-000003'; // 전기/배터리
+    } else if (lowerIssue.includes('상승') || lowerIssue.includes('하강') || lowerIssue.includes('작동안됨') || lowerIssue.includes('안올라감') || lowerIssue.includes('유압') || lowerIssue.includes('실린더') || lowerIssue.includes('모터') || lowerIssue.includes('누유')) {
+      inspectionItemCode = 'CHK-000002'; // 유압/승강/동력
+      degradationScore = 25;
+    } else if (lowerIssue.includes('배터리') || lowerIssue.includes('충전') || lowerIssue.includes('전기') || lowerIssue.includes('차단기') || lowerIssue.includes('ld') || lowerIssue.includes('81') || lowerIssue.includes('02') || lowerIssue.includes('03') || lowerIssue.includes('에러')) {
+      inspectionItemCode = 'CHK-000003'; // 전기/배터리/에러코드
       degradationScore = 15;
-    } else if (lowerIssue.includes('유압') || lowerIssue.includes('실린더') || lowerIssue.includes('모터') || lowerIssue.includes('동력') || lowerIssue.includes('누유')) {
-      inspectionItemCode = 'CHK-000002'; // 유압/동력
+    } else if (lowerIssue.includes('협착') || lowerIssue.includes('센서') || lowerIssue.includes('감지봉') || lowerIssue.includes('난간대') || lowerIssue.includes('브라켓') || lowerIssue.includes('외관') || lowerIssue.includes('파손')) {
+      inspectionItemCode = 'CHK-000001'; // 안전옵션/외관
       degradationScore = 10;
-    } else if (lowerIssue.includes('외관') || lowerIssue.includes('파손') || lowerIssue.includes('안전바') || lowerIssue.includes('찌그러짐') || lowerIssue.includes('데칼')) {
-      inspectionItemCode = 'CHK-000001'; // 외관/바디
-      degradationScore = 5;
     } else {
       inspectionItemCode = 'CHK-000005'; // 기타/접수
       degradationScore = 5;

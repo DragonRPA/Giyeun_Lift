@@ -280,7 +280,7 @@ export const AssetAcquisitionDisposal: React.FC = () => {
         ...s,
         assetNo: cand,
         modelName: singleModelName,
-        price: singleAcqPrice
+        price: s.price ?? singleAcqPrice
       };
     }));
   };
@@ -500,7 +500,8 @@ export const AssetAcquisitionDisposal: React.FC = () => {
           const acquisitionDate = String(r[5] || '').trim() || new Date().toISOString().split('T')[0];
           const acquisitionPrice = Number(r[6]) || 0;
           const depreciationMonths = Number(r[7]) || 96; // 💡 기본값 96개월
-          const residualValueRate = Number(r[8]) ?? 10;
+          const rawResidual = r[8];
+          const residualValueRate = (rawResidual !== undefined && rawResidual !== '' && !isNaN(Number(rawResidual))) ? Number(rawResidual) : 10;
           const supplier = String(r[9] || '').trim();
           const monthlyRentalFee = Number(r[10]) || 0;
           const dailyRentalFee = Number(r[11]) || 0;
@@ -700,6 +701,15 @@ export const AssetAcquisitionDisposal: React.FC = () => {
     return new Set(disposalBasket.map(b => b.id));
   }, [disposalBasket]);
 
+  const assetDepreciationMap = useMemo(() => {
+    const map = new Map<string, number>();
+    const targetDate = new Date(disposalDate || new Date());
+    availableForDisposalAssets.forEach(a => {
+      map.set(a.id, calculateAssetDepreciation(a, targetDate).bookValue);
+    });
+    return map;
+  }, [availableForDisposalAssets, disposalDate]);
+
   // 좌측 상단: 선택된 모델 및 검색 필터링된 가용 자산 목록
   const filteredDisposalAssets = useMemo(() => {
     return availableForDisposalAssets.filter(a => {
@@ -719,13 +729,13 @@ export const AssetAcquisitionDisposal: React.FC = () => {
         return (a.manufactureYear || '9999').localeCompare(b.manufactureYear || '9999');
       }
       if (disposalSortOrder === 'BOOK_VAL_ASC') {
-        const bA = calculateAssetDepreciation(a).bookValue;
-        const bB = calculateAssetDepreciation(b).bookValue;
+        const bA = assetDepreciationMap.get(a.id) ?? 0;
+        const bB = assetDepreciationMap.get(b.id) ?? 0;
         return bA - bB;
       }
       return (a.assetNo || '').localeCompare(b.assetNo || '');
     });
-  }, [availableForDisposalAssets, selectedDisposalModel, disposalSearchQuery, disposalSortOrder]);
+  }, [availableForDisposalAssets, selectedDisposalModel, disposalSearchQuery, disposalSortOrder, assetDepreciationMap]);
 
   // 아직 바구니에 안 담긴 가용 자산 목록
   const unbaskettedFilteredAssets = useMemo(() => {
@@ -905,7 +915,8 @@ export const AssetAcquisitionDisposal: React.FC = () => {
 
     disposalBasket.forEach(item => {
       totalSupplyAmount += Number(item.salePrice) || 0;
-      totalBookValue += Number(item.bookValue) || 0;
+      const currentBookVal = assetDepreciationMap.get(item.id) ?? (Number(item.bookValue) || 0);
+      totalBookValue += currentBookVal;
     });
 
     const gainLoss = totalSupplyAmount - totalBookValue;
@@ -924,7 +935,7 @@ export const AssetAcquisitionDisposal: React.FC = () => {
       installmentDownAmount,
       installmentBalanceAmount
     };
-  }, [disposalBasket, installmentDownRate]);
+  }, [disposalBasket, installmentDownRate, assetDepreciationMap]);
 
   // 매각 계약 체결 & 청구서 발행 & 이메일 발송 실행
   const handleExecuteDisposal = async () => {
@@ -2233,7 +2244,7 @@ export const AssetAcquisitionDisposal: React.FC = () => {
                       filteredDisposalAssets.map(a => {
                         const inBasket = basketAssetIdSet.has(a.id);
                         const isChecked = checkedAssetIds.has(a.id);
-                        const dep = calculateAssetDepreciation(a);
+                        const bookVal = assetDepreciationMap.get(a.id) ?? 0;
                         return (
                           <tr
                             key={a.id}
@@ -2258,7 +2269,7 @@ export const AssetAcquisitionDisposal: React.FC = () => {
                             <td style={{ whiteSpace: 'nowrap' }}><strong style={{ color: inBasket ? 'var(--text-muted)' : 'var(--primary)' }}>{a.assetNo}</strong></td>
                             <td style={{ whiteSpace: 'nowrap' }}>{a.modelName}</td>
                             <td style={{ whiteSpace: 'nowrap' }}>{a.manufactureYear || '-'}년</td>
-                            <td style={{ whiteSpace: 'nowrap' }}><strong style={{ color: '#0070C0' }}>₩{dep.bookValue.toLocaleString()}원</strong></td>
+                            <td style={{ whiteSpace: 'nowrap' }}><strong style={{ color: '#0070C0' }}>₩{bookVal.toLocaleString()}원</strong></td>
                             <td style={{ whiteSpace: 'nowrap' }}>₩{(a.acquisitionPrice || 0).toLocaleString()}원</td>
                             <td style={{ whiteSpace: 'nowrap' }}>{a.maintenanceScore ?? 0}점</td>
                             <td style={{ whiteSpace: 'nowrap' }}>

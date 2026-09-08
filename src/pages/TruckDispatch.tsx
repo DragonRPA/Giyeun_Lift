@@ -82,7 +82,8 @@ export const TruckDispatch: React.FC = () => {
     transportCompanies, transportDrivers, transportNegotiations, outboundInspections, hasPermission, 
     refreshAllData, showErrorModal, convertReconciledDeliveriesToSettlement,
     currentTenant,
-    printStations, printQueue, enqueuePrintJob
+    printStations, printQueue, enqueuePrintJob,
+    completeDelivery, completeInboundDelivery
   } = useApp();
 
   const canSave = hasPermission('delivery', 'save');
@@ -97,6 +98,25 @@ export const TruckDispatch: React.FC = () => {
     if (insps.some(i => i.status === 'IN_PROGRESS')) return 'IN_PROGRESS';
     return 'PENDING';
   };
+
+  const deliveryCounts = useMemo(() => {
+    const counts = { today: 0, tomorrow: 0, pending: 0, dispatched: 0, delivered: 0, cancelled: 0, exchange: 0 };
+    const todayStr = new Date().toISOString().split('T')[0];
+    const tomorrow = new Date(); tomorrow.setDate(tomorrow.getDate() + 1);
+    const tomorrowStr = tomorrow.toISOString().split('T')[0];
+    for (const d of deliveries) {
+      const dt = d.loadingDate || d.scheduledDate;
+      if (dt === todayStr) counts.today++;
+      if (dt === tomorrowStr) counts.tomorrow++;
+      const st = getNormalizedDeliveryStatus(d);
+      if (st === 'PENDING') counts.pending++;
+      else if (st === 'DISPATCHED') counts.dispatched++;
+      else if (st === 'DELIVERED') counts.delivered++;
+      else if (st === 'CANCELLED') counts.cancelled++;
+      if (d.dispatchCategory === '교환' || d.type === 'EXCHANGE') counts.exchange++;
+    }
+    return counts;
+  }, [deliveries]);
 
   const getOutboundInspectionBadge = (contractId?: string) => {
     const status = getOutboundInspectionStatus(contractId);
@@ -616,8 +636,7 @@ export const TruckDispatch: React.FC = () => {
       createdAt: new Date().toISOString()
     };
 
-    const currentList = db.transportNegotiations || [];
-    db.transportNegotiations = [newNego, ...currentList];
+    db.insertRow<TransportNegotiation>('transportNegotiations', newNego);
     await db.awaitPendingWrites();
     refreshAllData();
     showToast(`${company?.name || '운송사'} 협의 견적이 등록되었습니다.`);
@@ -633,42 +652,33 @@ export const TruckDispatch: React.FC = () => {
 
     // 1. 배차 건에 운송사 및 비용 반영
     const costToApply = nego.confirmedCost || nego.proposedCost || 0;
-    const updatedDeliveries = deliveries.map(d => {
-      if (d.id === nego.deliveryId) {
-        return {
-          ...d,
-          transportCompany: nego.transportCompanyName,
-          vehicleType: nego.vehicleType,
-          deliveryCost: costToApply,
-          expectedCost: costToApply,
-          deliveryCostConfirmed: costToApply,
-          memo: d.memo ? `${d.memo} | [협의확정] ${nego.transportCompanyName} ${nego.vehicleType} ₩${costToApply.toLocaleString()}` : `[협의확정] ${nego.transportCompanyName} ${nego.vehicleType} ₩${costToApply.toLocaleString()}`,
-          updatedAt: new Date().toISOString()
-        };
-      }
-      return d;
+    const memoAddition = `[협의확정] ${nego.transportCompanyName} ${nego.vehicleType} ₩${costToApply.toLocaleString()}`;
+    db.updateRow<Delivery>('deliveries', nego.deliveryId, {
+      transportCompany: nego.transportCompanyName,
+      vehicleType: nego.vehicleType,
+      deliveryCost: costToApply,
+      expectedCost: costToApply,
+      deliveryCostConfirmed: costToApply,
+      memo: targetDel.memo ? `${targetDel.memo} | ${memoAddition}` : memoAddition,
+      updatedAt: new Date().toISOString()
     });
-    db.deliveries = updatedDeliveries;
 
     // 2. 협의 상태 CONFIRMED로 변경
-    const updatedNegos = (db.transportNegotiations || []).map(n => {
-      if (n.id === nego.id) {
-        return {
-          ...n,
-          status: 'CONFIRMED' as const,
-          confirmedCost: costToApply,
-          updatedAt: new Date().toISOString()
-        };
-      } else if (n.deliveryId === nego.deliveryId && n.status === 'IN_NEGOTIATION') {
-        return {
-          ...n,
-          status: 'REJECTED' as const,
-          updatedAt: new Date().toISOString()
-        };
-      }
-      return n;
+    db.updateRow<TransportNegotiation>('transportNegotiations', nego.id, {
+      status: 'CONFIRMED',
+      confirmedCost: costToApply,
+      updatedAt: new Date().toISOString()
     });
-    db.transportNegotiations = updatedNegos;
+
+    // 기존 IN_NEGOTIATION인 항목들 REJECTED 처리
+    (db.transportNegotiations || []).forEach(n => {
+      if (n.id !== nego.id && n.deliveryId === nego.deliveryId && n.status === 'IN_NEGOTIATION') {
+        db.updateRow<TransportNegotiation>('transportNegotiations', n.id, {
+          status: 'REJECTED',
+          updatedAt: new Date().toISOString()
+        });
+      }
+    });
 
     await db.awaitPendingWrites();
     refreshAllData();
@@ -696,23 +706,20 @@ export const TruckDispatch: React.FC = () => {
     const costToApply = Number(negoProposedCost) || Number(negoTargetCost) || 0;
 
     // 1. 배차 건에 운송사, 차종, 비용 즉시 확정 반영
-    const updatedDeliveries = deliveries.map(d => {
-      if (d.id === selectedNegoDeliveryId) {
-        return {
-          ...d,
-          transportCompany: companyName,
-          vehicleType: negoVehicleType,
-          deliveryCost: costToApply,
-          expectedCost: costToApply,
-          deliveryCostConfirmed: costToApply,
-          status: d.status === 'PENDING' ? 'DISPATCHED' : d.status,
-          memo: d.memo ? `${d.memo} | [협의확정] ${companyName} ${negoVehicleType} ₩${costToApply.toLocaleString()}` : `[협의확정] ${companyName} ${negoVehicleType} ₩${costToApply.toLocaleString()}`,
-          updatedAt: new Date().toISOString()
-        };
-      }
-      return d;
-    });
-    db.deliveries = updatedDeliveries;
+    const targetDel = deliveries.find(d => d.id === selectedNegoDeliveryId);
+    if (targetDel) {
+      const memoAddition = `[협의확정] ${companyName} ${negoVehicleType} ₩${costToApply.toLocaleString()}`;
+      db.updateRow<Delivery>('deliveries', selectedNegoDeliveryId, {
+        transportCompany: companyName,
+        vehicleType: negoVehicleType,
+        deliveryCost: costToApply,
+        expectedCost: costToApply,
+        deliveryCostConfirmed: costToApply,
+        status: targetDel.status === 'PENDING' ? 'DISPATCHED' : targetDel.status,
+        memo: targetDel.memo ? `${targetDel.memo} | ${memoAddition}` : memoAddition,
+        updatedAt: new Date().toISOString()
+      });
+    }
 
     // 2. 협의 이력에 CONFIRMED 레코드 생성/저장
     const newNego: TransportNegotiation = {
@@ -731,7 +738,7 @@ export const TruckDispatch: React.FC = () => {
       negotiatedAt: new Date().toISOString(),
       createdAt: new Date().toISOString()
     };
-    db.transportNegotiations = [newNego, ...(db.transportNegotiations || [])];
+    db.insertRow<TransportNegotiation>('transportNegotiations', newNego);
 
     // 3. 큐 항목 상태 변경
     if (selectedCallQueueId) {
@@ -2206,10 +2213,11 @@ export const TruckDispatch: React.FC = () => {
     }
 
     try {
-      db.updateRow<Delivery>('deliveries', deliveryId, {
-        status: 'DELIVERED',
-        updatedAt: new Date().toISOString()
-      });
+      if (targetDelivery?.type === 'INBOUND' || targetDelivery?.dispatchCategory === '입고' || targetDelivery?.dispatchCategory === '반납') {
+        await completeInboundDelivery(deliveryId);
+      } else {
+        await completeDelivery(deliveryId);
+      }
       await db.awaitPendingWrites();
 
       // [업무 인계 파이프라인] 운송 관련 ToDo 상계
@@ -2448,27 +2456,19 @@ export const TruckDispatch: React.FC = () => {
         <div>
           {/* 📊 오늘/내일/이번주 상차 배차 통계 바 */}
           {(() => {
-            const todayStr = new Date().toISOString().split('T')[0];
-            const tomorrow = new Date(); tomorrow.setDate(tomorrow.getDate() + 1);
-            const tomorrowStr = tomorrow.toISOString().split('T')[0];
-            
-            const todayCount = deliveries.filter(d => (d.loadingDate || d.scheduledDate) === todayStr).length;
-            const tomorrowCount = deliveries.filter(d => (d.loadingDate || d.scheduledDate) === tomorrowStr).length;
-            const pendingTotal = deliveries.filter(d => getNormalizedDeliveryStatus(d) === 'PENDING').length;
-
             return (
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '10px', marginBottom: '16px' }}>
                 <div style={{ padding: '10px 14px', backgroundColor: 'var(--bg-card)', borderRadius: '6px', border: '1px solid var(--border-color)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <span style={{ fontSize: '11.5px', color: 'var(--text-secondary)', fontWeight: 600 }}>오늘 상차 예정</span>
-                  <strong style={{ fontSize: '15px', color: todayCount > 0 ? 'var(--primary)' : 'var(--text-muted)' }}>{todayCount}건</strong>
+                  <strong style={{ fontSize: '15px', color: deliveryCounts.today > 0 ? 'var(--primary)' : 'var(--text-muted)' }}>{deliveryCounts.today}건</strong>
                 </div>
                 <div style={{ padding: '10px 14px', backgroundColor: 'var(--bg-card)', borderRadius: '6px', border: '1px solid var(--border-color)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <span style={{ fontSize: '11.5px', color: 'var(--text-secondary)', fontWeight: 600 }}>내일 상차 예정</span>
-                  <strong style={{ fontSize: '15px', color: tomorrowCount > 0 ? '#0070C0' : 'var(--text-muted)' }}>{tomorrowCount}건</strong>
+                  <strong style={{ fontSize: '15px', color: deliveryCounts.tomorrow > 0 ? '#0070C0' : 'var(--text-muted)' }}>{deliveryCounts.tomorrow}건</strong>
                 </div>
                 <div style={{ padding: '10px 14px', backgroundColor: 'var(--bg-card)', borderRadius: '6px', border: '1px solid var(--border-color)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <span style={{ fontSize: '11.5px', color: 'var(--text-secondary)', fontWeight: 600 }}>배차 대기 (미배정)</span>
-                  <strong style={{ fontSize: '15px', color: pendingTotal > 0 ? '#d97706' : 'var(--text-muted)' }}>{pendingTotal}건</strong>
+                  <strong style={{ fontSize: '15px', color: deliveryCounts.pending > 0 ? '#d97706' : 'var(--text-muted)' }}>{deliveryCounts.pending}건</strong>
                 </div>
               </div>
             );
@@ -3223,13 +3223,13 @@ export const TruckDispatch: React.FC = () => {
 
                           {/* 컬럼 헤더 (사장님 지시: 예상 운송비 필수, 실제 운송비 선택적 입력 2열로 분리) */}
                           <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1.1fr 0.9fr 0.8fr 1.1fr 1fr 1fr 30px', gap: '6px', padding: '6px 10px', backgroundColor: 'var(--bg-body)', borderRadius: '6px', fontSize: '11px', fontWeight: 800, color: 'var(--primary)', marginBottom: '6px', border: '1px solid var(--border-color)' }}>
-                            <div>🏢 운송사 거래처</div>
-                            <div>👤 운송 기사명</div>
-                            <div>🔢 차량번호</div>
-                            <div>🚚 차종</div>
-                            <div>📞 기사 연락처</div>
-                            <div>💰 예상 운송비 (필수)</div>
-                            <div>💵 실제 운송비 (선택)</div>
+                            <div>운송사</div>
+                            <div>기사명</div>
+                            <div>차량번호</div>
+                            <div>차종</div>
+                            <div>연락처</div>
+                            <div>예상운송비</div>
+                            <div>실제운송비</div>
                             <div></div>
                           </div>
 

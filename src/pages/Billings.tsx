@@ -1338,8 +1338,7 @@ ${currentTenant?.tradeName || currentTenant?.corporateName || '임대인'} 올�
         `- 청구귀속월: ${currentYm}\n\n` +
         `생성된 청구서는 [청구 및 수납내역] 탭에서 확인 및 출력하실 수 있습니다.`;
 
-    const ok = true;
-    if (!ok) return;
+    if (!window.confirm(confirmMessage)) return;
 
     setIsBulkGenerating(true);
     let successCount = 0;
@@ -1529,8 +1528,7 @@ ${currentTenant?.tradeName || currentTenant?.corporateName || '임대인'} 올�
       b.status !== 'REJECTED'
     );
     if (existing) {
-      const confirmDuplicate = true;
-      if (!confirmDuplicate) {
+      if (!window.confirm(`선택한 계약(${selectedContractForWizard.contractNo})의 ${wizardBillingYm}월 청구서가 이미 존재합니다(미반려 상태).\n\n그래도 중복으로 청구서를 생성하시겠습니까?`)) {
         setIsWizardGenerating(false);
         return;
       }
@@ -2620,9 +2618,7 @@ ${currentTenant?.tradeName || currentTenant?.corporateName || '임대인'} 올�
           let sumPaid = 0;
           let sumUnpaid = 0;
           filteredBillings.forEach(b => {
-            const bDetails = billingDetails.filter(bd => bd.billingId === b.id);
-            const sup = bDetails.reduce((s, bd) => s + (bd.amount || 0), 0);
-            const grand = sup + Math.round(sup * 0.1);
+            const grand = b.totalAmount || 0;
             const isP = b.status === 'PAID';
             const pAmt = isP ? grand : (b.paidAmount || 0);
             const uAmt = isP ? 0 : Math.max(0, grand - pAmt);
@@ -2630,9 +2626,9 @@ ${currentTenant?.tradeName || currentTenant?.corporateName || '임대인'} 올�
             sumPaid += pAmt;
             sumUnpaid += uAmt;
           });
-
           return (
             <div style={{
+              gridColumn: '1 / -1',
               padding: '8px 14px',
               backgroundColor: 'var(--bg-app)',
               border: '1px solid var(--border-color)',

@@ -359,6 +359,42 @@ export const UsersPermissions: React.FC = () => {
   // 🔍 기 저장된 무효(FK 위반) 권한 데이터 진단 헬퍼
   const validUserIds = useMemo(() => new Set(localUsers.map(u => u.id)), [localUsers]);
 
+  // 조직도 부서 배치 순서 기준 정렬 맵 (조직/인사 관리 화면 조직도와 동일 순서)
+  const DEPT_ORDER_MAP: Record<string, number> = {
+    'DEPT-0000001': 0, 'DEPT-1': 0,  // 기연리프트 (경영진)
+    'DEPT-0000002': 1, 'DEPT-2': 1,  // 관리부
+    'DEPT-0000003': 2, 'DEPT-3': 2,  // 영업부
+    'DEPT-0000004': 3, 'DEPT-4': 3,  // 출고팀
+    'DEPT-0000005': 4, 'DEPT-5': 4,  // AS팀
+  };
+
+  const getDeptOrder = (u: User): number => {
+    if (u.id === 'u-1' || u.id === 'sys-admin' || u.role === 'ADMIN') return -1; // ADMIN 최상단
+    if (u.departmentId) {
+      const order = DEPT_ORDER_MAP[u.departmentId] ?? DEPT_ORDER_MAP[u.departmentId.toUpperCase()];
+      if (order !== undefined) return order;
+    }
+    // 부서명 기반 fallback
+    const deptName = getDeptName(u);
+    if (deptName === '경영진' || deptName === '경영지원') return 0;
+    if (deptName === '관리부') return 1;
+    if (deptName === '영업부' || deptName === '영업팀') return 2;
+    if (deptName === '출고팀') return 3;
+    if (deptName === 'AS팀') return 4;
+    return 99; // 미배정 맨 뒤
+  };
+
+  // 조직도 순서 + 동일 부서 내 이름순 정렬
+  const sortedUsers = useMemo(() => {
+    return [...localUsers].sort((a, b) => {
+      const orderA = getDeptOrder(a);
+      const orderB = getDeptOrder(b);
+      if (orderA !== orderB) return orderA - orderB;
+      return (a.name || '').localeCompare(b.name || '', 'ko');
+    });
+  }, [localUsers, departmentMap]);
+
+
   const ghostPermissions = useMemo(() => {
     return localPermissions.filter((p: MenuPermission) => !validUserIds.has(p.userId));
   }, [localPermissions, validUserIds]);
@@ -619,7 +655,7 @@ export const UsersPermissions: React.FC = () => {
                 </tr>
               </thead>
               <tbody>
-                {localUsers.map(u => {
+                {sortedUsers.map(u => {
                   const isSelected = selectedUserId === u.id;
                   const deptName = getDeptName(u);
                   return (

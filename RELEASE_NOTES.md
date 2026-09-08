@@ -1,3 +1,16 @@
+## [v1.11.3.Build.3] - 2026-09-09 00:32
+
+### 📋 [권한관리 임직원 리스트 조직도 부서 순서 정렬]
+- `src/pages/users_permissions.tsx`:
+  - `DEPT_ORDER_MAP` + `getDeptOrder()` 헬퍼 추가: `departmentId` 기반 조직도 배치 순서 판정
+    - 우선순위: 기연리프트(경영진) → 관리부 → 영업부 → 출고팀 → AS팀 → 미배정
+  - `sortedUsers` useMemo 추가: 부서 순서 1차 정렬 + 동일 부서 내 한글 이름순 2차 정렬
+  - 임직원 리스트 렌더링을 `localUsers.map` → `sortedUsers.map`으로 교체
+  - ADMIN 등급은 부서에 무관하게 최상단 배치 (order = -1)
+- **검증**: TypeScript 전체 빌드 0 Error (`built in 1.13s`)
+
+---
+
 ## [v1.11.3.Build.2] - 2026-09-09 00:11
 
 ### 🏷️ [agent_badge 권한 명칭 변경 및 그룹 재배치]

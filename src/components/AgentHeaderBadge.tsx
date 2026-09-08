@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Bot, Download, RefreshCw, Shield, ChevronDown, CheckCircle2, AlertTriangle, X, Cloud, FolderCheck, HardDrive, Play } from 'lucide-react';
-import { EXPECTED_AGENT_VERSION, AGENT_DOWNLOAD_URL, AGENT_BRO_JS_URL, AGENT_REG_BAT_URL, AGENT_LAUNCHER_URL, AGENT_CERT_URL, AGENT_INSTALL_BAT_URL, NODEJS_INSTALL_URL, launchLocalAgentFromBrowser, restartLocalAgent } from '../services/agentService';
+import { EXPECTED_AGENT_VERSION, AGENT_DOWNLOAD_URL, AGENT_BRO_JS_URL, AGENT_REG_BAT_URL, AGENT_LAUNCHER_URL, AGENT_CERT_URL, AGENT_INSTALL_BAT_URL, NODEJS_INSTALL_URL, launchLocalAgentFromBrowser, restartLocalAgent, fetchWithAgentFallback } from '../services/agentService';
 import { executeDriveMirrorSync, getLocalMirrorStatus, subscribeMirrorProgress, MirrorProgressState } from '../services/driveMirrorSync';
 import { useApp } from '../context/AppContext';
 
@@ -48,7 +48,7 @@ export const AgentHeaderBadge: React.FC<Props> = ({ currentUser }) => {
     const check = async () => {
       try {
         const userCallsign = currentUser?.loginId || currentUser?.name || 'admin';
-        const res = await fetch(`http://127.0.0.1:5175/health?callsign=${encodeURIComponent(userCallsign)}`, {
+        const res = await fetchWithAgentFallback(`/health?callsign=${encodeURIComponent(userCallsign)}`, {
           method: 'GET',
           signal: AbortSignal.timeout(1500),
           cache: 'no-store'
@@ -162,7 +162,7 @@ export const AgentHeaderBadge: React.FC<Props> = ({ currentUser }) => {
       attempts++;
       try {
         const userCallsign = currentUser?.loginId || currentUser?.name || 'admin';
-        const res = await fetch(`http://127.0.0.1:5175/health?callsign=${encodeURIComponent(userCallsign)}`, {
+        const res = await fetchWithAgentFallback(`/health?callsign=${encodeURIComponent(userCallsign)}`, {
           method: 'GET',
           signal: AbortSignal.timeout(1000),
           cache: 'no-store'
@@ -355,6 +355,32 @@ export const AgentHeaderBadge: React.FC<Props> = ({ currentUser }) => {
             )}
           </div>
 
+          {/* ⚠️ 에이전트 콘솔 창이 켜져 있는데 미연결로 뜰 때 브라우저 보안 안내 */}
+          {agentStatus === 'OFFLINE' && (
+            <div style={{
+              background: 'rgba(239, 68, 68, 0.08)',
+              border: '1px solid rgba(239, 68, 68, 0.25)',
+              borderRadius: '8px',
+              padding: '10px 12px',
+              marginBottom: '12px',
+              fontSize: '11px',
+              lineHeight: '1.55'
+            }}>
+              <div style={{ fontWeight: '800', color: '#dc2626', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                <AlertTriangle size={13} />
+                콘솔 창이 켜져 있는데 미연결로 표시될 때
+              </div>
+              <div style={{ color: 'var(--text-secondary)' }}>
+                Chrome/Edge 보안 정책에 의해 로컬 접속이 차단되었을 수 있습니다:
+                <div style={{ marginTop: '5px', color: 'var(--text-main)', fontSize: '11px', background: 'var(--bg-card)', padding: '6px 8px', borderRadius: '5px', border: '1px solid var(--border-color)' }}>
+                  <b>1.</b> 주소창 좌측 <b>[사이트 설정 (아이콘)]</b> 클릭<br />
+                  <b>2.</b> <b>[안전하지 않은 콘텐츠]</b>를 <b>[허용]</b>으로 변경<br />
+                  <b>3.</b> <b>[F5]</b> 새로고침 시 즉시 🟢 정상 연결 완료!
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* 📁 로컬 미러링(동기화) 현황 섹션 (ONLINE일 때) */}
           {agentStatus === 'ONLINE' && (
             <div style={{ background: 'var(--bg-app)', padding: '10px 12px', borderRadius: '8px', marginBottom: '12px', fontSize: '12px' }}>
@@ -370,7 +396,7 @@ export const AgentHeaderBadge: React.FC<Props> = ({ currentUser }) => {
                     setIsSyncingDrive(true);
                     setSyncMessage('CF 버킷 실시간 동기화 중...');
                     try {
-                      const agentRes = await fetch('http://127.0.0.1:5175/api/trigger-sync', {
+                      const agentRes = await fetchWithAgentFallback('/api/trigger-sync', {
                         method: 'POST',
                         signal: AbortSignal.timeout(15000)
                       });

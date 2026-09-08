@@ -121,13 +121,21 @@ console.log('====================================================');
 let activeCallsign = CALLSIGN;
 
 const server = http.createServer(async (req, res) => {
-  // CORS 헤더 허용
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  // CORS 및 W3C Private Network Access (PNA) 헤더 전사 허용 (헌장 1.1, 5.2)
+  const reqOrigin = req.headers.origin;
+  if (reqOrigin) {
+    res.setHeader('Access-Control-Allow-Origin', reqOrigin);
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
+  } else {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+  }
+  res.setHeader('Access-Control-Allow-Private-Network', 'true');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Range, Accept, Origin, Cache-Control, Pragma, *');
+  res.setHeader('Access-Control-Max-Age', '86400');
 
   if (req.method === 'OPTIONS') {
-    res.writeHead(200);
+    res.writeHead(204);
     res.end();
     return;
   }

@@ -1,3 +1,20 @@
+## [v1.11.1.Build.3] - 2026-09-08 22:23
+
+### 🔒 [W3C Private Network Access(PNA) 헤더 탑재 및 로컬 에이전트 브라우저 보안 차단 완벽 해결]
+- **HTTPS ➔ 로컬 데몬 W3C PNA 사전 검증(OPTIONS preflight) 완벽 대응 (경험.md E-066, 헌장 1.1, 5.2)**:
+  - 퍼블릭 HTTPS 웹사이트(`https://giyuenlift.ebro.run`)에서 로컬 백그라운드 에이전트(`http://127.0.0.1:5175`) 호출 시 Chrome/Edge의 보안 정책에 의해 접속이 차단되던 결함 전면 척결.
+  - `BroAgent.js`, `agent.js`, `eBroAgent.js`에 `Access-Control-Allow-Private-Network: true`, `Access-Control-Allow-Credentials: true`, 요청 Origin 동적 반영 헤더 탑재 및 OPTIONS 204 No Content 사전 승인 처리 완결.
+- **프론트엔드 이중 호스트(127.0.0.1 ➔ localhost) 상호 폴백 엔진 (`fetchWithAgentFallback`)**:
+  - `src/services/agentService.ts` 및 `src/services/printQueueService.ts`에 `fetchWithAgentFallback` 연동.
+  - IP 접근이 차단되더라도 Chromium의 Potentially Trustworthy Origin(`localhost`)으로 자동 우회하여 접속 무중단 보장.
+- **사용자 맞춤형 직관적 보안 설정 가이드 배치**:
+  - 상단 에이전트 모달(`AgentHeaderBadge.tsx`) 및 프린트 큐 모니터(`PrintQueueManager.tsx`)에 Chrome/Edge 주소창 좌측 `[사이트 설정]` ➔ `[안전하지 않은 콘텐츠: 허용]` 3단계 해결 안내 탑재.
+- **검증 결과**:
+  - `curl -X OPTIONS ... -H "Access-Control-Request-Private-Network: true"`: **`Access-Control-Allow-Private-Network: true` 정상 응답 검증 완료**
+  - TypeScript 전체 빌드 (`cmd /c "npm run build"`): **0 Error 정상 완결 (`built in 1.08s`)**
+
+---
+
 ## [v1.11.1.Build.2] - 2026-09-08 21:55
 
 ### 🖨️ [프린터 스테이션 N대 무제한 증설 및 동적 삭제 관리 구조 전면 개편]

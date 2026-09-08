@@ -1,5 +1,21 @@
 # 개발 요구사항 임시 기록 (dev_temp.md)
 
+## [완료] W3C Private Network Access(PNA) 헤더 탑재 및 로컬 에이전트 브라우저 보안 차단 완벽 해결 (v1.11.1.Build.3)
+- **요구사항**: "에이전트가 실행중인데 왜 에이전트미연결 이라고 뜨지? 연결된 프린터가 왜 한개도 없지?"
+- **근본 원인**:
+  1. 퍼블릭 HTTPS 웹사이트(`https://giyuenlift.ebro.run`)에서 로컬 데몬(`http://127.0.0.1:5175`) 호출 시 Chrome/Edge의 **W3C Private Network Access (PNA)** 사전 검증(OPTIONS preflight)이 작동함.
+  2. 기존 `BroAgent.js`에 `Access-Control-Allow-Private-Network: true` 헤더가 부재하고 와일드카드 `*` 오리진을 사용하여 Chromium 브라우저가 preflight 단계에서 접속을 전면 차단함.
+  3. 프론트엔드가 `127.0.0.1`에만 고정 질의하여, 브라우저의 `localhost` 보안 컨텍스트 우대 정책을 활용하지 못함.
+- **개편 내역**:
+  1. **에이전트 W3C PNA 및 동적 Origin CORS 스펙 준수**:
+     - `BroAgent.js`, `agent.js`, `eBroAgent.js` 전 파일에 `Access-Control-Allow-Private-Network: true`, 요청 Origin 동적 반영, `Access-Control-Allow-Credentials: true` 탑재 및 OPTIONS 204 No Content 반환.
+  2. **프론트엔드 이중 호스트 자동 폴백 (`agentService.ts`, `printQueueService.ts`)**:
+     - `fetchWithAgentFallback` 헬퍼 도입으로 `127.0.0.1` ➔ `localhost` 자동 교차 폴백 지원.
+  3. **친절한 브라우저 보안 설정 가이드 제공 (`AgentHeaderBadge.tsx`, `PrintQueueManager.tsx`)**:
+     - 에이전트 미연결 시 주소창 좌측 [사이트 설정] ➔ [안전하지 않은 콘텐츠: 허용] 3단계 조치 안내 표출.
+  4. **경험.md 영구 등재**: E-066 이슈로 해결 원칙 등록 완료.
+- **검증 결과**: curl OPTIONS preflight 시 `Access-Control-Allow-Private-Network: true` 정상 응답 및 GET `/api/printers` 3종 정상 수신 완료, TypeScript 전체 빌드 0 Error 완결.
+
 ## [완료] 프린터 스테이션 N대 무제한 증설 및 동적 삭제 관리 구조 전면 개편 (v1.11.1.Build.2)
 - **요구사항**: "지금은 프린터 수가 2대 라고 한정 되어 있는데 원하는 만큼 증가시킬수 있는 구조로 변경. 새프린터 등록, (기존프린터 삭제도 가능) 프린터당 관리하는 항목은 유지. ㄹㅇ"
 - **근본 원인**:

@@ -2,8 +2,7 @@
 // 🖨️ 분산 인쇄 큐 및 멀티 프린터 스테이션 서비스 (헌장 1.1, 1.2, 3.1 명사 표준)
 
 import { db, PrintStation, PrintQueueItem } from './db';
-
-const AGENT_BASE_URL = 'http://127.0.0.1:5175';
+import { fetchWithAgentFallback, getAgentBaseUrl } from './agentService';
 
 export interface LocalAgentPrintersResult {
   online: boolean;
@@ -26,7 +25,7 @@ export interface LocalStationConfig {
  */
 export async function fetchLocalPrintersFromAgent(): Promise<LocalAgentPrintersResult> {
   try {
-    const res = await fetch(`${AGENT_BASE_URL}/api/printers`, {
+    const res = await fetchWithAgentFallback('/api/printers', {
       method: 'GET',
       signal: AbortSignal.timeout(2500),
       cache: 'no-store'
@@ -41,13 +40,13 @@ export async function fetchLocalPrintersFromAgent(): Promise<LocalAgentPrintersR
       };
     }
   } catch (err: any) {
-    // 에이전트 미기동 또는 오프라인
+    // 에이전트 미기동 또는 브라우저 보안 정책 차단
   }
   return {
     online: false,
     printers: [],
     defaultPrinter: '',
-    error: '로컬 에이전트(eBroAgent)가 가동 중이지 않습니다.'
+    error: '로컬 에이전트(eBroAgent)가 가동 중이지 않거나 브라우저 보안에 의해 차단되었습니다.'
   };
 }
 
@@ -56,7 +55,7 @@ export async function fetchLocalPrintersFromAgent(): Promise<LocalAgentPrintersR
  */
 export async function fetchLocalStationConfigFromAgent(): Promise<LocalStationConfig | null> {
   try {
-    const res = await fetch(`${AGENT_BASE_URL}/api/station-config`, {
+    const res = await fetchWithAgentFallback('/api/station-config', {
       method: 'GET',
       signal: AbortSignal.timeout(2000),
       cache: 'no-store'
@@ -74,7 +73,7 @@ export async function fetchLocalStationConfigFromAgent(): Promise<LocalStationCo
  */
 export async function saveStationConfigToAgent(config: LocalStationConfig): Promise<boolean> {
   try {
-    const res = await fetch(`${AGENT_BASE_URL}/api/station-config`, {
+    const res = await fetchWithAgentFallback('/api/station-config', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(config),

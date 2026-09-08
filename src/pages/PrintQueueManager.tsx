@@ -883,13 +883,29 @@ export const PrintQueueManager: React.FC = () => {
                     ))}
                   </select>
                 ) : (
-                  <input
-                    type="text"
-                    value={selectedPrinter}
-                    onChange={e => setSelectedPrinter(e.target.value)}
-                    placeholder="직접 프린터 드라이버 명칭 입력"
-                    required
-                  />
+                  <>
+                    <input
+                      type="text"
+                      value={selectedPrinter}
+                      onChange={e => setSelectedPrinter(e.target.value)}
+                      placeholder="직접 프린터 드라이버 명칭 입력 (예: Apeos C2060)"
+                      required
+                    />
+                    <div style={{
+                      fontSize: '11px',
+                      color: 'var(--text-secondary)',
+                      background: 'rgba(239, 68, 68, 0.08)',
+                      padding: '7px 10px',
+                      borderRadius: '6px',
+                      border: '1px solid rgba(239, 68, 68, 0.2)',
+                      lineHeight: '1.5'
+                    }}>
+                      <div style={{ color: '#dc2626', fontWeight: '700', marginBottom: '2px' }}>
+                        💡 에이전트 창이 켜져 있는데 프린터 목록이 안 뜰 때:
+                      </div>
+                      브라우저 주소창 좌측 <b>[사이트 설정(아이콘)]</b> ➔ <b>[안전하지 않은 콘텐츠: 허용]</b>으로 변경 후 <b>[F5 새로고침]</b>하면 자동 감지됩니다.
+                    </div>
+                  </>
                 )}
               </div>
 

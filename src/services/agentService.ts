@@ -44,12 +44,43 @@ export interface AgentHealthInfo {
   timestamp?: string;
 }
 
+// 활성 에이전트 베이스 URL (127.0.0.1 ➔ localhost 자동 동적 폴백)
+let activeAgentBaseUrl = 'http://127.0.0.1:5175';
+
+export function getAgentBaseUrl(): string {
+  return activeAgentBaseUrl;
+}
+
+/**
+ * 로컬 에이전트 통신 헬퍼 (127.0.0.1 및 localhost 상호 폴백 지원)
+ */
+export async function fetchWithAgentFallback(path: string, init?: RequestInit): Promise<Response> {
+  const candidateHosts = [
+    activeAgentBaseUrl,
+    activeAgentBaseUrl.includes('127.0.0.1') ? 'http://localhost:5175' : 'http://127.0.0.1:5175'
+  ];
+
+  let lastErr: any = null;
+  for (const host of candidateHosts) {
+    try {
+      const res = await fetch(`${host}${path}`, init);
+      if (res.ok || res.status < 500) {
+        activeAgentBaseUrl = host;
+        return res;
+      }
+    } catch (e) {
+      lastErr = e;
+    }
+  }
+  throw lastErr || new Error('로컬 에이전트 연결 실패');
+}
+
 /**
  * 로컬 에이전트 헬스체크 및 실시간 콜사인 동기화
  */
 export async function checkLocalAgentHealth(callsign: string = 'admin'): Promise<AgentHealthInfo> {
   try {
-    const res = await fetch(`http://127.0.0.1:5175/health?callsign=${encodeURIComponent(callsign)}`, {
+    const res = await fetchWithAgentFallback(`/health?callsign=${encodeURIComponent(callsign)}`, {
       method: 'GET',
       signal: AbortSignal.timeout(1500),
       cache: 'no-store'
@@ -78,7 +109,7 @@ export async function checkLocalAgentHealth(callsign: string = 'admin'): Promise
  */
 export async function restartLocalAgent(): Promise<boolean> {
   try {
-    const res = await fetch('http://127.0.0.1:5175/api/restart', {
+    const res = await fetchWithAgentFallback('/api/restart', {
       method: 'POST',
       signal: AbortSignal.timeout(2000)
     });
@@ -87,3 +118,4 @@ export async function restartLocalAgent(): Promise<boolean> {
     return false;
   }
 }
+

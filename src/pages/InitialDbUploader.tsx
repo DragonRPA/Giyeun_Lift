@@ -31,6 +31,13 @@ import {
   detectSupplier,
   detectCategory
 } from '../services/consumableMigrationService';
+import {
+  parsePermissionJson,
+  ingestPermissionsToDatabase,
+  generatePermissionExportPayload,
+  ParsedPermissionData
+} from '../services/permissionMigrationService';
+import { db } from '../services/db';
 import * as XLSX from 'xlsx';
 import {
   Database,
@@ -131,6 +138,100 @@ export const InitialDbUploader: React.FC = () => {
   const [isConsumableIngesting, setIsConsumableIngesting] = useState(false);
   const [showConsumableTextarea, setShowConsumableTextarea] = useState(false);
   const consumableFileInputRef = useRef<HTMLInputElement>(null);
+
+  // 🔐 임직원 권한 마스터 업로드 상태
+  const [permFileName, setPermFileName] = useState<string>('');
+  const [parsedPermData, setParsedPermData] = useState<ParsedPermissionData | null>(null);
+  const [isPermParsing, setIsPermParsing] = useState(false);
+  const [isPermIngesting, setIsPermIngesting] = useState(false);
+  const [permProgressMsg, setPermProgressMsg] = useState('');
+  const permFileInputRef = useRef<HTMLInputElement>(null);
+
+  // ── 임직원 권한 JSON 파일 파싱 핸들러 ──
+  const handlePermFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+    const file = files[0];
+    setPermFileName(file.name);
+    setIsPermParsing(true);
+    setPermProgressMsg('권한 JSON 파일 파싱 및 사용자 매핑 중...');
+
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      try {
+        const text = evt.target?.result as string;
+        const currentUsers = users || db.users || [];
+        const currentDepts = db.departments || [];
+        const parsed = parsePermissionJson(text, currentUsers, currentDepts);
+
+        if (!parsed || parsed.validPermissions.length === 0) {
+          showErrorModal?.('유효한 권한 데이터를 찾을 수 없습니다.');
+          return;
+        }
+
+        setParsedPermData(parsed);
+        showSuccessToast?.(`권한 파일 파싱 완료: 임직원 ${parsed.matchedUsersCount}명, 권한 ${parsed.totalPermissions}건`);
+      } catch (err: any) {
+        showErrorModal?.(`권한 파일 분석 실패: ${err.message || err}`);
+      } finally {
+        setIsPermParsing(false);
+        setPermProgressMsg('');
+      }
+    };
+    reader.readAsText(file);
+  };
+
+  // ── 임직원 권한 DB 일괄 정확 동기화 ──
+  const handlePermIngest = async () => {
+    if (!parsedPermData || parsedPermData.validPermissions.length === 0) {
+      showErrorModal?.('동기화할 권한 데이터가 없습니다.');
+      return;
+    }
+
+    setIsPermIngesting(true);
+    setPermProgressMsg('권한 데이터 DB 일괄 동기화 시작...');
+    try {
+      const result = await ingestPermissionsToDatabase(parsedPermData, (step, total, msg) => {
+        setPermProgressMsg(msg);
+      });
+
+      if (result.success) {
+        showSuccessToast?.(result.message);
+        await fullRefreshFromServer();
+      } else {
+        showErrorModal?.(result.message);
+      }
+    } catch (err: any) {
+      showErrorModal?.(`권한 DB 동기화 오류: ${err.message || err}`);
+    } finally {
+      setIsPermIngesting(false);
+      setPermProgressMsg('');
+    }
+  };
+
+  // ── 현재 시스템 권한 마스터 JSON 백업 다운로드 ──
+  const handleExportCurrentPermissions = () => {
+    try {
+      const currentPerms = db.permissions || [];
+      const currentUsers = users || db.users || [];
+      const currentDepts = db.departments || [];
+      const payload = generatePermissionExportPayload(currentPerms, currentUsers, currentDepts);
+      const jsonStr = JSON.stringify(payload, null, 2);
+      const blob = new Blob([jsonStr], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      const nowStr = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+      a.download = `사용자권한_마스터_${nowStr}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      showSuccessToast?.(`현재 권한 데이터 백업 다운로드 완료 (임직원 ${currentUsers.length}명, 권한 ${currentPerms.length}건)`);
+    } catch (err: any) {
+      showErrorModal?.(`권한 백업 생성 오류: ${err.message}`);
+    }
+  };
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -1981,6 +2082,199 @@ export const InitialDbUploader: React.FC = () => {
                       <><RefreshCw size={15} className="animate-spin" /> DB 반영 중...</>
                     ) : (
                       <><Upload size={15} /> 소모품 재고 DB 반영 ({parsedConsumables.length}건)</>
+                    )}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* ⑦ 임직원 권한 마스터 업로드 카드 */}
+          <div style={{ backgroundColor: 'var(--bg-card)', borderRadius: '8px', border: '1px solid var(--border-color)', padding: '20px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '16px', flexWrap: 'wrap', gap: '12px' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <ShieldCheck size={18} color="#4f46e5" />
+                  <label style={{ fontSize: '15px', fontWeight: 700, color: 'var(--text-main)', whiteSpace: 'nowrap' }}>
+                    임직원 권한 마스터 업로드
+                  </label>
+                  <span style={{ fontSize: '11px', padding: '2px 8px', borderRadius: '9999px', backgroundColor: '#eef2ff', color: '#4338ca', fontWeight: 600, whiteSpace: 'nowrap' }}>
+                    JSON 권한 마스터
+                  </span>
+                </div>
+                <span style={{ fontSize: '12px', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
+                  조정 완료된 임직원별 메뉴 조회(canView) 및 저장(canSave) 권한을 파일에서 읽어와 정확하게 일괄 동기화합니다.
+                </span>
+              </div>
+
+              {/* 우상단 액션 버튼군 */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <button
+                  type="button"
+                  onClick={handleExportCurrentPermissions}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: '6px',
+                    padding: '8px 14px', borderRadius: '6px',
+                    border: '1px solid #4f46e5', backgroundColor: '#eef2ff',
+                    color: '#4338ca', fontSize: '13px', fontWeight: 600,
+                    cursor: 'pointer', whiteSpace: 'nowrap'
+                  }}
+                >
+                  <Download size={14} />
+                  현재 권한 백업 다운로드 (.json)
+                </button>
+              </div>
+            </div>
+
+            {/* 파일 선택 바 */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '12px 16px', backgroundColor: 'var(--bg-main)', borderRadius: '6px', border: '1px solid var(--border-color)', marginBottom: '16px' }}>
+              <input
+                ref={permFileInputRef}
+                type="file"
+                accept=".json"
+                onChange={handlePermFileSelect}
+                style={{ display: 'none' }}
+              />
+              <button
+                type="button"
+                onClick={() => permFileInputRef.current?.click()}
+                disabled={isPermParsing || isPermIngesting}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: '6px',
+                  padding: '7px 14px', borderRadius: '6px',
+                  backgroundColor: '#4f46e5', color: 'white',
+                  border: 'none', fontSize: '13px', fontWeight: 600,
+                  cursor: (isPermParsing || isPermIngesting) ? 'not-allowed' : 'pointer',
+                  whiteSpace: 'nowrap',
+                  opacity: (isPermParsing || isPermIngesting) ? 0.6 : 1
+                }}
+              >
+                {isPermParsing ? <RefreshCw size={14} className="animate-spin" /> : <Upload size={14} />}
+                권한 파일 선택 (.json)
+              </button>
+
+              <span style={{ fontSize: '13px', color: permFileName ? 'var(--text-main)' : 'var(--text-muted)', fontWeight: permFileName ? 600 : 400, whiteSpace: 'nowrap' }}>
+                {permFileName || '선택된 파일 없음 (예: 사용자권한_마스터_20260908.json)'}
+              </span>
+
+              {isPermParsing && (
+                <span style={{ fontSize: '12px', color: '#4f46e5', display: 'flex', alignItems: 'center', gap: '4px', whiteSpace: 'nowrap', marginLeft: 'auto' }}>
+                  <RefreshCw size={13} className="animate-spin" /> {permProgressMsg || '파싱 중...'}
+                </span>
+              )}
+            </div>
+
+            {/* 파싱 결과 프리뷰 및 일괄 동기화 */}
+            {parsedPermData && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                {/* 4대 요약 지표 */}
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '8px' }}>
+                  <div style={{ backgroundColor: 'var(--bg-app)', padding: '10px 14px', borderRadius: '6px', border: '1px solid var(--border-color)' }}>
+                    <div style={{ fontSize: '11px', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>매핑 임직원</div>
+                    <div style={{ fontSize: '18px', fontWeight: 700, color: 'var(--text-main)', marginTop: '2px' }}>{parsedPermData.matchedUsersCount}명</div>
+                  </div>
+                  <div style={{ backgroundColor: 'var(--bg-app)', padding: '10px 14px', borderRadius: '6px', border: '1px solid var(--border-color)' }}>
+                    <div style={{ fontSize: '11px', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>총 권한 항목</div>
+                    <div style={{ fontSize: '18px', fontWeight: 700, color: '#4f46e5', marginTop: '2px' }}>{parsedPermData.totalPermissions}건</div>
+                  </div>
+                  <div style={{ backgroundColor: 'var(--bg-app)', padding: '10px 14px', borderRadius: '6px', border: '1px solid var(--border-color)' }}>
+                    <div style={{ fontSize: '11px', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>미매핑 기록</div>
+                    <div style={{ fontSize: '18px', fontWeight: 700, color: parsedPermData.unmatchedRecordsCount > 0 ? '#dc2626' : '#059669', marginTop: '2px' }}>
+                      {parsedPermData.unmatchedRecordsCount}건
+                    </div>
+                  </div>
+                  <div style={{ backgroundColor: 'var(--bg-app)', padding: '10px 14px', borderRadius: '6px', border: '1px solid var(--border-color)' }}>
+                    <div style={{ fontSize: '11px', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>기준 파일 일자</div>
+                    <div style={{ fontSize: '16px', fontWeight: 600, color: 'var(--text-main)', marginTop: '4px' }}>
+                      {parsedPermData.metadata?.exportedDateText || '당일'}
+                    </div>
+                  </div>
+                </div>
+
+                {/* 미매핑 알림 (있을 경우) */}
+                {parsedPermData.unmatchedUsers.length > 0 && (
+                  <div style={{ padding: '8px 12px', backgroundColor: '#fef2f2', borderRadius: '6px', border: '1px solid #fecaca', fontSize: '12px', color: '#b91c1c' }}>
+                    ⚠️ 현재 DB에서 일치하지 않는 사용자: {parsedPermData.unmatchedUsers.join(', ')} ({parsedPermData.unmatchedRecordsCount}건 제외됨)
+                  </div>
+                )}
+
+                {/* 고밀도 테이블: 임직원별 권한 세팅 프리뷰 */}
+                <div style={{ maxHeight: '300px', overflowY: 'auto', border: '1px solid var(--border-color)', borderRadius: '6px' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px', textAlign: 'left' }}>
+                    <thead style={{ position: 'sticky', top: 0, backgroundColor: 'var(--bg-card)', zIndex: 1, borderBottom: '1px solid var(--border-color)' }}>
+                      <tr style={{ color: 'var(--text-muted)' }}>
+                        <th style={{ padding: '8px 10px', whiteSpace: 'nowrap', width: '40px' }}>No</th>
+                        <th style={{ padding: '8px 10px', whiteSpace: 'nowrap' }}>부서</th>
+                        <th style={{ padding: '8px 10px', whiteSpace: 'nowrap' }}>성명</th>
+                        <th style={{ padding: '8px 10px', whiteSpace: 'nowrap' }}>로그인 ID</th>
+                        <th style={{ padding: '8px 10px', whiteSpace: 'nowrap' }}>직급/역할</th>
+                        <th style={{ padding: '8px 10px', whiteSpace: 'nowrap', textAlign: 'center' }}>조회 허용</th>
+                        <th style={{ padding: '8px 10px', whiteSpace: 'nowrap', textAlign: 'center' }}>저장 허용</th>
+                        <th style={{ padding: '8px 10px', whiteSpace: 'nowrap', textAlign: 'right' }}>총 권한 항목</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {parsedPermData.userSummaries.map((u, idx) => (
+                        <tr key={u.userId} style={{ borderBottom: '1px solid var(--border-color)', backgroundColor: idx % 2 === 0 ? 'transparent' : 'rgba(0,0,0,0.015)' }}>
+                          <td style={{ padding: '7px 10px', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>{idx + 1}</td>
+                          <td style={{ padding: '7px 10px', whiteSpace: 'nowrap', fontWeight: 500 }}>{u.departmentName}</td>
+                          <td style={{ padding: '7px 10px', whiteSpace: 'nowrap', fontWeight: 600, color: 'var(--text-main)' }}>{u.name}</td>
+                          <td style={{ padding: '7px 10px', whiteSpace: 'nowrap', color: 'var(--text-muted)' }}>{u.loginId}</td>
+                          <td style={{ padding: '7px 10px', whiteSpace: 'nowrap' }}>
+                            <span style={{ padding: '2px 6px', borderRadius: '4px', backgroundColor: u.role === 'ADMIN' ? '#fee2e2' : u.role === 'MANAGER' ? '#fef3c7' : '#f1f5f9', color: u.role === 'ADMIN' ? '#b91c1c' : u.role === 'MANAGER' ? '#b45309' : '#475569', fontSize: '11px', fontWeight: 600 }}>
+                              {u.role}
+                            </span>
+                          </td>
+                          <td style={{ padding: '7px 10px', whiteSpace: 'nowrap', textAlign: 'center', color: '#059669', fontWeight: 600 }}>
+                            {u.viewPermsCount}개 메뉴
+                          </td>
+                          <td style={{ padding: '7px 10px', whiteSpace: 'nowrap', textAlign: 'center', color: '#4f46e5', fontWeight: 600 }}>
+                            {u.savePermsCount}개 메뉴
+                          </td>
+                          <td style={{ padding: '7px 10px', whiteSpace: 'nowrap', textAlign: 'right', fontWeight: 700, color: 'var(--text-main)' }}>
+                            {u.totalPerms}건
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Gutenberg Z-패턴 터미널 액션 바 */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px', padding: '12px 16px', backgroundColor: 'var(--bg-main)', borderRadius: '6px', border: '1px solid var(--border-color)', marginTop: '4px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px', fontSize: '13px' }}>
+                    <span style={{ whiteSpace: 'nowrap' }}>
+                      동기화 대상: <strong style={{ color: 'var(--text-main)' }}>{parsedPermData.matchedUsersCount}명</strong>
+                    </span>
+                    <span style={{ color: 'var(--border-color)' }}>|</span>
+                    <span style={{ whiteSpace: 'nowrap' }}>
+                      총 권한 항목: <strong style={{ color: '#4f46e5' }}>{parsedPermData.totalPermissions}건</strong>
+                    </span>
+                    {permProgressMsg && (
+                      <span style={{ color: '#4f46e5', display: 'flex', alignItems: 'center', gap: '4px', fontSize: '12px' }}>
+                        <RefreshCw size={13} className="animate-spin" /> {permProgressMsg}
+                      </span>
+                    )}
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={handlePermIngest}
+                    disabled={isPermIngesting}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: '8px',
+                      padding: '10px 20px', borderRadius: '6px',
+                      backgroundColor: isPermIngesting ? '#94a3b8' : '#4f46e5',
+                      color: 'white', border: 'none',
+                      fontSize: '14px', fontWeight: 600,
+                      cursor: isPermIngesting ? 'not-allowed' : 'pointer',
+                      whiteSpace: 'nowrap'
+                    }}
+                  >
+                    {isPermIngesting ? (
+                      <><RefreshCw size={15} className="animate-spin" /> 권한 DB 동기화 진행 중...</>
+                    ) : (
+                      <><Upload size={15} /> 권한 일괄 정확 동기화 ({parsedPermData.totalPermissions}건)</>
                     )}
                   </button>
                 </div>

@@ -1,5 +1,31 @@
 # 개발 요구사항 임시 기록 (dev_temp.md)
 
+## [완료] 임직원 권한 상태 JSON 마스터 추출 및 초기DB 권한 파일 일괄 업로드 엔진 구축 (v1.10.0.Build.27)
+- **요구사항**: 
+  1. "현재 모든 임직원의 권한을 조정완료했어. 이 권한 상태를 Json 형식으로 추출하고 `D:\OneDrive\Desktop\기연리프트자료_\자동업로드` 폴더에 저장해줘."
+  2. "초기DB 업로드 기능에 권한파일 업로드 기능을 만들어줘. 임의 지정하지 말고 설정된 권한이 정확하게 세팅 되도록 해줘"
+- **적용 목적 (헌장 1.1, 1.2, 3.1, 3.5)**:
+  - 시스템 관리자가 조정한 전사 20명 임직원의 정밀 권한 매트릭스를 단일 마스터 JSON 파일로 추출하여 안전하게 보존.
+  - 초기 DB 적재 파이프라인에서 언제든 이 권한 파일을 업로드하여, 임의 추정이나 템플릿 기본값 왜곡 없이 파일에 정의된 `canView`(조회) 및 `canSave`(저장) 권한을 100% 무결하게 DB/로컬에 일괄 복원.
+- **조치 내역**:
+  1. **임직원 권한 마스터 JSON 추출 및 저장 (`scripts/export_permissions_json.cjs`)**:
+     - Supabase `users`, `departments`, `permissions` 테이블 전수 조회 (사용자 20명, 부서 5개, 권한 790건).
+     - 임직원 메타데이터(아이디, 성명, 역할, 소속부서)와 각 메뉴별 `canView`, `canSave` 상태를 완벽 구조화.
+     - 타겟 경로 `D:\OneDrive\Desktop\기연리프트자료_\자동업로드\사용자권한_마스터_20260908.json` (448.1 KB) 및 레포지토리 로컬 백업 `scripts/backup/사용자권한_마스터_20260908.json`에 동시 저장 완료.
+  2. **권한 마이그레이션 엔진 서비스 신설 (`src/services/permissionMigrationService.ts`)**:
+     - `parsePermissionJson`: 구조화된 JSON 또는 원시 배열을 파싱하고, `userId`, `loginId`, `name` 3단계 다층 매칭을 통해 현재 DB 사용자와 정밀 연결. 임의 추정값을 일절 부여하지 않고 파일의 원본 권한 값을 100% 보존.
+     - `ingestPermissionsToDatabase`: 100건 단위 배치 분할로 Supabase `permissions` 테이블에 업서트하고, 로컬 `db.permissions` 및 IndexedDB를 동기화한 뒤 `db.awaitPendingWrites()` 동기 대기(헌장 5.2).
+     - `generatePermissionExportPayload`: 브라우저 화면에서 언제든 최신 권한 상태를 JSON 파일로 즉시 백업 다운로드할 수 있는 팩토리 함수 제공.
+  3. **초기DB 업로더 화면에 '임직원 권한 마스터 업로드' 카드 탑재 (`src/pages/InitialDbUploader.tsx`)**:
+     - 헌장 3.1(무수식어 건조한 명사·동사 표준) 및 3.5(Gutenberg Z-패턴) 완벽 준수.
+     - 좌상단: `임직원 권한 마스터 업로드` 카드 타이틀 및 안내.
+     - 우상단: `현재 권한 백업 다운로드 (.json)` 액션 버튼.
+     - 중앙: JSON 파일 선택, 실시간 파싱 프로그레스, 4대 요약 카드(매핑 임직원 수, 총 권한 건수, 미매핑 기록 수, 기준 파일 일자), 고밀도 임직원별 권한 테이블(No, 부서, 성명, 아이디, 역할, 조회 허용 메뉴 수, 저장 허용 메뉴 수, 총 권한 항목).
+     - 우하단: Gutenberg Terminal Action `[권한 일괄 정확 동기화 ({N}건)]` 배치 및 실시간 동기화 진행 상태 바.
+- **검증 결과**:
+  - `cmd /c "npm run build"`: **0 Error 통과** (`built in 1.14s`).
+  - `scripts/verify_permission_json.cjs`: 임직원 20명 총 790건 권한 수지 및 보존 법칙 검증 100% 통과 (Conservation Law Pass).
+
 ## [완료] 사용자 및 권한 화면 임직원 리스트 'oo팀 이름' 형식 표기 및 부서 동기화 완비 (v1.10.0.Build.26)
 - **요구사항**: "oo팀 이름 형식으로 보여주도록 해줘"
 - **적용 목적 (헌장 1.1 및 3.2)**:

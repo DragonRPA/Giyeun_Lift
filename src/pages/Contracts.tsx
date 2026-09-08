@@ -19,6 +19,7 @@ export const Contracts: React.FC = () => {
   } = useApp();
 
   const canSave = hasPermission('contract', 'save');
+  const canGeneratePackage = hasPermission('agent_badge', 'view');  // 계약서 패키지 생성 권한 = agent_badge
 
   // 토스트 알림 상태 (헌장 5.2: 브라우저 alert 전면 퇴출)
   const [toastMessage, setToastMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
@@ -1569,6 +1570,7 @@ export const Contracts: React.FC = () => {
                       />
                     </label>
 
+                    {canGeneratePackage ? (
                     <button
                       type="button"
                       className="btn-primary"
@@ -1580,6 +1582,11 @@ export const Contracts: React.FC = () => {
                     >
                       <FileText size={12} /> 계약서패키지 생성
                     </button>
+                    ) : (
+                    <span style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '4px', padding: '4px 8px', border: '1px solid var(--border-color)', borderRadius: '4px', whiteSpace: 'nowrap' }}>
+                      <FileText size={12} /> 패키지 생성 권한 없음
+                    </span>
+                    )}
                   </div>
                 </div>
               </div>

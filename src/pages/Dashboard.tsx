@@ -56,6 +56,7 @@ export const Dashboard: React.FC = () => {
   const canActContract = hasPermission('contract', 'save');
   const canActConsumable = hasPermission('consumable', 'save');
   const canActRentAsset = hasPermission('rent_asset', 'save');
+  const canGeneratePackage = hasPermission('agent_badge', 'view');  // 계약서 패키지 생성 권한 = agent_badge
 
   // ── 🤖 로컬 사이드카 에이전트 실시간 모니터링 상태 ──
   const [agentStatus, setAgentStatus] = useState<'ONLINE' | 'OFFLINE'>('OFFLINE');
@@ -903,6 +904,7 @@ export const Dashboard: React.FC = () => {
                         </div>
                       </div>
 
+                      {canGeneratePackage && (
                       <button
                         type="button"
                         className="btn-primary"
@@ -916,6 +918,7 @@ export const Dashboard: React.FC = () => {
                         <Download size={15} />
                         통합 팩 발행
                       </button>
+                      )}
                     </div>
                   );
                 })

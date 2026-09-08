@@ -26,8 +26,10 @@ export const ContractDocumentBundleModal: React.FC<Props> = ({ isOpen, onClose, 
   const { 
     contracts, customers, contacts, sites, assets, 
     contractAssets, deliveries, products, googleConfigs, currentUser,
-    currentTenant, showErrorModal 
+    currentTenant, showErrorModal, hasPermission
   } = useApp();
+
+  const canGeneratePackage = hasPermission('agent_badge', 'view');  // 계약서 패키지 생성 권한
 
   const [selectedContractId, setSelectedContractId] = useState<string>(
     initialContractId || contracts[0]?.id || ''
@@ -529,6 +531,19 @@ export const ContractDocumentBundleModal: React.FC<Props> = ({ isOpen, onClose, 
         {/* 모달 본문 */}
         <div style={{ padding: '20px 22px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '16px' }}>
 
+          {/* 권한 없음 경고 배너 */}
+          {!canGeneratePackage && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '12px 16px', backgroundColor: 'rgba(239, 68, 68, 0.08)', border: '1px solid rgba(239, 68, 68, 0.35)', borderRadius: '8px', color: 'var(--danger)', fontSize: '13px' }}>
+              <AlertCircle size={18} />
+              <div>
+                <strong>계약서 패키지 생성 + 의뢰서 프린터 통제</strong> 권한이 없습니다.
+                <span style={{ display: 'block', fontSize: '12px', color: 'var(--text-muted)', marginTop: '2px' }}>
+                  이 PC에 로컬 에이전트가 설치되어 있지 않거나 해당 권한이 부여되지 않았습니다. 권한 담당자에게 문의하세요.
+                </span>
+              </div>
+            </div>
+          )}
+
           {/* 1. 대상 계약 선택 */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
             <label style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>
@@ -920,19 +935,20 @@ export const ContractDocumentBundleModal: React.FC<Props> = ({ isOpen, onClose, 
             <button
               type="button"
               onClick={handleDownloadPdf}
-              disabled={isGenerating || isSendingEmail}
+              disabled={isGenerating || isSendingEmail || !canGeneratePackage}
               style={{
                 padding: '8px 16px',
                 borderRadius: '6px',
                 border: '1px solid var(--primary)',
-                backgroundColor: 'var(--primary-light)',
-                color: 'var(--primary)',
+                backgroundColor: !canGeneratePackage ? 'var(--bg-card)' : 'var(--primary-light)',
+                color: !canGeneratePackage ? 'var(--text-muted)' : 'var(--primary)',
                 fontSize: '13px',
                 fontWeight: 700,
-                cursor: isGenerating ? 'not-allowed' : 'pointer',
+                cursor: (isGenerating || !canGeneratePackage) ? 'not-allowed' : 'pointer',
                 display: 'flex',
                 alignItems: 'center',
-                gap: '6px'
+                gap: '6px',
+                opacity: !canGeneratePackage ? 0.5 : 1
               }}
             >
               {isGenerating ? <RefreshCw size={14} className="animate-spin" /> : <Download size={14} />}
@@ -943,20 +959,21 @@ export const ContractDocumentBundleModal: React.FC<Props> = ({ isOpen, onClose, 
             <button
               type="button"
               onClick={handleSendPackageEmail}
-              disabled={isGenerating || isSendingEmail || recipients.length === 0}
+              disabled={isGenerating || isSendingEmail || recipients.length === 0 || !canGeneratePackage}
               style={{
                 padding: '8px 18px',
                 borderRadius: '6px',
                 border: 'none',
-                backgroundColor: recipients.length === 0 ? 'var(--text-muted)' : 'var(--primary)',
+                backgroundColor: (!canGeneratePackage || recipients.length === 0) ? 'var(--text-muted)' : 'var(--primary)',
                 color: '#ffffff',
                 fontSize: '13px',
                 fontWeight: 700,
-                cursor: (isGenerating || isSendingEmail || recipients.length === 0) ? 'not-allowed' : 'pointer',
+                cursor: (isGenerating || isSendingEmail || recipients.length === 0 || !canGeneratePackage) ? 'not-allowed' : 'pointer',
                 display: 'flex',
                 alignItems: 'center',
                 gap: '6px',
-                boxShadow: recipients.length > 0 ? '0 2px 6px rgba(0, 0, 0, 0.2)' : 'none'
+                boxShadow: (canGeneratePackage && recipients.length > 0) ? '0 2px 6px rgba(0, 0, 0, 0.2)' : 'none',
+                opacity: !canGeneratePackage ? 0.5 : 1
               }}
             >
               {isSendingEmail ? <RefreshCw size={14} className="animate-spin" /> : <Send size={14} />}

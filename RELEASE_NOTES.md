@@ -1,3 +1,21 @@
+## [v1.11.3.Build.4] - 2026-09-09 00:45
+
+### 🔒 [계약서 패키지 생성 기능에 agent_badge 권한 연계]
+- **권한 기준**: `agent_badge` menuId의 `canView = true`인 사용자만 계약서 패키지 생성 및 이메일 발송 실행 가능
+- `src/pages/Contracts.tsx`:
+  - `canGeneratePackage = hasPermission('agent_badge', 'view')` 플래그 추가
+  - 계약서패키지 생성 버튼: 권한 있으면 활성 버튼, 없으면 `패키지 생성 권한 없음` 회색 인디케이터로 전환
+- `src/components/ContractDocumentBundleModal.tsx`:
+  - `hasPermission` + `canGeneratePackage` 추가
+  - 모달 상단: 권한 없을 때 적색 경고 배너 표출 (로컬 에이전트 부재 / 권한 미부여 안내)
+  - PDF 다운로드 버튼 + 이메일 발송 버튼: `!canGeneratePackage` 시 `disabled` + `opacity: 0.5` 처리
+- `src/pages/Dashboard.tsx`:
+  - `canGeneratePackage = hasPermission('agent_badge', 'view')` 플래그 추가
+  - 통합 팩 발행 버튼: `canGeneratePackage`가 false이면 버튼 자체 렌더링 제거
+- **검증**: TypeScript 전체 빌드 0 Error (`built in 1.13s`)
+
+---
+
 ## [v1.11.3.Build.3] - 2026-09-09 00:32
 
 ### 📋 [권한관리 임직원 리스트 조직도 부서 순서 정렬]

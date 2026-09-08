@@ -13,7 +13,7 @@
 // └─────────────────────────────────────────────────────────────────────────┘
 import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { useApp } from '../context/AppContext';
-import { db, Customer, CustomerSite, findCustomerByNormalizedName } from '../services/db';
+import { db, Customer, CustomerSite, findCustomerByNormalizedName, STANDARD_SPECS, StandardOption } from '../services/db';
 import { EQUIPMENT_SPEC_MATRIX } from '../services/voiceOrderDraftService';
 import { matchHangul } from '../utils/hangulSearch';
 import {
@@ -134,7 +134,7 @@ const makeScoredField = (value: string, source: ScoredField['source'] = 'MANUAL'
 export const SmartDispatch4: React.FC = () => {
   const {
     hasPermission, customers, sites, contacts, currentUser, currentTenant,
-    saveSmartDispatch, assets, deliveries
+    saveSmartDispatch, assets, deliveries, standardOptions
   } = useApp();
 
   const canSave = hasPermission('smart_dispatch', 'save') || hasPermission('delivery', 'save');
@@ -342,20 +342,65 @@ export const SmartDispatch4: React.FC = () => {
   // ── 업무 유형 (단일 맥락 선택, 🌟 기본값 null: 아무것도 자동 선택되지 않음) ──
   const [selectedContext, setSelectedContext] = useState<CallContext | null>(null);
 
-  // 🌟 [현장 마스터 + 과거 기록 기반 옵션 자동 로드] 현장 및 배차 대장에서 안전/보양 옵션 자동 로드
+  // 🏷️ 옵션 분할 헬퍼 (천단위 금액 쉼표 30,000원 및 옵션명 내부 슬래시 '협착방지봉 / 상부센서' 보존)
+  const parseOptionString = (str?: string): string[] => {
+    if (!str) return [];
+    return str
+      .split(/(?:,(?!\d{3}(?:[^\d]|$))|[;\n]+)/)
+      .map(s => s.trim())
+      .filter(s => Boolean(s) && s !== '-' && s !== 'NONE' && s !== '없음');
+  };
+
+  // 🛡️ 보양/유상옵션 정밀 분류 헬퍼
+  const isProtectionOption = useCallback((label: string): boolean => {
+    const protDefs = (standardOptions || []).filter(o => o.category === 'PROTECTION').map(o => o.name);
+    if (protDefs.includes(label)) return true;
+    if (/보양|비닐보양|바닥보양|완충/i.test(label) && !/조이스틱|커버|센서|스위치/i.test(label)) return true;
+    return false;
+  }, [standardOptions]);
+
+  // 🌟 [현장 마스터 + 고객사 기본상속 + 과거 배차 이력 종합 옵션 자동 로드]
   const loadSiteSafetyOptions = useCallback((site: CustomerSite | null, cust: Customer | null) => {
     const inherited = new Set<string>();
 
+    // ── 1순위: 선택된 현장 마스터 직접 등록 옵션 ──────────────────────────────
     if (site) {
-      const rawText = `${site.paidOptions || ''} ${site.protection || ''}`.trim();
-      if (rawText) {
-        rawText.split(/[,/|]/).map(t => t.trim()).filter(Boolean).forEach(token => {
-          inherited.add(token);
+      if (site.paidOptions) {
+        parseOptionString(site.paidOptions).forEach(opt => inherited.add(opt));
+      }
+      if (site.protection && site.protection !== 'NONE' && site.protection !== '-') {
+        parseOptionString(site.protection).forEach(opt => inherited.add(opt));
+      }
+      if (site.checkedSpecs) {
+        Object.entries(site.checkedSpecs).forEach(([k, v]) => {
+          if (v) {
+            const specDef = STANDARD_SPECS.find(s => s.id === k);
+            if (specDef) inherited.add(specDef.label);
+          }
         });
       }
     }
 
-    // 현장 마스터에 옵션이 비어있으면 과거 배차(deliveries) 이력에서 자동 탐색
+    // ── 2순위: 고객사 기본 상속 옵션 (현장 옵션이 비어있거나 현장 미선택 시) ───
+    if (inherited.size === 0 && cust) {
+      if (cust.defaultPaidOptions) {
+        parseOptionString(cust.defaultPaidOptions).forEach(opt => inherited.add(opt));
+      }
+      if (cust.defaultProtection && cust.defaultProtection !== 'NONE' && cust.defaultProtection !== '-') {
+        parseOptionString(cust.defaultProtection).forEach(opt => inherited.add(opt));
+      }
+      const custSpecs = cust.defaultCheckedSpecs || (cust as any).defaultSpecs;
+      if (custSpecs) {
+        Object.entries(custSpecs).forEach(([k, v]) => {
+          if (v) {
+            const specDef = STANDARD_SPECS.find(s => s.id === k);
+            if (specDef) inherited.add(specDef.label);
+          }
+        });
+      }
+    }
+
+    // ── 3순위: 과거 배차 대장(deliveries) 이력 자동 탐색 ──────────────────────
     if (inherited.size === 0 && (site || cust)) {
       const siteAddrs = site?.address?.trim();
       const custId = cust?.id;
@@ -368,7 +413,7 @@ export const SmartDispatch4: React.FC = () => {
         const text = `${pastDelivery.cargoItems || ''} ${pastDelivery.closingMemo || ''} ${pastDelivery.memo || ''}`;
         const match = text.match(/\[(?:옵션|안전옵션)\]\s*([^|\]]+)/);
         if (match && match[1]) {
-          match[1].split(/[,/|]/).map(t => t.trim()).filter(Boolean).forEach(item => {
+          parseOptionString(match[1]).forEach(item => {
             inherited.add(item);
           });
         }
@@ -574,6 +619,22 @@ export const SmartDispatch4: React.FC = () => {
   const [initialSiteOptions, setInitialSiteOptions] = useState<Set<string>>(new Set());
   const [saveOptionsToSite, setSaveOptionsToSite] = useState<boolean>(true);
 
+  // 🌟 전사 표준 옵션 마스터 및 자주 쓰는 키워드 통합 추천 칩
+  const availableOptionSuggestions = useMemo(() => {
+    const list: string[] = [];
+    (standardOptions || [])
+      .filter(o => o.isActive && o.category !== 'SPEC' && o.name !== 'NONE' && !o.name.startsWith('NONE'))
+      .forEach(o => {
+        if (!list.includes(o.name)) list.push(o.name);
+      });
+    QUICK_OPTION_SUGGESTIONS.forEach(q => {
+      if (!list.some(item => item.includes(q) || q.includes(item))) {
+        list.push(q);
+      }
+    });
+    return list;
+  }, [standardOptions]);
+
   const toggleOptionTag = (tag: string) => {
     setSelectedSafetyOptions(prev => {
       const next = new Set(prev);
@@ -599,22 +660,33 @@ export const SmartDispatch4: React.FC = () => {
   };
 
   const handleReloadSiteOptions = () => {
-    if (!selectedSite) {
-      showToast('선택된 현장이 없습니다.', 'error');
-      return;
+    if (selectedSite) {
+      const loaded = loadSiteSafetyOptions(selectedSite, selectedCustomer);
+      if (loaded.size > 0) {
+        showToast(`현장 '${selectedSite.name}'의 옵션 (${loaded.size}건)을 불러왔습니다.`, 'success');
+      } else {
+        showToast(`현장 '${selectedSite.name}'에 등록된 옵션이 없습니다.`, 'info');
+      }
+    } else if (selectedCustomer) {
+      const loaded = loadSiteSafetyOptions(null, selectedCustomer);
+      if (loaded.size > 0) {
+        showToast(`고객사 '${selectedCustomer.name}'의 기본 옵션 (${loaded.size}건)을 불러왔습니다.`, 'success');
+      } else {
+        showToast(`고객사 '${selectedCustomer.name}'에 등록된 기본 옵션이 없습니다.`, 'info');
+      }
+    } else {
+      showToast('선택된 고객사 또는 현장이 없습니다.', 'error');
     }
-    loadSiteSafetyOptions(selectedSite, selectedCustomer);
-    showToast(`현장 '${selectedSite.name}'의 기본 옵션을 다시 불러왔습니다.`, 'info');
   };
 
   const handleSaveOptionsToCurrentSite = async () => {
     if (!selectedSite) {
-      showToast('선택된 현장이 없습니다.', 'error');
+      showToast('선택된 현장이 없습니다. 현장을 먼저 선택하세요.', 'error');
       return;
     }
     const optionLabels = Array.from(selectedSafetyOptions);
-    const paidOpts = optionLabels.filter(label => !/보양|비닐|커버/i.test(label)).join(', ');
-    const protOpts = optionLabels.filter(label => /보양|비닐|커버/i.test(label)).join(', ');
+    const paidOpts = optionLabels.filter(label => !isProtectionOption(label)).join(', ');
+    const protOpts = optionLabels.filter(label => isProtectionOption(label)).join(', ') || 'NONE';
 
     try {
       db.updateRow<CustomerSite>('sites', selectedSite.id, {
@@ -907,10 +979,12 @@ export const SmartDispatch4: React.FC = () => {
             setNewSiteName(ps);
             if (paddr) setNewSiteAddress(paddr);
             applyInheritance(mc, null);
+            loadSiteSafetyOptions(null, mc);
           }
         } else {
           if (paddr) setSelectedSiteAddress(paddr);
           applyInheritance(mc, null);
+          loadSiteSafetyOptions(null, mc);
         }
       } else {
         // DB 미등록 고객사일 경우 신규 고객 모드로 자동 지원
@@ -1146,8 +1220,8 @@ export const SmartDispatch4: React.FC = () => {
       // 🌟 [첨삭 저장 확인] 현장 기본값으로 저장 선택 시 CustomerSite DB 업데이트
       if (saveToSite && selectedSite) {
         const optionLabels = Array.from(selectedSafetyOptions);
-        const paidOpts = optionLabels.filter(label => !/보양|비닐|커버/i.test(label)).join(', ');
-        const protOpts = optionLabels.filter(label => /보양|비닐|커버/i.test(label)).join(', ');
+        const paidOpts = optionLabels.filter(label => !isProtectionOption(label)).join(', ');
+        const protOpts = optionLabels.filter(label => isProtectionOption(label)).join(', ') || 'NONE';
 
         db.updateRow<CustomerSite>('sites', selectedSite.id, {
           paidOptions: paidOpts,
@@ -1256,11 +1330,17 @@ export const SmartDispatch4: React.FC = () => {
         setIsRegisteringNewSite(true);
         setNewSiteName(draft.siteName.value);
         setNewSiteAddress(draft.siteAddress || '');
+        if (matchedCustomer) {
+          loadSiteSafetyOptions(null, matchedCustomer);
+        }
       }
     } else {
       setSelectedSite(null);
       setSelectedSiteAddress('');
       setIsRegisteringNewSite(false);
+      if (matchedCustomer) {
+        loadSiteSafetyOptions(null, matchedCustomer);
+      }
     }
     if (draft.siteAddress && !draft.siteName?.value) {
       setNewSiteAddress(draft.siteAddress);
@@ -1301,10 +1381,12 @@ export const SmartDispatch4: React.FC = () => {
       setSelectedSafetyOptions(new Set(draft.safetyOptions));
     } else {
       const parsedOpts = new Set<string>();
-      if (noteText.includes('협착방지봉')) parsedOpts.add('BAR_4EA');
-      if (noteText.includes('소화기')) parsedOpts.add('FIRE_EXT');
-      if (noteText.includes('철망')) parsedOpts.add('MESH_4SIDE');
-      if (noteText.includes('도색') || noteText.includes('비닐')) parsedOpts.add('PAINT_COVER');
+      if (noteText.includes('협착방지봉') || noteText.includes('상부센서')) parsedOpts.add('협착방지봉 / 상부센서 (4EA)');
+      if (noteText.includes('소화기')) parsedOpts.add('소화기함 / 분말소화기');
+      if (noteText.includes('철망')) parsedOpts.add('4면 철망 (안전 낙하방지망)');
+      if (noteText.includes('인버터')) parsedOpts.add('인버터 설치');
+      if (noteText.includes('논마킹') || noteText.includes('백색타이어')) parsedOpts.add('백색 논마킹 타이어');
+      if (noteText.includes('보양')) parsedOpts.add('4면 철망 보양');
       if (parsedOpts.size > 0) {
         setSelectedSafetyOptions(parsedOpts);
       }
@@ -2037,6 +2119,9 @@ export const SmartDispatch4: React.FC = () => {
                           setNewSiteAddress('');
                           setContactPerson('');
                           setContactPhone('');
+                          if (selectedCustomer) {
+                            loadSiteSafetyOptions(null, selectedCustomer);
+                          }
                         }}
                         className="flex items-center gap-1 text-xs font-bold px-3 py-2 rounded-lg bg-purple-900/60 hover:bg-purple-800/70 text-purple-200 border border-purple-600/70 whitespace-nowrap transition"
                       >
@@ -2493,9 +2578,9 @@ export const SmartDispatch4: React.FC = () => {
                       <button
                         type="button"
                         onClick={handleReloadSiteOptions}
-                        disabled={!selectedSite}
+                        disabled={!selectedSite && !selectedCustomer}
                         className="flex items-center gap-1 px-2 py-1 rounded text-[10.5px] font-bold bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 disabled:opacity-40 disabled:cursor-not-allowed transition"
-                        title="선택된 현장 마스터 및 과거 배차 이력에서 옵션 불러오기"
+                        title={selectedSite ? "현장 마스터 및 고객사 기본값에서 옵션 불러오기" : selectedCustomer ? "고객사 기본 옵션 불러오기" : "고객사 또는 현장을 먼저 선택하십시오"}
                       >
                         <RefreshCw className="w-3 h-3 text-cyan-400" />
                         <span>현장옵션 불러오기</span>
@@ -2542,7 +2627,7 @@ export const SmartDispatch4: React.FC = () => {
                   {/* 추천 키워드 칩 (타이핑 단축) */}
                   <div className="flex items-center gap-1.5 flex-wrap">
                     <span className="text-[10px] text-slate-400 font-semibold">자주 쓰는 요청:</span>
-                    {QUICK_OPTION_SUGGESTIONS.map(tag => {
+                    {availableOptionSuggestions.map(tag => {
                       const isAdded = selectedSafetyOptions.has(tag);
                       return (
                         <button

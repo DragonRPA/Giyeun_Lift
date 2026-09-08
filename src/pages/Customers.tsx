@@ -4,7 +4,7 @@ import { useApp } from '../context/AppContext';
 import { 
   Plus, Search, MapPin, Phone, User, Mail, PlusCircle, Download, 
   CreditCard, ShieldCheck, Zap, Sparkles, CheckCircle2, AlertCircle, 
-  X, Edit2, Trash2, RefreshCw, Layers, Check, Building2
+  X, Edit2, Trash2, RefreshCw, Layers, Check, Building2, Circle
 } from 'lucide-react';
 import { db, Customer, CustomerContact, CustomerSite, CustomerBankAccount, STANDARD_SPECS } from '../services/db';
 import { exportToExcel } from '../services/excel';
@@ -12,7 +12,7 @@ import { matchHangul } from '../utils/hangulSearch';
 
 export const Customers: React.FC = () => {
   const {
-    customers, contacts, sites, saveCustomer, saveContact, saveSite, hasPermission,
+    customers, contacts, sites, contracts, contractAssets, saveCustomer, saveContact, deleteContact, saveSite, hasPermission,
     navigationPayload, setNavigationPayload, currentUser, refreshAllData, legalNoticeLogs
   } = useApp();
 
@@ -275,6 +275,19 @@ export const Customers: React.FC = () => {
       await refreshAllData();
     } catch (err: any) {
       showToast(`담당자 저장 실패: ${err?.message || err}`, 'error');
+    }
+  };
+
+  const handleDeleteContact = async (contactId: string, contactName: string) => {
+    if (!window.confirm(`정말로 담당자 [${contactName}] 정보를 삭제하시겠습니까?`)) return;
+    try {
+      await deleteContact(contactId);
+      showToast(`담당자 [${contactName}] 정보가 삭제되었습니다.`);
+      setShowContactModal(false);
+      setEditingContact(null);
+      await refreshAllData();
+    } catch (err: any) {
+      showToast(`담당자 삭제 실패: ${err?.message || err}`, 'error');
     }
   };
 
@@ -861,10 +874,24 @@ export const Customers: React.FC = () => {
                           </td>
                         </tr>
                       ) : (
-                        customerSites.map(cs => (
-                          <tr key={cs.id} style={{ borderBottom: '1px solid var(--border-color)', opacity: cs.isActive !== false ? 1 : 0.6 }}>
-                            <td style={{ padding: '5px 6px', fontWeight: 600, color: 'var(--text-main)', whiteSpace: 'nowrap' }}>{cs.name}</td>
-                            <td style={{ padding: '5px 6px', whiteSpace: 'nowrap', maxWidth: '240px', overflow: 'hidden', textOverflow: 'ellipsis' }}>{cs.address}</td>
+                        customerSites.map(cs => {
+                          const activeContracts = contracts?.filter(c => c.siteId === cs.id && (c.status === 'ACTIVE' || c.status === 'EXTENDED')) || [];
+                          const activeAssetCount = activeContracts.reduce((acc, contract) => {
+                            const assetsForContract = contractAssets?.filter(ca => ca.contractId === contract.id && ca.status !== 'RETURNED') || [];
+                            return acc + assetsForContract.length;
+                          }, 0);
+                          const hasActiveContracts = activeContracts.length > 0;
+
+                          return (
+                            <tr key={cs.id} style={{ borderBottom: '1px solid var(--border-color)', opacity: cs.isActive !== false ? 1 : 0.6 }}>
+                              <td style={{ padding: '5px 6px', fontWeight: 600, color: 'var(--text-main)', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                <Circle size={10} fill={hasActiveContracts ? '#22c55e' : '#eab308'} strokeWidth={0} />
+                                {cs.name}
+                                <span style={{fontSize: '10px', color: 'var(--text-muted)', fontWeight: 400}}>
+                                  (계약 {activeContracts.length}건 / {activeAssetCount}대)
+                                </span>
+                              </td>
+                              <td style={{ padding: '5px 6px', whiteSpace: 'nowrap', maxWidth: '240px', overflow: 'hidden', textOverflow: 'ellipsis' }}>{cs.address}</td>
                             <td style={{ padding: '5px 6px', whiteSpace: 'nowrap' }}>{cs.contactName || '-'}</td>
                             <td style={{ padding: '5px 6px', whiteSpace: 'nowrap' }}>{cs.contact || '-'}</td>
                             <td style={{ padding: '5px 6px', whiteSpace: 'nowrap' }}>
@@ -890,8 +917,9 @@ export const Customers: React.FC = () => {
                               )}
                             </td>
                           </tr>
-                        ))
-                      )}
+                        );
+                      })
+                    )}
                     </tbody>
                   </table>
                 </div>
@@ -1414,9 +1442,20 @@ export const Customers: React.FC = () => {
               </div>
             </div>
 
-            <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', marginTop: '14px', paddingTop: '10px', borderTop: '1px solid var(--border-color)' }}>
-              <button type="button" className="btn-secondary" onClick={() => setShowContactModal(false)} style={{ padding: '5px 14px', fontSize: '12px' }}>취소</button>
-              <button type="submit" className="btn-primary" style={{ padding: '5px 16px', fontSize: '12px' }}>저장</button>
+            <div style={{ display: 'flex', gap: '8px', justifyContent: editingContact.id ? 'space-between' : 'flex-end', marginTop: '14px', paddingTop: '10px', borderTop: '1px solid var(--border-color)' }}>
+              {editingContact.id && (
+                <button
+                  type="button"
+                  onClick={() => handleDeleteContact(editingContact.id!, editingContact.name || '')}
+                  style={{ padding: '5px 14px', fontSize: '12px', backgroundColor: 'var(--danger-color, #ef4444)', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer' }}
+                >
+                  삭제
+                </button>
+              )}
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <button type="button" className="btn-secondary" onClick={() => setShowContactModal(false)} style={{ padding: '5px 14px', fontSize: '12px' }}>취소</button>
+                <button type="submit" className="btn-primary" style={{ padding: '5px 16px', fontSize: '12px' }}>저장</button>
+              </div>
             </div>
           </form>
         </div>

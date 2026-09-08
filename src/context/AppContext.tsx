@@ -80,6 +80,7 @@ interface AppContextType {
   toggleTheme: () => void;
   login: (loginId: string, passwordHash: string, keepLoggedIn?: boolean) => boolean;
   logout: () => void;
+  switchUser: (userId: string) => void;
   hasPermission: (menuId: string, action: 'view' | 'save') => boolean;
   showErrorModal: (message: string, title?: string) => void;
   
@@ -161,6 +162,7 @@ interface AppContextType {
   saveUser: (user: Omit<User, 'id' | 'createdAt'> & { id?: string }) => void;
   saveCustomer: (cust: Omit<Customer, 'id' | 'createdAt'> & { id?: string }) => Promise<Customer>;
   saveContact: (contact: Omit<CustomerContact, 'id' | 'createdAt'> & { id?: string }) => Promise<void>;
+  deleteContact: (id: string) => Promise<void>;
   saveSite: (site: Omit<CustomerSite, 'id' | 'createdAt'> & { id?: string }) => Promise<void>;
   saveProduct: (prod: Omit<Product, 'id' | 'createdAt'> & { id?: string }) => void;
   saveAsset: (asset: Omit<Asset, 'id' | 'createdAt' | 'updatedAt'> & { id?: string }) => void;
@@ -207,6 +209,9 @@ interface AppContextType {
   cancelInboundAsset: (logId: string, cancelReason?: string) => Promise<void>;
   
   // Consumables Mutators
+  addConsumable: (data: Omit<Consumable, 'id' | 'createdAt' | 'updatedAt' | 'stockQty'> & { stockQty?: number }) => Promise<void>;
+  updateConsumable: (id: string, updates: Partial<Consumable>) => Promise<void>;
+  deleteConsumable: (id: string) => Promise<void>;
   purchaseConsumable: (data: { modelName: string; qty: number; unit: string; unitPrice: number; supplier: string }) => Promise<void>;
   useConsumable: (data: { consumableId: string; quantity: number; targetAssetId: string; description: string }) => Promise<void>;
   requestConsumablePurchase: (data: { consumableId?: string; modelName: string; qty: number; unitPrice: number; requestDate: string; sellerName: string }) => Promise<void>;
@@ -829,7 +834,30 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const logout = () => {
     setCurrentUser(null);
     sessionStorage.removeItem('user');
+    sessionStorage.removeItem('original_admin_user');
     localStorage.removeItem('auto_user');
+  };
+
+  const switchUser = (userId: string) => {
+    let targetUser = users.find(u => u.id === userId);
+    if (!targetUser) {
+      // sys-admin 등 users 배열에 없는 fallback 계정으로의 복귀 처리
+      const originalAdminStr = sessionStorage.getItem('original_admin_user');
+      if (originalAdminStr) {
+        const originalAdmin = JSON.parse(originalAdminStr);
+        if (originalAdmin.id === userId) {
+          targetUser = originalAdmin;
+        }
+      }
+    }
+    
+    if (targetUser) {
+      if (currentUser?.role === 'ADMIN' && !sessionStorage.getItem('original_admin_user')) {
+        sessionStorage.setItem('original_admin_user', JSON.stringify(currentUser));
+      }
+      setCurrentUser(targetUser);
+      sessionStorage.setItem('user', JSON.stringify(targetUser));
+    }
   };
 
   const hasPermission = (menuId: string, action: 'view' | 'save'): boolean => {
@@ -1012,6 +1040,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
     }
 
+    refreshAllData();
+  };
+
+  const deleteContact = async (id: string) => {
+    db.deleteRow('contacts', id);
+    if (db.isSupabaseConnected() && db.pendingWrites.length > 0) {
+      try {
+        await db.pendingWrites[db.pendingWrites.length - 1];
+      } catch (err) {
+        console.error("Supabase write await error:", err);
+        throw err;
+      }
+    }
     refreshAllData();
   };
 
@@ -2494,6 +2535,57 @@ ${currentTenant?.corporateName || tenantCorp} 배상
     } catch (err: any) {
       console.error('createVendorClaimReceivable error:', err);
       showErrorModal(`⚠️ 구상 미수금 등록 오류:\n${err.message || err.details || JSON.stringify(err)}`, 'DB 동기화 오류');
+      throw err;
+    }
+  };
+
+  const addConsumable = async (data: Omit<Consumable, 'id' | 'createdAt' | 'updatedAt' | 'stockQty'> & { stockQty?: number }) => {
+    try {
+      db.insertRow<Consumable>('consumables', {
+        ...data,
+        stockQty: data.stockQty || 0,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      });
+      await db.awaitPendingWrites();
+      refreshAllData();
+    } catch (err: any) {
+      showErrorModal(`⚠️ 소모품 품목 등록 오류:\n${err.message || err}`, 'DB 동기화 오류');
+      throw err;
+    }
+  };
+
+  const updateConsumable = async (id: string, updates: Partial<Consumable>) => {
+    try {
+      db.updateRow<Consumable>('consumables', id, {
+        ...updates,
+        updatedAt: new Date().toISOString()
+      });
+      await db.awaitPendingWrites();
+      refreshAllData();
+    } catch (err: any) {
+      showErrorModal(`⚠️ 소모품 품목 수정 오류:\n${err.message || err}`, 'DB 동기화 오류');
+      throw err;
+    }
+  };
+
+  const deleteConsumable = async (id: string) => {
+    try {
+      const hasLogs = db.consumableLogs.some(l => l.consumableId === id);
+      const hasVehicleStock = db.mechanicConsumableStocks.some(s => s.consumableId === id && s.stockQty > 0);
+      
+      if (hasLogs || hasVehicleStock) {
+        showErrorModal('수불 이력이 있거나 차량에 불출된 재고가 있어 삭제할 수 없습니다. 관리자에게 문의하여 단종 처리하세요.', '삭제 불가');
+        throw new Error('삭제 불가');
+      }
+
+      db.deleteRow('consumables', id);
+      await db.awaitPendingWrites();
+      refreshAllData();
+    } catch (err: any) {
+      if (err.message !== '삭제 불가') {
+        showErrorModal(`⚠️ 소모품 삭제 오류:\n${err.message || err}`, 'DB 동기화 오류');
+      }
       throw err;
     }
   };
@@ -8151,7 +8243,7 @@ ${currentTenant?.corporateName || tenantCorp} 배상
 
   return (
     <AppContext.Provider value={{ receivables: db.receivables as any[], refreshReceivables: () => {}, 
-      currentUser, theme, toggleTheme, login, logout, hasPermission, showErrorModal,
+      currentUser, theme, toggleTheme, login, logout, switchUser, hasPermission, showErrorModal,
       tenants, currentTenant, setCurrentTenantId, saveTenant,
       addTenantWorkplace, updateTenantWorkplace, deleteTenantWorkplace,
       addTenantYard, updateTenantYard, deleteTenantYard, setDefaultYard,
@@ -8162,11 +8254,11 @@ ${currentTenant?.corporateName || tenantCorp} 배상
       equipmentManuals, saveEquipmentManual, deleteEquipmentManual,
       annualLeaveQuotas, leaveUsages, overtimeRecords, payrollClosings, prepaidTransactions, delinquencyActionLogs, legalNoticeLogs, legalNoticeTemplates, saveLegalNoticeLog, saveLegalNoticeTemplate,
       corporateVehicles, vehicleOperationLogs, vehicleFuelLogs, registerCorporateVehicle, updateCorporateVehicle, deleteCorporateVehicle, registerVehicleOperationLog, updateVehicleOperationLog, deleteVehicleOperationLog, registerVehicleFuelLog, deleteVehicleFuelLog,
-      refreshAllData, fullRefreshFromServer, executeMonthlyDepreciation, loadTablesForMenu, updatePermissions, saveUser, saveCustomer, saveContact, saveSite, saveProduct, saveAsset, updateGoogleConfig,
+      refreshAllData, fullRefreshFromServer, executeMonthlyDepreciation, loadTablesForMenu, updatePermissions, saveUser, saveCustomer, saveContact, deleteContact, saveSite, saveProduct, saveAsset, updateGoogleConfig,
       saveCashFlowSnapshot, deleteCashFlowSnapshot, saveVendor, deleteVendor, recalculateAllVendorMetrics, saveBankInitialBalance, saveInspectionChecklistItem, deleteInspectionChecklistItem,
       updateAnnualLeaveQuota, addLeaveUsage, deleteLeaveUsage, addOvertimeRecord, deleteOvertimeRecord, setPayrollClosingStatus,
       acquireAsset, batchAcquireAssets, disposeAsset, executeAssetSale, registerRentedAsset, returnRentedAsset, createVendorClaimReceivable, changeAssetStatus, registerInboundAsset, cancelInboundAsset,
-      purchaseConsumable, useConsumable, transferConsumableToMechanic, returnConsumableToHq, transferConsumableBetweenMechanics,
+      purchaseConsumable, useConsumable, transferConsumableToMechanic, returnConsumableToHq, transferConsumableBetweenMechanics, addConsumable, updateConsumable, deleteConsumable,
       createStocktakingAudit, updateStocktakingItem, confirmStocktakingAudit, cancelStocktakingAudit, processCollectedPart,
       requestConsumablePurchase, acceptConsumablePurchase, completeConsumablePurchase, inboundConsumablePurchase, clearEvidenceFileUrls, updateEvidenceFileUrls,
       createContract, extendContract, shortenContract, succeedContract, exchangeAsset,

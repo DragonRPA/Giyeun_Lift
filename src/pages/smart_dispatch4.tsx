@@ -2156,17 +2156,6 @@ export const SmartDispatch4: React.FC = () => {
                                   {spec.ft}
                                 </span>
                               )}
-                              {spec?.widthType && spec.widthType !== 'STANDARD' && (
-                                <span
-                                  className={`text-[9.5px] font-bold px-1 py-0.2 rounded border flex-shrink-0 ${
-                                    spec.widthType === 'NARROW'
-                                      ? 'bg-amber-950/60 text-amber-300 border-amber-700/60'
-                                      : 'bg-blue-950/60 text-blue-300 border-blue-700/60'
-                                  }`}
-                                >
-                                  {spec.widthType === 'NARROW' ? '협폭' : '광폭'}
-                                </span>
-                              )}
                             </div>
                           </div>
 
@@ -2384,7 +2373,7 @@ export const SmartDispatch4: React.FC = () => {
             )}
           </div>
 
-          {/* 🌟 SAFETY & COST 블록 — 안전옵션, 대차회수, 운송비 귀속선 ───────────── */}
+          {/* 🌟 SAFETY & COST 블록 — 안전옵션, 대차회수 ───────────── */}
           <div className="bg-slate-900 border border-slate-700/80 rounded-xl overflow-hidden shadow-sm">
             <div
               className={`dispatch4-block-header ${
@@ -2394,7 +2383,7 @@ export const SmartDispatch4: React.FC = () => {
             >
               <div className="flex items-center gap-2 text-xs font-bold text-slate-100">
                 <Shield className="w-4 h-4 text-purple-400" />
-                <span>5. {isExchangeMode ? '안전옵션 · 대차회수 · 운송비 귀속선' : '안전옵션 · 운송비 귀속선'}</span>
+                <span>5. {isExchangeMode ? '안전옵션 · 대차회수' : '안전옵션'}</span>
                 {isExchangeMode && (
                   <span className={`text-[11px] font-semibold px-2 py-0.5 rounded border ${
                     retrievalAssetIds.length > 0 ? 'bg-cyan-950 text-cyan-300 border-cyan-800' : 'bg-red-950 text-red-300 border-red-800'

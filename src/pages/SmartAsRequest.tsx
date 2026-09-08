@@ -3,7 +3,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useApp } from '../context/AppContext';
 import { db } from '../services/db';
 import { fetchMyDrafts, DraftDispatchOrder, discardDraft } from '../services/callUploadService';
-import { Wrench, Send, AlertTriangle, CheckCircle2, Search, Building2, MapPin, Phone, User, Tag, HelpCircle, PhoneCall, Sparkles, Clock, Check } from 'lucide-react';
+import { Wrench, Send, AlertTriangle, CheckCircle2, Search, Building2, MapPin, Phone, User, Tag, HelpCircle, PhoneCall, Sparkles, Clock, Check, ClipboardPaste, ChevronUp, ChevronDown, FolderOpen, Zap } from 'lucide-react';
 
 const QUICK_ISSUE_PRESETS = [
   '협착 방지봉 단선 및 파손',
@@ -47,6 +47,114 @@ export const SmartAsRequest: React.FC = () => {
   const [asDrafts, setAsDrafts] = useState<DraftDispatchOrder[]>([]);
   const [selectedDraftId, setSelectedDraftId] = useState<string | null>(null);
 
+  // ── 텍스트 붙여넣기 파싱 상태 ──
+  const [pasteZoneOpen, setPasteZoneOpen] = useState(false);
+  const [pasteText, setPasteText] = useState('');
+  const txtFileInputRef = React.useRef<HTMLInputElement>(null);
+
+  const handleTextFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      if (evt.target?.result) {
+        setPasteText(evt.target.result as string);
+        showToast('파일 내용을 불러왔습니다.', 'success');
+      }
+    };
+    reader.readAsText(file);
+    e.target.value = '';
+  };
+
+  const runParse = React.useCallback((text: string) => {
+    if (!text.trim()) { showToast('텍스트를 입력하세요.', 'error'); return; }
+    const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+
+    const extractPhone = (s: string) => {
+      const m = s.match(/(01[016789]\s*[-~]?\s*\d{3,4}\s*[-~]?\s*\d{4})/g);
+      return m ? m[0].replace(/\s+/g, '') : '';
+    };
+
+    const extractName = (s: string) => {
+      let namePart = s.split(/01[016789]/)[0] || s;
+      namePart = namePart.split(/[a-zA-Z0-9._%+-]+@/)[0] || namePart;
+      return namePart.replace(/[:：\-]/g, '').replace(/선임|책임|담당자|소장|부장|과장|대리|팀장|반장|인수자/g, '').trim();
+    };
+
+    let pCustomerName = '';
+    let pSiteName = '';
+    let pReporterName = '';
+    let pReporterPhone = '';
+    let pAssetNo = '';
+    let pCategory = '기타/미분류';
+    let pIssueDesc = '';
+
+    lines.forEach(line => {
+      const val = line.includes(':')
+        ? line.substring(line.indexOf(':') + 1).trim()
+        : (line.includes('：') ? line.substring(line.indexOf('：') + 1).trim() : '');
+
+      if (/^(?:\d+[.)]\s*)?(?:고객사명?|고객명|업체명?|상호명?|상호|발주처)/i.test(line)) {
+        pCustomerName = val || line.replace(/^(?:\d+[.)]\s*)?(?:고객사명?|고객명|업체명?|상호명?|상호|발주처)\s*[:：]?\s*/i, '');
+      } else if (/^(?:\d+[.)]\s*)?(?:현장명?|현장)(?!\s*상세|\s*주소|\s*담당|\s*소장)/i.test(line)) {
+        pSiteName = val || line.replace(/^(?:\d+[.)]\s*)?(?:현장명?|현장)\s*[:：]?\s*/i, '');
+      } else if (/^(?:\d+[.)]\s*)?(?:연락처|담당자|전화번호|신고자)/i.test(line)) {
+        const raw = val || line.replace(/^(?:\d+[.)]\s*)?(?:연락처|담당자|전화번호|신고자)\s*[:：]?\s*/i, '');
+        pReporterName = extractName(raw);
+        pReporterPhone = extractPhone(raw);
+      } else if (/^(?:\d+[.)]\s*)?(?:장비번호|호기|자산번호|장비명)/i.test(line)) {
+        pAssetNo = val || line.replace(/^(?:\d+[.)]\s*)?(?:장비번호|호기|자산번호|장비명)\s*[:：]?\s*/i, '');
+      } else if (/^(?:\d+[.)]\s*)?(?:고장증상|증상|내용|에러코드|AS내용)/i.test(line)) {
+        pIssueDesc = val || line.replace(/^(?:\d+[.)]\s*)?(?:고장증상|증상|내용|에러코드|AS내용)\s*[:：]?\s*/i, '');
+      }
+    });
+
+    if (pCustomerName) {
+      const matchedCustomer = customers.find(c => 
+        c.name.toLowerCase().includes(pCustomerName.toLowerCase()) ||
+        pCustomerName.toLowerCase().includes(c.name.toLowerCase())
+      );
+      if (matchedCustomer) {
+        setSelectedCustomerId(matchedCustomer.id);
+        if (pSiteName) {
+          const customerSites = sites.filter(s => s.customerId === matchedCustomer.id);
+          const matchedSite = customerSites.find(s => 
+            s.name.toLowerCase().includes(pSiteName.toLowerCase()) ||
+            pSiteName.toLowerCase().includes(s.name.toLowerCase())
+          );
+          if (matchedSite) setSelectedSiteId(matchedSite.id);
+        }
+      }
+    }
+
+    if (pReporterName) setReporterName(pReporterName);
+    if (pReporterPhone) setReporterContact(pReporterPhone);
+    if (pAssetNo) {
+      const numericMatches = pAssetNo.match(/\d{3,5}/g);
+      const assetKeyword = numericMatches ? numericMatches[0] : pAssetNo;
+      const foundAsset = assets.find(a => a.assetNo.includes(assetKeyword));
+      if (foundAsset) setSelectedAssetNo(foundAsset.assetNo);
+      else setCustomAssetNo(pAssetNo);
+    }
+
+    let isCategoryFound = false;
+    if (pIssueDesc) {
+      const issueLower = pIssueDesc.toLowerCase();
+      if (/배터리|충전|방전|안켜짐/.test(issueLower)) { pCategory = '배터리/충전'; isCategoryFound = true; }
+      else if (/주행|모터|속도|전후진/.test(issueLower)) { pCategory = '주행/모터'; isCategoryFound = true; }
+      else if (/유압|누유|호스|오일/.test(issueLower)) { pCategory = '유압/누유'; isCategoryFound = true; }
+      else if (/방지봉|협착|바/.test(issueLower)) { pCategory = '방지봉/협착'; isCategoryFound = true; }
+      else if (/과상승|리미트|센서/.test(issueLower)) { pCategory = '센서/리미트'; isCategoryFound = true; }
+      else if (/조이스틱|레버|버튼|스위치/.test(issueLower)) { pCategory = '조작부/레버'; isCategoryFound = true; }
+      
+      if (!isCategoryFound) pCategory = '기타/미분류';
+      setSelectedCategory(pCategory);
+      setIssueDescription(pIssueDesc);
+    }
+
+    showToast('데이터 추출 및 자동 입력이 완료되었습니다.', 'success');
+    setPasteZoneOpen(false);
+  }, [customers, sites, assets]);
   // 통화 초안 로드
   const loadAsDrafts = async () => {
     try {
@@ -432,6 +540,101 @@ export const SmartAsRequest: React.FC = () => {
                 </button>
               </div>
             )}
+
+            {/* 텍스트 붙여넣기 파싱 영역 (출고의뢰 통합 스타일) */}
+            <div style={{ backgroundColor: 'var(--bg-card)', border: '1px solid var(--border-color)', borderRadius: '10px', overflow: 'hidden', marginBottom: '16px', boxShadow: 'var(--shadow-sm)' }}>
+              <div
+                onClick={() => setPasteZoneOpen(p => !p)}
+                style={{
+                  backgroundColor: 'var(--bg-main)',
+                  padding: '12px 16px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  cursor: 'pointer',
+                  borderBottom: pasteZoneOpen ? '1px solid var(--border-color)' : 'none',
+                  transition: 'background-color 0.2s'
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '14px', fontWeight: 700, color: 'var(--text-main)' }}>
+                  <ClipboardPaste size={16} color="var(--primary)" />
+                  <span>카톡/문자/밴드 텍스트 붙여넣기 파싱</span>
+                </div>
+                {pasteZoneOpen ? <ChevronUp size={16} color="var(--text-muted)" /> : <ChevronDown size={16} color="var(--text-muted)" />}
+              </div>
+              {pasteZoneOpen && (
+                <div style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '12px', backgroundColor: 'var(--bg-main)' }}>
+                  <textarea
+                    value={pasteText}
+                    onChange={e => setPasteText(e.target.value)}
+                    placeholder="카톡, 문자, 밴드 AS요청 원문을 붙여넣거나 [파일 불러오기]를 실행한 뒤 [폼 데이터 변환 (추출)]을 누르세요."
+                    rows={5}
+                    style={{
+                      width: '100%',
+                      backgroundColor: 'var(--bg-card)',
+                      border: '1px solid var(--border-color)',
+                      borderRadius: '8px',
+                      padding: '12px',
+                      fontSize: '12px',
+                      fontFamily: 'monospace',
+                      color: 'var(--text-main)',
+                      resize: 'vertical',
+                      boxSizing: 'border-box'
+                    }}
+                  />
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <input
+                        ref={txtFileInputRef}
+                        type="file"
+                        accept=".txt,.csv,.log,text/plain"
+                        style={{ display: 'none' }}
+                        onChange={handleTextFileChange}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => txtFileInputRef.current?.click()}
+                        style={{
+                          display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 12px',
+                          borderRadius: '8px', fontSize: '12px', fontWeight: 700,
+                          backgroundColor: 'var(--bg-card)', color: '#d97706', border: '1px solid var(--border-color)',
+                          cursor: 'pointer', boxShadow: 'var(--shadow-sm)'
+                        }}
+                      >
+                        <FolderOpen size={14} color="#f59e0b" />
+                        <span>파일 불러오기</span>
+                      </button>
+                    </div>
+
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <button
+                        type="button"
+                        onClick={() => { setPasteText(''); setPasteZoneOpen(false); }}
+                        style={{
+                          padding: '6px 12px', borderRadius: '8px', fontSize: '12px', fontWeight: 600,
+                          backgroundColor: 'transparent', color: 'var(--text-muted)', border: 'none', cursor: 'pointer'
+                        }}
+                      >
+                        닫기
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => runParse(pasteText)}
+                        style={{
+                          display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 16px',
+                          borderRadius: '8px', fontSize: '12px', fontWeight: 700,
+                          backgroundColor: 'var(--primary)', color: 'white', border: 'none', cursor: 'pointer',
+                          boxShadow: 'var(--shadow-sm)'
+                        }}
+                      >
+                        <Zap size={14} />
+                        <span>폼 데이터 변환 (추출)</span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
 
             <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
           {/* 1. 현장 및 대상 장비 스코핑 카드 */}

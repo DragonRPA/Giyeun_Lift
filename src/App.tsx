@@ -70,7 +70,7 @@ export interface MenuGroup {
 }
 
 const App: React.FC = () => {
-  const { currentUser, login, logout, theme, toggleTheme, hasPermission, activeTab, setActiveTab, loadTablesForMenu, currentTenant } = useApp();
+  const { currentUser, users, switchUser, login, logout, theme, toggleTheme, hasPermission, activeTab, setActiveTab, loadTablesForMenu, currentTenant } = useApp();
 
   // 로그인 폼 상태
   const [loginId, setLoginId] = useState('');
@@ -858,10 +858,54 @@ const App: React.FC = () => {
           </button>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }} className="user-profile-badge">
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
-              <span style={{ fontSize: '13px', fontWeight: '700' }}>{currentUser.name} {currentUser.role === 'ADMIN' ? '관리자' : '임직원'}</span>
-              <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{currentUser.department} ({currentUser.role})</span>
-            </div>
+            {(() => {
+              const originalAdminStr = sessionStorage.getItem('original_admin_user');
+              const originalAdmin = originalAdminStr ? JSON.parse(originalAdminStr) : null;
+              const isSuperAdmin = currentUser.role === 'ADMIN' || originalAdmin?.role === 'ADMIN';
+
+              if (isSuperAdmin) {
+                const allUsers = [...users];
+                if (originalAdmin && !allUsers.find(u => u.id === originalAdmin.id)) {
+                  allUsers.unshift(originalAdmin);
+                } else if (currentUser.id === 'sys-admin' && !allUsers.find(u => u.id === 'sys-admin')) {
+                  allUsers.unshift(currentUser);
+                }
+
+                return (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginRight: '4px' }}>
+                    <select
+                      value={currentUser.id}
+                      onChange={(e) => switchUser(e.target.value)}
+                      style={{
+                        padding: '4px 8px',
+                        borderRadius: '4px',
+                        border: '1px solid var(--border-color)',
+                        backgroundColor: 'var(--bg-app)',
+                        color: 'var(--text-primary)',
+                        fontSize: '13px',
+                        fontWeight: '600',
+                        cursor: 'pointer'
+                      }}
+                      title="[관리자 전용] 다른 사용자로 권한 테스트 전환"
+                    >
+                      <option value={currentUser.id}>{currentUser.name} ({currentUser.department}) - 현재</option>
+                      <optgroup label="다른 사용자로 전환">
+                        {allUsers.filter(u => u.id !== currentUser.id).map(u => (
+                          <option key={u.id} value={u.id}>{u.name} ({u.department} / {u.role})</option>
+                        ))}
+                      </optgroup>
+                    </select>
+                  </div>
+                );
+              }
+
+              return (
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
+                  <span style={{ fontSize: '13px', fontWeight: '700' }}>{currentUser.name} {currentUser.role === 'ADMIN' ? '관리자' : '임직원'}</span>
+                  <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{currentUser.department} ({currentUser.role})</span>
+                </div>
+              );
+            })()}
             <div style={{
               width: '36px', height: '36px', borderRadius: '50%', backgroundColor: 'var(--primary)', color: '#fff',
               display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: '700'

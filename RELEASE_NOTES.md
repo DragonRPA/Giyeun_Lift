@@ -1,3 +1,29 @@
+## [v1.10.0.Build.21] - 2026-09-08 13:27
+
+### 🛠️ [관리자 테스트 사용자 전환, 소모품 마스터 관리, 스마트 AS 텍스트 파서 & 거래처 현장 가동 집계]
+- **관리자 전용 사용자 전환 셀렉터 탑재 (`src/App.tsx`, `src/context/AppContext.tsx`)**:
+  - 관리자(`ADMIN` 롤 또는 원본 관리자 세션 보유자)가 헤더 프로필 영역에서 별도 재로그인 없이 타 부서/역할의 임직원 계정으로 즉시 전환하여 권한별 화면 및 기능을 원클릭 테스트 가능.
+  - `sessionStorage`에 `original_admin_user`를 안전하게 보존하여 임의의 사용자 권한으로 테스트 중에도 언제든지 관리자 계정으로 즉시 원복 가능.
+- **소모품 품목 마스터 CUD 관리 모달 신설 (`src/pages/Consumables.tsx`, `src/context/AppContext.tsx`)**:
+  - `addConsumable`, `updateConsumable`, `deleteConsumable` API 완비 및 `await db.awaitPendingWrites()` 연동.
+  - 신규 품목 등록 및 기존 품목명, 단위, 기본단가, 구입처 수정 모달 탑재.
+  - 수불 이력(`consumableLogs`)이 있거나 정비차량에 불출된 재고가 있는 품목에 대한 삭제 방어 무결성 실드 적용.
+- **스마트 AS 접수 카톡/문자/밴드 텍스트 파서 탑재 (`src/pages/SmartAsRequest.tsx`)**:
+  - `smart_dispatch4.tsx`와 동일한 양식의 텍스트 붙여넣기 및 텍스트 파일 불러오기 파서 탑재.
+  - 고객사, 현장명, 접수자, 연락처, 장비번호, 고장 증상 및 카테고리(배터리, 주행/모터, 유압/누유 등 6종) 1클릭 자동 추출 및 폼 바인딩 지원.
+- **거래처 현장 대장 활성 계약 및 투입 장비 대수 가시화 (`src/pages/Customers.tsx`)**:
+  - 현장별 가동 중인 활성 계약 건수 및 현장 투입 장비 대수 실시간 집계 표시 (`계약 N건 / M대`).
+  - 활성 계약 유무에 따른 시각적 상태 표시 인디케이터(초록색: 활성 계약 가동중, 노란색: 미가동).
+  - 거래처 담당자 정보 모달 내 [삭제] 액션 버튼 및 안전 삭제 처리 연동.
+- **UI 및 데이터 정제 (`src/pages/smart_dispatch4.tsx`, `src/services/db.ts`, `public/giyeun_ci.png`)**:
+  - 출고의뢰 UI 레이아웃 미세 정제 및 고해상도 CI 로고 갱신.
+  - 소모품 정적 시드 비우기 (`SEED_CONSUMABLES = []`)를 통한 동적 적재 환경 구축.
+
+- **검증 결과**:
+  - `npm run build`: **0 Error 통과** (`built in 1.02s`).
+
+---
+
 ## [v1.10.0.Build.20] - 2026-09-08 07:54
 
 ### 🤖 [Groq 2단계 파이프라인 연동 — 출고의뢰 초안 AI 추출 고도화]

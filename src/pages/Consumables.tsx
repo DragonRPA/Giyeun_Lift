@@ -5,7 +5,7 @@ import {
   ShoppingCart, Hammer, ListCollapse, Layers, Plus, ClipboardList, PackagePlus, 
   CheckCircle2, XCircle, Search, Download, FileText, Camera, Upload, RefreshCw, 
   Truck, ArrowRightLeft, ArrowUpRight, ArrowDownLeft, User, ShieldCheck, X,
-  FileCheck, AlertOctagon, CheckSquare, Boxes, Archive, AlertTriangle
+  FileCheck, AlertOctagon, CheckSquare, Boxes, Archive, AlertTriangle, Edit, Trash2
 } from 'lucide-react';
 import { exportToExcel } from '../services/excel';
 import { Consumable, MechanicConsumableStock, StocktakingAudit, StocktakingAuditItem, CollectedPart, db } from '../services/db';
@@ -15,7 +15,7 @@ import { uploadToSupabaseStorage } from '../services/supabaseStorage';
 export const Consumables: React.FC = () => {
   const {
     consumables, consumableLogs, consumablePurchases, mechanicConsumableStocks, assets, purchaseConsumable, useConsumable,
-    transferConsumableToMechanic, returnConsumableToHq, transferConsumableBetweenMechanics,
+    transferConsumableToMechanic, returnConsumableToHq, transferConsumableBetweenMechanics, addConsumable, updateConsumable, deleteConsumable,
     stocktakingAudits, stocktakingAuditItems, collectedParts,
     createStocktakingAudit, updateStocktakingItem, confirmStocktakingAudit, cancelStocktakingAudit, processCollectedPart,
     requestConsumablePurchase, acceptConsumablePurchase, completeConsumablePurchase, inboundConsumablePurchase,
@@ -157,6 +157,15 @@ export const Consumables: React.FC = () => {
   const [returnConsumableId, setReturnConsumableId] = useState('');
   const [returnQty, setReturnQty] = useState(1);
   const [returnMemo, setReturnMemo] = useState('');
+
+  // --- [7] 품목 마스터 관리 모달 상태 ---
+  const [showMasterModal, setShowMasterModal] = useState(false);
+  const [masterEditingId, setMasterEditingId] = useState<string | null>(null);
+  const [masterModelName, setMasterModelName] = useState('');
+  const [masterUnit, setMasterUnit] = useState('개');
+  const [masterUnitPrice, setMasterUnitPrice] = useState(0);
+  const [masterSupplier, setMasterSupplier] = useState('');
+  const [masterInitialStockQty, setMasterInitialStockQty] = useState(0);
 
   const mechanics = users.filter(u => u.role === 'MECHANIC' || u.role === 'ADMIN' || u.role === 'MANAGER');
 
@@ -536,6 +545,67 @@ export const Consumables: React.FC = () => {
       showErrorModal(`⚠️ 소모품 출고 오류:\n${err?.message || err}`);
     }
   };
+  // --- 품목 마스터 CRUD 핸들러 ---
+  const openCreateMaster = () => {
+    setMasterEditingId(null);
+    setMasterModelName('');
+    setMasterUnit('개');
+    setMasterUnitPrice(0);
+    setMasterSupplier('');
+    setMasterInitialStockQty(0);
+    setShowMasterModal(true);
+  };
+
+  const openEditMaster = (item: Consumable) => {
+    setMasterEditingId(item.id);
+    setMasterModelName(item.modelName);
+    setMasterUnit(item.unit || '개');
+    setMasterUnitPrice(item.unitPrice || 0);
+    setMasterSupplier(item.supplier || '');
+    setMasterInitialStockQty(item.stockQty || 0);
+    setShowMasterModal(true);
+  };
+
+  const handleSaveMaster = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!masterModelName.trim()) {
+      showToast('품목명을 입력해 주세요.', 'error');
+      return;
+    }
+    try {
+      if (masterEditingId) {
+        await updateConsumable(masterEditingId, {
+          modelName: masterModelName,
+          unit: masterUnit,
+          unitPrice: masterUnitPrice,
+          supplier: masterSupplier,
+        });
+        showToast('품목 마스터가 성공적으로 수정되었습니다.');
+      } else {
+        await addConsumable({
+          modelName: masterModelName,
+          unit: masterUnit,
+          unitPrice: masterUnitPrice,
+          supplier: masterSupplier,
+          stockQty: masterInitialStockQty
+        });
+        showToast('신규 품목 마스터가 성공적으로 등록되었습니다.');
+      }
+      setShowMasterModal(false);
+    } catch (err: any) {
+      showErrorModal(`⚠️ 품목 저장 실패:\n${err?.message || err}`);
+    }
+  };
+
+  const handleDeleteMaster = async (id: string, modelName: string) => {
+    if (!window.confirm(`정말 '${modelName}' 품목을 삭제하시겠습니까?\n주의: 수불 이력이나 잔여 재고가 있으면 삭제가 거부될 수 있습니다.`)) return;
+    try {
+      await deleteConsumable(id);
+      showToast('품목이 성공적으로 삭제되었습니다.');
+    } catch (err: any) {
+      showErrorModal(`⚠️ 삭제 실패:\n${err?.message || err}`);
+    }
+  };
 
   return (
     <div style={{ position: 'relative' }}>
@@ -711,9 +781,13 @@ export const Consumables: React.FC = () => {
           <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <div>
               <h3 className="card-title">본사 중앙 창고 재고 현황</h3>
-              <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>* 재고 5개 이하 시 보충 필요 경고</span>
             </div>
             <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+              {canSave && (
+                <button className="btn-primary" onClick={openCreateMaster} style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  <Plus size={14} /> 신규 품목 등록
+                </button>
+              )}
               <div style={{ position: 'relative' }}>
                 <input
                   type="text"
@@ -735,7 +809,6 @@ export const Consumables: React.FC = () => {
               return sum + (ms.stockQty * (item?.unitPrice || 0));
             }, 0);
             const totalAssetValue = hqStockValue + totalVehicleStockValue;
-            const lowStockCount = consumables.filter(c => c.stockQty < 5).length;
 
             return (
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '10px', margin: '14px 0' }}>
@@ -755,10 +828,6 @@ export const Consumables: React.FC = () => {
                   <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: 600 }}>전사 총 소모품 자산</span>
                   <div style={{ fontSize: '15px', fontWeight: 800 }}>₩{totalAssetValue.toLocaleString()}원</div>
                 </div>
-                <div style={{ padding: '10px 14px', backgroundColor: 'var(--bg-app)', borderRadius: '6px', border: '1px solid var(--border-color)' }}>
-                  <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: 600 }}>본사 보충필요</span>
-                  <div style={{ fontSize: '15px', fontWeight: 800, color: lowStockCount > 0 ? 'var(--danger)' : 'var(--text-muted)' }}>{lowStockCount}종</div>
-                </div>
               </div>
             );
           })()}
@@ -775,7 +844,7 @@ export const Consumables: React.FC = () => {
                   <th>단가</th>
                   <th>본사 평가금액</th>
                   <th>최근 구입처</th>
-                  <th>상태</th>
+                  {canSave && <th style={{ textAlign: 'center' }}>관리</th>}
                 </tr>
               </thead>
               <tbody>
@@ -788,22 +857,25 @@ export const Consumables: React.FC = () => {
                   return (
                     <tr key={c.id}>
                       <td><strong style={{ color: 'var(--primary)' }}>{c.modelName}</strong></td>
-                      <td style={{ textAlign: 'center', fontWeight: '700', fontSize: '14px', color: c.stockQty <= 2 ? 'var(--danger)' : 'var(--text-main)' }}>{c.stockQty}</td>
+                      <td style={{ textAlign: 'center', fontWeight: '700', fontSize: '14px', color: 'var(--text-main)' }}>{c.stockQty}</td>
                       <td style={{ textAlign: 'center', fontWeight: '600', color: '#059669' }}>{vehicleQty}</td>
                       <td style={{ textAlign: 'center', fontWeight: '800', color: 'var(--primary)' }}>{totalQty}</td>
                       <td>{c.unit}</td>
                       <td>{c.unitPrice.toLocaleString()}원</td>
                       <td style={{ fontWeight: '600' }}>{(c.stockQty * c.unitPrice).toLocaleString()}원</td>
                       <td>{c.supplier || '-'}</td>
-                      <td>
-                        {c.stockQty <= 2 ? (
-                          <span className="badge badge-danger">재고긴급</span>
-                        ) : c.stockQty < 5 ? (
-                          <span className="badge badge-warning">보충필요</span>
-                        ) : (
-                          <span className="badge badge-success">적정</span>
-                        )}
-                      </td>
+                      {canSave && (
+                        <td style={{ textAlign: 'center' }}>
+                          <div style={{ display: 'flex', gap: '4px', justifyContent: 'center' }}>
+                            <button className="btn-secondary" onClick={() => openEditMaster(c)} style={{ padding: '4px 6px' }} title="수정">
+                              <Edit size={14} />
+                            </button>
+                            <button className="btn-secondary" onClick={() => handleDeleteMaster(c.id, c.modelName)} style={{ padding: '4px 6px', color: '#ef4444' }} title="삭제">
+                              <Trash2 size={14} />
+                            </button>
+                          </div>
+                        </td>
+                      )}
                     </tr>
                   );
                 })}
@@ -2275,7 +2347,53 @@ export const Consumables: React.FC = () => {
         </div>
       </div>
 
-      {/* 모바일 화면 하단 여유 스페이서 */}
+      {/* ──────────────────────────────────────────────────────────────────────── */}
+      {/* 품목 마스터 등록/수정 모달 */}
+      {/* ──────────────────────────────────────────────────────────────────────── */}
+      {showMasterModal && (
+        <div className="modal-backdrop" style={{ display: 'flex', zIndex: 1000, position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center' }}>
+          <div className="modal-content" style={{ width: '400px', backgroundColor: 'var(--bg-app)', padding: '20px', borderRadius: '8px', boxShadow: '0 4px 12px rgba(0,0,0,0.15)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+              <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 700 }}>{masterEditingId ? '품목 수정' : '신규 품목 등록'}</h3>
+              <button onClick={() => setShowMasterModal(false)} style={{ background: 'none', border: 'none', cursor: 'pointer' }}>
+                <X size={20} color="var(--text-muted)" />
+              </button>
+            </div>
+            <form onSubmit={handleSaveMaster}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                  <label style={{ fontSize: '12px', fontWeight: 600 }}>품목명 *</label>
+                  <input type="text" value={masterModelName} onChange={e => setMasterModelName(e.target.value)} required className="form-input" placeholder="예: 유압유 46 (말통)" />
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                  <label style={{ fontSize: '12px', fontWeight: 600 }}>단위</label>
+                  <input type="text" value={masterUnit} onChange={e => setMasterUnit(e.target.value)} className="form-input" placeholder="예: 개, 통, 리터" />
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                  <label style={{ fontSize: '12px', fontWeight: 600 }}>기본 단가 (₩)</label>
+                  <input type="number" value={masterUnitPrice} onChange={e => setMasterUnitPrice(Number(e.target.value))} min={0} className="form-input" />
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                  <label style={{ fontSize: '12px', fontWeight: 600 }}>주요 구입처</label>
+                  <input type="text" value={masterSupplier} onChange={e => setMasterSupplier(e.target.value)} className="form-input" placeholder="예: 대한상사" />
+                </div>
+                {!masterEditingId && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                    <label style={{ fontSize: '12px', fontWeight: 600 }}>초기 본사 재고수량</label>
+                    <input type="number" value={masterInitialStockQty} onChange={e => setMasterInitialStockQty(Number(e.target.value))} min={0} className="form-input" />
+                  </div>
+                )}
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '20px' }}>
+                <button type="button" className="btn-secondary" onClick={() => setShowMasterModal(false)}>취소</button>
+                <button type="submit" className="btn-primary">저장</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* 모바일 하단 여유 스페이스 */}
       <div style={{ height: '100px', width: '100%' }} aria-hidden="true" />
     </div>
   );

@@ -28,6 +28,14 @@ const LEGACY_AGENT_HOME = 'C:\\KiyeunAgent';
 const TARGET_EXE_PATH = path.join(AGENT_HOME, 'eBroAgent.exe');
 const ARCHIVE_ROOT = path.join(AGENT_HOME, '문서고');
 const DRIVE_MIRROR_DIR = path.join(AGENT_HOME, 'drive_mirror');
+const STATION_CONFIG_FILE = path.join(AGENT_HOME, 'station_config.json');
+
+let activeStationConfig = null;
+try {
+  if (fs.existsSync(STATION_CONFIG_FILE)) {
+    activeStationConfig = JSON.parse(fs.readFileSync(STATION_CONFIG_FILE, 'utf8'));
+  }
+} catch (e) {}
 
 // =========================================================================
 // 🚀 [스마트 자가 자동 설치 & 구버전 자동 교체(Auto-Kill & Takeover) 엔진]
@@ -89,18 +97,6 @@ if (isExe && path.resolve(currentExePath).toLowerCase() !== path.resolve(TARGET_
 try {
   execSync(`reg add "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run" /v "eBroAgent" /t REG_SZ /d "${TARGET_EXE_PATH}" /f`, { stdio: 'ignore' });
   try { execSync('reg delete "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run" /v "KiyeunAgent" /f', { stdio: 'ignore' }); } catch (e) {}
-} catch (e) {}
-
-// 🌐 브라우저 원클릭 기동을 위한 URI 프로토콜 (broagent:// 및 ebro://) 자동 등록
-try {
-  const pCmd = 'cmd.exe /c start "" "%SystemRoot%\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -NoProfile -WindowStyle Normal -Command "$host.ui.RawUI.WindowTitle = \'[BroAgent] Local Sidecar Agent\'; if (Test-Path \'C:\\eBroAgent\\BroAgent.js\') { Set-Location \'C:\\eBroAgent\'; node BroAgent.js } elseif (Test-Path \'C:\\eBroAgent\\eBroAgent.js\') { Set-Location \'C:\\eBroAgent\'; node eBroAgent.js } elseif (Test-Path \\"$env:USERPROFILE\\Downloads\\BroAgent.js\\") { Set-Location \\"$env:USERPROFILE\\Downloads\\"; node BroAgent.js } elseif (Test-Path \\"$env:USERPROFILE\\Downloads\\eBroAgent.js\\") { Set-Location \\"$env:USERPROFILE\\Downloads\\"; node eBroAgent.js } else { Write-Host \'[BroAgent] BroAgent.js를 찾지 못했습니다.\' -ForegroundColor Red; pause }"';
-  ['broagent', 'ebro'].forEach(proto => {
-    try {
-      execSync(`reg add "HKCU\\Software\\Classes\\${proto}" /ve /d "URL:${proto} Protocol" /f`, { stdio: 'ignore' });
-      execSync(`reg add "HKCU\\Software\\Classes\\${proto}" /v "URL Protocol" /d "" /f`, { stdio: 'ignore' });
-      execSync(`reg add "HKCU\\Software\\Classes\\${proto}\\shell\\open\\command" /ve /d "${pCmd.replace(/"/g, '\\"')}" /f`, { stdio: 'ignore' });
-    } catch (e) {}
-  });
 } catch (e) {}
 
 // 디렉토리 자동 생성 (정식 위치 실행 시)
@@ -963,6 +959,50 @@ $excel.Quit()
     return;
   }
 
+  // 8. 로컬 인쇄 스테이션 설정 조회 API
+  if (req.method === 'GET' && pathname === '/api/station-config') {
+    res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+    res.end(JSON.stringify({
+      success: true,
+      config: activeStationConfig || {
+        stationId: '',
+        stationName: '',
+        localPrinterName: '',
+        docTypeDefault: 'ALL',
+        machineName: MACHINE_NAME
+      }
+    }));
+    return;
+  }
+
+  // 9. 로컬 인쇄 스테이션 설정 저장 API
+  if (req.method === 'POST' && pathname === '/api/station-config') {
+    let body = '';
+    req.on('data', chunk => { body += chunk; });
+    req.on('end', async () => {
+      try {
+        const payload = JSON.parse(body || '{}');
+        activeStationConfig = {
+          stationId: payload.stationId || '',
+          stationName: payload.stationName || '',
+          localPrinterName: payload.localPrinterName || '',
+          docTypeDefault: payload.docTypeDefault || 'ALL',
+          machineName: payload.machineName || MACHINE_NAME,
+          updatedAt: new Date().toISOString()
+        };
+        fs.writeFileSync(STATION_CONFIG_FILE, JSON.stringify(activeStationConfig, null, 2), 'utf8');
+        console.log(`✅ [스테이션 설정 저장] ${activeStationConfig.stationName} (${activeStationConfig.stationId}) -> 로컬 프린터: [${activeStationConfig.localPrinterName}]`);
+
+        res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify({ success: true, config: activeStationConfig }));
+      } catch (err) {
+        res.writeHead(500, { 'Content-Type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify({ success: false, error: err.message }));
+      }
+    });
+    return;
+  }
+
   res.writeHead(404, { 'Content-Type': 'text/plain' });
   res.end('Not Found');
 });
@@ -1148,12 +1188,157 @@ async function autoSyncFromCloudflare() {
   }
 }
 
+// =========================================================================
+// 🖨️ [분산 원격 인쇄 큐 워커 엔진 (Headless Distributed Queue Worker)]
+// =========================================================================
+const SUPABASE_REST_URL = 'https://wywgkikkjgbnlljkkmnz.supabase.co/rest/v1';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Ind5d2draWtramdibmxsamtrbW56Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQzNjcxMzgsImV4cCI6MjA5OTk0MzEzOH0.gSftxhQjFmWUQzikx-Q5UsdgNKSZISZqJvUGeLBOCqU';
+
+let isQueueProcessing = false;
+
+async function checkAndProcessPrintQueue() {
+  if (isQueueProcessing) return;
+  if (!activeStationConfig || !activeStationConfig.stationId || !activeStationConfig.localPrinterName) return;
+
+  isQueueProcessing = true;
+  try {
+    const stationId = encodeURIComponent(activeStationConfig.stationId);
+    const queryUrl = `${SUPABASE_REST_URL}/print_queue?stationId=eq.${stationId}&status=eq.PENDING&order=requestedAt.asc&limit=1`;
+
+    const res = await fetch(queryUrl, {
+      method: 'GET',
+      headers: {
+        'apikey': SUPABASE_ANON_KEY,
+        'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+        'Content-Type': 'application/json'
+      },
+      signal: AbortSignal.timeout(5000)
+    });
+
+    if (!res.ok) {
+      isQueueProcessing = false;
+      return;
+    }
+
+    const jobs = await res.json();
+    if (!Array.isArray(jobs) || jobs.length === 0) {
+      isQueueProcessing = false;
+      return;
+    }
+
+    const job = jobs[0];
+    console.log(`\n📥 [원격 인쇄 작업 수신] 스테이션: [${activeStationConfig.stationName}], 작업: [${job.id}] ${job.title}`);
+
+    // 1. 작업 상태를 PRINTING으로 선점 잠금 (중복 실행 방지)
+    try {
+      await fetch(`${SUPABASE_REST_URL}/print_queue?id=eq.${encodeURIComponent(job.id)}`, {
+        method: 'PATCH',
+        headers: {
+          'apikey': SUPABASE_ANON_KEY,
+          'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+          'Content-Type': 'application/json',
+          'Prefer': 'return=minimal'
+        },
+        body: JSON.stringify({ status: 'PRINTING', updatedAt: new Date().toISOString() }),
+        signal: AbortSignal.timeout(4000)
+      });
+    } catch (lockErr) {}
+
+    // 2. 인쇄용 임시 HTML 파일 작성 및 다이렉트 무인 출력 실행
+    const tempPrintHtml = path.join(AGENT_HOME, `remote_print_${job.id}_${Date.now()}.html`);
+    const printerName = activeStationConfig.localPrinterName;
+    const title = job.title || '기연리프트_출력물';
+
+    fs.writeFileSync(tempPrintHtml, `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>${title}</title>
+  <style>
+    body { font-family: 'Malgun Gothic', 'Noto Sans KR', sans-serif; padding: 20px; color: #111; }
+    table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+    th, td { border: 1px solid #ddd; padding: 8px 10px; font-size: 13px; text-align: left; }
+    th { background-color: #f9fafb; font-weight: bold; width: 130px; }
+    .header { text-align: center; border-bottom: 2px solid #312e81; padding-bottom: 12px; margin-bottom: 20px; }
+    .header h1 { margin: 0; font-size: 24px; font-weight: 800; color: #1e1b4b; letter-spacing: 2px; }
+    .section-title { font-size: 14px; font-weight: bold; border-left: 4px solid #312e81; padding-left: 8px; margin: 16px 0 8px 0; color: #312e81; }
+    @media print {
+      @page { margin: 10mm; }
+    }
+  </style>
+</head>
+<body>
+  ${job.documentHtml || ''}
+</body>
+</html>`, 'utf8');
+
+    console.log(`🖨️ [무인 다이렉트 출력 전송] 프린터: [${printerName}], 작업: ${job.id}`);
+    const printCmd = `Start-Process rundll32.exe -ArgumentList 'mshtml.dll,PrintHTML "${tempPrintHtml}" "${printerName}"' -NoNewWindow`;
+    execSync(`powershell -NoProfile -Command "${printCmd}"`, { stdio: 'ignore' });
+
+    // 3. 완료 상태 업데이트
+    await fetch(`${SUPABASE_REST_URL}/print_queue?id=eq.${encodeURIComponent(job.id)}`, {
+      method: 'PATCH',
+      headers: {
+        'apikey': SUPABASE_ANON_KEY,
+        'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+        'Content-Type': 'application/json',
+        'Prefer': 'return=minimal'
+      },
+      body: JSON.stringify({
+        status: 'COMPLETED',
+        printedAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      }),
+      signal: AbortSignal.timeout(4000)
+    });
+
+    console.log(`✅ [인쇄 완료 보고 완료] 작업: ${job.id}`);
+
+    setTimeout(() => {
+      try { if (fs.existsSync(tempPrintHtml)) fs.unlinkSync(tempPrintHtml); } catch (e) {}
+    }, 15000);
+
+  } catch (printErr) {
+    console.error('❌ 인쇄 큐 작업 처리 중 오류:', printErr.message);
+  } finally {
+    isQueueProcessing = false;
+  }
+}
+
+async function sendStationHeartbeat() {
+  if (!activeStationConfig || !activeStationConfig.stationId) return;
+  try {
+    const stationId = encodeURIComponent(activeStationConfig.stationId);
+    await fetch(`${SUPABASE_REST_URL}/print_stations?id=eq.${stationId}`, {
+      method: 'PATCH',
+      headers: {
+        'apikey': SUPABASE_ANON_KEY,
+        'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+        'Content-Type': 'application/json',
+        'Prefer': 'return=minimal'
+      },
+      body: JSON.stringify({
+        status: 'ONLINE',
+        lastHeartbeat: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      }),
+      signal: AbortSignal.timeout(3000)
+    });
+  } catch (e) {}
+}
+
 server.listen(PORT, '127.0.0.1', () => {
   console.log(`🟢 로컬 에이전트 서비스 리스닝 시작: http://127.0.0.1:${PORT}`);
   // 기동 즉시 백그라운드에서 CF 실시간 동적 미러링 실행 (1회)
   setTimeout(autoSyncFromCloudflare, 300);
   // 이후 1시간마다 백그라운드 자가 점검 (3600000 ms)
   setInterval(autoSyncFromCloudflare, 3600000);
+
+  // 🖨️ 분산 인쇄 큐 워커 타이머 (3초 주기)
+  setInterval(checkAndProcessPrintQueue, 3000);
+  // 🖨️ 스테이션 하트비트 (30초 주기)
+  setInterval(sendStationHeartbeat, 30000);
 });
 
 

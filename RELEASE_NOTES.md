@@ -1,3 +1,17 @@
+## [v1.11.0.Build.5] - 2026-09-08 21:37
+
+### 🛠️ [Windows URL 프로토콜(broagent://) 1ystemRoot% 파싱 결함 수정 및 로컬 인쇄 에이전트 동기화]
+- **Windows URL 프로토콜 핸들러 파싱 오류 척결 (경험.md E-065, 헌장 1.1, 5.2, 7.2)**:
+  - 브라우저 상단 `[사이트에서 에이전트 실행]` 클릭 시 발생하던 `'1ystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe'을(를) 찾을 수 없습니다.` 결함 완벽 해결.
+  - Windows ShellExecute의 매개변수 치환 파싱 특성상 `%SystemRoot%`의 `%S`가 `%1`로 왜곡 치환되는 원인을 규명하고, 레지스트리 및 등록 스크립트(`등록-원클릭실행.bat`)의 커맨드를 시스템 PATH 기반의 `powershell.exe` 직접 호출로 전면 개편.
+- **최신 로컬 에이전트 동기화 (`BroAgent.js` / `eBroAgent.js` / `agent.js`)**:
+  - 로컬 프린터 목록 자동 조회 API(`/api/printers`), 스테이션 설정 관리(`/api/station-config`), 분산 무인 인쇄 큐 워커 엔진이 탑재된 최신 코드를 다운로드 폴더 및 `C:\eBroAgent`에 전량 동기화 완료.
+  - 로컬 에이전트 실시간 가동 및 Windows 실물 프린터 3종(`Apeos C2060`, `FUJIFILM Fax`, `Microsoft Print to PDF`) 자동 탐색 검증 완료.
+- **검증 결과**:
+  - TypeScript 전체 빌드 (`cmd /c "npm run build"`): **0 Error 정상 완결 (`built in 1.21s`)**
+
+---
+
 ## [v1.11.0.Build.4] - 2026-09-08 21:25
 
 ### 🚀 [출고의뢰(통합) '출고의뢰 발행' 버튼 풀 비즈니스 파이프라인 직결 및 원클릭 배차·계약·할당·인쇄 완결]

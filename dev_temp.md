@@ -1,5 +1,15 @@
 # 개발 요구사항 임시 기록 (dev_temp.md)
 
+## [완료] Windows URL 프로토콜(broagent://) %SystemRoot% ➔ 1ystemRoot% 파싱 결함 수정 및 로컬 에이전트 동기화 완료
+- **증상**: 브라우저 상단 [에이전트 미실행] ➔ [사이트에서 에이전트 실행] 클릭 시 `'1ystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe'을(를) 찾을 수 없습니다.` 시스템 팝업 오류 발생.
+- **근본 원인**: Windows ShellExecute가 URL 프로토콜 커맨드라인 내 `%SystemRoot%`의 `%S`를 파라미터 포맷(`%1`)으로 오인 치환하여 `1ystemRoot%`로 왜곡 파싱함.
+- **조치 내역**:
+  1. 레지스트리 `HKCU\Software\Classes\broagent` 및 `ebro`의 커맨드에서 `%SystemRoot%`를 제거하고 PATH 기반의 `powershell.exe` 직접 호출로 즉시 정정.
+  2. `agent/등록-원클릭실행.bat` 및 `public/downloads/등록-원클릭실행.bat`에 동일하게 `powershell.exe` 직접 호출 영구 반영.
+  3. 최신 인쇄 큐 워커 및 프린터 목록 조회 API(`/api/printers`)가 탑재된 `agent.js`를 `C:\eBroAgent\BroAgent.js` 및 다운로드 폴더에 전량 동기화.
+  4. 로컬 에이전트 백그라운드 구동 완료 (`ONLINE`, `Apeos C2060` 등 로컬 프린터 3종 자동 감지 완료).
+- **경험.md 기록**: E-065 이슈로 영구 등록 완료.
+
 ## [완료] 출고의뢰 (통합) '출고의뢰 발행' 버튼의 실질 비즈니스 파이프라인(고객·현장 자동생성, 계약체결, 배차대장 등록, 장비할당 매핑, 자동출력) 직결 완결 (v1.11.0.Build.4)
 - **요구사항**:
   - "이버튼은 출고의뢰를 생성하는 버튼이 아닌거야? 아니라면 수정해. 모든 입력 요구사항이 만족되었으니, 출고의뢰를 생성해야지. 그래서 신규고객이면 고객도 만들고, 배차의뢰도 생성하고, 장비할당도 생성하고 기존의 "출고 요청"에서 했었건 기능이잖아"

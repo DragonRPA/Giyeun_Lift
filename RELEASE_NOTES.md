@@ -1,3 +1,14 @@
+## [v1.11.3.Build.2] - 2026-09-09 00:11
+
+### 🏷️ [agent_badge 권한 명칭 변경 및 그룹 재배치]
+- `menu_config.ts` (`grp_inout` → `grp_management`):
+  - `agent_badge` 항목을 **입출고관리** 그룹에서 제거 → **경영관리** 그룹 맨 아래에 추가
+  - 표시 명칭 변경: `에이전트 배지 (로컬 에이전트 연동)` → `계약서 패키지 생성 + 의뢰서 프린터 통제`
+- `users_permissions.tsx` Auto Backfill / `role_templates.ts` 직무 기본값은 `agent_badge` ID 불변으로 자동 유지됨
+- **검증**: TypeScript 전체 빌드 0 Error (`built in 1.13s`)
+
+---
+
 ## [v1.11.3.Build.1] - 2026-09-09 00:05
 
 ### 🔗 [권한 스키마 연동 및 초기DB 업로드 기능 개편]

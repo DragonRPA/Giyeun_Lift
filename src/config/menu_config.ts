@@ -58,8 +58,7 @@ export const SYSTEM_MENU_CONFIG: MenuGroupConfig[] = [
       { id: 'asset_inout_history', name: '자산 입출고/정비 이력' },
       { id: 'dispatch_assign', name: '장비 할당 (매핑)' },
       { id: 'outbound_inspections', name: '출고 검수 의뢰 관리' },
-      { id: 'print_queue_monitor', name: '프린트 큐 모니터' },
-      { id: 'agent_badge', name: '에이전트 배지 (로컬 에이전트 연동)' }
+      { id: 'print_queue_monitor', name: '프린트 큐 모니터' }
     ]
   },
   {
@@ -85,7 +84,8 @@ export const SYSTEM_MENU_CONFIG: MenuGroupConfig[] = [
       { id: 'cash_flow', name: '자금 흐름 분석' },
       { id: 'delinquency', name: '미수 채권 연체 관리' },
       { id: 'depreciation_execution', name: '감가상각 마감 실행' },
-      { id: 'regular_reports', name: '정기보고서 생성' }
+      { id: 'regular_reports', name: '정기보고서 생성' },
+      { id: 'agent_badge', name: '계약서 패키지 생성 + 의뢰서 프린터 통제' }
     ]
   },
   {

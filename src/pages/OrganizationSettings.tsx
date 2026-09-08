@@ -21,6 +21,7 @@ interface UserNode {
   id: string;
   name: string;
   departmentId: string | null;
+  department?: string;
   position: string;
   status: 'ACTIVE' | 'LEAVE_OF_ABSENCE' | 'RETIRED';
   role: string;
@@ -212,7 +213,11 @@ const enforceManagerPolicies = (usersList: UserNode[], deptList: Department[]) =
       });
       const cleanUsers = users.map(u => {
         const { modelName, supplier, ...rest } = (u as any);
-        return rest as UserNode;
+        const dept = cleanDepts.find(d => d.id === u.departmentId);
+        return {
+          ...rest,
+          department: dept ? dept.name : (rest.department || '')
+        } as UserNode;
       });
 
       // 실제 DB (또는 로컬 백그라운드 큐)에 일괄 업데이트
@@ -333,8 +338,9 @@ const enforceManagerPolicies = (usersList: UserNode[], deptList: Department[]) =
     e.preventDefault();
     if (!canEdit || !draggedUserId) return;
     
+    const targetDept = departments.find(d => d.id === targetDeptId);
     let updated = users.map(u => 
-      u.id === draggedUserId ? { ...u, departmentId: targetDeptId } : u
+      u.id === draggedUserId ? { ...u, departmentId: targetDeptId, department: targetDept?.name || '' } : u
     );
     updated = enforceManagerPolicies(updated, departments);
     setUsers(updated);
@@ -346,7 +352,7 @@ const enforceManagerPolicies = (usersList: UserNode[], deptList: Department[]) =
     if (!canEdit || !draggedUserId) return;
     
     let updated = users.map(u => 
-      u.id === draggedUserId ? { ...u, departmentId: null } : u
+      u.id === draggedUserId ? { ...u, departmentId: null, department: '' } : u
     );
     updated = enforceManagerPolicies(updated, departments);
     setUsers(updated);
@@ -846,12 +852,12 @@ const enforceManagerPolicies = (usersList: UserNode[], deptList: Department[]) =
                     style={{ padding: '4px 8px', fontSize: '12px', width: '100%', borderRadius: '4px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-card)', color: 'var(--text-main)' }}
                     onChange={e => {
                       const newDeptId = e.target.value || null;
-                      setSelectedProfile({ ...selectedProfile, departmentId: newDeptId });
-                      let updated = users.map(u => u.id === selectedProfile.id ? { ...u, departmentId: newDeptId } : u);
+                      const targetDept = departments.find(d => d.id === newDeptId);
+                      setSelectedProfile({ ...selectedProfile, departmentId: newDeptId, department: targetDept?.name || '' });
+                      let updated = users.map(u => u.id === selectedProfile.id ? { ...u, departmentId: newDeptId, department: targetDept?.name || '' } : u);
                       updated = enforceManagerPolicies(updated, departments);
                       setUsers(updated);
                       setIsDirty(true);
-                      const targetDept = departments.find(d => d.id === newDeptId);
                       showToast(`소속 부서가 [${targetDept?.name || '미배정'}] (으)로 변경되었습니다. 상단 저장을 눌러 확정하세요.`, 'warning');
                     }}
                     disabled={!canEdit}

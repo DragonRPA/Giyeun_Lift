@@ -696,7 +696,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     'bank_matching':        ['bankTransactions', 'bankMatchingRules', 'billings', 'customers'],
     'vendors':              ['vendors'],
     'organization':         ['users', 'departments'],
-    'permission':           ['users', 'permissions'],
+    'permission':           ['users', 'permissions', 'departments'],
     'payroll':              ['users', 'departments'],
     'corporate_card':       ['vendors', 'billings'],
     'cash_flow':            ['billings', 'payments', 'contracts', 'assets'],

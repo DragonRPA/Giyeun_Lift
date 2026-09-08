@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useApp } from '../context/AppContext';
 import { Shield, Check, Lock, Save, FolderKanban, ChevronDown, ChevronRight } from 'lucide-react';
-import { MenuPermission, User, createMenuPermission, db } from '../services/db';
+import { MenuPermission, User, createMenuPermission, db, Department } from '../services/db';
 
 import { SYSTEM_MENU_CONFIG, getAllSystemMenuIds, MenuGroupConfig, normalizeMenuId } from '../config/menu_config';
 import { getRoleTemplatePermission } from '../config/role_templates';
@@ -20,6 +20,81 @@ export const UsersPermissions: React.FC = () => {
   const [localUsers, setLocalUsers] = useState<User[]>([]);
   const [localPermissions, setLocalPermissions] = useState<MenuPermission[]>([]);
   const [isDirty, setIsDirty] = useState<boolean>(false);
+
+  // 🏢 부서 및 팀 정보 캐시 로드 & 자동 동기화 (SSOT)
+  const [departments, setDepartments] = useState<Department[]>(() => {
+    try {
+      const saved = localStorage.getItem('erp_departments');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch (e) {}
+    return db.departments || [];
+  });
+
+  useEffect(() => {
+    const syncDepts = async () => {
+      try {
+        if (db.isSupabaseConnected()) {
+          const remote = await db.pullTableFromSupabase('departments');
+          if (remote && Array.isArray(remote) && remote.length > 0) {
+            setDepartments(remote);
+            return;
+          }
+        }
+      } catch (e) {}
+      if (db.departments && db.departments.length > 0) {
+        setDepartments(db.departments);
+      }
+    };
+    syncDepts();
+  }, []);
+
+  const departmentMap = useMemo(() => {
+    const map = new Map<string, string>();
+    departments.forEach(d => {
+      if (d.id && d.name) map.set(d.id, d.name);
+    });
+    return map;
+  }, [departments]);
+
+  // 🏷️ 임직원별 소속 팀명 정밀 판정 헬퍼 (oo팀 이름 형식 SSOT)
+  const getDeptName = (u: User): string => {
+    // 1. departmentId 기반 부서 마스터 매핑
+    if (u.departmentId && departmentMap.has(u.departmentId)) {
+      const name = departmentMap.get(u.departmentId);
+      if (name && name.trim()) return name.trim();
+    }
+    // 2. u.department 속성 확인
+    if (u.department && u.department.trim()) {
+      return u.department.trim();
+    }
+    // 3. 표준 부서 ID 매핑 (role_templates SSOT)
+    if (u.departmentId) {
+      const dId = u.departmentId.toUpperCase();
+      if (dId === 'DEPT-0000001' || dId === 'DEPT-1') return '경영진';
+      if (dId === 'DEPT-0000002' || dId === 'DEPT-2') return '관리부';
+      if (dId === 'DEPT-0000003' || dId === 'DEPT-3') return '영업팀';
+      if (dId === 'DEPT-0000004' || dId === 'DEPT-4') return '출고팀';
+      if (dId === 'DEPT-0000005' || dId === 'DEPT-5') return 'AS팀';
+    }
+    // 4. Role 및 테스트/관리 계정 식별
+    const r = (u.role || '').toUpperCase();
+    const login = (u.loginId || '').toLowerCase();
+
+    if (u.id === 'usr-tester-dispatch' || login.includes('dispatch')) return '출고팀';
+    if (u.id === 'usr-tester-mechanic' || login.includes('mechanic')) return 'AS팀';
+    if (r === 'ADMIN' || login === 'admin' || u.id === 'sys-admin' || u.id === 'u-1') return '경영지원';
+
+    // 5. 직무 템플릿의 Role 기반 부서 추론
+    if (r.includes('ACCOUNT') || r.includes('PURCHASE')) return '관리부';
+    if (r.includes('SALE')) return '영업팀';
+    if (r.includes('LOGISTIC') || r.includes('DELIVERY') || r.includes('DISPATCH')) return '출고팀';
+    if (r.includes('MECHANIC') || r.includes('REPAIR')) return 'AS팀';
+
+    return '미배정';
+  };
 
   // 상위 카테고리 접힘/펼침 상태
   const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
@@ -546,6 +621,7 @@ export const UsersPermissions: React.FC = () => {
               <tbody>
                 {localUsers.map(u => {
                   const isSelected = selectedUserId === u.id;
+                  const deptName = getDeptName(u);
                   return (
                     <tr 
                       key={u.id} 
@@ -556,9 +632,27 @@ export const UsersPermissions: React.FC = () => {
                         borderLeft: isSelected ? '4px solid var(--primary)' : '4px solid transparent'
                       }}
                     >
-                      <td>
-                        <strong style={{ color: isSelected ? 'var(--primary)' : 'var(--text-primary)', fontSize: '13px' }}>{u.name}</strong> 
-                        <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{u.department} ({u.loginId || '미등록'})</div>
+                      <td style={{ padding: '8px 10px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', whiteSpace: 'nowrap' }}>
+                          <span style={{
+                            fontSize: '11px',
+                            fontWeight: '800',
+                            padding: '1px 6px',
+                            borderRadius: '4px',
+                            backgroundColor: isSelected ? 'rgba(37, 99, 235, 0.18)' : 'rgba(100, 116, 139, 0.12)',
+                            color: isSelected ? 'var(--primary)' : (deptName === '미배정' ? 'var(--text-muted)' : 'var(--text-secondary)'),
+                            border: isSelected ? '1px solid rgba(37, 99, 235, 0.35)' : '1px solid var(--border-color)',
+                            flexShrink: 0
+                          }}>
+                            {deptName}
+                          </span>
+                          <strong style={{ color: isSelected ? 'var(--primary)' : 'var(--text-primary)', fontSize: '13px' }}>
+                            {u.name}
+                          </strong>
+                        </div>
+                        <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '2px' }}>
+                          ({u.loginId || '미등록'}){u.position ? ` · ${u.position}` : ''}
+                        </div>
                       </td>
                       <td onClick={(e) => e.stopPropagation()}>
                         <select 
@@ -592,7 +686,11 @@ export const UsersPermissions: React.FC = () => {
             <div>
               <h3 className="card-title" style={{ fontSize: '15px' }}>
                 상위-하위 계층 메뉴 권한 매트릭스
-                {selectedUser && <span style={{ marginLeft: '10px', fontSize: '14px', color: 'var(--primary)' }}>[{selectedUser.name} {selectedUser.role}]</span>}
+                {selectedUser && (
+                  <span style={{ marginLeft: '10px', fontSize: '14px', color: 'var(--primary)' }}>
+                    [{getDeptName(selectedUser)} {selectedUser.name} {selectedUser.role}]
+                  </span>
+                )}
               </h3>
             </div>
             {selectedUser?.role === 'ADMIN' && (

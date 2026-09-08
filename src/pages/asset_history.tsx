@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
 import { Search, Download, Calendar, Layers, Wrench, ArrowUpRight, ArrowDownLeft, CheckCircle2, RotateCcw, AlertTriangle, ShieldCheck, Camera } from 'lucide-react';
 import { exportToExcel } from '../services/excel';
-import { InboundDefectDetail } from '../services/db';
+import { InboundDefectDetail, formatContractEndDate } from '../services/db';
 import { compressImageFile } from '../utils/imageCompressor';
 import { uploadToSupabaseStorage } from '../services/supabaseStorage';
 
@@ -660,7 +660,7 @@ export const AssetHistory: React.FC = () => {
                     <div><strong>계약번호:</strong> {inboundContract?.contractNo}</div>
                     <div><strong>고객사 (거래처):</strong> <strong style={{ fontSize: '14px' }}>{inboundCustomer?.name || '-'}</strong></div>
                     <div><strong>현장명:</strong> {inboundSite?.name || '-'} ({inboundSite?.address || '-'})</div>
-                    <div><strong>약정 계약기간:</strong> {inboundContract?.startDate} ~ {inboundContract?.endDate}</div>
+                    <div><strong>약정 계약기간:</strong> {inboundContract?.startDate} ~ {formatContractEndDate(inboundContract?.endDate)}</div>
                   </div>
                 ) : (
                   <div style={{ padding: '12px', backgroundColor: 'var(--warning-light)', borderRadius: '8px', border: '1px solid var(--warning)', color: '#c2410c' }}>

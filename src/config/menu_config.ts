@@ -57,7 +57,8 @@ export const SYSTEM_MENU_CONFIG: MenuGroupConfig[] = [
     items: [
       { id: 'asset_inout_history', name: '자산 입출고/정비 이력' },
       { id: 'dispatch_assign', name: '장비 할당 (매핑)' },
-      { id: 'outbound_inspections', name: '출고 검수 의뢰 관리' }
+      { id: 'outbound_inspections', name: '출고 검수 의뢰 관리' },
+      { id: 'print_queue_monitor', name: '프린트 큐 모니터' }
     ]
   },
   {
@@ -146,7 +147,11 @@ export const CANONICAL_MENU_ALIASES: Record<string, string> = {
   'corporate_cards': 'corporate_card',
   'leave-ot': 'leave_ot',
   'vehicle-log': 'vehicle_log',
-  'outbound_inspection': 'outbound_inspections'
+  'outbound_inspection': 'outbound_inspections',
+  'print_queue_monitor': 'print_queue_monitor',
+  'print-queue-monitor': 'print_queue_monitor',
+  'print_queue': 'print_queue_monitor',
+  'print-queue': 'print_queue_monitor'
 };
 
 export function normalizeMenuId(menuId: string): string {

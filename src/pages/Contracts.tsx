@@ -5,7 +5,7 @@ import {
   Plus, Calendar, Search, Download, Edit3, Repeat, Clock, Wrench, ChevronLeft,
   Building2, ArrowLeftRight, Receipt, FolderOpen, AlertCircle, ExternalLink, Copy, AlertTriangle
 } from 'lucide-react';
-import { Contract, db, Customer, CustomerContact, CustomerSite, ContractAsset, ContractHistory, Delivery, Asset, normalizeEndDate } from '../services/db';
+import { Contract, db, Customer, CustomerContact, CustomerSite, ContractAsset, ContractHistory, Delivery, Asset, normalizeEndDate, formatContractEndDate, isIndefiniteEndDate } from '../services/db';
 import { exportToExcel } from '../services/excel';
 import { ContractDocumentBundleModal } from '../components/ContractDocumentBundleModal';
 import { FileText, CheckCircle2 } from 'lucide-react';
@@ -151,8 +151,8 @@ export const Contracts: React.FC = () => {
   const todayStr = new Date().toISOString().split('T')[0];
 
   const getDDayText = (endDateStr?: string) => {
-    if (!endDateStr || endDateStr === '미정') return { text: '미정', isWarning: false };
-    const diff = Math.ceil((new Date(endDateStr).getTime() - new Date(todayStr).getTime()) / (1000 * 60 * 60 * 24));
+    if (isIndefiniteEndDate(endDateStr)) return { text: '미정', isWarning: false };
+    const diff = Math.ceil((new Date(endDateStr!).getTime() - new Date(todayStr).getTime()) / (1000 * 60 * 60 * 24));
     if (diff < 0) return { text: `D+${Math.abs(diff)}일`, isWarning: true };
     if (diff === 0) return { text: 'D-DAY', isWarning: true };
     if (diff <= 3) return { text: `D-${diff}일`, isWarning: true };
@@ -348,8 +348,9 @@ export const Contracts: React.FC = () => {
 
   const handleOpenExtendModal = () => {
     if (!activeContract) return;
-    setModIsOpen(activeContract.endDate === '미정');
-    setModNewEndDate(activeContract.endDate && activeContract.endDate !== '미정' ? activeContract.endDate : todayStr);
+    const isIndef = isIndefiniteEndDate(activeContract.endDate);
+    setModIsOpen(isIndef);
+    setModNewEndDate(!isIndef && activeContract.endDate ? activeContract.endDate : todayStr);
     setModDesc('');
     setShowExtendModal(true);
   };
@@ -359,7 +360,7 @@ export const Contracts: React.FC = () => {
     if (!activeContract) return;
 
     const activeCust = customers.find(cu => cu.id === activeContract.customerId);
-    const isShortened = activeContract.endDate && activeContract.endDate !== '미정' && modNewEndDate < activeContract.endDate;
+    const isShortened = !isIndefiniteEndDate(activeContract.endDate) && modNewEndDate < activeContract.endDate!;
 
     if (!isShortened && activeCust?.transactionStatus === 'BLOCKED') {
       showToast(`[출고제한] 거래처 [${activeCust.name}]은(는) 거래 차단 상태이므로 계약 기간 연장이 불가합니다.`, 'error');
@@ -477,7 +478,7 @@ export const Contracts: React.FC = () => {
         showToast(`대차일자(${exchangeDate})는 계약 시작일(${activeContract.startDate}) 이후여야 합니다.`, 'error');
         return;
       }
-      if (activeContract.endDate && activeContract.endDate !== '미정' && exchangeDate > activeContract.endDate) {
+      if (!isIndefiniteEndDate(activeContract.endDate) && exchangeDate > activeContract.endDate!) {
         showToast(`대차일자(${exchangeDate})는 계약 종료일(${activeContract.endDate}) 이전이어야 합니다.`, 'error');
         return;
       }
@@ -601,7 +602,7 @@ export const Contracts: React.FC = () => {
 
         // ④ 계약 일정 및 청구 조건
         '계약 시작일': c.startDate,
-        '계약 만료일': c.endDate || '미정',
+        '계약 만료일': formatContractEndDate(c.endDate),
         '청구 마감일': `매월 ${c.billingDay}일`,
         '납기일': c.paymentDueDay ? `익월 ${c.paymentDueDay}일` : '익월 25일 (기본)',
         '월 임대료 합계(원)': totalMonthlyRent,
@@ -1239,7 +1240,7 @@ export const Contracts: React.FC = () => {
                               <span>{totalFee.toLocaleString()}원</span>
                             )}
                           </td>
-                          <td style={{ whiteSpace: 'nowrap' }}>{c.startDate} ~ {c.endDate || '미정'}</td>
+                          <td style={{ whiteSpace: 'nowrap' }}>{c.startDate} ~ {formatContractEndDate(c.endDate)}</td>
                           <td style={{ whiteSpace: 'nowrap' }}>
                             {c.lastBilledPeriodStart && c.lastBilledPeriodEnd ? (
                               <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
@@ -1409,8 +1410,12 @@ export const Contracts: React.FC = () => {
                 <div><label style={{ color: 'var(--text-muted)', fontSize: '11px', display: 'block' }}>계약 시작일</label><span>{activeContract.startDate}</span></div>
                 <div>
                   <label style={{ color: 'var(--text-muted)', fontSize: '11px', display: 'block' }}>계약 만료일</label>
-                  <span>{activeContract.endDate || '미정'}</span>
-                  <span className="badge badge-danger" style={{ marginLeft: '6px', fontSize: '10px' }}>{getDDayText(activeContract.endDate).text}</span>
+                  <span>{formatContractEndDate(activeContract.endDate)}</span>
+                  {!isIndefiniteEndDate(activeContract.endDate) && (
+                    <span className={getDDayText(activeContract.endDate).isWarning ? "badge badge-danger" : "badge badge-secondary"} style={{ marginLeft: '6px', fontSize: '10px' }}>
+                      {getDDayText(activeContract.endDate).text}
+                    </span>
+                  )}
                 </div>
 
                 <div>

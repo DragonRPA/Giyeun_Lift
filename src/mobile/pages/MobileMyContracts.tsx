@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { matchHangul } from '../../utils/hangulSearch';
 import { launchNavigation, copyToClipboard } from '../../utils/nativeLauncher';
+import { formatContractEndDate, isIndefiniteEndDate } from '../../services/db';
 
 interface MobileMyContractsProps {
   onOpenCreateAsForAsset?: (assetNo: string, siteId: string) => void;
@@ -72,7 +73,7 @@ export const MobileMyContracts: React.FC<MobileMyContractsProps> = ({ onOpenCrea
         // 만료 D-Day 계산
         let dDayText = '';
         let isUrgent = false;
-        if (c.endDate) {
+        if (c.endDate && !isIndefiniteEndDate(c.endDate)) {
           const diffDays = Math.ceil((new Date(c.endDate).getTime() - new Date(todayStr).getTime()) / (1000 * 60 * 60 * 24));
           if (diffDays < 0) {
             dDayText = `만료도과 (${Math.abs(diffDays)}일)`;
@@ -83,6 +84,8 @@ export const MobileMyContracts: React.FC<MobileMyContractsProps> = ({ onOpenCrea
           } else {
             dDayText = `D-${diffDays}`;
           }
+        } else {
+          dDayText = '미정';
         }
 
         return {
@@ -207,7 +210,7 @@ export const MobileMyContracts: React.FC<MobileMyContractsProps> = ({ onOpenCrea
               <div className="bg-slate-950/80 border border-slate-800/80 rounded-xl p-2.5 flex flex-col gap-1.5">
                 <div className="text-[11px] font-bold text-slate-400 flex items-center justify-between">
                   <span>투입 장비 ({c.assignedAssets.length}대)</span>
-                  <span className="text-[10px] text-slate-500">{c.startDate} ~ {c.endDate || '미정'}</span>
+                  <span className="text-[10px] text-slate-500">{c.startDate} ~ {formatContractEndDate(c.endDate)}</span>
                 </div>
 
                 <div className="flex flex-wrap gap-1.5 mt-1">
@@ -315,7 +318,7 @@ export const MobileMyContracts: React.FC<MobileMyContractsProps> = ({ onOpenCrea
                     <div>
                       <div className="text-[10px] text-slate-500">계약기간</div>
                       <div className="font-bold text-slate-200">
-                        {selectedContract.startDate} ~ {selectedContract.endDate || '미정'}
+                        {selectedContract.startDate} ~ {formatContractEndDate(selectedContract.endDate)}
                       </div>
                     </div>
                     <div>

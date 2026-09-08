@@ -6,7 +6,7 @@ import {
   RefreshCw, FileCheck, Mail, Send, Plus, Users, Check
 } from 'lucide-react';
 import { emailService } from '../services/email';
-import { db } from '../services/db';
+import { db, formatContractEndDate } from '../services/db';
 
 interface Props {
   isOpen: boolean;
@@ -556,7 +556,7 @@ export const ContractDocumentBundleModal: React.FC<Props> = ({ isOpen, onClose, 
                 const siteName = s?.name || '현장미지정';
                 return (
                   <option key={c.id} value={c.id}>
-                    [{c.id}] {custName} — {siteName} ({c.startDate} ~ {c.endDate || '미정'})
+                    [{c.id}] {custName} — {siteName} ({c.startDate} ~ {formatContractEndDate(c.endDate)})
                   </option>
                 );
               })}
@@ -587,7 +587,7 @@ export const ContractDocumentBundleModal: React.FC<Props> = ({ isOpen, onClose, 
               </div>
               <div>
                 <span style={{ color: 'var(--text-muted)', fontWeight: 600, marginRight: '6px' }}>계약기간:</span>
-                <span>{selectedContract.startDate} ~ {selectedContract.endDate || '종료일 미정 (장기계약)'}</span>
+                <span>{selectedContract.startDate} ~ {formatContractEndDate(selectedContract.endDate)}</span>
               </div>
               <div>
                 <span style={{ color: 'var(--text-muted)', fontWeight: 600, marginRight: '6px' }}>투입 자산 ({mappedAssets.length}대):</span>

@@ -1,5 +1,139 @@
 # 개발 요구사항 임시 기록 (dev_temp.md)
 
+## [완료] 출고의뢰 (통합) '출고의뢰 발행' 버튼의 실질 비즈니스 파이프라인(고객·현장 자동생성, 계약체결, 배차대장 등록, 장비할당 매핑, 자동출력) 직결 완결 (v1.11.0.Build.4)
+- **요구사항**:
+  - "이버튼은 출고의뢰를 생성하는 버튼이 아닌거야? 아니라면 수정해. 모든 입력 요구사항이 만족되었으니, 출고의뢰를 생성해야지. 그래서 신규고객이면 고객도 만들고, 배차의뢰도 생성하고, 장비할당도 생성하고 기존의 "출고 요청"에서 했었건 기능이잖아"
+- **적용 목적 (헌장 1.1 최대 편익, 1.2 자산 운용 및 사건 무누락 기록, 3.1 무수식어 건조 표준, 3.2 줄바꿈 방지, 3.4 상하 스택 표준, 3.6 아키타입)**:
+  - 기존 `smart_dispatch4.tsx`에서 9/9 필수 스키마를 완벽히 통과했음에도 우하단 메인 완결 버튼이 단순히 대기 큐(`createDraftOrder`)로 초안만 넘기던 치명적 결함을 완벽히 척결.
+  - 구형 "출고 요청"(`smart_dispatch.tsx`)이 수행하던 풀 비즈니스 파이프라인(`saveSmartDispatch`)을 직결하여, 신규 고객 자동 생성, 신규 현장 등록, 계약 번호 채번 및 체결, 배차 대장(`deliveries`) 정식 등록, 장비할당 매핑(`contractAssets`), 1회 지정된 원격 프린터로의 출고요청서 자동 출력이 단일 원클릭으로 완결되도록 전면 개편.
+- **수정 내역**:
+  1. **`src/pages/smart_dispatch4.tsx` (`executeSaveDraft` 풀 파이프라인 직결)**:
+     - `executeSaveDraft`가 단순 초안 저장 대신 `saveSmartDispatch(dispatchData, true)`를 호출하도록 개편.
+     - 신규 고객(`isNewCustomerMode`)인 경우 `customers` 및 `contacts` 자동 생성.
+     - 신규 현장인 경우 `sites` 자동 생성 및 기본 안전옵션 마스터 동기화.
+     - 계약(`contracts`) 및 계약 자산(`contractAssets`) 자동 생성.
+     - 배차 대장(`deliveries`)에 `OUTBOUND` 또는 `EXCHANGE` 배차 1건 정식 생성.
+     - 큐 초안에서 불러온 경우 `submitDraft` 호출로 초안 완료 처리.
+     - 🖨️ 등록 완료 즉시 1회 선택된 프린터(`targetStationId`, 원격 무인 큐 또는 브라우저)로 출고요청서 자동 출력 집행.
+     - 작업 완결 후 성공 토스트 표출 및 폼 리셋.
+  2. **대기 큐 임시저장 분리 (`handleSaveToQueueOnly`)**:
+     - 상단 초기화 영역에 `[ 💾 대기 큐 임시저장 ]` 버튼을 독립 배치하여, 미완성 초안을 큐에 보관하고자 할 때만 선택적으로 큐 저장을 수행하도록 R&R 명확화.
+  3. **터미널 바 버튼 라벨 및 안내 문구 정정**:
+     - `[ 출고지시 발행 ]` ➔ 헌장 3.1 표준 `[ 출고의뢰 발행 (검증 완료 9/9) ➔ ]`.
+     - 서브 안내문구: "확인 완료 시 고객사·현장·배차 대장 및 장비 할당이 즉시 생성되며, 지정된 프린터로 출고요청서가 자동 출력됩니다."로 정정.
+- **검증 결과**:
+  - TypeScript 전체 빌드 (`cmd /c "npm run build"`): **0 Error 정상 완결 (`built in 1.26s`)**
+
+## [완료] "출고 요청" 메뉴의 출고요청서 출력 기능을 "출고의뢰 (통합)" 메뉴로 완전 이전 및 고도화 (v1.11.0.Build.3)
+- **요구사항**:
+  - ""출고 요청" 메뉴에 있던 "출고요청서": 출력 기능을 "출고의뢰(통합)" 메뉴로 이동시켜"
+  - "출력하는 직원도, 등록된 프린터(원격지의 컴퓨터에 연결된 로컬프린터) 중에서 1회 선택해놓은 후에는 출고버튼만 누르도록해. 프린터를 매번 지정할 필요는 없게"
+- **적용 목적 (헌장 1.1 최대 편익, 1.2 자산 운용 및 사건 무누락 기록, 3.1 무수식어 건조 표준, 3.2 줄바꿈 방지, 3.4 상하 스택 표준, 3.6 아키타입)**:
+  - 구형 단순 출고 요청(`smart_dispatch.tsx`)에 남아있던 출고요청서 인쇄 기능을 완전히 제거하고, 전사 메인인 출고의뢰(통합) 스튜디오(`smart_dispatch4.tsx`)로 완벽히 이전 및 통합.
+  - 출력 담당 직원이 시스템에 등록된 원격 프린터(`프린터1 (출고장)`) 또는 브라우저 직접 인쇄 중 1회 선택하면 브라우저 영구 저장소(`localStorage['preferred_print_station_dispatch']`)에 영구 기억되어, 재접속이나 새로고침 시에도 매번 프린터를 고를 필요 없이 단일 원클릭 인쇄 버튼만 눌러 즉각 인쇄되도록 극대화된 실무 편익 제공.
+- **수정 내역**:
+  1. **`src/pages/smart_dispatch.tsx` ("출고 요청" 메뉴에서 인쇄 기능 전면 제거)**:
+     - 구형 인쇄 관련 상태(`printers`, `selectedPrinter`, `isAgentPrinting`, `agentStatus`), 로컬 API 폴링 훅, 인쇄 핸들러(`handlePrint`) 및 헤더 툴바 인쇄 버튼 전면 제거.
+     - 하단 서식 출력 및 미리보기 카드 블록(`#dispatch-sheet-print`) 전면 제거하여 화면을 본연의 의뢰 분석 및 작성 기능으로 정돈.
+  2. **`src/pages/smart_dispatch4.tsx` ("출고의뢰 (통합)" 메뉴로 완전 이전 및 고도화)**:
+     - `printStations`, `enqueuePrintJob` 전역 Context 연동 및 `preferred_print_station_dispatch` 영구 저장소 키 신설.
+     - 자동 기본 프린터 매핑: `docTypeDefault === 'DISPATCH_ORDER'` 또는 `프린터1(출고)` 자동 매칭, 변경 시 영구 보존.
+     - `generateDispatchOrderHtml`: 작성 중인 실시간 폼 데이터(NEW 탭) 및 대기 큐 초안(QUEUE 탭)을 A4 세로 표준 서식(거래처/현장정보, 업무관계자, 배송배차/투입장비, 출하스펙/안전옵션 2열 체크리스트, 시차출고/대차회수/배차메모, 출고완료자 서명란)으로 정형화 렌더링하는 자체 독립 HTML 엔진 구축.
+     - 인쇄 핸들러: `targetStationId === 'BROWSER_DIRECT'` 시 브라우저 직접 인쇄, 원격 스테이션 시 `enqueuePrintJob` 무인 원격 큐 전송.
+     - UI 컨트롤 배치:
+       - 상단 메인 툴바: 건조 명사 `출력 프린터` 셀렉터 + `[ 🖨️ 출고요청서 인쇄 ]` 단일 원클릭 버튼 배치.
+       - NEW 탭 서식 헤더 (Dossier Header): `[ 🖨️ 인쇄 ]` 버튼 추가.
+       - NEW 탭 최하단 완결 바 (Terminal Bar): `[ 🖨️ 출고요청서 인쇄 ]` 버튼을 `[출고지시 발행]` 좌측에 직관적으로 동시 배치.
+       - QUEUE 탭 초안 상세 패널: `[ 🖨️ 출고요청서 인쇄 ]` 버튼 추가.
+- **검증 결과**:
+  - TypeScript 전체 빌드 (`cmd /c "npm run build"`): **0 Error 정상 완결 (`built in 1.38s`)**
+
+## [완료] 출력 프린터 1회 선택 영구 기억(localStorage) 및 단일 원클릭 인쇄 버튼 표준화 (v1.11.0.Build.2)
+- **요구사항**:
+  - "출력하는 직원도, 등록된 프린터(원격지의 컴퓨터에 연결된 로컬프린터) 중에서 1회 선택해놓은 후에는 출고버튼만 누르도록해. 프린터를 매번 지정할 필요는 없게"
+- **적용 목적 (헌장 1.1 최대 편익, 1.2 자산 운용 및 사건 무누락 기록, 3.1 무수식어 건조 표준, 3.2 줄바꿈 방지, 3.4 상하 스택 표준)**:
+  - 사용자가 등록된 원격 프린터(`프린터1 (출고장)`, `프린터2 (입고장)`) 또는 브라우저 직접 인쇄 중 원하는 대상을 1회 선택하면 브라우저 영구 저장소(`localStorage`)에 즉시 보존하여, 이후 재접속이나 새로고침 시에도 매번 프린터를 다시 고를 필요 없이 단일 인쇄 버튼만 눌러 작업을 완결하도록 극대화된 업무 편의성 제공.
+  - 기존의 복잡했던 2분할 버튼('[현장 무인 인쇄 (큐 전송)]', '[직접 인쇄]')을 헌장 3.1 무수식어 건조 명사 단일 버튼(`[입고의뢰서 인쇄]`, `[출고의뢰서 인쇄]`)으로 일원화.
+- **수정 내역**:
+  1. **`src/pages/smart_return.tsx` (입고 요청)**:
+     - `PREFERRED_RETURN_STATION_KEY`(`preferred_print_station_return`) 영구 저장소 키 신설.
+     - 선호 프린터 자동 로드 및 1회 선택 시 영구 기억 핸들러(`handleStationChange`) 탑재. (기본값: `docTypeDefault === 'RETURN_ORDER'` 또는 `프린터2/입고` 자동 매핑).
+     - 서식 툴바 정제: 복잡한 안내문구 및 다중 버튼 제거 ➔ 건조 명사 `출력 프린터` 드롭다운 + 단일 원클릭 `[ 🖨️ 입고의뢰서 인쇄 ]` 버튼으로 일원화.
+     - 통합 핸들러(`handlePrintAction`): 선택된 프린터가 원격 스테이션이면 즉시 현장 큐 전송, `BROWSER_DIRECT`이면 브라우저 팝업 출력.
+  2. **`src/pages/smart_dispatch.tsx` (출고 요청)**:
+     - `PREFERRED_DISPATCH_STATION_KEY`(`preferred_print_station_dispatch`) 영구 저장소 키 신설.
+     - 선호 프린터 자동 로드 및 영구 기억 핸들러 탑재 (기본값: `docTypeDefault === 'DISPATCH_ORDER'` 또는 `프린터1/출고` 자동 매핑).
+     - 상단 및 하단 서식 툴바 정제: 건조 명사 `출력 프린터` 드롭다운 + 단일 원클릭 `[ 🖨️ 출고의뢰서 인쇄 ]` 버튼으로 일원화.
+     - 미사용 로컬 프린터 폴링 로직을 중앙 스테이션 영구 연동 구조로 깔끔히 정돈.
+  3. **`src/pages/TruckDispatch.tsx` (배차 관리)**:
+     - 배차 상세의 원격 무인 인쇄 핸들러(`handleRemoteQueuePrintDispatchRequest`)에서 직원이 출고/입고 화면에서 1회 지정해둔 선호 프린터(`preferred_print_station_dispatch`, `preferred_print_station_return`)를 100% 자동 상속 연동.
+     - 버튼 라벨을 헌장 3.1 건조 명사 표준인 `[입고요청서 인쇄]` / `[출고요청서 인쇄]`로 통일.
+- **검증 결과**:
+  - TypeScript 전체 빌드 (`cmd /c "npm run build"`): **0 Error 정상 완결 (`built in 1.66s`)**
+
+## [완료] 분산 무인 인쇄 큐 시스템 구축 및 복수 프린터(프린터1·프린터2) 원격 분기 무인 출력 (v1.11.0.Build.1)
+- **요구사항**:
+  - "주기장 환경에서 사무직 직원들이 근무하는 공간과 출고팀이 근무하는 장소가 달라서, 네트워크 환경이 분리됐어. 그 결과로써 IP 대역이 달라졌어. 문제점은 출고팀이 출고요청서와 입고요청서 두 서류를 직접 출력하지 못한다는거야. 문서출력 큐를 설계하고, 사무실에서 문서를 출력할 큐를 던져. 큐에 작업이 들어오면 출고팀 컴퓨터에 연결된 로컬 프린터에서 출력물이 자동으로 출력되게 하는거야. 각 로컬 PC가 설치된 컴퓨터에 관리자가 직접 가서 PC버전에서 이 컴퓨터에 연결된 로컬 프린터를 이름물 프린터1이라고 붙여주고 이 프린터를 등록해. 다른 프린터에도 가서 프린터2라고 등록해. 사무실로 돌아와서, 출고요청서를 출력할 때 프린터1이 작업할 의도로 큐를 날려. 입고요청서를 출력할 때 프린터2가 작업하라고 큐를 날려. 출고요청서와 입고요청서가 각각 프린터1과 프린터2에서 무인출력돼."
+- **적용 목적 (헌장 1.1, 1.2 자산 운용 및 사건 무누락 기록, 3.1 무수식어 건조 표준, 3.2 줄바꿈 방지, 3.4 상하 스택 표준, 3.6 아키타입)**:
+  - 사무실과 주기장 현장(출고장/입고장) 간의 물리적 네트워크 서브넷 분리(IP 대역 단절) 문제를 중앙 Supabase REST API(`print_queue`, `print_stations`)를 통신 브리지로 삼아 100% 극복.
+  - 관리자가 각 현장 PC에서 로컬 프린터를 탐색하여 `프린터1(출고)`, `프린터2(입고)`로 1회 지정·등록하면, 중앙 DB와 로컬 에이전트(`station_config.json`)에 영구 동기화.
+  - 사무실 직원이 출고요청서 발행 시 `프린터1`로 자동 큐 전송, 입고요청서 발행 시 `프린터2`로 자동 큐 전송되어, 현장 담당자의 조작 없이 로컬 프린터에서 무인 자동 다이렉트 출력(Zero-Click Headless Printing) 완결.
+- **구현 및 수정 내역**:
+  1. **DB DDL & 스키마 (`schema.sql`, `src/services/db.ts`)**:
+     - `print_stations`: 스테이션 ID, 스테이션 명칭(`프린터1`, `프린터2`), 로컬 프린터명, 호스트명, 기본 서식(`DISPATCH_ORDER`, `RETURN_ORDER`, `ALL`), 상태(`ONLINE`/`OFFLINE`), 마지막 하트비트, RLS 정책 추가.
+     - `print_queue`: 큐 ID, 스테이션 ID, 문서 구분, 문서번호, 제목, HTML 서식 본문, 상태(`PENDING`, `PRINTING`, `COMPLETED`, `FAILED`, `CANCELLED`), 오류 내용, 요청자 정보, 완료 시각.
+     - `LocalDB`에 `printStations`, `printQueue` 테이블 매핑 및 Supabase 동기화 등록.
+  2. **로컬 사이드카 인쇄 데몬 강화 (`agent/agent.js`)**:
+     - `GET /api/station-config`, `POST /api/station-config` 엔드포인트 신설 및 `station_config.json` 로컬 영구 보존.
+     - 3초 주기 Supabase REST 큐 폴링 루프 탑재: 본인 스테이션 할당 큐 감지 ➔ `PRINTING` 선점 락 ➔ 임시 HTML 파일 생성 ➔ `rundll32.exe mshtml.dll,PrintHTML /p` 무인 다이렉트 출력 ➔ `COMPLETED` 상태 보고.
+     - 30초 주기 `ONLINE` 하트비트 보고 루프 탑재.
+  3. **인쇄 큐 비즈니스 서비스 신설 (`src/services/printQueueService.ts`)**:
+     - `fetchLocalPrintersFromAgent`, `fetchLocalStationConfigFromAgent`, `saveStationConfigToAgent` 로컬 연동.
+     - `registerPrintStation`, `deletePrintStation`, `enqueuePrintJob`, `retryPrintJob`, `cancelPrintJob`.
+     - `resolveTargetStation`: 출고(`DISPATCH_ORDER`) ➔ `프린터1`, 입고(`RETURN_ORDER`) ➔ `프린터2` 자동 라우팅.
+  4. **전역 Context 연동 (`src/context/AppContext.tsx`)**:
+     - `AppContextType`에 상태 및 액션 노출.
+     - `MENU_TABLE_MAP`에 `'print_queue_monitor': ['printStations', 'printQueue']` 및 `delivery`, `smart_dispatch`, `smart_return` 등록.
+  5. **메뉴 및 라우팅 등록 (`src/config/menu_config.ts`, `src/App.tsx`)**:
+     - `grp_inout` (입출고관리) 하위에 `print_queue_monitor` ('프린트 큐 모니터') 메뉴 등록.
+     - `src/App.tsx`에 `Printer` 아이콘 및 `PrintQueueManager` 라우팅 연결.
+  6. **프린트 큐 모니터 전문 관리 화면 신설 (`src/pages/PrintQueueManager.tsx`)**:
+     - 헌장 3.1 건조 명사 표준 및 3.4 상하 스택 레이아웃 준수.
+     - 탭 1 (프린트 스테이션 현황): 등록된 스테이션 카드(온라인 핑 배지, 최근 하트비트, 테스트 인쇄, 수정, 삭제) + 현재 PC 로컬 프린터 원터치 탐색 및 등록 폼(`프린터1 설정`, `프린터2 설정`).
+     - 탭 2 (인쇄 대기열 대장): 상태/문서/스테이션 필터, 고밀도 대사 테이블, 인쇄 서식 미리보기 모달, 실패 건 재출력 및 대기 건 취소 액션.
+  7. **출고/입고/배차 화면 원격 무인 인쇄 연동**:
+     - `src/pages/smart_dispatch.tsx`: 상단 및 하단 서식 툴바에 원격 출력 프린터 선택 드롭다운(기본: `프린터1`), `[현장 무인 인쇄 (큐 전송)]` 버튼, `[직접 인쇄]` 버튼 연동.
+     - `src/pages/smart_return.tsx`: 서식 툴바에 원격 출력 프린터 선택 드롭다운(기본: `프린터2`), `[현장 무인 인쇄 (큐 전송)]` 버튼, `[직접 인쇄]` 버튼 연동.
+     - `src/pages/TruckDispatch.tsx`: 배차 카드 및 상세 헤더에 `🖨️ 프린터1: 🟢 출력완료` 실시간 상태 배지 노출 + `[프린터1/2 무인 출력 (큐 전송)]` 및 `[직접 인쇄]` 원터치 액션 탑재.
+- **검증 결과**:
+  - TypeScript 빌드 (`cmd /c "npm run build"`): **0 Error 통과 (`built in 1.22s`)**
+
+## [완료] 무기한·종료일 미지정 계약(9999-12-31)의 '미정' 화면 표기 및 D-Day 정상화 (v1.10.0.Build.34)
+- **요구사항**: "미정 표시로 변경."
+- **적용 목적 (헌장 1.1, 1.2, 3.1 무수식어 건조 표준, 3.2)**:
+  - 계약 만료일이 지정되지 않은 오픈 계약 또는 초기 엑셀 업로드 시 종료일이 누락되어 시스템 내부 기본값(`9999-12-31`)으로 저장된 건에 대해, D-Day 계산기가 290만 일(`D-2912197일`)로 계산·표출하던 UI 오류를 원천 차단.
+  - 시스템 전반에서 무기한 종료일(`9999-12-31`, `미정`, `null`)을 깔끔하게 **`미정`**으로 일관되게 표기하고, 만료 D-Day를 일반 텍스트 `미정`으로 정상 노출하여 실무자의 가독성과 인지 편의를 극대화.
+- **수정 내역**:
+  1. **`src/services/db.ts`**:
+     - `formatContractEndDate(endDate?: string | null): string`: '9999-12-31', '미정', null, undefined를 '미정'으로 변환하는 단일 표준 포맷터 신설.
+     - `isIndefiniteEndDate(endDate?: string | null): boolean`: 무기한/미정 계약 여부를 판정하는 표준 판정 함수 신설.
+  2. **`src/pages/Contracts.tsx`**:
+     - `getDDayText`: `isIndefiniteEndDate(endDateStr)` 감지 시 `{ text: '미정', isWarning: false }` 반환.
+     - 계약 목록 테이블: 계약기간 컬럼을 `{c.startDate} ~ {formatContractEndDate(c.endDate)}`로 변경하여 `9999-12-31` 대신 `미정`으로 표기.
+     - 계약 상세 모달: 계약 만료일을 `formatContractEndDate(activeContract.endDate)`로 표기하고, 미정일 때는 붉은색 만료 경고 뱃지 미노출 처리.
+     - 계약 연장 모달 및 대차 의뢰: `isIndefiniteEndDate`를 통해 무기한 계약 여부 정확히 인지 및 연장 처리 연동.
+     - 엑셀 내보내기: 계약 만료일을 `formatContractEndDate(c.endDate)`로 정제 출력.
+  3. **`src/mobile/pages/MobileMyContracts.tsx`**:
+     - 모바일 내 계약 목록 및 상세 서랍: 무기한 계약에 대해 D-Day 오계산 방지 및 기간 표기 `미정` 적용.
+  4. **`src/pages/Billings.tsx`**:
+     - 정산 마법사 계약 목록 및 선택 카드: 계약 만료일을 `formatContractEndDate(c.endDate)`로 통일 표기.
+  5. **`src/components/ContractDocumentBundleModal.tsx`**:
+     - 계약 서류 묶음 모달의 계약 선택 옵션 및 요약 카드: `formatContractEndDate` 적용.
+  6. **`src/services/excel.ts` & `src/pages/asset_history.tsx`**:
+     - 기간 계산 및 입고 약정 계약기간 표시부에 무기한 계약 `미정` 표준 표기 적용.
+- **검증 결과**:
+  - TypeScript 전체 빌드 (`cmd /c "npm run build"`): **0 Error 정상 완결 (`built in 1.12s`)**
+
 ## [완료] 현장 상세 수정 모달 및 현장 대장 내 잘못 입력된 현장 삭제 기능 신설 (v1.10.0.Build.33)
 - **요구사항**: "현장 상세 수정 모달 에서도 잘못 입력된 현장 삭제 가능하게 해줘"
 - **적용 목적 (헌장 1.1, 1.2, 3.1 무수식어 건조 표준, 5.5)**:

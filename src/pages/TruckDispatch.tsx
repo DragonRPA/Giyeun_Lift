@@ -81,7 +81,8 @@ export const TruckDispatch: React.FC = () => {
     contractAssets, assets,
     transportCompanies, transportDrivers, transportNegotiations, outboundInspections, hasPermission, 
     refreshAllData, showErrorModal, convertReconciledDeliveriesToSettlement,
-    currentTenant
+    currentTenant,
+    printStations, printQueue, enqueuePrintJob
   } = useApp();
 
   const canSave = hasPermission('delivery', 'save');
@@ -121,6 +122,110 @@ export const TruckDispatch: React.FC = () => {
         );
       default:
         return null;
+    }
+  };
+
+  // 🖨️ 분산 인쇄 큐 상태 배지 헬퍼 (프린터1/프린터2 무인 출력 상태 실시간 표출)
+  const getPrintQueueBadge = (delivery: Delivery) => {
+    const c = contracts.find(ct => ct.id === delivery.contractId);
+    const cNo = c?.contractNo;
+    const matchedJob = printQueue
+      .filter(q => {
+        if (cNo && q.docNo && q.docNo.includes(cNo)) return true;
+        if (delivery.id && q.docNo && q.docNo.includes(delivery.id)) return true;
+        return false;
+      })
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0];
+
+    if (!matchedJob) return null;
+
+    const st = printStations.find(s => s.id === matchedJob.stationId);
+    const stationLabel = st?.stationName || (matchedJob.docType === 'DISPATCH_ORDER' ? '프린터1' : '프린터2');
+
+    switch (matchedJob.status) {
+      case 'COMPLETED':
+        return (
+          <span
+            style={{
+              padding: '2px 7px',
+              borderRadius: '12px',
+              fontSize: '11px',
+              fontWeight: 800,
+              backgroundColor: 'rgba(34,197,94,0.15)',
+              color: '#15803d',
+              border: '1px solid rgba(34,197,94,0.3)',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '4px',
+              whiteSpace: 'nowrap'
+            }}
+            title={`인쇄완료: ${matchedJob.completedAt ? new Date(matchedJob.completedAt).toLocaleTimeString('ko-KR') : ''}`}
+          >
+            🖨️ {stationLabel}: 🟢 출력완료
+          </span>
+        );
+      case 'PRINTING':
+        return (
+          <span
+            style={{
+              padding: '2px 7px',
+              borderRadius: '12px',
+              fontSize: '11px',
+              fontWeight: 800,
+              backgroundColor: 'rgba(59,130,246,0.15)',
+              color: '#1d4ed8',
+              border: '1px solid rgba(59,130,246,0.3)',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '4px',
+              whiteSpace: 'nowrap'
+            }}
+          >
+            🖨️ {stationLabel}: 🔵 출력중
+          </span>
+        );
+      case 'FAILED':
+        return (
+          <span
+            style={{
+              padding: '2px 7px',
+              borderRadius: '12px',
+              fontSize: '11px',
+              fontWeight: 800,
+              backgroundColor: 'rgba(239,68,68,0.15)',
+              color: '#b91c1c',
+              border: '1px solid rgba(239,68,68,0.3)',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '4px',
+              whiteSpace: 'nowrap'
+            }}
+            title={matchedJob.lastError || '출력 실패'}
+          >
+            🖨️ {stationLabel}: 🔴 오류
+          </span>
+        );
+      case 'PENDING':
+      default:
+        return (
+          <span
+            style={{
+              padding: '2px 7px',
+              borderRadius: '12px',
+              fontSize: '11px',
+              fontWeight: 800,
+              backgroundColor: 'rgba(245,158,11,0.15)',
+              color: '#b45309',
+              border: '1px solid rgba(245,158,11,0.3)',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '4px',
+              whiteSpace: 'nowrap'
+            }}
+          >
+            🖨️ {stationLabel}: 🟡 대기중
+          </span>
+        );
     }
   };
 
@@ -216,6 +321,94 @@ export const TruckDispatch: React.FC = () => {
 
     const w = window.open('', '_blank', 'width=800,height=900');
     if (w) { w.document.write(html); w.document.close(); }
+  };
+
+  // 🖨️ 원격 분산 인쇄 큐 전송 (출고: 프린터1, 입고: 프린터2 자동 라우팅 무인 출력)
+  const handleRemoteQueuePrintDispatchRequest = async (delivery: Delivery, docType: 'OUTBOUND' | 'INBOUND') => {
+    const contract = getContract(delivery.contractId);
+    const customer = contract ? getCustomer(contract.customerId) : null;
+    const site = sites?.find(s => s.id === contract?.siteId);
+    const cargoItems = parseCargoItems(delivery);
+    const returnAssets = getReturnAssets(delivery);
+    const isOutbound = docType === 'OUTBOUND';
+    const title = isOutbound ? '출고요청서' : '입고요청서';
+    const today = new Date().toISOString().split('T')[0];
+
+    const assetRows = isOutbound
+      ? cargoItems.map((c, i) => `<tr><td>${i + 1}</td><td>${c.modelName}</td><td>${c.count}대</td><td></td><td></td></tr>`).join('')
+      : returnAssets.map((a, i) => `<tr><td>${i + 1}</td><td>${a.modelName}</td><td>{${a.assetNo}}</td><td>1대</td><td></td></tr>`).join('');
+
+    const fromLabel = isOutbound ? '상차지 (출발)' : '상차지 (회수지)';
+    const toLabel   = isOutbound ? '하차지 (현장)' : '하차지 (반납지)';
+    const fromAddr  = delivery.pickupVendorName 
+      ? `[타사 직출고] ${delivery.pickupVendorName} (${delivery.originAddress || '-'})` 
+      : (isOutbound ? (delivery.originAddress || '당사 보관소') : (delivery.destinationAddress || site?.address || '-'));
+    const toAddr    = delivery.viaDropoffName 
+      ? `[혼적 경유] 1차: ${delivery.viaDropoffName} (${delivery.viaDropoffAddress || '본사'}) ➔ 2차: ${delivery.destinationAddress || '원사 보관소'}` 
+      : (isOutbound ? (delivery.destinationAddress || site?.address || '-') : (delivery.originAddress || '당사 보관소'));
+
+    const html = `<!DOCTYPE html><html lang="ko"><head><meta charset="UTF-8">
+<title>${title}</title>
+<style>
+  body { font-family: 'Malgun Gothic', sans-serif; font-size: 12px; margin: 24px; color: #111; }
+  h1 { text-align: center; font-size: 20px; font-weight: 900; margin-bottom: 4px; }
+  .sub { text-align: center; font-size: 11px; color: #666; margin-bottom: 20px; }
+  table { width: 100%; border-collapse: collapse; margin-bottom: 16px; }
+  th, td { border: 1px solid #888; padding: 6px 8px; }
+  th { background: #f0f0f0; font-weight: 700; text-align: left; width: 120px; }
+  .asset-table th { text-align: center; background: #e8eef8; }
+  .asset-table td { text-align: center; }
+  .sign-row { display: flex; gap: 16px; margin-top: 24px; }
+  .sign-box { flex: 1; border: 1px solid #888; border-radius: 4px; padding: 10px 14px; min-height: 60px; }
+  .sign-label { font-weight: 700; font-size: 11px; color: #555; margin-bottom: 8px; }
+  @media print { body { margin: 10px; } button { display: none; } }
+</style>
+</head><body>
+<h1>${currentTenant?.displayName || currentTenant?.tradeName || 'e-Bro'} ${title}</h1>
+<div class="sub">문서번호: ${delivery.id} | 발행일자: ${today}</div>
+<table>
+  <tr><th>계약번호</th><td>${contract?.contractNo || '-'}</td><th>배차구분</th><td>${delivery.dispatchCategory || (isOutbound ? '출고' : '입고')}</td></tr>
+  <tr><th>고객사</th><td>${customer?.name || '-'}</td><th>현장</th><td>${site?.name || '-'}</td></tr>
+  <tr><th>요청일</th><td>${delivery.requestDate || '-'}</td><th>배차일</th><td>${delivery.loadingDate || '-'}</td></tr>
+  <tr><th>${fromLabel}</th><td>${fromAddr}</td><th>${toLabel}</th><td>${toAddr}</td></tr>
+  <tr><th>담당 기사</th><td>${delivery.driverName || '(미배정)'}</td><th>차량번호</th><td>${delivery.vehicleNo || '-'}</td></tr>
+  <tr><th>비고</th><td colspan="3">${delivery.memo || ''}</td></tr>
+</table>
+<table class="asset-table">
+  <thead><tr><th>No</th><th>모델명</th>${isOutbound ? '<th>수량</th><th>비고</th><th>서명</th>' : '<th>관리번호</th><th>수량</th><th>비고</th>'}</tr></thead>
+  <tbody>${assetRows || '<tr><td colspan="5" style="text-align:center;color:#999;">장비 정보 없음</td></tr>'}</tbody>
+</table>
+<div class="sign-row">
+  <div class="sign-box"><div class="sign-label">${isOutbound ? '출고 완료자' : '입고 등록자'} 확인</div></div>
+  <div class="sign-box"><div class="sign-label">현장 수령인 서명</div></div>
+  <div class="sign-box"><div class="sign-label">운송 기사 서명</div></div>
+</div>
+</body></html>`;
+
+    // 타겟 스테이션 결정 (선호 스테이션 우선 -> 출고: DISPATCH_ORDER/프린터1, 입고: RETURN_ORDER/프린터2)
+    const targetDocType = isOutbound ? 'DISPATCH_ORDER' : 'RETURN_ORDER';
+    const savedStationId = localStorage.getItem(isOutbound ? 'preferred_print_station_dispatch' : 'preferred_print_station_return');
+    const targetStation = (savedStationId && savedStationId !== 'BROWSER_DIRECT' && printStations.find(s => s.id === savedStationId)) ||
+      printStations.find(s => s.docTypeDefault === targetDocType) ||
+      (isOutbound
+        ? printStations.find(s => s.stationName.includes('프린터1') || s.stationName.includes('출고'))
+        : printStations.find(s => s.stationName.includes('프린터2') || s.stationName.includes('입고'))) ||
+      printStations[0];
+
+    try {
+      await enqueuePrintJob({
+        stationId: targetStation?.id,
+        docType: targetDocType,
+        docNo: contract?.contractNo || delivery.id,
+        title: `${title}_${customer?.name || '고객사'}_${delivery.id}`,
+        documentHtml: html,
+        requestedById: currentUser?.id,
+        requestedByName: currentUser?.name
+      });
+      alert(`[${targetStation?.stationName || (isOutbound ? '프린터1' : '프린터2')}] 인쇄 큐 전송 완료`);
+    } catch (err: any) {
+      alert(`원격 인쇄 큐 전송 실패: ${err.message || err}`);
+    }
   };
 
   // 1. 배차 4단계 진행 상태 판정 헬퍼
@@ -2637,6 +2830,7 @@ export const TruckDispatch: React.FC = () => {
                           </span>
                           <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
                             {getOutboundInspectionBadge(d.contractId)}
+                            {getPrintQueueBadge(d)}
                             {getDeliveryStatusBadge(normStatus)}
                           </div>
                         </div>
@@ -2728,9 +2922,34 @@ export const TruckDispatch: React.FC = () => {
                     </div>
                     <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
                       {getOutboundInspectionBadge(selectedDelivery.contractId)}
+                      {getPrintQueueBadge(selectedDelivery)}
                       {getDeliveryStatusBadge(getNormalizedDeliveryStatus(selectedDelivery))}
                       
-                      {/* 🖨️ 요청서/지시서 인쇄 버튼 */}
+                      {/* 🖨️ 현장 무인 인쇄 버튼 (출고: 프린터1, 입고: 프린터2 자동 라우팅) */}
+                      <button
+                        type="button"
+                        onClick={() => handleRemoteQueuePrintDispatchRequest(selectedDelivery, (selectedDelivery.type === 'INBOUND' || selectedDelivery.dispatchCategory === '입고' || selectedDelivery.dispatchCategory === '반납') ? 'INBOUND' : 'OUTBOUND')}
+                        style={{
+                          padding: '6px 12px',
+                          borderRadius: '7px',
+                          backgroundColor: '#1e293b',
+                          color: '#ffffff',
+                          border: '1px solid #0f172a',
+                          fontSize: '12px',
+                          fontWeight: 700,
+                          cursor: 'pointer',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '5px',
+                          boxShadow: '0 1px 3px rgba(0,0,0,0.1)'
+                        }}
+                        title="현장 로컬 PC 프린터(프린터1 또는 프린터2)로 자동 원격 출력합니다"
+                      >
+                        <Printer size={13} />
+                        {(selectedDelivery.type === 'INBOUND' || selectedDelivery.dispatchCategory === '입고' || selectedDelivery.dispatchCategory === '반납') ? '입고요청서 인쇄' : '출고요청서 인쇄'}
+                      </button>
+
+                      {/* 🖨️ 브라우저 직접 인쇄 버튼 */}
                       <button
                         type="button"
                         onClick={() => handlePrintDispatchRequest(selectedDelivery, (selectedDelivery.type === 'INBOUND' || selectedDelivery.dispatchCategory === '입고' || selectedDelivery.dispatchCategory === '반납') ? 'INBOUND' : 'OUTBOUND')}
@@ -2748,9 +2967,9 @@ export const TruckDispatch: React.FC = () => {
                           gap: '5px',
                           boxShadow: '0 1px 3px rgba(0,0,0,0.1)'
                         }}
+                        title="사무실 현재 컴퓨터 브라우저에서 직접 인쇄"
                       >
-                        <Printer size={13} className="text-primary" />
-                        {(selectedDelivery.type === 'INBOUND' || selectedDelivery.dispatchCategory === '입고' || selectedDelivery.dispatchCategory === '반납') ? '입고요청서 출력' : '출고요청서 출력'}
+                        직접 인쇄
                       </button>
 
                       {/* 📲 기사 배차 안내 문자 발송 / 클립보드 복사 버튼 */}

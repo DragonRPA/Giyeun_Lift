@@ -1,7 +1,7 @@
 // src/pages/Billings.tsx
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useApp } from '../context/AppContext';
-import { db, Asset, Billing, BillingDetail, ContractHistory, normalizeEndDate } from '../services/db';
+import { db, Asset, Billing, BillingDetail, ContractHistory, normalizeEndDate, formatContractEndDate } from '../services/db';
 import { Plus, Download, Mail, CheckCircle, Search, DollarSign, Calendar, FileText, Send, Edit3, RotateCcw, AlertTriangle, Check, Layers } from 'lucide-react';
 import { emailService } from '../services/email';
 import { exportToExcel, exportTransactionStatementExcel, exportTransactionStatementExcelBuffer, calcServicePeriod, formatStatementItemName } from '../services/excel';
@@ -2832,7 +2832,7 @@ ${currentTenant?.tradeName || currentTenant?.corporateName || '임대인'} 올�
                       </div>
                       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px', fontSize: '12px', color: 'var(--text-muted)', marginBottom: '8px' }}>
                         <div>계약시작: <strong>{c.startDate}</strong></div>
-                        <div>계약만료: <strong>{c.endDate || '오픈형'}</strong></div>
+                        <div>계약만료: <strong>{formatContractEndDate(c.endDate)}</strong></div>
                       </div>
                       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px', fontSize: '12px', borderTop: '1px solid var(--border-color)', paddingTop: '8px', color: 'var(--text-muted)' }}>
                         <div>청구 마감: <strong>매월 {c.billingDay}일</strong></div>
@@ -2872,7 +2872,7 @@ ${currentTenant?.tradeName || currentTenant?.corporateName || '임대인'} 올�
                 </h3>
                 <div style={{ display: 'flex', gap: '16px', fontSize: '13px', color: 'var(--text-secondary)', marginBottom: '16px', borderBottom: '1px solid var(--border-color)', paddingBottom: '12px', flexWrap: 'wrap' }}>
                   <span>계약번호: <strong>{selectedContractForWizard.contractNo}</strong></span>
-                  <span>계약 기간: <strong>{selectedContractForWizard.startDate} ~ {selectedContractForWizard.endDate || '오픈형'}</strong></span>
+                  <span>계약 기간: <strong>{selectedContractForWizard.startDate} ~ {formatContractEndDate(selectedContractForWizard.endDate)}</strong></span>
                 </div>
 
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', marginBottom: '24px' }}>

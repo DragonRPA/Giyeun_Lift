@@ -38,8 +38,9 @@ export function calcServicePeriod(d: any, billing: any, contract: any): string {
     }
   }
 
-  if (contract?.startDate && contract?.endDate) {
-    return `${contract.startDate} ~ ${contract.endDate}`;
+  if (contract?.startDate) {
+    const endStr = !contract.endDate || contract.endDate === '미정' || contract.endDate.startsWith('9999') ? '미정' : contract.endDate;
+    return `${contract.startDate} ~ ${endStr}`;
   }
 
   return billing?.billingYm ? `${billing.billingYm}-01 ~ ${billing.billingYm}-31` : '';

@@ -1484,6 +1484,48 @@ CREATE INDEX IF NOT EXISTS idx_manuals_category ON equipment_manuals(category);
 CREATE INDEX IF NOT EXISTS idx_manuals_keywords ON equipment_manuals USING gin (keywords);
 
 -- ==============================================================================
+-- 7. 분산 인쇄 큐 시스템 (print_stations & print_queue)
+-- ==============================================================================
+-- 7-1. 분산 인쇄 스테이션 (print_stations)
+CREATE TABLE IF NOT EXISTS print_stations (
+    id                    TEXT PRIMARY KEY,
+    "stationName"         TEXT NOT NULL,
+    "machineName"         TEXT,
+    "localPrinterName"    TEXT NOT NULL,
+    "docTypeDefault"      TEXT CHECK ("docTypeDefault" IN ('DISPATCH_ORDER', 'RETURN_ORDER', 'ALL')) DEFAULT 'ALL',
+    description           TEXT,
+    status                TEXT CHECK (status IN ('ONLINE', 'OFFLINE')) NOT NULL DEFAULT 'OFFLINE',
+    "lastHeartbeat"       TEXT,
+    "createdAt"           TEXT NOT NULL,
+    "updatedAt"           TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_print_stations_status ON print_stations(status);
+
+-- 7-2. 분산 문서 출력 대기열 및 실행 감사 이력 (print_queue)
+CREATE TABLE IF NOT EXISTS print_queue (
+    id                    TEXT PRIMARY KEY,
+    "stationId"           TEXT NOT NULL REFERENCES print_stations(id) ON DELETE CASCADE,
+    "stationName"         TEXT NOT NULL,
+    "docType"             TEXT CHECK ("docType" IN ('DISPATCH_ORDER', 'RETURN_ORDER')) NOT NULL,
+    "docNo"               TEXT,
+    title                 TEXT NOT NULL,
+    "documentHtml"        TEXT NOT NULL,
+    status                TEXT CHECK (status IN ('PENDING', 'PRINTING', 'COMPLETED', 'FAILED', 'CANCELED')) NOT NULL DEFAULT 'PENDING',
+    "errorMessage"        TEXT,
+    "requestedById"       TEXT REFERENCES users(id) ON DELETE SET NULL,
+    "requestedByName"     TEXT,
+    "requestedAt"         TEXT NOT NULL,
+    "printedAt"           TEXT,
+    "retryCount"          INTEGER NOT NULL DEFAULT 0,
+    "createdAt"           TEXT NOT NULL,
+    "updatedAt"           TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_print_queue_station_status ON print_queue("stationId", status);
+CREATE INDEX IF NOT EXISTS idx_print_queue_requested_at ON print_queue("requestedAt");
+
+-- ==============================================================================
 -- 🔒 전 테이블 Row Level Security (RLS) 및 권한 일괄 활성화
 -- ==============================================================================
 DO $$

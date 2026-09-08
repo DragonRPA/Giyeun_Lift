@@ -5,7 +5,7 @@ import { SmartReturnData } from '../context/AppContext';
 import { fetchMyDrafts, DraftDispatchOrder, discardDraft } from '../services/callUploadService';
 
 export const SmartReturn: React.FC = () => {
-  const { hasPermission, saveSmartReturn, contracts, customers, sites, contacts, deliveries, contractAssets, assets, repairs, vendors, currentUser, users, currentTenant } = useApp();
+  const { hasPermission, saveSmartReturn, contracts, customers, sites, contacts, deliveries, contractAssets, assets, repairs, vendors, currentUser, users, currentTenant, printStations, enqueuePrintJob } = useApp();
   const canSave = hasPermission('delivery', 'save');
 
   // 토스트 알림 상태 (헌장 5.2: 브라우저 alert 전면 퇴출)
@@ -15,38 +15,38 @@ export const SmartReturn: React.FC = () => {
     setTimeout(() => setToastMessage(null), 3500);
   };
 
-  // 전용 로컬 프린터 드라이버 스토리지 키
-  const RETURN_PRINTER_STORAGE_KEY = 'dedicated_printer_smart_return';
-  const [printers, setPrinters] = useState<string[]>([]);
-  const [selectedPrinter, setSelectedPrinter] = useState<string>(() => {
-    return localStorage.getItem(RETURN_PRINTER_STORAGE_KEY) || '';
-  });
+  // 🖨️ 원격 분산 인쇄 큐 타겟 스테이션 설정 (1회 선택 시 영구 기억)
+  const PREFERRED_RETURN_STATION_KEY = 'preferred_print_station_return';
   const [isAgentPrinting, setIsAgentPrinting] = useState<boolean>(false);
 
-  useEffect(() => {
-    const fetchPrinters = async () => {
-      try {
-        const res = await fetch('http://127.0.0.1:5175/api/printers', { signal: AbortSignal.timeout(2000) });
-        const data = await res.json();
-        if (data.success && Array.isArray(data.printers)) {
-          setPrinters(data.printers);
-          const saved = localStorage.getItem(RETURN_PRINTER_STORAGE_KEY);
-          if (!saved || !data.printers.includes(saved)) {
-            const defaultP = data.defaultPrinter || data.printers[0] || 'Apeos C2060';
-            setSelectedPrinter(defaultP);
-            if (defaultP) localStorage.setItem(RETURN_PRINTER_STORAGE_KEY, defaultP);
-          }
-        }
-      } catch (e) {
-        // 백그라운드 인쇄 에이전트 미구동 시 조용히 무시 (웹 브라우저 인쇄 지원)
-      }
-    };
-    fetchPrinters();
-  }, []);
+  const defaultStationId = React.useMemo(() => {
+    const saved = localStorage.getItem(PREFERRED_RETURN_STATION_KEY);
+    if (saved) {
+      if (saved === 'BROWSER_DIRECT') return 'BROWSER_DIRECT';
+      if (printStations.some(s => s.id === saved)) return saved;
+    }
+    const matchDocType = printStations.find(s => s.docTypeDefault === 'RETURN_ORDER');
+    if (matchDocType) return matchDocType.id;
+    const matchName = printStations.find(s => s.stationName.includes('프린터2') || s.stationName.includes('입고'));
+    if (matchName) return matchName.id;
+    if (printStations.length > 0) return printStations[0].id;
+    return 'BROWSER_DIRECT';
+  }, [printStations]);
 
-  const handlePrinterChange = (printerName: string) => {
-    setSelectedPrinter(printerName);
-    localStorage.setItem(RETURN_PRINTER_STORAGE_KEY, printerName);
+  const [targetStationId, setTargetStationId] = useState<string>(() => {
+    return localStorage.getItem(PREFERRED_RETURN_STATION_KEY) || '';
+  });
+
+  useEffect(() => {
+    if (!targetStationId && defaultStationId) {
+      setTargetStationId(defaultStationId);
+      localStorage.setItem(PREFERRED_RETURN_STATION_KEY, defaultStationId);
+    }
+  }, [defaultStationId, targetStationId]);
+
+  const handleStationChange = (newStationId: string) => {
+    setTargetStationId(newStationId);
+    localStorage.setItem(PREFERRED_RETURN_STATION_KEY, newStationId);
   };
 
   // 출고 시 장착 옵션 회수 상속 검수 마스터
@@ -415,6 +415,80 @@ export const SmartReturn: React.FC = () => {
     printWindow.document.open();
     printWindow.document.write(htmlDoc);
     printWindow.document.close();
+  };
+
+  // 🖨️ 현장 분산 인쇄 큐 전송 메소드 (입고장 프린터2 무인 자동 출력)
+  const handleRemoteQueuePrint = async () => {
+    const printContent = document.getElementById('return-sheet-print');
+    if (!printContent) {
+      showToast('인쇄할 입고의뢰서 콘텐츠를 찾을 수 없습니다.', 'error');
+      return;
+    }
+
+    const selContract = contracts.find(c => c.id === selectedContractId);
+    const selCust = customers.find(c => c.id === selContract?.customerId);
+    const selSite = sites.find(s => s.id === selContract?.siteId);
+
+    const htmlDoc = `
+      <!DOCTYPE html>
+      <html lang="ko">
+        <head>
+          <meta charset="utf-8">
+          <title>입고요청서_${selCust?.name || '고객사'}_${selSite?.name || '현장'}</title>
+          <style>
+            @page {
+              size: A4 portrait;
+              margin: 12mm 15mm 15mm 15mm;
+            }
+            @media print {
+              body { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+              .no-print { display: none !important; }
+            }
+            * { box-sizing: border-box; }
+            body {
+              font-family: -apple-system, BlinkMacSystemFont, "Malgun Gothic", "맑은 고딕", "Apple SD Gothic Neo", sans-serif;
+              padding: 0; margin: 0 auto; color: #111827; background-color: #ffffff; width: 100%; max-width: 210mm;
+            }
+            table { width: 100%; border-collapse: collapse; margin-bottom: 16px; }
+            th, td { border: 1px solid #cbd5e1; padding: 8px 10px; text-align: left; font-size: 12px; line-height: 1.4; }
+            th { background-color: #f8fafc !important; font-weight: 700; color: #334155; }
+          </style>
+        </head>
+        <body>
+          <div style="padding: 10px 0;">
+            ${printContent.innerHTML}
+          </div>
+        </body>
+      </html>
+    `;
+
+    try {
+      setIsAgentPrinting(true);
+      const st = printStations.find(s => s.id === targetStationId);
+      await enqueuePrintJob({
+        stationId: st?.id,
+        docType: 'RETURN_ORDER',
+        docNo: selContract?.contractNo || `RET-${Date.now().toString().slice(-6)}`,
+        title: `입고요청서_${selCust?.name || '미지정'}_${selSite?.name || '현장'}`,
+        documentHtml: htmlDoc,
+        requestedById: currentUser?.id,
+        requestedByName: currentUser?.name
+      });
+      showToast(`[${st?.stationName || '프린터2'}] 인쇄 큐 전송 완료`);
+    } catch (err: any) {
+      showToast(`원격 인쇄 큐 전송 실패: ${err.message || err}`, 'error');
+    } finally {
+      setIsAgentPrinting(false);
+    }
+  };
+
+  // 🖨️ 통합 1-클릭 인쇄 실행 핸들러 (원격 큐 또는 브라우저 직접 인쇄)
+  const handlePrintAction = async () => {
+    if (targetStationId === 'BROWSER_DIRECT') {
+      handlePrint();
+      return;
+    }
+    await handleRemoteQueuePrint();
   };
 
   // ==========================================
@@ -1067,51 +1141,56 @@ export const SmartReturn: React.FC = () => {
                   서식 출력 및 미리보기
                 </h4>
 
-                {/* 로컬 프린터 연동 및 인쇄 액션 바 */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <span style={{ fontSize: '11.5px', color: 'var(--text-secondary)', fontWeight: '600' }}>로컬 프린터 지정:</span>
+                {/* 🖨️ 출력 프린터 지정 및 1-클릭 인쇄 */}
+                <div style={{ display: 'flex', alignItems: 'flex-end', gap: '8px', flexWrap: 'nowrap' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                    <label style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>
+                      출력 프린터
+                    </label>
                     <select
-                      value={selectedPrinter}
-                      onChange={(e) => handlePrinterChange(e.target.value)}
+                      value={targetStationId}
+                      onChange={(e) => handleStationChange(e.target.value)}
                       style={{
-                        padding: '4px 8px',
+                        padding: '6px 10px',
                         borderRadius: '4px',
-                        fontSize: '12px',
+                        fontSize: '12.5px',
                         border: '1px solid var(--border-color)',
                         backgroundColor: 'var(--bg-app)',
-                        color: 'var(--text-primary)',
-                        minWidth: '150px'
+                        color: 'var(--text-main)',
+                        fontWeight: '600',
+                        minWidth: '200px',
+                        cursor: 'pointer',
+                        whiteSpace: 'nowrap'
                       }}
                     >
-                      {printers.length > 0 ? (
-                        printers.map(p => (
-                          <option key={p} value={p}>{p}</option>
-                        ))
-                      ) : (
-                        <option value="Apeos C2060">Apeos C2060 (기본)</option>
-                      )}
+                      {printStations.map(st => (
+                        <option key={st.id} value={st.id}>
+                          {st.stationName} ({st.localPrinterName})
+                        </option>
+                      ))}
+                      <option value="BROWSER_DIRECT">사무실 직접 인쇄 (브라우저)</option>
                     </select>
                   </div>
 
                   <button
                     type="button"
                     className="btn-primary"
-                    onClick={handlePrint}
+                    onClick={handlePrintAction}
                     disabled={isAgentPrinting}
                     style={{
-                      display: 'flex',
+                      display: 'inline-flex',
                       alignItems: 'center',
                       gap: '6px',
                       fontSize: '12.5px',
-                      padding: '7px 14px',
-                      fontWeight: 'bold',
+                      padding: '7px 16px',
+                      fontWeight: '700',
                       whiteSpace: 'nowrap',
-                      height: '33px'
+                      height: '35px',
+                      flexShrink: 0
                     }}
                   >
                     <Printer size={14} />
-                    {isAgentPrinting ? '인쇄 전송중...' : '입고의뢰서 인쇄'}
+                    {isAgentPrinting ? '전송 중...' : '입고의뢰서 인쇄'}
                   </button>
                 </div>
               </div>

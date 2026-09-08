@@ -30,6 +30,18 @@ export function normalizeEndDate(endDate?: string | null): string {
   return endDate;
 }
 
+/** 계약 종료일 화면 표시 포맷터: '9999-12-31' / '미정' / null / undefined → '미정' 처리 */
+export function formatContractEndDate(endDate?: string | null): string {
+  if (!endDate || endDate === '미정' || endDate.startsWith('9999')) return '미정';
+  return endDate;
+}
+
+/** 무기한/미정 계약 종료일 판정 */
+export function isIndefiniteEndDate(endDate?: string | null): boolean {
+  if (!endDate || endDate === '미정' || endDate.startsWith('9999')) return true;
+  return false;
+}
+
 export interface TenantBusinessType {
   bizType: string; // 업태 (예: 사업지원및임대서비스업)
   bizItem: string; // 종목 (예: 고소장비임대업)
@@ -1294,6 +1306,42 @@ export interface DelinquencyActionLog {
   directiveTargetUserId?: string;
   directiveDueDate?: string;
   createdAt: string;
+}
+
+export interface PrintStation {
+  id: string;
+  stationName: string;
+  machineName?: string;
+  localPrinterName: string;
+  docTypeDefault?: 'DISPATCH_ORDER' | 'RETURN_ORDER' | 'ALL';
+  description?: string;
+  status: 'ONLINE' | 'OFFLINE';
+  lastHeartbeat?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PrintQueueItem {
+  id: string;
+  stationId: string;
+  stationName: string;
+  localPrinterName?: string;
+  docType: 'DISPATCH_ORDER' | 'RETURN_ORDER';
+  docNo?: string;
+  title: string;
+  documentHtml: string;
+  status: 'PENDING' | 'PRINTING' | 'COMPLETED' | 'FAILED' | 'CANCELED' | 'CANCELLED';
+  errorMessage?: string;
+  lastError?: string;
+  requestedById?: string;
+  requestedByName?: string;
+  requestedAt: string;
+  printedAt?: string;
+  completedAt?: string;
+  retryCount?: number;
+  attempts?: number;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface BankTransaction {
@@ -3756,7 +3804,8 @@ export const ALL_DB_KEYS = [
   'annualLeaveQuotas', 'leaveUsages', 'overtimeRecords', 'payrollClosings', 'inspectionChecklistItems',
   'prepaidTransactions', 'delinquencyActionLogs', 'mechanicConsumableStocks', 'receivables', 'legalNoticeLogs', 'legalNoticeTemplates',
   'corporateVehicles', 'vehicleOperationLogs', 'vehicleFuelLogs',
-  'stocktakingAudits', 'stocktakingAuditItems', 'collectedParts', 'equipmentManuals', 'standardOptions'
+  'stocktakingAudits', 'stocktakingAuditItems', 'collectedParts', 'equipmentManuals', 'standardOptions',
+  'printStations', 'printQueue'
 ];
 
 class LocalDB {
@@ -4146,9 +4195,17 @@ class LocalDB {
   get equipmentManuals() { return this.get<EquipmentManual>('equipmentManuals', SEED_EQUIPMENT_MANUALS); }
   set equipmentManuals(val: EquipmentManual[]) { this.set('equipmentManuals', val); }
 
+  get printStations() { return this.get<PrintStation>('printStations', []); }
+  set printStations(val: PrintStation[]) { this.set('printStations', val); }
+
+  get printQueue() { return this.get<PrintQueueItem>('printQueue', []); }
+  set printQueue(val: PrintQueueItem[]) { this.set('printQueue', val); }
+
   // Supabase 테이블 맵핑
   private mapToSupabaseTable(key: string): string {
     const mapping: Record<string, string> = {
+      printStations: 'print_stations',
+      printQueue: 'print_queue',
       tenants: 'tenants',
       prepaidTransactions: 'prepaid_transactions',
       delinquencyActionLogs: 'delinquency_action_logs',

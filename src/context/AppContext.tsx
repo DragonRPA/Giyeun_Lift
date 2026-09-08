@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
-import { db, supabase, Tenant, TenantWorkplace, TenantYard, TenantBusinessType, TenantBankAccount, OFFICIAL_STAMP_BASE64, User, MenuPermission, createMenuPermission, Customer, CustomerContact, CustomerSite, Product, Asset, Consumable, ConsumableLog, ConsumablePurchaseRequest, MechanicConsumableStock, Contract, ContractAsset, ContractHistory, Delivery, Billing, BillingType, BillingDetail, Receivable, Payment, PaymentDepositLink, Repair, RepairConsumable, Todo, BankTransaction, BankMatchingRule, BankAccountInitialBalance, AssetInOutLog, GoogleConfig, Vendor, CashFlowSnapshot, OutboundInspection, TransportCompany, TransportDriver, TransportNegotiation, SubleaseNegotiation, DepreciationLog, PurchaseSettlement, PurchaseSettlementItem, SettlementPaymentLog, ExternalLease, PurchaseSettlementType, PurchaseSettlementStatus, findCustomerByNormalizedName, AnnualLeaveQuota, LeaveUsage, OvertimeRecord, PayrollClosing, InspectionChecklistItem, EquipmentManual, StandardOption, InboundDefectDetail, PrepaidTransaction, DelinquencyActionLog, LegalNoticeLog, LegalNoticeTemplate, calculateAssetDepreciation, FieldAsTicket, FieldAsPartUsed, FieldAsCollectedPart, CorporateVehicle, VehicleOperationLog, VehicleFuelLog, RepairPartUsed, RepairCollectedPart, SaleContractTerms, StocktakingAudit, StocktakingAuditItem, CollectedPart } from '../services/db';
+import { db, supabase, Tenant, TenantWorkplace, TenantYard, TenantBusinessType, TenantBankAccount, OFFICIAL_STAMP_BASE64, User, MenuPermission, createMenuPermission, Customer, CustomerContact, CustomerSite, Product, Asset, Consumable, ConsumableLog, ConsumablePurchaseRequest, MechanicConsumableStock, Contract, ContractAsset, ContractHistory, Delivery, Billing, BillingType, BillingDetail, Receivable, Payment, PaymentDepositLink, Repair, RepairConsumable, Todo, BankTransaction, BankMatchingRule, BankAccountInitialBalance, AssetInOutLog, GoogleConfig, Vendor, CashFlowSnapshot, OutboundInspection, TransportCompany, TransportDriver, TransportNegotiation, SubleaseNegotiation, DepreciationLog, PurchaseSettlement, PurchaseSettlementItem, SettlementPaymentLog, ExternalLease, PurchaseSettlementType, PurchaseSettlementStatus, findCustomerByNormalizedName, AnnualLeaveQuota, LeaveUsage, OvertimeRecord, PayrollClosing, InspectionChecklistItem, EquipmentManual, StandardOption, InboundDefectDetail, PrepaidTransaction, DelinquencyActionLog, LegalNoticeLog, LegalNoticeTemplate, calculateAssetDepreciation, FieldAsTicket, FieldAsPartUsed, FieldAsCollectedPart, CorporateVehicle, VehicleOperationLog, VehicleFuelLog, RepairPartUsed, RepairCollectedPart, SaleContractTerms, StocktakingAudit, StocktakingAuditItem, CollectedPart, PrintStation, PrintQueueItem } from '../services/db';
+import { enqueuePrintJob as serviceEnqueuePrintJob, registerPrintStation as serviceRegisterPrintStation, deletePrintStation as serviceDeletePrintStation, retryPrintJob as serviceRetryPrintJob, cancelPrintJob as serviceCancelPrintJob } from '../services/printQueueService';
 import { ErrorModal } from '../components/ErrorModal';
 import { getAllSystemMenuIds, normalizeMenuId } from '../config/menu_config';
 import { getRoleTemplatePermission } from '../config/role_templates';
@@ -398,6 +399,30 @@ interface AppContextType {
   registerVehicleFuelLog: (fuelLog: Omit<VehicleFuelLog, 'id' | 'createdAt' | 'updatedAt'>) => Promise<VehicleFuelLog>;
   deleteVehicleFuelLog: (id: string) => Promise<void>;
 
+  // Distributed Print Queue & Stations
+  printStations: PrintStation[];
+  printQueue: PrintQueueItem[];
+  enqueuePrintJob: (params: {
+    stationId?: string;
+    docType: 'DISPATCH_ORDER' | 'RETURN_ORDER';
+    docNo?: string;
+    title: string;
+    documentHtml: string;
+    requestedById?: string;
+    requestedByName?: string;
+  }) => Promise<PrintQueueItem>;
+  registerPrintStation: (station: {
+    id?: string;
+    stationName: string;
+    localPrinterName: string;
+    machineName?: string;
+    docTypeDefault?: 'DISPATCH_ORDER' | 'RETURN_ORDER' | 'ALL';
+    description?: string;
+  }) => Promise<PrintStation>;
+  deletePrintStation: (id: string) => Promise<void>;
+  retryPrintJob: (id: string) => Promise<void>;
+  cancelPrintJob: (id: string) => Promise<void>;
+
   // Navigation states (cross-page routing)
   activeTab: string;
   setActiveTab: (tab: string) => void;
@@ -567,6 +592,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [stocktakingAudits, setStocktakingAudits] = useState<StocktakingAudit[]>([]);
   const [stocktakingAuditItems, setStocktakingAuditItems] = useState<StocktakingAuditItem[]>([]);
   const [collectedParts, setCollectedParts] = useState<CollectedPart[]>([]);
+  const [printStations, setPrintStations] = useState<PrintStation[]>([]);
+  const [printQueue, setPrintQueue] = useState<PrintQueueItem[]>([]);
 
 
   // Navigation / Routing states
@@ -663,6 +690,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setStocktakingAudits([...db.stocktakingAudits]);
     setStocktakingAuditItems([...db.stocktakingAuditItems]);
     setCollectedParts([...db.collectedParts]);
+    setPrintStations([...db.printStations]);
+    setPrintQueue([...db.printQueue]);
   };
 
   // 전체 테이블 Supabase pull 후 state 동기화 (초기 로딩 전용)
@@ -680,7 +709,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // 메뉴별 관련 테이블만 Supabase pull (메뉴 전환 시 호출 — 최신 데이터 보장)
   const MENU_TABLE_MAP: Record<string, string[]> = {
     'dashboard':            ['deliveries', 'contracts', 'billings', 'todos', 'assets'],
-    'delivery':             ['deliveries', 'transportCompanies', 'transportDrivers', 'contracts', 'assets'],
+    'delivery':             ['deliveries', 'transportCompanies', 'transportDrivers', 'contracts', 'assets', 'printStations', 'printQueue'],
     'transport_master':     ['transportCompanies', 'transportDrivers'],
     'field_as':             ['repairs', 'assets', 'users', 'consumables', 'mechanicConsumableStocks', 'customers', 'sites', 'contracts'],
     'smart_as_request':     ['repairs', 'customers', 'sites', 'contracts', 'contractAssets', 'assets'],
@@ -693,9 +722,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     'acquisition_disposal': ['assets', 'products', 'vendors'],
     'rent_asset':           ['assets', 'vendors'],
     'consumable':           ['consumables', 'consumableLogs', 'consumablePurchases', 'vendors', 'mechanicConsumableStocks', 'stocktakingAudits', 'stocktakingAuditItems', 'collectedParts'],
-    'smart_dispatch':       ['deliveries', 'contracts', 'assets', 'transportCompanies', 'transportDrivers'],
+    'smart_dispatch':       ['deliveries', 'contracts', 'assets', 'transportCompanies', 'transportDrivers', 'printStations', 'printQueue'],
     'smart_dispatch4':      ['customers', 'sites', 'contacts', 'contracts', 'deliveries', 'assets'],
-    'smart_return':         ['deliveries', 'contracts', 'assets', 'transportCompanies', 'transportDrivers'],
+    'smart_return':         ['deliveries', 'contracts', 'assets', 'transportCompanies', 'transportDrivers', 'printStations', 'printQueue'],
     'asset_inout_history':  ['assetInOutLogs', 'assets', 'customers'],
     'dispatch_assign':      ['contracts', 'contractAssets', 'assets', 'outboundInspections'],
     'outbound_inspections': ['outboundInspections', 'contracts', 'contractAssets', 'assets', 'customers'],
@@ -713,6 +742,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     'vehicle_log':          ['corporateVehicles', 'vehicleOperationLogs', 'vehicleFuelLogs', 'users'],
     'regular_reports':      ['contracts', 'contractAssets', 'deliveries', 'assets', 'repairs', 'purchaseSettlements', 'purchaseSettlementItems', 'billings', 'billingDetails', 'bankTransactions', 'customers'],
     'initial_db_upload':    ['contracts', 'contractAssets', 'customers', 'assets', 'sites', 'billings', 'billingDetails'],
+    'print_queue_monitor':  ['printStations', 'printQueue'],
   };
 
   const loadTablesForMenu = async (menuId: string) => {
@@ -8310,6 +8340,49 @@ ${currentTenant?.corporateName || tenantCorp} 배상
     refreshAllData();
   };
 
+  // 分散 인쇄 큐 & 스테이션 관리 액션
+  const enqueuePrintJobAction = async (params: {
+    stationId?: string;
+    docType: 'DISPATCH_ORDER' | 'RETURN_ORDER';
+    docNo?: string;
+    title: string;
+    documentHtml: string;
+    requestedById?: string;
+    requestedByName?: string;
+  }): Promise<PrintQueueItem> => {
+    const job = await serviceEnqueuePrintJob(params);
+    refreshAllData();
+    return job;
+  };
+
+  const registerPrintStationAction = async (station: {
+    id?: string;
+    stationName: string;
+    localPrinterName: string;
+    machineName?: string;
+    docTypeDefault?: 'DISPATCH_ORDER' | 'RETURN_ORDER' | 'ALL';
+    description?: string;
+  }): Promise<PrintStation> => {
+    const s = await serviceRegisterPrintStation(station);
+    refreshAllData();
+    return s;
+  };
+
+  const deletePrintStationAction = async (id: string): Promise<void> => {
+    await serviceDeletePrintStation(id);
+    refreshAllData();
+  };
+
+  const retryPrintJobAction = async (id: string): Promise<void> => {
+    await serviceRetryPrintJob(id);
+    refreshAllData();
+  };
+
+  const cancelPrintJobAction = async (id: string): Promise<void> => {
+    await serviceCancelPrintJob(id);
+    refreshAllData();
+  };
+
   return (
     <AppContext.Provider value={{ receivables: db.receivables as any[], refreshReceivables: () => {}, 
       currentUser, theme, toggleTheme, login, logout, switchUser, hasPermission, showErrorModal,
@@ -8354,6 +8427,13 @@ ${currentTenant?.corporateName || tenantCorp} 배상
       waiveRepairBilling, cancelRepairWaiver, linkDeliveryToBilling, unlinkDeliveryFromBilling, waiveDeliveryBilling, cancelDeliveryWaiver,
       chargePrepaidBalance, applyPrepaidBalanceForBilling, refundPrepaidBalance,
       saveDelinquencyAction, updateDelinquencyActionPromise,
+      printStations,
+      printQueue,
+      enqueuePrintJob: enqueuePrintJobAction,
+      registerPrintStation: registerPrintStationAction,
+      deletePrintStation: deletePrintStationAction,
+      retryPrintJob: retryPrintJobAction,
+      cancelPrintJob: cancelPrintJobAction,
       activeTab,
       setActiveTab,
       navigationPayload,

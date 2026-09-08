@@ -32,7 +32,7 @@ import {
   UploadCloud, ShieldCheck, ShieldAlert,
   AlertTriangle, Check, AlertCircle, RotateCcw,
   Truck, Wrench, Shield, RefreshCw, Save, X, Search,
-  FolderOpen, Zap, Phone, Terminal, Activity
+  FolderOpen, Zap, Phone, Terminal, Activity, Printer
 } from 'lucide-react';
 import { CallAudioUploadModal } from '../components/CallAudioUploadModal';
 import { PipelineConsole } from '../components/PipelineConsole';
@@ -134,10 +134,49 @@ const makeScoredField = (value: string, source: ScoredField['source'] = 'MANUAL'
 export const SmartDispatch4: React.FC = () => {
   const {
     hasPermission, customers, sites, contacts, currentUser, currentTenant,
-    saveSmartDispatch, assets, deliveries, standardOptions
+    saveSmartDispatch, assets, deliveries, standardOptions,
+    printStations, enqueuePrintJob
   } = useApp();
 
   const canSave = hasPermission('smart_dispatch', 'save') || hasPermission('delivery', 'save');
+
+  // 🖨️ 원격 분산 인쇄 큐 타겟 스테이션 설정 (1회 선택 시 영구 기억)
+  const PREFERRED_DISPATCH_STATION_KEY = 'preferred_print_station_dispatch';
+  const [isAgentPrinting, setIsAgentPrinting] = useState<boolean>(false);
+
+  const defaultStationId = useMemo(() => {
+    const saved = localStorage.getItem(PREFERRED_DISPATCH_STATION_KEY);
+    if (saved) {
+      if (saved === 'BROWSER_DIRECT') return 'BROWSER_DIRECT';
+      if (printStations.some(s => s.id === saved)) return saved;
+    }
+    const matchDocType = printStations.find(s => s.docTypeDefault === 'DISPATCH_ORDER');
+    if (matchDocType) return matchDocType.id;
+    const matchName = printStations.find(s => s.stationName.includes('프린터1') || s.stationName.includes('출고'));
+    if (matchName) return matchName.id;
+    if (printStations.length > 0) return printStations[0].id;
+    return 'BROWSER_DIRECT';
+  }, [printStations]);
+
+  const [targetStationId, setTargetStationId] = useState<string>(() => {
+    return localStorage.getItem(PREFERRED_DISPATCH_STATION_KEY) || '';
+  });
+
+  useEffect(() => {
+    if (!targetStationId && defaultStationId) {
+      setTargetStationId(defaultStationId);
+      localStorage.setItem(PREFERRED_DISPATCH_STATION_KEY, defaultStationId);
+    }
+  }, [defaultStationId, targetStationId]);
+
+  const handleStationChange = (newStationId: string) => {
+    setTargetStationId(newStationId);
+    localStorage.setItem(PREFERRED_DISPATCH_STATION_KEY, newStationId);
+  };
+
+  // 🚀 [출고의뢰 정식 생성 및 초안 연계 상태]
+  const [editingDraftId, setEditingDraftId] = useState<string | null>(null);
+  const [isSubmittingDispatch, setIsSubmittingDispatch] = useState<boolean>(false);
 
   // ── 탭 ──────────────────────────────────────────────────────────────────
   const [activeTab, setActiveTab] = useState<ActiveTab>('NEW');
@@ -1045,6 +1084,7 @@ export const SmartDispatch4: React.FC = () => {
     setStaggeredMemo('');
     setSelectedContext(null);
     setOpenBlock('WHO');
+    setEditingDraftId(null);
   };
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -1200,8 +1240,14 @@ export const SmartDispatch4: React.FC = () => {
 
   const executeSaveDraft = async (saveToSite: boolean) => {
     setOptionConfirmModalOpen(false);
+    if (!canSave) {
+      showToast('출고의뢰 및 배차 등록 권한이 없습니다.', 'error');
+      return;
+    }
+    if (isSubmittingDispatch) return;
+
     try {
-      const uploaderId = currentUser?.id || 'anonymous_user';
+      setIsSubmittingDispatch(true);
 
       // 🌟 [첨삭 저장 확인] 현장 기본값으로 저장 선택 시 CustomerSite DB 업데이트
       if (saveToSite && selectedSite) {
@@ -1219,6 +1265,148 @@ export const SmartDispatch4: React.FC = () => {
         showToast(`현장 '${selectedSite.name}'의 기본 옵션이 갱신 저장되었습니다.`, 'info');
       }
 
+      const effectiveCustomerName = isNewCustomerMode
+        ? (newCustomerName || '').trim()
+        : (selectedCustomer?.name || '').trim();
+
+      const effectiveSiteName = (isNewCustomerMode || isRegisteringNewSite
+        ? (newSiteName || '')
+        : (selectedSite?.name || '')).trim();
+
+      const effectiveAddress = isNewCustomerMode
+        ? (newSiteAddress || newCustomerAddress || '').trim()
+        : isRegisteringNewSite
+          ? (newSiteAddress || '').trim()
+          : (selectedSiteAddress || selectedSite?.address || '').trim();
+
+      const effectivePhone = (contactPhone || '').trim();
+      const effectiveContact = (contactPerson || '').trim();
+
+      if (!effectiveCustomerName) {
+        showToast('고객사명이 누락되었습니다.', 'error');
+        return;
+      }
+      if (!effectiveSiteName) {
+        showToast('현장명이 누락되었습니다.', 'error');
+        return;
+      }
+      if (!effectiveAddress) {
+        showToast('현장 상세주소가 누락되었습니다.', 'error');
+        return;
+      }
+      if (!effectivePhone) {
+        showToast('현장 담당자 연락처가 누락되었습니다.', 'error');
+        return;
+      }
+      if (equipments.length === 0) {
+        showToast('출고 장비 모델 및 수량을 선택해주세요.', 'error');
+        return;
+      }
+
+      const timeStr = loadingTimeType === 'ASAP'
+        ? 'ASAP'
+        : loadingTimeType === 'MORNING'
+          ? '오전'
+          : loadingTimeType === 'AFTERNOON'
+            ? '오후'
+            : loadingTimeVal || '08:00';
+
+      const fullLoadingTime = `${loadingDate} ${timeStr}`.trim();
+
+      const unloadTimeStr = unloadingTimeType === 'ASAP'
+        ? 'ASAP'
+        : unloadingTimeType === 'MORNING'
+          ? '오전'
+          : unloadingTimeType === 'AFTERNOON'
+            ? '오후'
+            : unloadingTimeVal || '';
+
+      const fullUnloadingTime = unloadingDate
+        ? `${unloadingDate} ${unloadTimeStr}`.trim()
+        : fullLoadingTime;
+
+      const fullNote = [
+        note,
+        unloadingDate ? `[하차일정] ${unloadingDate} ${unloadTimeStr}`.trim() : '',
+        selectedSafetyOptions.size > 0 ? `[옵션] ${Array.from(selectedSafetyOptions).join(', ')}` : '',
+        staggeredMemo ? `[시차출고] ${staggeredMemo}` : '',
+        isExchangeMode && retrievalAssetIds.length > 0
+          ? (isUnknownRetrieval ? '[대차회수대상] 모름 (현장 확인 후 회수)' : `[대차회수대상] 자산 #${retrievalAssetIds.join(', #')}`)
+          : '',
+        effectiveAddress ? `[현장상세주소] ${effectiveAddress}` : '',
+        vehicleType ? `[차종] ${vehicleType}` : '',
+      ].filter(Boolean).join(' | ');
+
+      // 🚀 [실제 출고의뢰 풀 파이프라인 생성: 고객사·현장 신규생성, 계약체결, 배차대장 등록, 장비할당 가상매핑]
+      const dispatchData = {
+        customerName: effectiveCustomerName,
+        siteName: effectiveSiteName,
+        siteAddress: effectiveAddress,
+        siteContactName: effectiveContact,
+        siteContactPhone: effectivePhone,
+        siteContactEmail: '',
+        billingContactName: '',
+        billingContactPhone: '',
+        statementEmail: '',
+        taxBillEmail: '',
+        loadingTime: fullLoadingTime,
+        unloadingTime: fullUnloadingTime,
+        equipments: equipments.map(eq => ({
+          modelName: eq.modelName,
+          qty: Math.max(1, Math.floor(Number(eq.qty) || 1))
+        })),
+        note: fullNote,
+        rawText: `[출고의뢰통합 발행] ${selectedContext || 'OUTBOUND'}`,
+        vehicleType: vehicleType || '5T',
+        paidBy: paidBy || undefined,
+        billableToCustomer: false,
+        type: isExchangeMode ? 'EXCHANGE' : 'OUTBOUND',
+        retrievalAssetIds: retrievalAssetIds || [],
+        paidOptions: Array.from(selectedSafetyOptions).join(', ')
+      };
+
+      const res = await saveSmartDispatch(dispatchData as any, true);
+
+      if (res && res.success) {
+        // 초안에서 가져와 작성 완료한 경우 초안 상태 SUBMITTED 갱신
+        if (editingDraftId) {
+          try {
+            await submitDraft(editingDraftId);
+            await loadDrafts();
+          } catch (draftErr) {
+            console.error('submitDraft error:', draftErr);
+          }
+        }
+
+        // 🖨️ 등록 완료 즉시 1회 선택된 프린터(원격 큐 또는 브라우저)로 출고요청서 자동 출력
+        try {
+          const { html, customerName: cName, siteName: sName } = generateDispatchOrderHtml();
+          if (targetStationId === 'BROWSER_DIRECT') {
+            handlePrint(html);
+          } else if (targetStationId) {
+            await handleRemoteQueuePrint(html, cName, sName);
+          }
+        } catch (printErr) {
+          console.error('출고 후 자동 인쇄 오류:', printErr);
+        }
+
+        showToast(`출고의뢰가 정식 등록되었습니다! (계약 #${res.contractNo || ''}, 고객사·현장·배차·장비할당 생성 완료)`, 'success');
+        resetForm();
+        setEditingDraftId(null);
+      } else {
+        showToast(res?.errorMessage || '출고의뢰 등록 실패', 'error');
+      }
+    } catch (e: any) {
+      showToast(`출고의뢰 발행 오류: ${e?.message}`, 'error');
+    } finally {
+      setIsSubmittingDispatch(false);
+    }
+  };
+
+  // ── 대기 큐 임시 초안 저장 (출고 확정 없이 큐에만 보관) ───────────────
+  const handleSaveToQueueOnly = async () => {
+    try {
+      const uploaderId = currentUser?.id || 'anonymous_user';
       const siteConf: ConfidenceLevel = selectedSite ? 'HIGH' : 'MISSING';
       const siteSrc: ScoredField['source'] = selectedSite ? 'DB' : 'MANUAL';
       const loadConf: ConfidenceLevel = loadingDate ? 'HIGH' : 'MISSING';
@@ -1236,9 +1424,17 @@ export const SmartDispatch4: React.FC = () => {
           ? newSiteAddress.trim()
           : (selectedSiteAddress || selectedSite?.address || '').trim();
 
+      const unloadTimeStr = unloadingTimeType === 'ASAP'
+        ? 'ASAP'
+        : unloadingTimeType === 'MORNING'
+          ? '오전'
+          : unloadingTimeType === 'AFTERNOON'
+            ? '오후'
+            : unloadingTimeVal || '';
+
       const fullNote = [
         note,
-        unloadingDate ? `[하차일정] ${unloadingDate} ${unloadingTimeType === 'ASAP' ? 'ASAP' : unloadingTimeType === 'MORNING' ? '오전' : unloadingTimeType === 'AFTERNOON' ? '오후' : unloadingTimeVal || ''}`.trim() : '',
+        unloadingDate ? `[하차일정] ${unloadingDate} ${unloadTimeStr}`.trim() : '',
         selectedSafetyOptions.size > 0 ? `[옵션] ${Array.from(selectedSafetyOptions).join(', ')}` : '',
         staggeredMemo ? `[시차출고] ${staggeredMemo}` : '',
         isExchangeMode && retrievalAssetIds.length > 0
@@ -1254,7 +1450,7 @@ export const SmartDispatch4: React.FC = () => {
         context: selectedContext ? [selectedContext] : [],
         customerName: isNewCustomerMode
           ? { value: newCustomerName, confidence: 'LOW' as ConfidenceLevel, source: 'MANUAL' as const, confirmed: false }
-          : { value: selectedCustomer!.name, confidence: 'HIGH' as ConfidenceLevel, source: 'DB' as const, confirmed: true },
+          : { value: selectedCustomer?.name || '', confidence: 'HIGH' as ConfidenceLevel, source: 'DB' as const, confirmed: true },
         siteName: isNewCustomerMode || isRegisteringNewSite
           ? { value: newSiteName || '미정', confidence: 'LOW' as ConfidenceLevel, source: 'MANUAL' as const, confirmed: false }
           : { value: selectedSite?.name || '미정', confidence: siteConf, source: siteSrc, confirmed: !!selectedSite },
@@ -1272,7 +1468,7 @@ export const SmartDispatch4: React.FC = () => {
 
       await loadDrafts();
       resetForm();
-      showToast(`출고의뢰 초안이 DB에 안전하게 보존되었습니다 ➔ 처리 대기 큐`);
+      showToast('초안이 처리 대기 큐에 임시 저장되었습니다.', 'info');
       setActiveTab('QUEUE');
     } catch (e: any) {
       showToast(`초안 저장 오류: ${e?.message}`, 'error');
@@ -1281,6 +1477,7 @@ export const SmartDispatch4: React.FC = () => {
 
   // ── 큐에서 선택하여 새 의뢰 작성으로 가져오기 ────────────────────────────
   const handleLoadDraftToForm = (draft: DraftOrder) => {
+    setEditingDraftId(draft.id);
     // 1. 업무 유형 (단일 맥락)
     const ctx = (draft.context && draft.context[0]) || 'ADDITIONAL';
     setSelectedContext(ctx);
@@ -1591,6 +1788,395 @@ export const SmartDispatch4: React.FC = () => {
       showToast(`로그 전송 실패: ${e?.message}`, 'error');
     }
   };
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // 🖨️ 출고요청서 인쇄 엔진 (A4 세로 정규 서식 & 원격 무인 큐 / 브라우저 직접 인쇄)
+  // ─────────────────────────────────────────────────────────────────────────
+  const generateDispatchOrderHtml = useCallback((targetDraft?: DraftOrder | null) => {
+    let customerName = '';
+    let siteName = '';
+    let siteAddress = '';
+    let siteContactName = '';
+    let siteContactPhone = '';
+    let loadingSchedule = '';
+    let unloadingSchedule = '';
+    let orderEquipments: EquipmentItem[] = [];
+    let orderSafetyOptions: string[] = [];
+    let orderNote = '';
+    let orderStaggeredMemo = '';
+    let orderRetrievalAssetIds: string[] = [];
+    let orderVehicleType = '5T';
+    let orderPaidBy: PaidBy | null | undefined = null;
+    let contextLabel = '출고의뢰';
+
+    if (targetDraft) {
+      customerName = targetDraft.customerName?.value || '';
+      siteName = targetDraft.siteName?.value || '';
+      const matchedSite = sites.find(s => s.name === targetDraft.siteName?.value);
+      siteAddress = targetDraft.siteAddress || matchedSite?.address || '';
+      siteContactName = targetDraft.contactPerson?.value || '';
+      siteContactPhone = typeof targetDraft.contactPhone === 'string' ? targetDraft.contactPhone : targetDraft.contactPhone?.value || '';
+      loadingSchedule = `${targetDraft.loadingDate?.value || ''} ${targetDraft.loadingTime?.value || ''}`.trim();
+      unloadingSchedule = targetDraft.unloadingDate
+        ? `${targetDraft.unloadingDate} ${targetDraft.unloadingTimeVal || (targetDraft.unloadingTimeType === 'ASAP' ? '[ASAP]' : targetDraft.unloadingTimeType === 'MORNING' ? '[오전]' : targetDraft.unloadingTimeType === 'AFTERNOON' ? '[오후]' : '')}`.trim()
+        : loadingSchedule;
+      orderEquipments = targetDraft.equipments || [];
+      orderSafetyOptions = targetDraft.safetyOptions || [];
+      orderNote = targetDraft.note || '';
+      orderStaggeredMemo = targetDraft.staggeredMemo || '';
+      orderRetrievalAssetIds = targetDraft.retrievalAssetIds || [];
+      orderVehicleType = targetDraft.vehicleType || '5T';
+      orderPaidBy = targetDraft.paidBy;
+      const ctx = targetDraft.context?.[0];
+      contextLabel = ctx === 'NEW_CUSTOMER' ? '신규고객 출고' : ctx === 'EXCHANGE' ? '대차(교체)' : '기존현장 출고';
+    } else {
+      customerName = isNewCustomerMode ? (newCustomerName || '신규고객') : (selectedCustomer?.name || '');
+      siteName = isNewCustomerMode || isRegisteringNewSite ? (newSiteName || '신규현장') : (selectedSite?.name || '');
+      siteAddress = isNewCustomerMode
+        ? (newSiteAddress || newCustomerAddress || '')
+        : isRegisteringNewSite
+          ? newSiteAddress
+          : (selectedSiteAddress || selectedSite?.address || '');
+      siteContactName = contactPerson;
+      siteContactPhone = contactPhone;
+      const loadTimeStr = loadingTimeType === 'ASAP' ? '[ASAP]' : loadingTimeType === 'MORNING' ? '[오전]' : loadingTimeType === 'AFTERNOON' ? '[오후]' : loadingTimeVal || '';
+      loadingSchedule = `${loadingDate} ${loadTimeStr}`.trim();
+      const unloadTimeStr = unloadingTimeType === 'ASAP' ? '[ASAP]' : unloadingTimeType === 'MORNING' ? '[오전]' : unloadingTimeType === 'AFTERNOON' ? '[오후]' : unloadingTimeVal || '';
+      unloadingSchedule = unloadingDate ? `${unloadingDate} ${unloadTimeStr}`.trim() : loadingSchedule;
+      orderEquipments = equipments;
+      orderSafetyOptions = Array.from(selectedSafetyOptions);
+      orderNote = note;
+      orderStaggeredMemo = staggeredMemo;
+      orderRetrievalAssetIds = retrievalAssetIds;
+      orderVehicleType = vehicleType;
+      orderPaidBy = paidBy;
+      contextLabel = CONTEXT_OPTIONS.find(o => o.id === selectedContext)?.label || '출고의뢰';
+    }
+
+    const now = new Date();
+    const y = now.getFullYear();
+    const mo = String(now.getMonth() + 1).padStart(2, '0');
+    const d = String(now.getDate()).padStart(2, '0');
+    const hh = String(now.getHours()).padStart(2, '0');
+    const mi = String(now.getMinutes()).padStart(2, '0');
+    const ss = String(now.getSeconds()).padStart(2, '0');
+    const printTimeStr = `${y}.${mo}.${d} ${hh}:${mi}:${ss}`;
+    const totalCount = orderEquipments.reduce((sum, e) => sum + (Number(e.qty) || 1), 0);
+    const paidByLabel = orderPaidBy === 'CUSTOMER' ? '고객사 부담' : orderPaidBy === 'OURS' ? '당사 부담' : orderPaidBy === 'SPLIT' ? '협의 분담' : '기본 운임';
+
+    const html = `<!DOCTYPE html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8">
+    <title>출고요청서_${customerName || '고객사'}_${siteName || '현장'}</title>
+    <style>
+      @page {
+        size: A4 portrait;
+        margin: 12mm 15mm 15mm 15mm;
+      }
+      @media print {
+        body {
+          -webkit-print-color-adjust: exact !important;
+          print-color-adjust: exact !important;
+        }
+        .no-print {
+          display: none !important;
+        }
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, "Malgun Gothic", "맑은 고딕", "Apple SD Gothic Neo", sans-serif;
+        padding: 0;
+        margin: 0 auto;
+        color: #111827;
+        background-color: #ffffff;
+        width: 100%;
+        max-width: 210mm;
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-bottom: 12px;
+        table-layout: fixed;
+      }
+      th, td {
+        border: 1px solid #cbd5e1;
+        padding: 6px 9px;
+        text-align: left;
+        font-size: 11.5px;
+        line-height: 1.4;
+      }
+      th {
+        background-color: #f8fafc !important;
+        font-weight: 700;
+        color: #334155;
+      }
+    </style>
+  </head>
+  <body>
+    <div style="padding: 10px 0;">
+      <!-- 헤더: 문서정보 / 타이틀 / 출고완료자 서명 -->
+      <div style="display: flex; flex-direction: row; align-items: center; border-bottom: 2px solid #1e1b4b; padding-bottom: 8px; margin-bottom: 12px; gap: 8px;">
+        <div style="flex-shrink: 0; display: flex; flex-direction: column; gap: 2px;">
+          <div style="font-size: 11px; font-weight: 800; color: #312e81; white-space: nowrap;">
+            의뢰유형: <span style="color: #0f172a;">${contextLabel}</span>
+          </div>
+          <div style="font-size: 10px; color: #64748b; white-space: nowrap;">
+            출력일시: ${printTimeStr}
+          </div>
+        </div>
+
+        <div style="flex: 1; text-align: center; min-width: 0;">
+          <h1 style="margin: 0; font-size: 20px; font-weight: 800; color: #1e1b4b; letter-spacing: 3px; white-space: nowrap;">
+            ${(currentTenant?.displayName || currentTenant?.tradeName || 'e-Bro').toUpperCase()} 출고요청서
+          </h1>
+        </div>
+
+        <div style="flex-shrink: 0; width: 76px; border: 1.5px solid #334155; overflow: hidden; border-radius: 2px;">
+          <div style="background-color: #f1f5f9; border-bottom: 1px solid #334155; text-align: center; font-size: 10px; font-weight: bold; color: #1e293b; padding: 2px 0; white-space: nowrap;">
+            출고 완료자
+          </div>
+          <div style="height: 38px; background-color: #ffffff; display: flex; align-items: center; justify-content: center; font-size: 10px; color: #94a3b8; font-weight: 600;">
+            (서 명)
+          </div>
+        </div>
+      </div>
+
+      <!-- 1. 거래처 및 현장 정보 -->
+      <div style="font-size: 12px; font-weight: bold; border-left: 3.5px solid #312e81; padding-left: 6px; margin-bottom: 4px; color: #312e81;">
+        1. 거래처 및 현장 정보
+      </div>
+      <table>
+        <colgroup>
+          <col style="width: 16%;" />
+          <col style="width: 34%;" />
+          <col style="width: 16%;" />
+          <col style="width: 34%;" />
+        </colgroup>
+        <tbody>
+          <tr>
+            <th>고객사명</th>
+            <td style="font-weight: 700; color: #111827;">${customerName || '-'}</td>
+            <th>투입현장</th>
+            <td style="font-weight: 700; color: #111827;">${siteName || '-'}</td>
+          </tr>
+          <tr>
+            <th>상세 현장주소</th>
+            <td colspan="3" style="word-break: break-all;">${siteAddress || '-'}</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <!-- 2. 업무 관계자 정보 -->
+      <div style="font-size: 12px; font-weight: bold; border-left: 3.5px solid #312e81; padding-left: 6px; margin-bottom: 4px; color: #312e81;">
+        2. 업무 관계자 정보
+      </div>
+      <table>
+        <colgroup>
+          <col style="width: 16%;" />
+          <col style="width: 34%;" />
+          <col style="width: 16%;" />
+          <col style="width: 34%;" />
+        </colgroup>
+        <tbody>
+          <tr>
+            <th>영업담당자</th>
+            <td style="font-weight: 600; color: #111827;">
+              ${currentUser?.name || '본사 담당자'} ${currentUser?.phone ? `(${currentUser.phone})` : ''}
+            </td>
+            <th>현장담당자</th>
+            <td style="font-weight: 600; color: #111827;">
+              ${siteContactName || '-'} ${siteContactPhone ? `(${siteContactPhone})` : ''}
+            </td>
+          </tr>
+        </tbody>
+      </table>
+
+      <!-- 3. 배송 배차 및 투입 장비 -->
+      <div style="font-size: 12px; font-weight: bold; border-left: 3.5px solid #312e81; padding-left: 6px; margin-bottom: 4px; color: #312e81;">
+        3. 배송 배차 및 투입 장비
+      </div>
+      <table>
+        <colgroup>
+          <col style="width: 16%;" />
+          <col style="width: 34%;" />
+          <col style="width: 16%;" />
+          <col style="width: 34%;" />
+        </colgroup>
+        <tbody>
+          <tr>
+            <th>상차스케줄</th>
+            <td style="color: #1d4ed8; font-weight: 600;">${loadingSchedule || '-'}</td>
+            <th>하차스케줄</th>
+            <td style="color: #0e7490; font-weight: 600;">${unloadingSchedule || '-'}</td>
+          </tr>
+          <tr>
+            <th>운송차종 / 운임</th>
+            <td>${orderVehicleType} (${paidByLabel})</td>
+            <th>신청 총수량</th>
+            <td style="font-weight: 700; color: #1d4ed8;">총 ${totalCount}대</td>
+          </tr>
+          <tr>
+            <th>임대 투입 장비</th>
+            <td colspan="3" style="font-weight: 700; color: #111827;">
+              ${orderEquipments.length > 0 ? orderEquipments.map(e => `${e.modelName} * ${e.qty}대`).join(', ') : '미지정'}
+            </td>
+          </tr>
+        </tbody>
+      </table>
+
+      <!-- 4. 장비 출하 스펙 및 안전옵션 요구사항 -->
+      <div style="font-size: 12px; font-weight: bold; border-left: 3.5px solid #312e81; padding-left: 6px; margin-bottom: 4px; color: #312e81;">
+        4. 장비 출하 스펙 요구사항 (현장 요청 검수 항목)
+      </div>
+      <div style="padding: 7px 10px; border: 1px solid #cbd5e1; border-radius: 4px; margin-bottom: 12px; background-color: #f8fafc; color: #111827; box-sizing: border-box;">
+        ${orderSafetyOptions.length > 0 ? `
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 4px 12px; font-size: 11px;">
+            ${orderSafetyOptions.map((opt, idx) => `
+              <div style="display: flex; align-items: center; gap: 5px; font-weight: 600; color: #111827;">
+                <span style="font-size: 12px; color: #2563eb;">☑</span>
+                <span>${idx + 1}. ${opt}</span>
+              </div>
+            `).join('')}
+          </div>
+        ` : `
+          <div style="font-size: 11px; color: #64748b; padding: 2px 0;">
+            • 별도 특수 요청 스펙 없음 (기본 출하 표준 검수 적용)
+          </div>
+        `}
+      </div>
+
+      <!-- 5. 현장 특이사항 및 작업 지시 -->
+      <div style="font-size: 12px; font-weight: bold; border-left: 3.5px solid #312e81; padding-left: 6px; margin-bottom: 4px; color: #312e81;">
+        5. 현장 특이사항 및 작업 지시
+      </div>
+      <table>
+        <colgroup>
+          <col style="width: 16%;" />
+          <col style="width: 84%;" />
+        </colgroup>
+        <tbody>
+          ${orderStaggeredMemo ? `
+            <tr>
+              <th>시차출고</th>
+              <td style="color: #b45309; font-weight: 600;">${orderStaggeredMemo}</td>
+            </tr>
+          ` : ''}
+          ${orderRetrievalAssetIds.length > 0 ? `
+            <tr>
+              <th>대차 회수대상</th>
+              <td style="color: #0891b2; font-weight: 600;">자산 #${orderRetrievalAssetIds.join(', #')} (총 ${orderRetrievalAssetIds.length}대 회수)</td>
+            </tr>
+          ` : ''}
+          <tr>
+            <th>지시사항</th>
+            <td style="word-break: break-all;">${orderNote || '특이사항 없음'}</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </body>
+</html>`;
+
+    return { html, customerName, siteName };
+  }, [
+    isNewCustomerMode, newCustomerName, selectedCustomer, isRegisteringNewSite, newSiteName,
+    selectedSite, newSiteAddress, newCustomerAddress, selectedSiteAddress, contactPerson,
+    contactPhone, loadingDate, loadingTimeType, loadingTimeVal, unloadingDate,
+    unloadingTimeType, unloadingTimeVal, equipments, selectedSafetyOptions, note,
+    staggeredMemo, retrievalAssetIds, vehicleType, paidBy, selectedContext, currentTenant,
+    currentUser, sites
+  ]);
+
+  // 🖨️ 브라우저 직접 인쇄 모달
+  const handlePrint = useCallback((htmlDoc: string) => {
+    const uniqueName = new Date().getTime();
+    const printWindow = window.open('', `Print_${uniqueName}`, 'left=150,top=100,width=880,height=950,menubar=no,toolbar=no,location=no,status=no');
+    if (!printWindow) {
+      showToast('브라우저 팝업이 차단되었습니다.', 'error');
+      return;
+    }
+    const fullHtml = htmlDoc.replace('</body>', `
+      <script>
+        window.onload = function() {
+          setTimeout(function() {
+            window.focus();
+            window.print();
+          }, 250);
+        };
+        window.onafterprint = function() {
+          window.close();
+        };
+      </script>
+    </body>`);
+    printWindow.document.open();
+    printWindow.document.write(fullHtml);
+    printWindow.document.close();
+  }, [showToast]);
+
+  // 🖨️ 현장 분산 인쇄 큐 전송 메소드 (원격지 로컬 프린터 무인 자동 출력)
+  const handleRemoteQueuePrint = useCallback(async (htmlDoc: string, custName: string, sName: string) => {
+    try {
+      setIsAgentPrinting(true);
+      const st = printStations.find(s => s.id === targetStationId);
+      const stationName = st?.stationName || '프린터1';
+      await enqueuePrintJob({
+        stationId: st?.id,
+        docType: 'DISPATCH_ORDER',
+        docNo: `DSP-${Date.now().toString().slice(-6)}`,
+        title: `출고요청서_${custName || '미지정'}_${sName || '현장'}`,
+        documentHtml: htmlDoc,
+        requestedById: currentUser?.id,
+        requestedByName: currentUser?.name
+      });
+      showToast(`[${stationName}] 인쇄 큐 전송 완료`);
+    } catch (err: any) {
+      showToast(`원격 인쇄 큐 전송 실패: ${err.message || err}`, 'error');
+    } finally {
+      setIsAgentPrinting(false);
+    }
+  }, [printStations, targetStationId, enqueuePrintJob, currentUser, showToast]);
+
+  // 🖨️ 통합 1-클릭 인쇄 실행 핸들러 (원격 큐 또는 브라우저 직접 인쇄)
+  const handlePrintAction = useCallback(async (targetDraft?: DraftOrder | null) => {
+    let draftToPrint: DraftOrder | null = null;
+    if (targetDraft) {
+      draftToPrint = targetDraft;
+    } else if (activeTab === 'QUEUE') {
+      if (selectedDraft) {
+        draftToPrint = selectedDraft;
+      } else if (queue.length > 0) {
+        draftToPrint = queue[0];
+      } else {
+        showToast('인쇄할 출고의뢰 초안이 없습니다.', 'error');
+        return;
+      }
+    }
+
+    if (!draftToPrint && activeTab === 'NEW') {
+      const cust = isNewCustomerMode ? newCustomerName : selectedCustomer?.name;
+      if (!cust && equipments.length === 0) {
+        showToast('인쇄할 출고의뢰 정보를 먼저 입력해주세요.', 'error');
+        return;
+      }
+    }
+
+    const { html, customerName, siteName } = generateDispatchOrderHtml(draftToPrint);
+
+    if (targetStationId === 'BROWSER_DIRECT') {
+      handlePrint(html);
+      return;
+    }
+    await handleRemoteQueuePrint(html, customerName, siteName);
+  }, [
+    activeTab, selectedDraft, queue, isNewCustomerMode, newCustomerName,
+    selectedCustomer, equipments.length, generateDispatchOrderHtml,
+    targetStationId, handlePrint, handleRemoteQueuePrint, showToast
+  ]);
 
   // ─────────────────────────────────────────────────────────────────────────
   // 렌더: 새 의뢰 탭 (PC 2열 마스터-디테일 스튜디오)
@@ -2692,14 +3278,25 @@ export const SmartDispatch4: React.FC = () => {
                 </>
               )}
             </div>
-            <button
-              type="button"
-              onClick={resetForm}
-              className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-semibold bg-slate-850 hover:bg-slate-750 text-slate-400 hover:text-white transition border border-slate-750"
-            >
-              <RotateCcw className="w-3 h-3" />
-              <span>입력 초기화</span>
-            </button>
+            <div className="flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={handleSaveToQueueOnly}
+                className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold bg-slate-850 hover:bg-slate-750 text-slate-300 hover:text-white transition border border-slate-750 cursor-pointer"
+                title="배차 발행 없이 처리 대기 큐에 초안으로만 임시 저장"
+              >
+                <Save className="w-3 h-3 text-slate-400" />
+                <span>대기 큐 임시저장</span>
+              </button>
+              <button
+                type="button"
+                onClick={resetForm}
+                className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-semibold bg-slate-850 hover:bg-slate-750 text-slate-400 hover:text-white transition border border-slate-750 cursor-pointer"
+              >
+                <RotateCcw className="w-3 h-3" />
+                <span>입력 초기화</span>
+              </button>
+            </div>
           </div>
         </div>
 
@@ -2790,13 +3387,25 @@ export const SmartDispatch4: React.FC = () => {
                   출고 요청서 (실시간 정형화)
                 </h3>
               </div>
-              <div className="text-right flex flex-col items-end gap-0.5">
-                <span className="text-[9.5px] text-slate-400 font-mono">
-                  {new Date().toLocaleDateString('ko-KR')}
-                </span>
-                <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-blue-950 text-blue-300 border border-blue-800">
-                  {CONTEXT_OPTIONS.find(o => o.id === selectedContext)?.label || '의뢰목적 미선택'}
-                </span>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => handlePrintAction()}
+                  disabled={isAgentPrinting}
+                  className="flex items-center gap-1 px-2.5 py-1 rounded bg-indigo-600 hover:bg-indigo-500 text-white text-[11px] font-bold transition shadow-sm whitespace-nowrap cursor-pointer"
+                  title="선택된 프린터로 출고요청서 인쇄"
+                >
+                  <Printer className="w-3.5 h-3.5" />
+                  <span>인쇄</span>
+                </button>
+                <div className="text-right flex flex-col items-end gap-0.5">
+                  <span className="text-[9.5px] text-slate-400 font-mono">
+                    {new Date().toLocaleDateString('ko-KR')}
+                  </span>
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-blue-950 text-blue-300 border border-blue-800">
+                    {CONTEXT_OPTIONS.find(o => o.id === selectedContext)?.label || '의뢰목적 미선택'}
+                  </span>
+                </div>
               </div>
             </div>
 
@@ -2930,32 +3539,49 @@ export const SmartDispatch4: React.FC = () => {
 
         {/* 🚀 [3] Gutenberg Z-Pattern Terminal Action — 최하단 영구 고정 완결 바 */}
         <div className="dispatch4-terminal-bar">
-          <button
-            type="button"
-            onClick={handleSaveDraft}
-            disabled={!canSave}
-            className={`w-full py-2.5 px-3 rounded-xl font-black text-xs transition-all flex items-center justify-center gap-2 shadow-lg ${
-              isFormValid
-                ? 'bg-blue-600 hover:bg-blue-500 text-white shadow-blue-900/40 cursor-pointer active:scale-98'
-                : 'bg-slate-800 border border-red-500/40 text-red-300 hover:bg-slate-750'
-            }`}
-          >
-            {isFormValid ? (
-              <>
-                <span>출고지시 발행 (검증 완료 9/9)</span>
-                <ArrowRight className="w-4 h-4" />
-              </>
-            ) : (
-              <>
-                <AlertTriangle className="w-4 h-4 text-red-400" />
-                <span>출고지시 (미충족 {invalidRules.length}건 방어차단)</span>
-              </>
-            )}
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => handlePrintAction()}
+              disabled={isAgentPrinting}
+              className="py-2.5 px-3.5 rounded-xl font-bold text-xs bg-indigo-600 hover:bg-indigo-500 text-white transition-all flex items-center justify-center gap-1.5 shadow-md flex-shrink-0 cursor-pointer"
+              title="선택된 프린터로 출고요청서 인쇄"
+            >
+              <Printer className="w-3.5 h-3.5" />
+              <span className="whitespace-nowrap">{isAgentPrinting ? '인쇄 전송중...' : '출고요청서 인쇄'}</span>
+            </button>
+            <button
+              type="button"
+              onClick={handleSaveDraft}
+              disabled={!canSave || isSubmittingDispatch}
+              className={`flex-1 py-2.5 px-3 rounded-xl font-black text-xs transition-all flex items-center justify-center gap-2 shadow-lg ${
+                isFormValid
+                  ? 'bg-blue-600 hover:bg-blue-500 text-white shadow-blue-900/40 cursor-pointer active:scale-98'
+                  : 'bg-slate-800 border border-red-500/40 text-red-300 hover:bg-slate-750'
+              }`}
+            >
+              {isSubmittingDispatch ? (
+                <>
+                  <RefreshCw className="w-4 h-4 animate-spin" />
+                  <span>출고의뢰 등록 및 배차 생성 중...</span>
+                </>
+              ) : isFormValid ? (
+                <>
+                  <span>출고의뢰 발행 (검증 완료 9/9)</span>
+                  <ArrowRight className="w-4 h-4" />
+                </>
+              ) : (
+                <>
+                  <AlertTriangle className="w-4 h-4 text-red-400" />
+                  <span>출고의뢰 (미충족 {invalidRules.length}건 방어차단)</span>
+                </>
+              )}
+            </button>
+          </div>
           <p className="text-[10px] text-slate-400 text-center m-0">
             {isFormValid
-              ? '확인 완료된 의뢰는 DB에 무누락 보존되며 처리 대기 큐로 전송됩니다.'
-              : '누락된 항목이 있으면 출고지시가 자동으로 방어 차단됩니다.'}
+              ? '확인 완료 시 고객사·현장·배차 대장 및 장비 할당이 즉시 생성되며, 지정된 프린터로 출고요청서가 자동 출력됩니다.'
+              : '누락된 항목이 있으면 출고의뢰 발행이 자동으로 방어 차단됩니다.'}
           </p>
         </div>
 
@@ -3500,8 +4126,18 @@ export const SmartDispatch4: React.FC = () => {
                     <div className="flex items-center gap-1.5">
                       <button
                         type="button"
+                        onClick={() => handlePrintAction(selectedDraft)}
+                        disabled={isAgentPrinting}
+                        className="px-2.5 py-1 rounded bg-indigo-950/70 hover:bg-indigo-900/90 text-indigo-300 hover:text-white text-[11px] font-bold border border-indigo-700/60 transition flex items-center gap-1 whitespace-nowrap cursor-pointer shadow-sm"
+                        title="선택된 프린터로 출고요청서 인쇄"
+                      >
+                        <Printer className="w-3 h-3 text-indigo-400" />
+                        <span>출고요청서 인쇄</span>
+                      </button>
+                      <button
+                        type="button"
                         onClick={() => handleLoadDraftToForm(selectedDraft)}
-                        className="px-3.5 py-1 rounded bg-blue-600 hover:bg-blue-500 text-white text-[11px] font-black transition flex items-center gap-1 shadow-sm"
+                        className="px-3.5 py-1 rounded bg-blue-600 hover:bg-blue-500 text-white text-[11px] font-black transition flex items-center gap-1 shadow-sm whitespace-nowrap cursor-pointer"
                       >
                         <ArrowRight className="w-3.5 h-3.5" />
                         <span>{selectedDraft.context.includes('ADDITIONAL') ? '추가출고 작성 ➔' : selectedDraft.context.includes('EXCHANGE') ? '대차의뢰 작성 ➔' : '출고의뢰 작성 ➔'}</span>
@@ -3509,7 +4145,7 @@ export const SmartDispatch4: React.FC = () => {
                       <button
                         type="button"
                         onClick={() => handleSubmitDraft(selectedDraft)}
-                        className="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-emerald-300 text-[11px] font-bold border border-slate-700 transition flex items-center gap-1"
+                        className="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-emerald-300 text-[11px] font-bold border border-slate-700 transition flex items-center gap-1 whitespace-nowrap cursor-pointer"
                         title="주소/연락처가 완비된 경우 배차 대장으로 바로 등록"
                       >
                         <ShieldCheck className="w-3 h-3 text-emerald-400" />
@@ -3579,10 +4215,40 @@ export const SmartDispatch4: React.FC = () => {
         </div>
 
         <div className="flex items-center gap-2">
+          {/* 🖨️ 출력 프린터 1회 지정 & 출고요청서 인쇄 */}
+          <div className="flex items-center gap-1.5 bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1 flex-shrink-0">
+            <span className="text-[11px] font-bold text-slate-400 whitespace-nowrap">출력 프린터</span>
+            <select
+              value={targetStationId}
+              onChange={(e) => handleStationChange(e.target.value)}
+              className="bg-transparent text-slate-200 text-xs font-semibold focus:outline-none cursor-pointer"
+              style={{ whiteSpace: 'nowrap' }}
+            >
+              {printStations.map(st => (
+                <option key={st.id} value={st.id} className="bg-slate-900 text-slate-200">
+                  {st.stationName} ({st.localPrinterName})
+                </option>
+              ))}
+              <option value="BROWSER_DIRECT" className="bg-slate-900 text-slate-200">
+                사무실 직접 인쇄 (브라우저)
+              </option>
+            </select>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => handlePrintAction()}
+            disabled={isAgentPrinting}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold transition shadow-sm whitespace-nowrap flex-shrink-0 cursor-pointer"
+          >
+            <Printer className="w-3.5 h-3.5" />
+            <span>{isAgentPrinting ? '인쇄 전송중...' : '출고요청서 인쇄'}</span>
+          </button>
+
           <button
             type="button"
             onClick={() => setAudioUploadOpen(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-900/40 hover:bg-blue-900/60 border border-blue-500/50 text-blue-200 text-xs font-bold transition shadow-sm"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-900/40 hover:bg-blue-900/60 border border-blue-500/50 text-blue-200 text-xs font-bold transition shadow-sm whitespace-nowrap flex-shrink-0 cursor-pointer"
           >
             <UploadCloud className="w-3.5 h-3.5 text-blue-400" />
             <span>녹음 파일 등록</span>

@@ -5,13 +5,14 @@ import {
   LayoutDashboard, Users, UserCheck, Package, Layers, PlusCircle,
   Truck, Wrench, Shield, ShoppingBag, CreditCard, LogOut, Sun, Moon, Menu, X, Zap, Settings, Database as DatabaseIcon,
   TrendingUp, Clock, AlertTriangle, Building2, ChevronDown, ChevronRight, Briefcase, Box, FolderKanban, ShieldAlert, Terminal, ArrowLeftRight, CheckSquare,
-  Smartphone, Monitor, Car, FileText, Search
+  Smartphone, Monitor, Car, FileText, Search, Printer
 } from 'lucide-react';
 
 import { WeatherWidget } from './components/WeatherWidget';
 
 // 페이지 컴포넌트 임포트 (SSOT 언더바 파일명 통일)
 import { Dashboard } from './pages/Dashboard';
+import { PrintQueueManager } from './pages/PrintQueueManager';
 import { UsersPermissions } from './pages/users_permissions';
 import { Customers } from './pages/Customers';
 import { Products } from './pages/Products';
@@ -233,6 +234,7 @@ const App: React.FC = () => {
         { id: 'asset_inout_history', name: '자산 입출고 / 정비 이력', icon: <Clock size={16} />, component: <AssetHistory /> },
         { id: 'dispatch_assign', name: '장비 할당 / 매핑', icon: <Layers size={16} />, component: <AssetAssignment /> },
         { id: 'outbound_inspections', name: '출고 검수 의뢰 관리', icon: <CheckSquare size={16} />, component: <OutboundInspections /> },
+        { id: 'print_queue_monitor', name: '프린트 큐 모니터', icon: <Printer size={16} />, component: <PrintQueueManager /> },
       ]
     },
     {

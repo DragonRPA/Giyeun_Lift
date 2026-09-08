@@ -897,6 +897,20 @@ CREATE TABLE inspection_checklist_items (
     "updatedAt"           TEXT
 );
 
+-- 4-8. 전사 표준 옵션 마스터 (standard_options)
+CREATE TABLE IF NOT EXISTS standard_options (
+    id                    TEXT PRIMARY KEY,
+    category              TEXT NOT NULL CHECK (category IN ('PAID', 'PROTECTION', 'SPEC')),
+    name                  TEXT NOT NULL,
+    "defaultPrice"        DOUBLE PRECISION DEFAULT 0,
+    unit                  TEXT DEFAULT '월',
+    description           TEXT,
+    "isActive"            BOOLEAN NOT NULL DEFAULT TRUE,
+    "sortOrder"           INTEGER DEFAULT 0,
+    "createdAt"           TEXT NOT NULL,
+    "updatedAt"           TEXT
+);
+
 
 -- ==============================================================================
 -- 💰 [도메인 5] 회계, 청구, 매입정산 및 금융 (Accounting, Billing & Finance)

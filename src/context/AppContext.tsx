@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
-import { db, supabase, Tenant, TenantWorkplace, TenantYard, TenantBusinessType, TenantBankAccount, OFFICIAL_STAMP_BASE64, User, MenuPermission, createMenuPermission, Customer, CustomerContact, CustomerSite, Product, Asset, Consumable, ConsumableLog, ConsumablePurchaseRequest, MechanicConsumableStock, Contract, ContractAsset, ContractHistory, Delivery, Billing, BillingType, BillingDetail, Receivable, Payment, PaymentDepositLink, Repair, RepairConsumable, Todo, BankTransaction, BankMatchingRule, BankAccountInitialBalance, AssetInOutLog, GoogleConfig, Vendor, CashFlowSnapshot, OutboundInspection, TransportCompany, TransportDriver, TransportNegotiation, SubleaseNegotiation, DepreciationLog, PurchaseSettlement, PurchaseSettlementItem, SettlementPaymentLog, ExternalLease, PurchaseSettlementType, PurchaseSettlementStatus, findCustomerByNormalizedName, AnnualLeaveQuota, LeaveUsage, OvertimeRecord, PayrollClosing, InspectionChecklistItem, EquipmentManual, InboundDefectDetail, PrepaidTransaction, DelinquencyActionLog, LegalNoticeLog, LegalNoticeTemplate, calculateAssetDepreciation, FieldAsTicket, FieldAsPartUsed, FieldAsCollectedPart, CorporateVehicle, VehicleOperationLog, VehicleFuelLog, RepairPartUsed, RepairCollectedPart, SaleContractTerms, StocktakingAudit, StocktakingAuditItem, CollectedPart } from '../services/db';
+import { db, supabase, Tenant, TenantWorkplace, TenantYard, TenantBusinessType, TenantBankAccount, OFFICIAL_STAMP_BASE64, User, MenuPermission, createMenuPermission, Customer, CustomerContact, CustomerSite, Product, Asset, Consumable, ConsumableLog, ConsumablePurchaseRequest, MechanicConsumableStock, Contract, ContractAsset, ContractHistory, Delivery, Billing, BillingType, BillingDetail, Receivable, Payment, PaymentDepositLink, Repair, RepairConsumable, Todo, BankTransaction, BankMatchingRule, BankAccountInitialBalance, AssetInOutLog, GoogleConfig, Vendor, CashFlowSnapshot, OutboundInspection, TransportCompany, TransportDriver, TransportNegotiation, SubleaseNegotiation, DepreciationLog, PurchaseSettlement, PurchaseSettlementItem, SettlementPaymentLog, ExternalLease, PurchaseSettlementType, PurchaseSettlementStatus, findCustomerByNormalizedName, AnnualLeaveQuota, LeaveUsage, OvertimeRecord, PayrollClosing, InspectionChecklistItem, EquipmentManual, StandardOption, InboundDefectDetail, PrepaidTransaction, DelinquencyActionLog, LegalNoticeLog, LegalNoticeTemplate, calculateAssetDepreciation, FieldAsTicket, FieldAsPartUsed, FieldAsCollectedPart, CorporateVehicle, VehicleOperationLog, VehicleFuelLog, RepairPartUsed, RepairCollectedPart, SaleContractTerms, StocktakingAudit, StocktakingAuditItem, CollectedPart } from '../services/db';
 import { ErrorModal } from '../components/ErrorModal';
 import { getAllSystemMenuIds, normalizeMenuId } from '../config/menu_config';
 import { getRoleTemplatePermission } from '../config/role_templates';
@@ -138,6 +138,7 @@ interface AppContextType {
   externalLeases: ExternalLease[];
   inspectionChecklistItems: InspectionChecklistItem[];
   equipmentManuals: EquipmentManual[];
+  standardOptions: StandardOption[];
 
   annualLeaveQuotas: AnnualLeaveQuota[];
   leaveUsages: LeaveUsage[];
@@ -177,6 +178,8 @@ interface AppContextType {
   deleteInspectionChecklistItem: (id: string) => Promise<void>;
   saveEquipmentManual: (item: Omit<EquipmentManual, 'id' | 'createdAt'> & { id?: string }) => Promise<void>;
   deleteEquipmentManual: (id: string) => Promise<void>;
+  saveStandardOption: (option: Omit<StandardOption, 'id' | 'createdAt'> & { id?: string }) => Promise<StandardOption>;
+  deleteStandardOption: (id: string) => Promise<void>;
   
   // Asset Mutators
   changeAssetStatus: (assetId: string, status: Asset['status'], extraData?: Partial<Asset>) => Promise<void>;
@@ -548,6 +551,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [externalLeases, setExternalLeases] = useState<ExternalLease[]>([]);
   const [inspectionChecklistItems, setInspectionChecklistItems] = useState<InspectionChecklistItem[]>([]);
   const [equipmentManuals, setEquipmentManuals] = useState<EquipmentManual[]>([]);
+  const [standardOptions, setStandardOptions] = useState<StandardOption[]>([]);
   const [annualLeaveQuotas, setAnnualLeaveQuotas] = useState<AnnualLeaveQuota[]>([]);
   const [leaveUsages, setLeaveUsages] = useState<LeaveUsage[]>([]);
   const [overtimeRecords, setOvertimeRecords] = useState<OvertimeRecord[]>([]);
@@ -643,6 +647,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setExternalLeases([...db.externalLeases]);
     setInspectionChecklistItems([...db.inspectionChecklistItems]);
     setEquipmentManuals([...db.equipmentManuals]);
+    setStandardOptions([...db.standardOptions]);
     setAnnualLeaveQuotas([...db.annualLeaveQuotas]);
     setLeaveUsages([...db.leaveUsages]);
     setOvertimeRecords([...db.overtimeRecords]);
@@ -1170,6 +1175,34 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const deleteEquipmentManual = async (id: string) => {
     db.deleteRow('equipmentManuals', id);
+    await db.awaitPendingWrites();
+    refreshAllData();
+  };
+
+  // 🏷️ 전사 표준 옵션 마스터 CUD
+  const saveStandardOption = async (optionData: Omit<StandardOption, 'id' | 'createdAt'> & { id?: string }): Promise<StandardOption> => {
+    let result: StandardOption;
+    if (optionData.id) {
+      result = db.updateRow<StandardOption>('standardOptions', optionData.id, {
+        ...optionData,
+        updatedAt: new Date().toISOString()
+      }) as StandardOption;
+    } else {
+      const nextId = 'opt_' + Date.now();
+      result = db.insertRow<StandardOption>('standardOptions', {
+        ...optionData,
+        id: nextId,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      }) as StandardOption;
+    }
+    await db.awaitPendingWrites();
+    refreshAllData();
+    return result;
+  };
+
+  const deleteStandardOption = async (id: string): Promise<void> => {
+    db.deleteRow('standardOptions', id);
     await db.awaitPendingWrites();
     refreshAllData();
   };
@@ -8274,6 +8307,7 @@ ${currentTenant?.corporateName || tenantCorp} 배상
       bankTransactions, bankMatchingRules, bankInitialBalances, assetInOutLogs, vendors, googleConfigs, cashFlowSnapshots, outboundInspections, depreciationLogs,
       purchaseSettlements, purchaseSettlementItems, settlementPaymentLogs: db.settlementPaymentLogs, externalLeases, inspectionChecklistItems,
       equipmentManuals, saveEquipmentManual, deleteEquipmentManual,
+      standardOptions, saveStandardOption, deleteStandardOption,
       annualLeaveQuotas, leaveUsages, overtimeRecords, payrollClosings, prepaidTransactions, delinquencyActionLogs, legalNoticeLogs, legalNoticeTemplates, saveLegalNoticeLog, saveLegalNoticeTemplate,
       corporateVehicles, vehicleOperationLogs, vehicleFuelLogs, registerCorporateVehicle, updateCorporateVehicle, deleteCorporateVehicle, registerVehicleOperationLog, updateVehicleOperationLog, deleteVehicleOperationLog, registerVehicleFuelLog, deleteVehicleFuelLog,
       refreshAllData, fullRefreshFromServer, executeMonthlyDepreciation, loadTablesForMenu, updatePermissions, saveUser, saveCustomer, saveContact, deleteContact, saveSite, saveProduct, saveAsset, updateGoogleConfig,

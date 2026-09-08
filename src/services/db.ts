@@ -270,6 +270,43 @@ export const STANDARD_SPECS: SpecItem[] = [
   { id: 'spec21', label: '부착물 세트 (인증서, 제원표, 보험증권, 반입전 체크리스트)', keywords: ['부착물', '제원표', '비상하강사용법', '보험증권', '인증서', '반입전', '체크리스트', '출고서류', '안전점검결과서', '직인날인', '점검자 직인'] }
 ];
 
+// 🏷️ 전사 표준 옵션 마스터 인터페이스 (유상옵션 / 보양작업 / 기술스펙)
+export interface StandardOption {
+  id: string;
+  category: 'PAID' | 'PROTECTION' | 'SPEC';
+  name: string;
+  defaultPrice?: number;
+  unit?: string; // 예: '월', '건', '대'
+  description?: string;
+  isActive: boolean;
+  sortOrder: number;
+  createdAt: string;
+  updatedAt?: string;
+}
+
+// 🛡️ 전사 표준 옵션 마스터 기본 시드 데이터
+export const SEED_STANDARD_OPTIONS: StandardOption[] = [
+  // 1. 유상 옵션 (PAID)
+  { id: 'opt_paid_sensor', category: 'PAID', name: '협착방지봉 / 상부센서 (4EA)', defaultPrice: 50000, unit: '월', description: '상단 4개소 감지센서 및 비상정지 연동', isActive: true, sortOrder: 1, createdAt: '2026-01-01' },
+  { id: 'opt_paid_mesh', category: 'PAID', name: '4면 철망 설치', defaultPrice: 100000, unit: '월', description: '작업대 4면 낙하 방지 안전 철망', isActive: true, sortOrder: 2, createdAt: '2026-01-01' },
+  { id: 'opt_paid_tin', category: 'PAID', name: '함석 설치', defaultPrice: 150000, unit: '월', description: '하부 비산 및 낙하 방지 함석판 설치', isActive: true, sortOrder: 3, createdAt: '2026-01-01' },
+  { id: 'opt_paid_inverter', category: 'PAID', name: '인버터 설치', defaultPrice: 50000, unit: '월', description: '작업대 내 220V 전원 공급용 고용량 인버터', isActive: true, sortOrder: 4, createdAt: '2026-01-01' },
+  { id: 'opt_paid_lugtire', category: 'PAID', name: '러그타이어 장착', defaultPrice: 50000, unit: '월', description: '험지 및 진흙 현장 주행용 패턴 타이어', isActive: true, sortOrder: 5, createdAt: '2026-01-01' },
+  { id: 'opt_paid_whitetire', category: 'PAID', name: '백색(논마킹) 타이어', defaultPrice: 50000, unit: '월', description: '실내 바닥 오염 방지용 백색 논마킹 타이어', isActive: true, sortOrder: 6, createdAt: '2026-01-01' },
+  { id: 'opt_paid_airpipe', category: 'PAID', name: '에어배관 / 발전기 설치', defaultPrice: 50000, unit: '월', description: '에어공구 연결용 배관 및 발전기 거치', isActive: true, sortOrder: 7, createdAt: '2026-01-01' },
+  { id: 'opt_paid_extinguisher', category: 'PAID', name: '소화기함 / 분말소화기', defaultPrice: 20000, unit: '월', description: '법정 화재안전 소화기함 및 3.3kg 분말소화기', isActive: true, sortOrder: 8, createdAt: '2026-01-01' },
+  { id: 'opt_paid_joystick', category: 'PAID', name: '조이스틱 커버 연장', defaultPrice: 10000, unit: '월', description: '상부 조작기 보호용 투명 연장 커버', isActive: true, sortOrder: 9, createdAt: '2026-01-01' },
+  { id: 'opt_paid_tubefire', category: 'PAID', name: '튜브소화기 (자동확산)', defaultPrice: 30000, unit: '월', description: '배터리실 내부 화재감지 자동 소화튜브', isActive: true, sortOrder: 10, createdAt: '2026-01-01' },
+
+  // 2. 보양 작업 (PROTECTION)
+  { id: 'opt_prot_none', category: 'PROTECTION', name: 'NONE (보양 없음)', defaultPrice: 0, unit: '건', description: '별도 보양 작업 미요청', isActive: true, sortOrder: 1, createdAt: '2026-01-01' },
+  { id: 'opt_prot_mesh', category: 'PROTECTION', name: '4면 철망 보양', defaultPrice: 0, unit: '건', description: '난간 4면 보호 완충 보양재 시공', isActive: true, sortOrder: 2, createdAt: '2026-01-01' },
+  { id: 'opt_prot_tin', category: 'PROTECTION', name: '함석 보양', defaultPrice: 0, unit: '건', description: '장비 하부 및 데크 함석 보양', isActive: true, sortOrder: 3, createdAt: '2026-01-01' },
+  { id: 'opt_prot_ladder', category: 'PROTECTION', name: '탑승구 사다리 보양', defaultPrice: 0, unit: '건', description: '탑승 사다리 발판 및 난간 완충 보양', isActive: true, sortOrder: 4, createdAt: '2026-01-01' },
+  { id: 'opt_prot_corner', category: 'PROTECTION', name: '모서리 완충 보양', defaultPrice: 0, unit: '건', description: '작업대 4면 모서리 8개소 스펀지 완충 보양', isActive: true, sortOrder: 5, createdAt: '2026-01-01' },
+  { id: 'opt_prot_floor', category: 'PROTECTION', name: '바닥/발판 보양', defaultPrice: 0, unit: '건', description: '데크 바닥 합판 및 고무패드 보양', isActive: true, sortOrder: 6, createdAt: '2026-01-01' }
+];
+
 export interface Customer {
   id: string;
   name: string;
@@ -3719,7 +3756,7 @@ export const ALL_DB_KEYS = [
   'annualLeaveQuotas', 'leaveUsages', 'overtimeRecords', 'payrollClosings', 'inspectionChecklistItems',
   'prepaidTransactions', 'delinquencyActionLogs', 'mechanicConsumableStocks', 'receivables', 'legalNoticeLogs', 'legalNoticeTemplates',
   'corporateVehicles', 'vehicleOperationLogs', 'vehicleFuelLogs',
-  'stocktakingAudits', 'stocktakingAuditItems', 'collectedParts', 'equipmentManuals'
+  'stocktakingAudits', 'stocktakingAuditItems', 'collectedParts', 'equipmentManuals', 'standardOptions'
 ];
 
 class LocalDB {
@@ -3860,6 +3897,11 @@ class LocalDB {
     return this.get<InspectionChecklistItem>('inspectionChecklistItems', SEED_INSPECTION_CHECKLIST_ITEMS);
   }
   set inspectionChecklistItems(val: InspectionChecklistItem[]) { this.set('inspectionChecklistItems', val); }
+
+  get standardOptions() {
+    return this.get<StandardOption>('standardOptions', SEED_STANDARD_OPTIONS);
+  }
+  set standardOptions(val: StandardOption[]) { this.set('standardOptions', val); }
 
 
   get consumables() { return this.get<Consumable>('consumables', SEED_CONSUMABLES); }
@@ -4110,6 +4152,7 @@ class LocalDB {
       stocktakingAuditItems: 'stocktaking_audit_items',
       collectedParts: 'collected_parts',
       equipmentManuals: 'equipment_manuals',
+      standardOptions: 'standard_options',
     };
     return mapping[key] || key;
   }
@@ -4424,6 +4467,7 @@ class LocalDB {
       case 'vehicleOperationLogs':prefix = 'VLOG-';   break;
       case 'vehicleFuelLogs':     prefix = 'VFUEL-';  break;
       case 'equipmentManuals':    prefix = 'MAN-';    break;
+      case 'standardOptions':     prefix = 'OPT-';    break;
       default:
         prefix = key.slice(0, 4).toUpperCase() + '-';
     }
@@ -4566,6 +4610,8 @@ class LocalDB {
       stocktaking_audit_items: 'stocktakingAuditItems',
       collected_parts: 'collectedParts',
       equipment_manuals: 'equipmentManuals',
+      standard_options: 'standardOptions',
+      standardOptions: 'standardOptions',
     };
     return (reverseMapping[key] || key) as keyof LocalDB;
   }

@@ -4,16 +4,18 @@ import { useApp } from '../context/AppContext';
 import { 
   Plus, Search, MapPin, Phone, User, Mail, PlusCircle, Download, 
   CreditCard, ShieldCheck, Zap, Sparkles, CheckCircle2, AlertCircle, 
-  X, Edit2, Trash2, RefreshCw, Layers, Check, Building2, Circle
+  X, Edit2, Trash2, RefreshCw, Layers, Check, Building2, Circle,
+  Sliders, Tag, Settings, CheckSquare, Square, ChevronDown, ChevronUp
 } from 'lucide-react';
-import { db, Customer, CustomerContact, CustomerSite, CustomerBankAccount, STANDARD_SPECS } from '../services/db';
+import { db, Customer, CustomerContact, CustomerSite, CustomerBankAccount, STANDARD_SPECS, StandardOption } from '../services/db';
 import { exportToExcel } from '../services/excel';
 import { matchHangul } from '../utils/hangulSearch';
 
 export const Customers: React.FC = () => {
   const {
     customers, contacts, sites, contracts, contractAssets, saveCustomer, saveContact, deleteContact, saveSite, hasPermission,
-    navigationPayload, setNavigationPayload, currentUser, refreshAllData, legalNoticeLogs
+    navigationPayload, setNavigationPayload, currentUser, refreshAllData, legalNoticeLogs,
+    standardOptions, saveStandardOption, deleteStandardOption
   } = useApp();
 
   const canSave = hasPermission('customer', 'save');
@@ -48,6 +50,31 @@ export const Customers: React.FC = () => {
 
   const [showAccountModal, setShowAccountModal] = useState(false);
   const [editingAccount, setEditingAccount] = useState<Partial<CustomerBankAccount> | null>(null);
+
+  // 🏷️ 전사 표준 옵션 마스터 모달 상태
+  const [showOptionMasterModal, setShowOptionMasterModal] = useState(false);
+  const [editingOption, setEditingOption] = useState<Partial<StandardOption> | null>(null);
+  const [optionCategoryFilter, setOptionCategoryFilter] = useState<'ALL' | 'PAID' | 'PROTECTION'>('ALL');
+
+  // 🛡️ 고객사 기본 옵션 관리 모달 상태
+  const [showCustOptionModal, setShowCustOptionModal] = useState(false);
+  const [custOptionForm, setCustOptionForm] = useState<{
+    defaultPaidOptions: string;
+    defaultProtection: string;
+    defaultCheckedSpecs: Record<string, boolean>;
+    specialNotes: string;
+  }>({ defaultPaidOptions: '', defaultProtection: '', defaultCheckedSpecs: {}, specialNotes: '' });
+  const [showCustOptionSpecs, setShowCustOptionSpecs] = useState(false);
+
+  // 🏗️ 현장 전용 옵션 관리 모달 상태
+  const [showSiteOptionModal, setShowSiteOptionModal] = useState(false);
+  const [editingSiteOption, setEditingSiteOption] = useState<CustomerSite | null>(null);
+  const [siteOptionForm, setSiteOptionForm] = useState<{
+    paidOptions: string;
+    protection: string;
+    checkedSpecs: Record<string, boolean>;
+  }>({ paidOptions: '', protection: '', checkedSpecs: {} });
+  const [showSiteOptionSpecs, setShowSiteOptionSpecs] = useState(false);
 
   // 외부 네비게이션 연동
   useEffect(() => {
@@ -320,6 +347,149 @@ export const Customers: React.FC = () => {
     }
   };
 
+  // 🏷️ 옵션 유틸리티 함수 (금액 쉼표 30,000원 등 숫자 천단위 구분 쉼표 분리 방지)
+  const splitOptions = (str?: string): string[] => {
+    if (!str) return [];
+    return str.split(/(?:,(?!\d{3}(?:[^\d]|$))|\n+)/).map(s => s.trim()).filter(Boolean);
+  };
+
+  const toggleOptionInString = (currentStr: string, optName: string): string => {
+    let arr = splitOptions(currentStr);
+    if (arr.includes(optName)) {
+      arr = arr.filter(s => s !== optName);
+    } else {
+      arr.push(optName);
+    }
+    return arr.join(', ');
+  };
+
+  // 🛡️ 고객사 기본 옵션 모달 핸들러
+  const handleOpenCustOptionModal = (cust: Customer) => {
+    setCustOptionForm({
+      defaultPaidOptions: cust.defaultPaidOptions || '',
+      defaultProtection: cust.defaultProtection || '',
+      defaultCheckedSpecs: cust.defaultCheckedSpecs ? { ...cust.defaultCheckedSpecs } : {},
+      specialNotes: cust.specialNotes || ''
+    });
+    setShowCustOptionSpecs(false);
+    setShowCustOptionModal(true);
+  };
+
+  const handleSaveCustOptions = async (propagateToSites: boolean = false) => {
+    if (!activeCustomer?.id) return;
+    try {
+      db.updateRow<Customer>('customers', activeCustomer.id, {
+        defaultPaidOptions: custOptionForm.defaultPaidOptions,
+        defaultProtection: custOptionForm.defaultProtection,
+        defaultCheckedSpecs: custOptionForm.defaultCheckedSpecs,
+        specialNotes: custOptionForm.specialNotes,
+        updatedAt: new Date().toISOString()
+      });
+
+      if (propagateToSites) {
+        const targetSites = sites.filter(s => s.customerId === activeCustomer.id);
+        for (const s of targetSites) {
+          db.updateRow<CustomerSite>('sites', s.id, {
+            paidOptions: custOptionForm.defaultPaidOptions,
+            protection: custOptionForm.defaultProtection,
+            checkedSpecs: custOptionForm.defaultCheckedSpecs,
+            updatedAt: new Date().toISOString()
+          });
+        }
+      }
+
+      await db.awaitPendingWrites();
+      await refreshAllData();
+      showToast(propagateToSites 
+        ? `'${activeCustomer.name}' 기본 옵션 저장 및 ${sites.filter(s => s.customerId === activeCustomer.id).length}개 현장에 일괄 적용되었습니다.` 
+        : `'${activeCustomer.name}' 기본 옵션이 저장되었습니다.`);
+      setShowCustOptionModal(false);
+    } catch (err: any) {
+      showToast(`옵션 저장 실패: ${err.message}`, 'error');
+    }
+  };
+
+  // 🏗️ 현장 전용 옵션 모달 핸들러
+  const handleOpenSiteOptionModal = (cs: CustomerSite) => {
+    setEditingSiteOption(cs);
+    setSiteOptionForm({
+      paidOptions: cs.paidOptions || '',
+      protection: cs.protection || '',
+      checkedSpecs: cs.checkedSpecs ? { ...cs.checkedSpecs } : (activeCustomer?.defaultCheckedSpecs ? { ...activeCustomer.defaultCheckedSpecs } : {})
+    });
+    setShowSiteOptionSpecs(false);
+    setShowSiteOptionModal(true);
+  };
+
+  const handleSaveSiteOptions = async () => {
+    if (!editingSiteOption?.id) return;
+    try {
+      db.updateRow<CustomerSite>('sites', editingSiteOption.id, {
+        paidOptions: siteOptionForm.paidOptions,
+        protection: siteOptionForm.protection,
+        checkedSpecs: siteOptionForm.checkedSpecs,
+        updatedAt: new Date().toISOString()
+      });
+      await db.awaitPendingWrites();
+      await refreshAllData();
+      showToast(`현장 [${editingSiteOption.name}] 옵션이 저장되었습니다.`);
+      setShowSiteOptionModal(false);
+      setEditingSiteOption(null);
+    } catch (err: any) {
+      showToast(`현장 옵션 저장 실패: ${err.message}`, 'error');
+    }
+  };
+
+  const handleCopyDefaultsToSiteOptionForm = () => {
+    if (!activeCustomer) return;
+    setSiteOptionForm({
+      paidOptions: activeCustomer.defaultPaidOptions || '',
+      protection: activeCustomer.defaultProtection || '',
+      checkedSpecs: activeCustomer.defaultCheckedSpecs ? { ...activeCustomer.defaultCheckedSpecs } : {}
+    });
+    showToast(`고객사 기본 옵션을 불러왔습니다.`);
+  };
+
+  // 🏷️ 전사 표준 옵션 마스터 핸들러
+  const handleOpenAddOption = (category: 'PAID' | 'PROTECTION' = 'PAID') => {
+    setEditingOption({
+      category,
+      name: '',
+      defaultPrice: category === 'PAID' ? 50000 : 0,
+      unit: category === 'PAID' ? '월' : '건',
+      description: '',
+      isActive: true,
+      sortOrder: (standardOptions.filter(o => o.category === category).length + 1)
+    });
+  };
+
+  const handleOpenEditOption = (opt: StandardOption) => {
+    setEditingOption({ ...opt });
+  };
+
+  const handleSaveOptionSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingOption || !editingOption.name) return;
+    try {
+      await saveStandardOption(editingOption as any);
+      showToast(`옵션 항목 [${editingOption.name}]이(가) 저장되었습니다.`);
+      setEditingOption(null);
+    } catch (err: any) {
+      showToast(`옵션 저장 실패: ${err.message}`, 'error');
+    }
+  };
+
+  const handleDeleteOption = async (opt: StandardOption) => {
+    if (!window.confirm(`정말로 표준 옵션 [${opt.name}]을(를) 삭제하시겠습니까?`)) return;
+    try {
+      await deleteStandardOption(opt.id);
+      showToast(`옵션 항목 [${opt.name}]이(가) 삭제되었습니다.`);
+      if (editingOption?.id === opt.id) setEditingOption(null);
+    } catch (err: any) {
+      showToast(`옵션 삭제 실패: ${err.message}`, 'error');
+    }
+  };
+
   // 고객사 기본 옵션/보양 현장 일괄 전파
   const handlePropagateDefaultsToAllSites = async (cust: Partial<Customer>) => {
     if (!cust.id) return;
@@ -474,6 +644,17 @@ export const Customers: React.FC = () => {
           >
             <Download size={13} /> 엑셀 다운로드
           </button>
+          {canSave && (
+            <button
+              type="button"
+              className="btn-secondary"
+              onClick={() => { setShowOptionMasterModal(true); setEditingOption(null); }}
+              style={{ padding: '5px 10px', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '5px', whiteSpace: 'nowrap', border: '1px solid #0070C0', color: '#0070C0' }}
+              title="전사 유상옵션 및 보양작업 표준 품목/단가 관리"
+            >
+              <Sliders size={13} /> 옵션 품목 마스터
+            </button>
+          )}
           {canSave && (
             <button
               className="btn-primary"
@@ -802,25 +983,47 @@ export const Customers: React.FC = () => {
                   </div>
 
                   {canSave && (
-                    <button
-                      type="button"
-                      onClick={() => handlePropagateDefaultsToAllSites(activeCustomer)}
-                      style={{
-                        padding: '2px 8px',
-                        fontSize: '11px',
-                        borderRadius: '4px',
-                        border: '1px solid var(--primary)',
-                        backgroundColor: 'var(--primary-light)',
-                        color: 'var(--primary)',
-                        fontWeight: 600,
-                        cursor: 'pointer',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '4px'
-                      }}
-                    >
-                      <Zap size={12} /> 전체 현장에 기본값 일괄 전파
-                    </button>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <button
+                        type="button"
+                        onClick={() => handleOpenCustOptionModal(activeCustomer)}
+                        style={{
+                          padding: '2px 8px',
+                          fontSize: '11px',
+                          borderRadius: '4px',
+                          border: '1px solid #0070C0',
+                          backgroundColor: '#f0f9ff',
+                          color: '#0070C0',
+                          fontWeight: 600,
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '4px'
+                        }}
+                        title="고객사 기본 유상옵션/보양/기술스펙 설정"
+                      >
+                        <Sliders size={12} /> 기본 옵션 설정
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handlePropagateDefaultsToAllSites(activeCustomer)}
+                        style={{
+                          padding: '2px 8px',
+                          fontSize: '11px',
+                          borderRadius: '4px',
+                          border: '1px solid var(--primary)',
+                          backgroundColor: 'var(--primary-light)',
+                          color: 'var(--primary)',
+                          fontWeight: 600,
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '4px'
+                        }}
+                      >
+                        <Zap size={12} /> 전체 현장에 기본값 일괄 전파
+                      </button>
+                    </div>
                   )}
                 </div>
               </div>
@@ -895,9 +1098,43 @@ export const Customers: React.FC = () => {
                             <td style={{ padding: '5px 6px', whiteSpace: 'nowrap' }}>{cs.contactName || '-'}</td>
                             <td style={{ padding: '5px 6px', whiteSpace: 'nowrap' }}>{cs.contact || '-'}</td>
                             <td style={{ padding: '5px 6px', whiteSpace: 'nowrap' }}>
-                              <span style={{ color: 'var(--text-secondary)', fontSize: '10.5px' }}>
-                                {cs.paidOptions || cs.protection ? `${cs.paidOptions || '없음'} / ${cs.protection || '없음'}` : '(기본상속)'}
-                              </span>
+                              <div 
+                                onClick={() => canSave && handleOpenSiteOptionModal(cs)}
+                                style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', cursor: canSave ? 'pointer' : 'default', flexWrap: 'nowrap' }}
+                                title={canSave ? "클릭하여 현장 옵션 관리" : undefined}
+                              >
+                                {(() => {
+                                  const hasPaid = !!(cs.paidOptions && cs.paidOptions.trim() && cs.paidOptions !== '-' && cs.paidOptions !== 'NONE');
+                                  const hasProt = !!(cs.protection && cs.protection.trim() && cs.protection !== 'NONE' && cs.protection !== '-');
+                                  const specCount = cs.checkedSpecs ? Object.values(cs.checkedSpecs).filter(Boolean).length : 0;
+                                  if (!hasPaid && !hasProt && specCount === 0) {
+                                    return (
+                                      <span style={{ padding: '1px 6px', fontSize: '10px', borderRadius: '3px', backgroundColor: 'var(--bg-app)', color: 'var(--text-muted)', border: '1px dashed var(--border-color)' }}>
+                                        (기본상속)
+                                      </span>
+                                    );
+                                  }
+                                  return (
+                                    <div style={{ display: 'flex', gap: '3px', alignItems: 'center' }}>
+                                      {hasPaid && (
+                                        <span style={{ padding: '1px 5px', fontSize: '9.5px', borderRadius: '3px', backgroundColor: 'rgba(59, 130, 246, 0.12)', color: '#2563eb', border: '1px solid rgba(59, 130, 246, 0.3)', fontWeight: 600 }}>
+                                          {cs.paidOptions}
+                                        </span>
+                                      )}
+                                      {hasProt && (
+                                        <span style={{ padding: '1px 5px', fontSize: '9.5px', borderRadius: '3px', backgroundColor: 'rgba(16, 185, 129, 0.12)', color: '#059669', border: '1px solid rgba(16, 185, 129, 0.3)', fontWeight: 600 }}>
+                                          {cs.protection}
+                                        </span>
+                                      )}
+                                      {specCount > 0 && (
+                                        <span style={{ padding: '1px 4px', fontSize: '9.5px', borderRadius: '3px', backgroundColor: 'var(--bg-card)', color: 'var(--text-secondary)', border: '1px solid var(--border-color)' }}>
+                                          스펙 {specCount}
+                                        </span>
+                                      )}
+                                    </div>
+                                  );
+                                })()}
+                              </div>
                             </td>
                             <td style={{ padding: '5px 6px', textAlign: 'center', whiteSpace: 'nowrap' }}>
                               <span className={`badge ${cs.isActive !== false ? 'badge-success' : 'badge-secondary'}`} style={{ fontSize: '9.5px' }}>
@@ -906,14 +1143,25 @@ export const Customers: React.FC = () => {
                             </td>
                             <td style={{ padding: '5px 6px', textAlign: 'center', whiteSpace: 'nowrap' }}>
                               {canSave && (
-                                <button
-                                  type="button"
-                                  className="btn-secondary"
-                                  onClick={() => handleOpenEditSite(cs)}
-                                  style={{ padding: '1px 5px', fontSize: '10.5px' }}
-                                >
-                                  수정
-                                </button>
+                                <div style={{ display: 'flex', gap: '4px', justifyContent: 'center' }}>
+                                  <button
+                                    type="button"
+                                    className="btn-secondary"
+                                    onClick={() => handleOpenSiteOptionModal(cs)}
+                                    style={{ padding: '1px 5px', fontSize: '10.5px', color: '#0070C0', border: '1px solid rgba(0, 112, 192, 0.3)' }}
+                                    title="현장 전용 옵션/보양/스펙 관리"
+                                  >
+                                    옵션
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="btn-secondary"
+                                    onClick={() => handleOpenEditSite(cs)}
+                                    style={{ padding: '1px 5px', fontSize: '10.5px' }}
+                                  >
+                                    수정
+                                  </button>
+                                </div>
                               )}
                             </td>
                           </tr>
@@ -1294,25 +1542,79 @@ export const Customers: React.FC = () => {
                 <span style={{ fontSize: '11.5px', fontWeight: 600, color: 'var(--text-main)', display: 'block', marginBottom: '6px' }}>
                   현장 기본상속 옵션/보양 설정
                 </span>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                   <div>
-                    <label style={labelStyle}>기본 유상옵션</label>
+                    <label style={labelStyle}>기본 유상옵션 (표준 항목 클릭 선택 또는 직접 입력)</label>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', marginBottom: '5px' }}>
+                      {standardOptions.filter(o => o.category === 'PAID' && o.isActive).map(opt => {
+                        const isSelected = splitOptions(editingCust.defaultPaidOptions).includes(opt.name);
+                        return (
+                          <button
+                            key={opt.id}
+                            type="button"
+                            onClick={() => {
+                              const updated = toggleOptionInString(editingCust.defaultPaidOptions || '', opt.name);
+                              setEditingCust({ ...editingCust, defaultPaidOptions: updated });
+                            }}
+                            style={{
+                              padding: '2px 7px',
+                              fontSize: '10.5px',
+                              borderRadius: '4px',
+                              border: isSelected ? '1px solid #2563eb' : '1px solid var(--border-color)',
+                              backgroundColor: isSelected ? 'rgba(37, 99, 235, 0.15)' : 'var(--bg-card)',
+                              color: isSelected ? '#1d4ed8' : 'var(--text-secondary)',
+                              fontWeight: isSelected ? 700 : 500,
+                              cursor: 'pointer'
+                            }}
+                          >
+                            {opt.name} {isSelected ? '✓' : ''}
+                          </button>
+                        );
+                      })}
+                    </div>
                     <input
                       type="text"
                       style={inputStyle}
                       value={editingCust.defaultPaidOptions || ''}
                       onChange={e => setEditingCust({ ...editingCust, defaultPaidOptions: e.target.value })}
-                      placeholder="예: 충전기, 소화기"
+                      placeholder="클릭하여 추가하거나 쉼표(,)로 직접 입력 (예: 협착방지봉 4EA, 4면 철망)"
                     />
                   </div>
+
                   <div>
-                    <label style={labelStyle}>기본 보양작업</label>
+                    <label style={labelStyle}>기본 보양작업 (표준 항목 클릭 선택 또는 직접 입력)</label>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', marginBottom: '5px' }}>
+                      {standardOptions.filter(o => o.category === 'PROTECTION' && o.isActive).map(opt => {
+                        const isSelected = editingCust.defaultProtection === opt.name;
+                        return (
+                          <button
+                            key={opt.id}
+                            type="button"
+                            onClick={() => {
+                              setEditingCust({ ...editingCust, defaultProtection: opt.name });
+                            }}
+                            style={{
+                              padding: '2px 7px',
+                              fontSize: '10.5px',
+                              borderRadius: '4px',
+                              border: isSelected ? '1px solid #059669' : '1px solid var(--border-color)',
+                              backgroundColor: isSelected ? 'rgba(5, 150, 105, 0.15)' : 'var(--bg-card)',
+                              color: isSelected ? '#047857' : 'var(--text-secondary)',
+                              fontWeight: isSelected ? 700 : 500,
+                              cursor: 'pointer'
+                            }}
+                          >
+                            {opt.name} {isSelected ? '✓' : ''}
+                          </button>
+                        );
+                      })}
+                    </div>
                     <input
                       type="text"
                       style={inputStyle}
                       value={editingCust.defaultProtection || ''}
                       onChange={e => setEditingCust({ ...editingCust, defaultProtection: e.target.value })}
-                      placeholder="예: 4면 철망"
+                      placeholder="예: 4면 철망 보양, 탑승구 사다리 보양"
                     />
                   </div>
                 </div>
@@ -1564,25 +1866,76 @@ export const Customers: React.FC = () => {
                   )}
                 </div>
 
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                   <div>
-                    <label style={labelStyle}>현장 전용 유상옵션</label>
+                    <label style={labelStyle}>현장 전용 유상옵션 (표준 항목 클릭 선택 또는 직접 입력)</label>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', marginBottom: '4px' }}>
+                      {standardOptions.filter(o => o.category === 'PAID' && o.isActive).map(opt => {
+                        const isSelected = splitOptions(editingSite.paidOptions).includes(opt.name);
+                        return (
+                          <button
+                            key={opt.id}
+                            type="button"
+                            onClick={() => {
+                              const updated = toggleOptionInString(editingSite.paidOptions || '', opt.name);
+                              setEditingSite({ ...editingSite, paidOptions: updated });
+                            }}
+                            style={{
+                              padding: '2px 6px',
+                              fontSize: '10px',
+                              borderRadius: '3px',
+                              border: isSelected ? '1px solid #2563eb' : '1px solid var(--border-color)',
+                              backgroundColor: isSelected ? 'rgba(37, 99, 235, 0.15)' : 'var(--bg-app)',
+                              color: isSelected ? '#1d4ed8' : 'var(--text-secondary)',
+                              fontWeight: isSelected ? 700 : 400,
+                              cursor: 'pointer'
+                            }}
+                          >
+                            {opt.name} {isSelected ? '✓' : ''}
+                          </button>
+                        );
+                      })}
+                    </div>
                     <input
                       type="text"
                       style={inputStyle}
                       value={editingSite.paidOptions || ''}
                       onChange={e => setEditingSite({ ...editingSite, paidOptions: e.target.value })}
-                      placeholder="비어있으면 기본값 상속"
+                      placeholder="비어있으면 기본값 상속, 또는 직접 입력"
                     />
                   </div>
                   <div>
                     <label style={labelStyle}>현장 전용 보양작업</label>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', marginBottom: '4px' }}>
+                      {standardOptions.filter(o => o.category === 'PROTECTION' && o.isActive).map(opt => {
+                        const isSelected = editingSite.protection === opt.name;
+                        return (
+                          <button
+                            key={opt.id}
+                            type="button"
+                            onClick={() => setEditingSite({ ...editingSite, protection: opt.name })}
+                            style={{
+                              padding: '2px 6px',
+                              fontSize: '10px',
+                              borderRadius: '3px',
+                              border: isSelected ? '1px solid #059669' : '1px solid var(--border-color)',
+                              backgroundColor: isSelected ? 'rgba(5, 150, 105, 0.15)' : 'var(--bg-app)',
+                              color: isSelected ? '#047857' : 'var(--text-secondary)',
+                              fontWeight: isSelected ? 700 : 400,
+                              cursor: 'pointer'
+                            }}
+                          >
+                            {opt.name} {isSelected ? '✓' : ''}
+                          </button>
+                        );
+                      })}
+                    </div>
                     <input
                       type="text"
                       style={inputStyle}
                       value={editingSite.protection || ''}
                       onChange={e => setEditingSite({ ...editingSite, protection: e.target.value })}
-                      placeholder="비어있으면 기본값 상속"
+                      placeholder="비어있으면 기본값 상속, 또는 직접 입력"
                     />
                   </div>
                 </div>
@@ -1706,6 +2059,653 @@ export const Customers: React.FC = () => {
               <button type="submit" className="btn-primary" style={{ padding: '5px 16px', fontSize: '12px' }}>저장</button>
             </div>
           </form>
+        </div>
+      )}
+
+      {/* ⑩ 고객사 기본 옵션 관리 모달 */}
+      {showCustOptionModal && activeCustomer && (
+        <div style={{
+          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+          backgroundColor: 'rgba(0,0,0,0.55)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1100,
+          padding: '20px'
+        }}>
+          <div className="card" style={{ width: '100%', maxWidth: '640px', maxHeight: '90vh', overflowY: 'auto', backgroundColor: 'var(--bg-card)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', borderBottom: '1px solid var(--border-color)', paddingBottom: '10px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <ShieldCheck size={18} color="#0070C0" />
+                <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 'bold' }}>
+                  고객사 기본 옵션 관리 - [{activeCustomer.name}]
+                </h3>
+              </div>
+              <button type="button" onClick={() => setShowCustOptionModal(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}><X size={18} /></button>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', fontSize: '12px' }}>
+              {/* 1. 기본 유상옵션 */}
+              <div style={{ border: '1px solid var(--border-color)', borderRadius: '6px', padding: '10px 12px', backgroundColor: 'var(--bg-app)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                  <label style={{ ...labelStyle, fontSize: '12px', fontWeight: 700, color: 'var(--text-main)', margin: 0 }}>
+                    기본 유상옵션 (표준 항목 토글 및 직접 입력)
+                  </label>
+                  <span style={{ fontSize: '10.5px', color: 'var(--text-muted)' }}>
+                    선택: {splitOptions(custOptionForm.defaultPaidOptions).length}개
+                  </span>
+                </div>
+                
+                {/* 표준 유상옵션 칩 목록 */}
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '5px', marginBottom: '8px' }}>
+                  {standardOptions.filter(o => o.category === 'PAID' && o.isActive).map(opt => {
+                    const isSelected = splitOptions(custOptionForm.defaultPaidOptions).includes(opt.name);
+                    return (
+                      <button
+                        key={opt.id}
+                        type="button"
+                        onClick={() => {
+                          const updated = toggleOptionInString(custOptionForm.defaultPaidOptions, opt.name);
+                          setCustOptionForm({ ...custOptionForm, defaultPaidOptions: updated });
+                        }}
+                        style={{
+                          padding: '3px 8px',
+                          fontSize: '11px',
+                          borderRadius: '4px',
+                          border: isSelected ? '1px solid #2563eb' : '1px solid var(--border-color)',
+                          backgroundColor: isSelected ? 'rgba(37, 99, 235, 0.15)' : 'var(--bg-card)',
+                          color: isSelected ? '#1d4ed8' : 'var(--text-main)',
+                          fontWeight: isSelected ? 700 : 500,
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '4px'
+                        }}
+                      >
+                        <span>{opt.name}</span>
+                        {opt.defaultPrice ? (
+                          <span style={{ fontSize: '10px', color: isSelected ? '#2563eb' : 'var(--text-muted)' }}>
+                            ({opt.defaultPrice.toLocaleString()}원)
+                          </span>
+                        ) : null}
+                        {isSelected && <Check size={12} />}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                  <label style={labelStyle}>유상옵션 설정값 (쉼표 구분 직접 편집 가능)</label>
+                  <input
+                    type="text"
+                    style={inputStyle}
+                    value={custOptionForm.defaultPaidOptions}
+                    onChange={e => setCustOptionForm({ ...custOptionForm, defaultPaidOptions: e.target.value })}
+                    placeholder="예: 협착방지봉 / 상부센서 (4EA), 4면 철망 설치"
+                  />
+                </div>
+              </div>
+
+              {/* 2. 기본 보양작업 */}
+              <div style={{ border: '1px solid var(--border-color)', borderRadius: '6px', padding: '10px 12px', backgroundColor: 'var(--bg-app)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                  <label style={{ ...labelStyle, fontSize: '12px', fontWeight: 700, color: 'var(--text-main)', margin: 0 }}>
+                    기본 보양작업
+                  </label>
+                  <span style={{ fontSize: '10.5px', color: 'var(--text-muted)' }}>
+                    현재: {custOptionForm.defaultProtection || '미지정'}
+                  </span>
+                </div>
+
+                {/* 표준 보양 칩 목록 */}
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '5px', marginBottom: '8px' }}>
+                  {standardOptions.filter(o => o.category === 'PROTECTION' && o.isActive).map(opt => {
+                    const isSelected = custOptionForm.defaultProtection === opt.name;
+                    return (
+                      <button
+                        key={opt.id}
+                        type="button"
+                        onClick={() => setCustOptionForm({ ...custOptionForm, defaultProtection: opt.name })}
+                        style={{
+                          padding: '3px 8px',
+                          fontSize: '11px',
+                          borderRadius: '4px',
+                          border: isSelected ? '1px solid #059669' : '1px solid var(--border-color)',
+                          backgroundColor: isSelected ? 'rgba(5, 150, 105, 0.15)' : 'var(--bg-card)',
+                          color: isSelected ? '#047857' : 'var(--text-main)',
+                          fontWeight: isSelected ? 700 : 500,
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '4px'
+                        }}
+                      >
+                        <span>{opt.name}</span>
+                        {isSelected && <Check size={12} />}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                  <label style={labelStyle}>보양작업 설정값</label>
+                  <input
+                    type="text"
+                    style={inputStyle}
+                    value={custOptionForm.defaultProtection}
+                    onChange={e => setCustOptionForm({ ...custOptionForm, defaultProtection: e.target.value })}
+                    placeholder="예: 4면 철망 보양, NONE"
+                  />
+                </div>
+              </div>
+
+              {/* 3. 기본 21대 기술스펙 */}
+              <div style={{ border: '1px solid var(--border-color)', borderRadius: '6px', padding: '10px 12px', backgroundColor: 'var(--bg-app)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <label style={{ ...labelStyle, fontSize: '12px', fontWeight: 700, color: 'var(--text-main)', margin: 0 }}>
+                      기본 21대 기술요구스펙
+                    </label>
+                    <span className="badge badge-secondary" style={{ fontSize: '10px' }}>
+                      {Object.values(custOptionForm.defaultCheckedSpecs || {}).filter(Boolean).length}개 적용
+                    </span>
+                  </div>
+                  <div style={{ display: 'flex', gap: '6px' }}>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const all: Record<string, boolean> = {};
+                        STANDARD_SPECS.forEach(s => { all[s.id] = true; });
+                        setCustOptionForm({ ...custOptionForm, defaultCheckedSpecs: all });
+                      }}
+                      style={{ fontSize: '10.5px', padding: '1px 6px', border: '1px solid var(--border-color)', borderRadius: '3px', backgroundColor: 'var(--bg-card)', cursor: 'pointer' }}
+                    >
+                      전체선택
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setCustOptionForm({ ...custOptionForm, defaultCheckedSpecs: {} })}
+                      style={{ fontSize: '10.5px', padding: '1px 6px', border: '1px solid var(--border-color)', borderRadius: '3px', backgroundColor: 'var(--bg-card)', cursor: 'pointer' }}
+                    >
+                      전체해제
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setShowCustOptionSpecs(!showCustOptionSpecs)}
+                      style={{ fontSize: '10.5px', padding: '1px 6px', border: '1px solid var(--border-color)', borderRadius: '3px', backgroundColor: 'var(--bg-card)', cursor: 'pointer' }}
+                    >
+                      {showCustOptionSpecs ? '접기' : '상세펼치기'}
+                    </button>
+                  </div>
+                </div>
+
+                {showCustOptionSpecs && (
+                  <div style={{ marginTop: '8px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '5px', maxHeight: '160px', overflowY: 'auto', borderTop: '1px solid var(--border-color)', paddingTop: '6px' }}>
+                    {STANDARD_SPECS.map(spec => {
+                      const isChecked = !!custOptionForm.defaultCheckedSpecs?.[spec.id];
+                      return (
+                        <label key={spec.id} style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '10.5px', cursor: 'pointer', padding: '2px 4px', borderRadius: '3px', backgroundColor: isChecked ? 'rgba(0, 112, 192, 0.08)' : 'transparent' }}>
+                          <input
+                            type="checkbox"
+                            checked={isChecked}
+                            onChange={e => {
+                              const nextSpecs = { ...(custOptionForm.defaultCheckedSpecs || {}) };
+                              if (e.target.checked) nextSpecs[spec.id] = true;
+                              else delete nextSpecs[spec.id];
+                              setCustOptionForm({ ...custOptionForm, defaultCheckedSpecs: nextSpecs });
+                            }}
+                          />
+                          <span style={{ color: isChecked ? '#0070C0' : 'var(--text-main)', fontWeight: isChecked ? 600 : 400 }}>{spec.label}</span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              {/* 4. 고객사 특이사항 메모 */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                <label style={labelStyle}>고객사 옵션/출고 특약 메모</label>
+                <textarea
+                  style={{ ...inputStyle, minHeight: '44px' }}
+                  value={custOptionForm.specialNotes}
+                  onChange={e => setCustOptionForm({ ...custOptionForm, specialNotes: e.target.value })}
+                  placeholder="예: 유상옵션 비용 월말 청구서 통합 합산, 한솔렌탈 배차건 등"
+                />
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '16px', paddingTop: '10px', borderTop: '1px solid var(--border-color)' }}>
+              <button type="button" className="btn-secondary" onClick={() => setShowCustOptionModal(false)} style={{ padding: '6px 14px', fontSize: '12px' }}>취소</button>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <button
+                  type="button"
+                  onClick={() => handleSaveCustOptions(false)}
+                  className="btn-secondary"
+                  style={{ padding: '6px 14px', fontSize: '12px', border: '1px solid var(--primary)', color: 'var(--primary)' }}
+                >
+                  고객사 기본값만 저장
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleSaveCustOptions(true)}
+                  className="btn-primary"
+                  style={{ padding: '6px 16px', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '5px' }}
+                >
+                  <Zap size={13} /> 저장 및 전체 현장 일괄 전파 ({customerSites.length}개소)
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ⑪ 현장 전용 옵션 관리 모달 */}
+      {showSiteOptionModal && editingSiteOption && (
+        <div style={{
+          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+          backgroundColor: 'rgba(0,0,0,0.55)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1100,
+          padding: '20px'
+        }}>
+          <div className="card" style={{ width: '100%', maxWidth: '600px', maxHeight: '90vh', overflowY: 'auto', backgroundColor: 'var(--bg-card)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', borderBottom: '1px solid var(--border-color)', paddingBottom: '10px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <MapPin size={18} color="#10b981" />
+                <div>
+                  <h3 style={{ margin: 0, fontSize: '15px', fontWeight: 'bold' }}>
+                    현장 전용 옵션 설정 - [{editingSiteOption.name}]
+                  </h3>
+                  <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{editingSiteOption.address}</span>
+                </div>
+              </div>
+              <button type="button" onClick={() => setShowSiteOptionModal(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}><X size={18} /></button>
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '8px' }}>
+              {activeCustomer && (
+                <button
+                  type="button"
+                  onClick={handleCopyDefaultsToSiteOptionForm}
+                  style={{
+                    padding: '3px 8px',
+                    fontSize: '11px',
+                    borderRadius: '4px',
+                    border: '1px solid #0070C0',
+                    backgroundColor: '#f0f9ff',
+                    color: '#0070C0',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px'
+                  }}
+                >
+                  <ShieldCheck size={12} /> 고객사 기본값 상속
+                </button>
+              )}
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', fontSize: '12px' }}>
+              {/* 1. 현장 전용 유상옵션 */}
+              <div style={{ border: '1px solid var(--border-color)', borderRadius: '6px', padding: '10px 12px', backgroundColor: 'var(--bg-app)' }}>
+                <label style={{ ...labelStyle, fontSize: '12px', fontWeight: 700, color: 'var(--text-main)', marginBottom: '6px' }}>
+                  현장 전용 유상옵션
+                </label>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', marginBottom: '6px' }}>
+                  {standardOptions.filter(o => o.category === 'PAID' && o.isActive).map(opt => {
+                    const isSelected = splitOptions(siteOptionForm.paidOptions).includes(opt.name);
+                    return (
+                      <button
+                        key={opt.id}
+                        type="button"
+                        onClick={() => {
+                          const updated = toggleOptionInString(siteOptionForm.paidOptions, opt.name);
+                          setSiteOptionForm({ ...siteOptionForm, paidOptions: updated });
+                        }}
+                        style={{
+                          padding: '2px 7px',
+                          fontSize: '10.5px',
+                          borderRadius: '4px',
+                          border: isSelected ? '1px solid #2563eb' : '1px solid var(--border-color)',
+                          backgroundColor: isSelected ? 'rgba(37, 99, 235, 0.15)' : 'var(--bg-card)',
+                          color: isSelected ? '#1d4ed8' : 'var(--text-main)',
+                          fontWeight: isSelected ? 700 : 500,
+                          cursor: 'pointer'
+                        }}
+                      >
+                        {opt.name} {isSelected ? '✓' : ''}
+                      </button>
+                    );
+                  })}
+                </div>
+                <input
+                  type="text"
+                  style={inputStyle}
+                  value={siteOptionForm.paidOptions}
+                  onChange={e => setSiteOptionForm({ ...siteOptionForm, paidOptions: e.target.value })}
+                  placeholder="비어있으면 고객사 기본값 상속"
+                />
+              </div>
+
+              {/* 2. 현장 전용 보양작업 */}
+              <div style={{ border: '1px solid var(--border-color)', borderRadius: '6px', padding: '10px 12px', backgroundColor: 'var(--bg-app)' }}>
+                <label style={{ ...labelStyle, fontSize: '12px', fontWeight: 700, color: 'var(--text-main)', marginBottom: '6px' }}>
+                  현장 전용 보양작업
+                </label>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', marginBottom: '6px' }}>
+                  {standardOptions.filter(o => o.category === 'PROTECTION' && o.isActive).map(opt => {
+                    const isSelected = siteOptionForm.protection === opt.name;
+                    return (
+                      <button
+                        key={opt.id}
+                        type="button"
+                        onClick={() => setSiteOptionForm({ ...siteOptionForm, protection: opt.name })}
+                        style={{
+                          padding: '2px 7px',
+                          fontSize: '10.5px',
+                          borderRadius: '4px',
+                          border: isSelected ? '1px solid #059669' : '1px solid var(--border-color)',
+                          backgroundColor: isSelected ? 'rgba(5, 150, 105, 0.15)' : 'var(--bg-card)',
+                          color: isSelected ? '#047857' : 'var(--text-main)',
+                          fontWeight: isSelected ? 700 : 500,
+                          cursor: 'pointer'
+                        }}
+                      >
+                        {opt.name} {isSelected ? '✓' : ''}
+                      </button>
+                    );
+                  })}
+                </div>
+                <input
+                  type="text"
+                  style={inputStyle}
+                  value={siteOptionForm.protection}
+                  onChange={e => setSiteOptionForm({ ...siteOptionForm, protection: e.target.value })}
+                  placeholder="비어있으면 고객사 기본값 상속"
+                />
+              </div>
+
+              {/* 3. 현장 전용 21대 스펙 */}
+              <div style={{ border: '1px solid var(--border-color)', borderRadius: '6px', padding: '10px 12px', backgroundColor: 'var(--bg-app)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <label style={{ ...labelStyle, fontSize: '12px', fontWeight: 700, color: 'var(--text-main)', margin: 0 }}>
+                      현장 21대 기술스펙
+                    </label>
+                    <span className="badge badge-secondary" style={{ fontSize: '10px' }}>
+                      {Object.values(siteOptionForm.checkedSpecs || {}).filter(Boolean).length}개 선택
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setShowSiteOptionSpecs(!showSiteOptionSpecs)}
+                    style={{ fontSize: '10.5px', padding: '1px 6px', border: '1px solid var(--border-color)', borderRadius: '3px', backgroundColor: 'var(--bg-card)', cursor: 'pointer' }}
+                  >
+                    {showSiteOptionSpecs ? '접기' : '펼치기'}
+                  </button>
+                </div>
+
+                {showSiteOptionSpecs && (
+                  <div style={{ marginTop: '8px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px', maxHeight: '150px', overflowY: 'auto', borderTop: '1px solid var(--border-color)', paddingTop: '6px' }}>
+                    {STANDARD_SPECS.map(spec => {
+                      const isChecked = !!siteOptionForm.checkedSpecs?.[spec.id];
+                      return (
+                        <label key={spec.id} style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '10.5px', cursor: 'pointer', padding: '2px 4px', borderRadius: '3px', backgroundColor: isChecked ? 'rgba(0, 112, 192, 0.08)' : 'transparent' }}>
+                          <input
+                            type="checkbox"
+                            checked={isChecked}
+                            onChange={e => {
+                              const nextSpecs = { ...(siteOptionForm.checkedSpecs || {}) };
+                              if (e.target.checked) nextSpecs[spec.id] = true;
+                              else delete nextSpecs[spec.id];
+                              setSiteOptionForm({ ...siteOptionForm, checkedSpecs: nextSpecs });
+                            }}
+                          />
+                          <span style={{ color: isChecked ? '#0070C0' : 'var(--text-main)' }}>{spec.label}</span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '14px', paddingTop: '10px', borderTop: '1px solid var(--border-color)' }}>
+              <button type="button" className="btn-secondary" onClick={() => setShowSiteOptionModal(false)} style={{ padding: '5px 14px', fontSize: '12px' }}>취소</button>
+              <button type="button" onClick={handleSaveSiteOptions} className="btn-primary" style={{ padding: '5px 18px', fontSize: '12px' }}>현장 옵션 저장</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ⑫ 전사 표준 옵션 마스터 CRUD 모달 */}
+      {showOptionMasterModal && (
+        <div style={{
+          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+          backgroundColor: 'rgba(0,0,0,0.55)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1100,
+          padding: '20px'
+        }}>
+          <div className="card" style={{ width: '100%', maxWidth: '780px', maxHeight: '90vh', overflowY: 'auto', backgroundColor: 'var(--bg-card)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', borderBottom: '1px solid var(--border-color)', paddingBottom: '10px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Sliders size={18} color="#0070C0" />
+                <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 'bold' }}>
+                  전사 표준 옵션 마스터 관리
+                </h3>
+              </div>
+              <button type="button" onClick={() => { setShowOptionMasterModal(false); setEditingOption(null); }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}><X size={18} /></button>
+            </div>
+
+            {/* 필터 탭 & 신규 등록 버튼 */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px', flexWrap: 'wrap', gap: '8px' }}>
+              <div style={{ display: 'flex', gap: '4px' }}>
+                {(['ALL', 'PAID', 'PROTECTION'] as const).map(cat => (
+                  <button
+                    key={cat}
+                    type="button"
+                    onClick={() => setOptionCategoryFilter(cat)}
+                    style={{
+                      padding: '4px 10px',
+                      fontSize: '11.5px',
+                      borderRadius: '4px',
+                      border: optionCategoryFilter === cat ? '1px solid #0070C0' : '1px solid var(--border-color)',
+                      backgroundColor: optionCategoryFilter === cat ? 'var(--primary-light)' : 'var(--bg-app)',
+                      color: optionCategoryFilter === cat ? 'var(--primary)' : 'var(--text-secondary)',
+                      fontWeight: optionCategoryFilter === cat ? 700 : 400,
+                      cursor: 'pointer'
+                    }}
+                  >
+                    {cat === 'ALL' ? '전체' : cat === 'PAID' ? '유상옵션' : '보양작업'}
+                  </button>
+                ))}
+              </div>
+
+              {editingOption === null && (
+                <div style={{ display: 'flex', gap: '6px' }}>
+                  <button
+                    type="button"
+                    onClick={() => handleOpenAddOption('PAID')}
+                    className="btn-primary"
+                    style={{ padding: '4px 10px', fontSize: '11.5px', display: 'flex', alignItems: 'center', gap: '4px' }}
+                  >
+                    <Plus size={12} /> 유상옵션 등록
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleOpenAddOption('PROTECTION')}
+                    className="btn-secondary"
+                    style={{ padding: '4px 10px', fontSize: '11.5px', display: 'flex', alignItems: 'center', gap: '4px', border: '1px solid #059669', color: '#059669' }}
+                  >
+                    <Plus size={12} /> 보양작업 등록
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* 등록/수정 서브 폼 */}
+            {editingOption !== null && (
+              <form onSubmit={handleSaveOptionSubmit} style={{ marginBottom: '14px', padding: '12px', backgroundColor: 'var(--bg-app)', borderRadius: '6px', border: '1px solid var(--primary)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                  <span style={{ fontWeight: 700, fontSize: '12.5px', color: 'var(--primary)' }}>
+                    {editingOption.id ? '옵션 항목 수정' : '신규 옵션 항목 등록'}
+                  </span>
+                  <button type="button" onClick={() => setEditingOption(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}><X size={14} /></button>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '120px 1.5fr 120px 80px', gap: '8px', marginBottom: '8px' }}>
+                  <div>
+                    <label style={labelStyle}>분류 *</label>
+                    <select
+                      style={inputStyle}
+                      value={editingOption.category || 'PAID'}
+                      onChange={e => setEditingOption({ ...editingOption, category: e.target.value as any })}
+                    >
+                      <option value="PAID">유상옵션</option>
+                      <option value="PROTECTION">보양작업</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label style={labelStyle}>옵션 품목명 *</label>
+                    <input
+                      type="text"
+                      style={inputStyle}
+                      value={editingOption.name || ''}
+                      onChange={e => setEditingOption({ ...editingOption, name: e.target.value })}
+                      placeholder="예: 협착방지봉 / 상부센서 (4EA)"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label style={labelStyle}>기본 단가 (원)</label>
+                    <input
+                      type="number"
+                      style={inputStyle}
+                      value={editingOption.defaultPrice ?? 0}
+                      onChange={e => setEditingOption({ ...editingOption, defaultPrice: Number(e.target.value) })}
+                      placeholder="50000"
+                    />
+                  </div>
+                  <div>
+                    <label style={labelStyle}>단위</label>
+                    <select
+                      style={inputStyle}
+                      value={editingOption.unit || '월'}
+                      onChange={e => setEditingOption({ ...editingOption, unit: e.target.value })}
+                    >
+                      <option value="월">월</option>
+                      <option value="건">건</option>
+                      <option value="대">대</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 100px', gap: '8px', marginBottom: '8px' }}>
+                  <div>
+                    <label style={labelStyle}>규격 및 설명</label>
+                    <input
+                      type="text"
+                      style={inputStyle}
+                      value={editingOption.description || ''}
+                      onChange={e => setEditingOption({ ...editingOption, description: e.target.value })}
+                      placeholder="예: 상단 4개소 감지센서 및 비상정지 연동"
+                    />
+                  </div>
+                  <div>
+                    <label style={labelStyle}>사용 여부</label>
+                    <select
+                      style={inputStyle}
+                      value={editingOption.isActive !== false ? 'true' : 'false'}
+                      onChange={e => setEditingOption({ ...editingOption, isActive: e.target.value === 'true' })}
+                    >
+                      <option value="true">사용중</option>
+                      <option value="false">미사용</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '6px' }}>
+                  <button type="button" className="btn-secondary" onClick={() => setEditingOption(null)} style={{ padding: '4px 12px', fontSize: '11.5px' }}>취소</button>
+                  <button type="submit" className="btn-primary" style={{ padding: '4px 16px', fontSize: '11.5px' }}>저장</button>
+                </div>
+              </form>
+            )}
+
+            {/* 표준 옵션 테이블 */}
+            <div style={{ overflowX: 'auto', border: '1px solid var(--border-color)', borderRadius: '6px' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '11.5px' }}>
+                <thead>
+                  <tr style={{ backgroundColor: 'var(--bg-app)', borderBottom: '1px solid var(--border-color)', color: 'var(--text-secondary)' }}>
+                    <th style={{ padding: '6px 8px', textAlign: 'left', whiteSpace: 'nowrap' }}>분류</th>
+                    <th style={{ padding: '6px 8px', textAlign: 'left', whiteSpace: 'nowrap' }}>옵션 품목명</th>
+                    <th style={{ padding: '6px 8px', textAlign: 'right', whiteSpace: 'nowrap' }}>기본 단가</th>
+                    <th style={{ padding: '6px 8px', textAlign: 'center', whiteSpace: 'nowrap' }}>단위</th>
+                    <th style={{ padding: '6px 8px', textAlign: 'left' }}>규격 / 설명</th>
+                    <th style={{ padding: '6px 8px', textAlign: 'center', whiteSpace: 'nowrap' }}>상태</th>
+                    <th style={{ padding: '6px 8px', textAlign: 'center', whiteSpace: 'nowrap' }}>관리</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {standardOptions
+                    .filter(o => optionCategoryFilter === 'ALL' || o.category === optionCategoryFilter)
+                    .map(opt => (
+                      <tr key={opt.id} style={{ borderBottom: '1px solid var(--border-color)', opacity: opt.isActive ? 1 : 0.5 }}>
+                        <td style={{ padding: '6px 8px', whiteSpace: 'nowrap' }}>
+                          <span style={{
+                            padding: '1px 6px',
+                            borderRadius: '3px',
+                            fontSize: '10px',
+                            fontWeight: 700,
+                            backgroundColor: opt.category === 'PAID' ? 'rgba(59, 130, 246, 0.12)' : 'rgba(16, 185, 129, 0.12)',
+                            color: opt.category === 'PAID' ? '#2563eb' : '#059669',
+                            border: opt.category === 'PAID' ? '1px solid rgba(59, 130, 246, 0.3)' : '1px solid rgba(16, 185, 129, 0.3)'
+                          }}>
+                            {opt.category === 'PAID' ? '유상옵션' : '보양작업'}
+                          </span>
+                        </td>
+                        <td style={{ padding: '6px 8px', fontWeight: 600, color: 'var(--text-main)', whiteSpace: 'nowrap' }}>
+                          {opt.name}
+                        </td>
+                        <td style={{ padding: '6px 8px', textAlign: 'right', fontWeight: 700, color: opt.defaultPrice ? 'var(--text-main)' : 'var(--text-muted)', whiteSpace: 'nowrap' }}>
+                          {opt.defaultPrice ? `${opt.defaultPrice.toLocaleString()}원` : '-'}
+                        </td>
+                        <td style={{ padding: '6px 8px', textAlign: 'center', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
+                          {opt.unit || '월'}
+                        </td>
+                        <td style={{ padding: '6px 8px', color: 'var(--text-secondary)', fontSize: '11px' }}>
+                          {opt.description || '-'}
+                        </td>
+                        <td style={{ padding: '6px 8px', textAlign: 'center', whiteSpace: 'nowrap' }}>
+                          <span className={`badge ${opt.isActive ? 'badge-success' : 'badge-secondary'}`} style={{ fontSize: '9.5px' }}>
+                            {opt.isActive ? '사용중' : '미사용'}
+                          </span>
+                        </td>
+                        <td style={{ padding: '6px 8px', textAlign: 'center', whiteSpace: 'nowrap' }}>
+                          <div style={{ display: 'flex', gap: '4px', justifyContent: 'center' }}>
+                            <button
+                              type="button"
+                              className="btn-secondary"
+                              onClick={() => handleOpenEditOption(opt)}
+                              style={{ padding: '1px 5px', fontSize: '10.5px' }}
+                            >
+                              수정
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteOption(opt)}
+                              style={{ padding: '1px 5px', fontSize: '10.5px', border: '1px solid var(--border-color)', borderRadius: '3px', backgroundColor: 'transparent', color: 'var(--danger)', cursor: 'pointer' }}
+                            >
+                              삭제
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                </tbody>
+              </table>
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '14px', paddingTop: '10px', borderTop: '1px solid var(--border-color)' }}>
+              <button type="button" className="btn-secondary" onClick={() => { setShowOptionMasterModal(false); setEditingOption(null); }} style={{ padding: '5px 16px', fontSize: '12px' }}>
+                닫기
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

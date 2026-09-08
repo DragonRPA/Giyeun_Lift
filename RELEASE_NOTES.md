@@ -1,3 +1,23 @@
+## [v1.11.2.Build.2] - 2026-09-08 23:56
+
+### 🔐 [에이전트 배지 권한 기반 계정별 노출 제어 신설]
+- **`agent_badge` 권한 ID 전사 SSOT 신설 (헌장 1.1, 2.1, 3.3, 5.3)**:
+  - 기존에는 모든 직원 화면 상단에 `🔴 에이전트 미실행` 배지가 일괄 노출되어, 로컬 프린터·파일변환 업무가 없는 영업팀·관리부·경영진에게 불필요한 오류 경보를 유발하던 구조 완전 해소.
+  - `src/config/menu_config.ts` SSOT에 `agent_badge: '에이전트 배지 (로컬 에이전트 연동)'` 메뉴 항목 및 `'agent'`, `'agent-badge'`, `'agentbadge'` 별칭 등록.
+- **직무 템플릿별 기본값 체계화 (`src/config/role_templates.ts`)**:
+  - **출고팀 (`LOGISTICS_TEMPLATE`)**: `canView: true` — 출고요청서·배차전표 로컬 프린트 필수
+  - **AS/정비팀 (`MECHANIC_TEMPLATE`)**: `canView: true` — 출고검수 서류 로컬 프린트 필수
+  - **관리부 (`ACCOUNTING_TEMPLATE`)**: `canView: false` — 로컬 출력 없음, 배지 비노출
+  - **영업부 (`SALES_TEMPLATE`)**: `canView: false` — 로컬 출력 없음, 배지 비노출
+  - **공통 기본값 (`BASE_COMMON_PERMISSIONS`)**: `canView: false` — Deny-by-Default 엄격 차단
+- **배지 컴포넌트 권한 분기 (`src/components/AgentHeaderBadge.tsx`)**:
+  - `hasPermission('agent_badge', 'view')` 체크 도입. 권한 없는 계정은 컴포넌트 전체 `null` 반환 (DOM 미생성, 헤더 공간 낭비 없음).
+  - 권한 관리 화면(`사용자 및 권한 설정`)에서 특정 계정에 한해 수동 ON/OFF 개인 예외 설정 즉시 적용 가능.
+- **검증 결과**:
+  - TypeScript 전체 빌드 (`cmd /c "npm run build"`): **0 Error 정상 완결 (`built in 1.23s`)**
+
+---
+
 ## [v1.11.2.Build.1] - 2026-09-08 23:05
 
 ### 📱 [웹앱 출고팀 계약 장비할당 신설 및 하단 5대 정예 탭 최적화]

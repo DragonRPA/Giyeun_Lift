@@ -12,7 +12,7 @@ interface Props {
 }
 
 export const AgentHeaderBadge: React.FC<Props> = ({ currentUser }) => {
-  const { googleConfigs } = useApp();
+  const { googleConfigs, hasPermission } = useApp();
   const [agentStatus, setAgentStatus] = useState<'ONLINE' | 'OFFLINE'>('OFFLINE');
   const [agentVersion, setAgentVersion] = useState<string>('');
   const [agentCallsign, setAgentCallsign] = useState<string>('');
@@ -21,6 +21,9 @@ export const AgentHeaderBadge: React.FC<Props> = ({ currentUser }) => {
   const [isLaunching, setIsLaunching] = useState(false);
   const [launchMsg, setLaunchMsg] = useState('');
   const [isOpenMenu, setIsOpenMenu] = useState(false);
+
+  // 에이전트 배지 권한 없는 직무는 즉시 비노출 (영업·관리·경영 등)
+  const canShowAgentBadge = hasPermission('agent_badge', 'view');
 
   // 미러링 상태
   const [mirrorProgress, setMirrorProgress] = useState<MirrorProgressState>({
@@ -212,6 +215,8 @@ export const AgentHeaderBadge: React.FC<Props> = ({ currentUser }) => {
   const shortExpected = toShortVer(EXPECTED_AGENT_VERSION);
 
   return (
+    // 에이전트 배지 권한 없는 직무(영업·관리·경영 등)는 전체 비노출
+    canShowAgentBadge ? (
     <div ref={menuRef} style={{ position: 'relative', display: 'inline-block' }}>
       {/* 🟢 최신 정상 상태 배지 (콜사인 생략 & 약식 버전 & 미러링 진행 중 동적 표시) */}
       {isLatest && (
@@ -607,5 +612,6 @@ export const AgentHeaderBadge: React.FC<Props> = ({ currentUser }) => {
         </div>
       )}
     </div>
+    ) : null
   );
 };

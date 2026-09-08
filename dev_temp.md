@@ -1,6 +1,28 @@
 # 개발 요구사항 임시 기록 (dev_temp.md)
 
-## [완료] 웹앱 출고팀(OUTBOUND) 장비할당 신설 및 하단 5대 정예 탭 레이아웃 최적화 (v1.11.2.Build.1)
+## [완료] 에이전트 배지 권한 기반 계정별 노출 제어 신설 (v1.11.2.Build.2)
+- **요구사항**: "에이전트 배지 표시도 권한으로 정의해줘. 로그인 계정별로 관리하는게 좋겠어"
+- **적용 목적 (헌장 1.1, 2.1, 3.1, 3.3)**:
+  - 로컬 프린터 출력 또는 파일 변환 업무가 없는 직무(영업부, 관리부, 경영진)에게 `🔴 에이전트 미실행` 배지가 표시되어 불필요한 불안감 및 오류 인식을 유발하던 구조 개선.
+  - 권한 시스템(menuId 기반 SSOT)에 `agent_badge` 메뉴 ID를 신설하고, 직무 템플릿 및 계정별 개인 오버라이드로 배지 노출을 완전 제어.
+- **개편 내역**:
+  1. **메뉴 ID 신설 (`src/config/menu_config.ts`)**:
+     - `grp_inout` 그룹에 `agent_badge: '에이전트 배지 (로컬 에이전트 연동)'` 항목 추가.
+     - CANONICAL_MENU_ALIASES에 `'agent'`, `'agent-badge'`, `'agentbadge'` 별칭 등록.
+  2. **직무 템플릿 기본값 정의 (`src/config/role_templates.ts`)**:
+     - `LOGISTICS_TEMPLATE` (출고팀): `agent_badge: { canView: true }` — 출고 서류 프린트 필수
+     - `MECHANIC_TEMPLATE` (AS/정비팀): `agent_badge: { canView: true }` — 검수 서류 프린트 필수
+     - `ACCOUNTING_TEMPLATE` (관리부): `agent_badge: { canView: false }` — 로컬 출력 없음
+     - `SALES_TEMPLATE` (영업부): `agent_badge: { canView: false }` — 로컬 출력 없음
+     - `BASE_COMMON_PERMISSIONS` (기본): `agent_badge: { canView: false }` — Deny-by-Default
+  3. **배지 컴포넌트 권한 분기 (`src/components/AgentHeaderBadge.tsx`)**:
+     - `hasPermission('agent_badge', 'view')` 체크 추가.
+     - 권한 없는 계정은 컴포넌트 전체 `null` 반환 (DOM 미생성).
+     - 권한 관리 화면(`사용자 및 권한 설정`)에서 계정별 수동 예외 ON/OFF 가능.
+- **검증 결과**:
+  - TypeScript 전체 빌드 (`cmd /c "npm run build"`): **0 Error 정상 완결 (`built in 1.23s`)**
+
+
 - **요구사항**:
   - "웹앱 출고팀 메뉴에서 장비할당이 추가되어야 할것 같은데 하단의 버튼 메뉴가 현재 4개에서 5개로 증가될것 같아. 이 문제응 해결하고, 웹앱 기능추가에 필요한 에이전트 판단해서 협엽해"
 - **적용 목적 (헌장 1.1 최대 편익, 1.2 자산 운용 라이프사이클, 2.1 출고/자산 부서 R&R 준수, 3.1 무수식어 건조 표준, 3.2 줄바꿈 방지, 3.4 상하 수직 스택)**:

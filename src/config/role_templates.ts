@@ -12,7 +12,9 @@ export type PermissionRuleMap = Record<string, MenuPermissionRule>;
 const BASE_COMMON_PERMISSIONS: PermissionRuleMap = {
   dashboard: { canView: true, canSave: false },
   leave_ot: { canView: true, canSave: true },
-  vehicle_log: { canView: true, canSave: true }
+  vehicle_log: { canView: true, canSave: true },
+  // 에이전트 배지: 기본 비노출 (프린터·파일변환 직무만 ON)
+  agent_badge: { canView: false, canSave: false }
 };
 
 // 2. 관리부 (경영 / 회계 / 인사 / 자금) - DEPT-0000002
@@ -36,7 +38,9 @@ export const ACCOUNTING_TEMPLATE: PermissionRuleMap = {
   contract: { canView: true, canSave: false },
   product: { canView: true, canSave: false },
   asset: { canView: true, canSave: false },
-  rent_asset: { canView: true, canSave: false }
+  rent_asset: { canView: true, canSave: false },
+  // 에이전트 배지: 관리부는 로컬 출력 없음 → 비노출
+  agent_badge: { canView: false, canSave: false }
 };
 
 // 3. 영업부 (고객 / 계약 / 출고의뢰 / AS의뢰) - DEPT-0000003
@@ -53,7 +57,9 @@ export const SALES_TEMPLATE: PermissionRuleMap = {
   billing: { canView: true, canSave: false },
   product: { canView: true, canSave: false },
   asset: { canView: true, canSave: false },
-  rent_asset: { canView: true, canSave: false }
+  rent_asset: { canView: true, canSave: false },
+  // 에이전트 배지: 영업부는 로컬 출력 없음 → 비노출
+  agent_badge: { canView: false, canSave: false }
 };
 
 // 4. 출고팀 (배차 / 운송 / 출고검수) - DEPT-0000004
@@ -64,11 +70,14 @@ export const LOGISTICS_TEMPLATE: PermissionRuleMap = {
   dispatch_assign: { canView: true, canSave: true },
   outbound_inspections: { canView: true, canSave: true },
   asset_inout_history: { canView: true, canSave: true },
+  print_queue_monitor: { canView: true, canSave: true },
   // 열람만 허용
   smart_dispatch4: { canView: true, canSave: false },
   product: { canView: true, canSave: false },
   asset: { canView: true, canSave: false },
-  rent_asset: { canView: true, canSave: false }
+  rent_asset: { canView: true, canSave: false },
+  // 에이전트 배지: 출고팀은 서류 프린트 필수 → 노출
+  agent_badge: { canView: true, canSave: false }
 };
 
 // 5. AS팀 (정비 / 현장AS / 소모품수불 / 점검표) - DEPT-0000005
@@ -81,9 +90,12 @@ export const MECHANIC_TEMPLATE: PermissionRuleMap = {
   smart_as_request: { canView: true, canSave: true },
   outbound_inspections: { canView: true, canSave: true },
   asset_inout_history: { canView: true, canSave: true },
+  print_queue_monitor: { canView: true, canSave: true },
   // 열람만 허용
   asset: { canView: true, canSave: false },
-  product: { canView: true, canSave: false }
+  product: { canView: true, canSave: false },
+  // 에이전트 배지: AS팀은 출고검수 서류 프린트 필수 → 노출
+  agent_badge: { canView: true, canSave: false }
 };
 
 /**

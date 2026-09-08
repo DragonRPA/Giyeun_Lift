@@ -1,3 +1,23 @@
+## [v1.11.3.Build.1] - 2026-09-09 00:05
+
+### 🔗 [권한 스키마 연동 및 초기DB 업로드 기능 개편]
+- **스키마 구조 변동 없음 (MenuPermission 인터페이스 그대로)**:
+  - `agent_badge`는 기존 `menuId: string` 컬럼에 값으로 저장되므로 Supabase 테이블 DDL 변경 불필요.
+  - `users_permissions.tsx`의 Auto Backfill useEffect가 `SYSTEM_MENU_CONFIG`를 SSOT로 사용하므로, `agent_badge` 항목이 UI 진입 시 자동으로 직무 템플릿 기본값으로 생성됨.
+- **`permissionMigrationService.ts` 신규 함수 추가**:
+  - `generateDefaultPermissionsForAllUsers()`: 현재 DB에 등록된 전 임직원의 모든 메뉴에 대해 `role_templates.ts` 직무 템플릿 기준으로 권한을 일괄 자동 생성 후 Supabase + 로컬 DB에 적재.
+  - 기존 개인 오버라이드가 있는 항목은 덮어쓰지 않는 merge 방식 적용.
+  - `agent_badge` 포함 신규 menuId가 추가될 때마다 `SYSTEM_MENU_CONFIG` SSOT 기반으로 자동 반영됨.
+  - import 순서 정비: 파일 상단에 `getAllSystemMenuIds`, `normalizeMenuId`, `getRoleTemplatePermission`, `createMenuPermission` 임포트 통합.
+- **`InitialDbUploader.tsx` 권한 섹션 개편**:
+  - `generateDefaultPermissionsForAllUsers`, `GenerateDefaultPermsResult` 신규 import 추가.
+  - `handleGenerateDefaultPermissions()` 핸들러 신설 — 진행 메시지(state) + 에러모달 + 성공토스트 + `fullRefreshFromServer()` 완전 연동.
+  - 권한 섹션 우상단 버튼군에 `[직무 템플릿 권한 자동 생성]` 버튼 추가 (초록 테마, 로딩 스피너 포함).
+  - 파일 선택 플레이스홀더 텍스트를 동적 날짜(`new Date()...slice(0,10)`)로 교체 (하드코딩 날짜 제거).
+- **검증**: TypeScript 전체 빌드 0 Error (`built in 2.32s`)
+
+---
+
 ## [v1.11.2.Build.2] - 2026-09-08 23:56
 
 ### 🔐 [에이전트 배지 권한 기반 계정별 노출 제어 신설]

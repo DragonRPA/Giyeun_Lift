@@ -35,7 +35,9 @@ import {
   parsePermissionJson,
   ingestPermissionsToDatabase,
   generatePermissionExportPayload,
-  ParsedPermissionData
+  generateDefaultPermissionsForAllUsers,
+  ParsedPermissionData,
+  GenerateDefaultPermsResult
 } from '../services/permissionMigrationService';
 import { db } from '../services/db';
 import * as XLSX from 'xlsx';
@@ -230,6 +232,36 @@ export const InitialDbUploader: React.FC = () => {
       showSuccessToast?.(`현재 권한 데이터 백업 다운로드 완료 (임직원 ${currentUsers.length}명, 권한 ${currentPerms.length}건)`);
     } catch (err: any) {
       showErrorModal?.(`권한 백업 생성 오류: ${err.message}`);
+    }
+  };
+
+  // ── 직무 템플릿 기반 전 임직원 권한 일괄 자동 생성 ──
+  const [isGeneratingDefaultPerms, setIsGeneratingDefaultPerms] = useState(false);
+  const [generatePermsMsg, setGeneratePermsMsg] = useState('');
+
+  const handleGenerateDefaultPermissions = async () => {
+    const currentUsersCount = (users || db.users || []).length;
+    if (currentUsersCount === 0) {
+      showErrorModal?.('생성할 임직원 데이터가 없습니다. 먼저 사용자 데이터를 업로드하세요.');
+      return;
+    }
+    setIsGeneratingDefaultPerms(true);
+    setGeneratePermsMsg('직무 템플릿 기준 권한 자동 생성 시작...');
+    try {
+      const result = await generateDefaultPermissionsForAllUsers((step, total, msg) => {
+        setGeneratePermsMsg(msg);
+      });
+      if (result.success) {
+        showSuccessToast?.(result.message);
+        await fullRefreshFromServer();
+      } else {
+        showErrorModal?.(result.message);
+      }
+    } catch (err: any) {
+      showErrorModal?.(`권한 자동 생성 오류: ${err.message || err}`);
+    } finally {
+      setIsGeneratingDefaultPerms(false);
+      setGeneratePermsMsg('');
     }
   };
 
@@ -2107,7 +2139,27 @@ export const InitialDbUploader: React.FC = () => {
               </div>
 
               {/* 우상단 액션 버튼군 */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                {/* 직무 템플릿 권한 자동 생성 버튼 (신규) */}
+                <button
+                  type="button"
+                  onClick={handleGenerateDefaultPermissions}
+                  disabled={isGeneratingDefaultPerms || isPermIngesting}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: '6px',
+                    padding: '8px 14px', borderRadius: '6px',
+                    border: '1px solid #059669', backgroundColor: isGeneratingDefaultPerms ? '#d1fae5' : '#ecfdf5',
+                    color: '#065f46', fontSize: '13px', fontWeight: 600,
+                    cursor: (isGeneratingDefaultPerms || isPermIngesting) ? 'not-allowed' : 'pointer',
+                    whiteSpace: 'nowrap',
+                    opacity: (isGeneratingDefaultPerms || isPermIngesting) ? 0.7 : 1
+                  }}
+                >
+                  {isGeneratingDefaultPerms
+                    ? <><RefreshCw size={14} className="animate-spin" /> {generatePermsMsg || '권한 자동 생성 중...'}</>
+                    : <><ShieldCheck size={14} /> 직무 템플릿 권한 자동 생성</>
+                  }
+                </button>
                 <button
                   type="button"
                   onClick={handleExportCurrentPermissions}
@@ -2153,7 +2205,7 @@ export const InitialDbUploader: React.FC = () => {
               </button>
 
               <span style={{ fontSize: '13px', color: permFileName ? 'var(--text-main)' : 'var(--text-muted)', fontWeight: permFileName ? 600 : 400, whiteSpace: 'nowrap' }}>
-                {permFileName || '선택된 파일 없음 (예: 사용자권한_마스터_20260908.json)'}
+                {permFileName || `선택된 파일 없음 (예: 사용자권한_마스터_${new Date().toISOString().slice(0,10).replace(/-/g,'')}.json)`}
               </span>
 
               {isPermParsing && (
@@ -2165,6 +2217,7 @@ export const InitialDbUploader: React.FC = () => {
 
             {/* 파싱 결과 프리뷰 및 일괄 동기화 */}
             {parsedPermData && (
+
               <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                 {/* 4대 요약 지표 */}
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '8px' }}>

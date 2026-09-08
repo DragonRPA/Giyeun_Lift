@@ -1,5 +1,7 @@
 // src/services/permissionMigrationService.ts
-import { supabase, db, MenuPermission, User, Department } from './db';
+import { supabase, db, MenuPermission, User, Department, createMenuPermission } from './db';
+import { getAllSystemMenuIds, normalizeMenuId } from '../config/menu_config';
+import { getRoleTemplatePermission } from '../config/role_templates';
 
 export interface UserPermissionSummary {
   userId: string;
@@ -315,4 +317,101 @@ export function generatePermissionExportPayload(
     users: structuredUsers,
     rawPermissions: currentPermissions
   };
+}
+
+// ────────────────────────────────────────────────────────────
+// 직무 템플릿 기반 전 임직원 권한 일괄 자동 생성 (신규 시스템 초기 세팅용)
+// ────────────────────────────────────────────────────────────
+
+export interface GenerateDefaultPermsResult {
+  success: boolean;
+  count: number;
+  userCount: number;
+  message: string;
+}
+
+/**
+ * 현재 DB의 전 임직원을 직무 템플릿(role_templates.ts)으로 순회하여
+ * 모든 SYSTEM_MENU_CONFIG 메뉴 ID에 대한 기본 권한을 일괄 생성 후 DB에 적재.
+ * - 이미 개인 오버라이드가 있는 항목은 덮어쓰지 않음 (merge 방식).
+ * - agent_badge 포함 신규 추가된 menuId도 자동 반영됨 (SYSTEM_MENU_CONFIG SSOT 기반).
+ */
+export async function generateDefaultPermissionsForAllUsers(
+  onProgress?: (step: number, total: number, message: string) => void
+): Promise<GenerateDefaultPermsResult> {
+  const currentUsers: User[] = db.users || [];
+  if (currentUsers.length === 0) {
+    throw new Error('생성할 임직원 데이터가 없습니다. 먼저 사용자 데이터를 업로드하세요.');
+  }
+
+  const allMenuIds = getAllSystemMenuIds();
+  const nowIso = new Date().toISOString();
+  const total = currentUsers.length * allMenuIds.length;
+  let step = 0;
+
+  onProgress?.(0, total, `전 임직원 ${currentUsers.length}명 × ${allMenuIds.length}개 메뉴 권한 자동 생성 시작...`);
+
+  // 기존 개인 오버라이드 보존을 위한 맵
+  const existingMap = new Map<string, MenuPermission>();
+  (db.permissions || []).forEach(p => {
+    existingMap.set(`${p.userId}__${normalizeMenuId(p.menuId)}`, p);
+  });
+
+  const generatedPerms: MenuPermission[] = [];
+
+  for (const user of currentUsers) {
+    const isAdmin = user.role === 'ADMIN' || user.loginId === 'admin';
+    const dept = user.departmentId || user.department || '';
+
+    for (const menuId of allMenuIds) {
+      step++;
+      const normId = normalizeMenuId(menuId);
+      const key = `${user.id}__${normId}`;
+
+      // 이미 개인 오버라이드가 있으면 건너뜀 (기존 설정 존중)
+      if (existingMap.has(key)) {
+        generatedPerms.push(existingMap.get(key)!);
+        continue;
+      }
+
+      const canView = isAdmin ? true : (getRoleTemplatePermission(user.role, dept, normId, 'view') ?? false);
+      const canSave  = isAdmin ? true : (getRoleTemplatePermission(user.role, dept, normId, 'save') ?? false);
+
+      const perm = createMenuPermission(user.id, normId, canView, canSave);
+      generatedPerms.push({ ...perm, createdAt: nowIso, updatedAt: nowIso });
+      existingMap.set(key, generatedPerms[generatedPerms.length - 1]);
+
+      if (step % 50 === 0) {
+        onProgress?.(step, total, `권한 생성 중 (${step}/${total})...`);
+      }
+    }
+  }
+
+  onProgress?.(total, total, 'Supabase 업서트 및 로컬 DB 동기화 중...');
+
+  // Supabase 업서트
+  if (supabase) {
+    const BATCH_SIZE = 100;
+    for (let i = 0; i < generatedPerms.length; i += BATCH_SIZE) {
+      const chunk = generatedPerms.slice(i, i + BATCH_SIZE).map(p => ({
+        id: p.id,
+        userId: p.userId,
+        menuId: p.menuId,
+        canView: p.canView,
+        canSave: p.canSave,
+        role: (p as any).role || 'USER',
+        createdAt: p.createdAt || nowIso,
+        updatedAt: nowIso
+      }));
+      const { error } = await supabase.from('permissions').upsert(chunk, { onConflict: 'id' });
+      if (error) throw new Error(`Supabase 권한 업서트 실패: ${error.message}`);
+    }
+  }
+
+  // 로컬 DB 동기화
+  db.permissions = generatedPerms;
+  await db.awaitPendingWrites();
+
+  const msg = `임직원 ${currentUsers.length}명의 전체 메뉴(${allMenuIds.length}개) 권한을 직무 템플릿 기준으로 자동 생성 완료 (총 ${generatedPerms.length}건).`;
+  return { success: true, count: generatedPerms.length, userCount: currentUsers.length, message: msg };
 }

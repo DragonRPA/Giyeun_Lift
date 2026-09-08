@@ -3016,7 +3016,7 @@ export function analyzeDispatchHistoryForCustomerDefaults(
     }
     custPosts.forEach(p => {
       if (p.paidOptions) {
-        p.paidOptions.split(/[,|\/]/).map(s => s.trim()).filter(Boolean).forEach(o => combinedPaidOpts.add(o));
+        (typeof p.paidOptions === 'string' ? p.paidOptions : String(p.paidOptions)).split(/[,|\/]/).map(s => s.trim()).filter(Boolean).forEach(o => combinedPaidOpts.add(o));
       }
     });
     const defaultPaidOptions = Array.from(combinedPaidOpts).join(', ');

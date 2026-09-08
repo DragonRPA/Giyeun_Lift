@@ -342,10 +342,13 @@ export const SmartDispatch4: React.FC = () => {
   // ── 업무 유형 (단일 맥락 선택, 🌟 기본값 null: 아무것도 자동 선택되지 않음) ──
   const [selectedContext, setSelectedContext] = useState<CallContext | null>(null);
 
-  // 🏷️ 옵션 분할 헬퍼 (천단위 금액 쉼표 30,000원 및 옵션명 내부 슬래시 '협착방지봉 / 상부센서' 보존)
-  const parseOptionString = (str?: string): string[] => {
+  // 🏷️ 옵션 분할 헬퍼 (천단위 금액 쉼표 30,000원 및 옵션명 내부 슬래시 '협착방지봉 / 상부센서' 보존 & 배열/비문자열 원천 방어)
+  const parseOptionString = (str?: any): string[] => {
     if (!str) return [];
-    return str
+    const normalized = Array.isArray(str)
+      ? str.flat().map((s: any) => String(s).trim()).filter(Boolean).join(', ')
+      : (typeof str === 'string' ? str : String(str));
+    return normalized
       .split(/(?:,(?!\d{3}(?:[^\d]|$))|[;\n]+)/)
       .map(s => s.trim())
       .filter(s => Boolean(s) && s !== '-' && s !== 'NONE' && s !== '없음');

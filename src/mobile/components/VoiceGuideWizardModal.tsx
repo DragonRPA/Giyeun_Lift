@@ -656,8 +656,8 @@ export const VoiceGuideWizardModal: React.FC<VoiceGuideWizardModalProps> = ({
       const yn = parseYesNoVoiceInput(text);
       if (yn === true) {
         // "예" ➔ 과거 옵션 100% 자동 상속!
-        if (pendingSite?.paidOptions) setPaidOptions(pendingSite.paidOptions);
-        if (pendingSite?.protection) setProtection(pendingSite.protection);
+        if (pendingSite?.paidOptions) setPaidOptions(typeof pendingSite.paidOptions === 'string' ? pendingSite.paidOptions : (Array.isArray(pendingSite.paidOptions) ? (pendingSite.paidOptions as any[]).join(', ') : String(pendingSite.paidOptions)));
+        if (pendingSite?.protection) setProtection(typeof pendingSite.protection === 'string' ? pendingSite.protection : (Array.isArray(pendingSite.protection) ? (pendingSite.protection as any[]).join(', ') : String(pendingSite.protection)));
         if (pendingSite?.checkedSpecs) setCheckedSpecs(pendingSite.checkedSpecs);
         
         setSiteSubStep('SITE_SELECT');

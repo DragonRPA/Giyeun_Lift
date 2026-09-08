@@ -1,3 +1,24 @@
+## [v1.10.0.Build.30] - 2026-09-08 19:35
+
+### 🛡️ [e.paidOptions.trim is not a function 오류 원천 해소 및 옵션 데이터 전방위 정규화]
+- **DB 비문자열(Array/JSON) 옵션 데이터 런타임 크래시(WSOD) 방어막 완비**:
+  - `customer_sites.paidOptions` 및 `customers.defaultPaidOptions` 필드에 배열(`Array`) 또는 비문자열이 저장되어 있을 때 발생하던 `e.paidOptions.trim is not a function` 런타임 오류 전면 해소.
+- **LocalDB 데이터 조회 및 동기화 방어막 (`src/services/db.ts`)**:
+  - `get customers()`, `get sites()` getter에 방어 변환 로직 탑재 ➔ 배열/객체/비문자열이 유입되어도 쉼표 구분 단일 문자열(`string`)로 자동 평탄화 변환.
+  - `normalizePayloadKeys`에서 Supabase pull 시 `paidOptions`, `protection`, `defaultPaidOptions`, `defaultProtection` 강제 문자열 정규화.
+- **고객 관리 화면 런타임 안전 강화 (`src/pages/Customers.tsx`)**:
+  - `normalizeOptionString(val)` 유틸리티 도입 및 `splitOptions`, `hasPaid`, `hasProt`, 엑셀 다운로드 전 영역에 적용하여 `.trim()` 직접 호출 제거.
+- **출고의뢰 및 음성 대화 스튜디오 전방위 방어 (`SmartDispatchConversationalStudio.tsx`, `smart_dispatch4.tsx`, `voiceOrderDraftService.ts`, `MobileDispatchOrderCreate.tsx`, `VoiceGuideWizardModal.tsx`)**:
+  - 옵션 비교, 분할, 추천 칩 연동 및 상태 세팅 시 안전 문자열 변환 적용.
+- **Supabase 원격 실데이터 일괄 클린징 완결**:
+  - `customer_sites` 281건, `customers` 211건에 존재하는 배열형 옵션 데이터를 쉼표 구분 단일 TEXT로 일괄 정제 업데이트.
+- **경험.md 갱신 (Rule 7.2)**: `E-064` 이슈 인덱스 및 상세 항목 기록 완료.
+- **검증 결과**:
+  - `cmd /c "npm run build"`: **0 Error 통과** (`built in 1.08s`).
+  - WTT 20회 테스트: **20/20 전수 통과 (100%)**.
+
+---
+
 ## [v1.10.0.Build.29] - 2026-09-08 18:55
 
 ### 🚚 [출고의뢰(통합) 고객 현장옵션 3단계 계층 불러오기 개편 & WTT 20회 완결]

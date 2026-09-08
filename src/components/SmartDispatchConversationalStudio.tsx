@@ -228,8 +228,14 @@ export const SmartDispatchConversationalStudio: React.FC<SmartDispatchConversati
     setCustomerSearchText(customer.name);
     const closing = customer.defaultBillingDay ? (customer.defaultBillingDay === 30 || customer.defaultBillingDay === 31 ? '말일' : `${customer.defaultBillingDay}일`) : '';
     const payment = customer.paymentDueDay ? `익월 ${customer.paymentDueDay}일` : '';
-    const defPaid = customer.defaultPaidOptions || '';
-    const defProt = customer.defaultProtection || '';
+    const toCleanStr = (val: any) => {
+      if (!val) return '';
+      if (Array.isArray(val)) return val.flat().map((s: any) => String(s).trim()).filter(Boolean).join(', ');
+      return String(val).trim();
+    };
+
+    const defPaid = toCleanStr(customer.defaultPaidOptions);
+    const defProt = toCleanStr(customer.defaultProtection);
     const defSpecs = customer.defaultCheckedSpecs || {};
 
     setClosingDay(closing);
@@ -276,7 +282,9 @@ export const SmartDispatchConversationalStudio: React.FC<SmartDispatchConversati
     setSiteAddress(site.address || '');
 
     const hasContact = !!(site.contactName && site.contact);
-    const hasOptions = !!((site.paidOptions && site.paidOptions.trim()) || (site.protection && site.protection.trim()));
+    const sitePaid = site.paidOptions ? (Array.isArray(site.paidOptions) ? (site.paidOptions as any[]).join(', ') : String(site.paidOptions)).trim() : '';
+    const siteProt = site.protection ? (Array.isArray(site.protection) ? (site.protection as any[]).join(', ') : String(site.protection)).trim() : '';
+    const hasOptions = !!(sitePaid || siteProt);
 
     if (hasContact) {
       setSiteSubStep('CONTACT_CONFIRM');
@@ -469,7 +477,8 @@ export const SmartDispatchConversationalStudio: React.FC<SmartDispatchConversati
 
   // 5단계: 옵션 토글
   const toggleOption = (optName: string) => {
-    let currentArr = paidOptions.split(',').map(s => s.trim()).filter(Boolean);
+    const rawPaid = typeof paidOptions === 'string' ? paidOptions : (Array.isArray(paidOptions) ? (paidOptions as any[]).join(', ') : String(paidOptions || ''));
+    let currentArr = rawPaid.split(',').map(s => s.trim()).filter(Boolean);
     if (currentArr.includes(optName)) {
       currentArr = currentArr.filter(s => s !== optName);
     } else {

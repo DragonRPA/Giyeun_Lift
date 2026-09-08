@@ -232,8 +232,8 @@ export const Customers: React.FC = () => {
       '현장 주소': cs.address || '-',
       '현장 담당자': cs.contactName || '-',
       '연락처': cs.contact || '-',
-      '유상옵션': cs.paidOptions || activeCustomer.defaultPaidOptions || '-',
-      '보양작업': cs.protection || activeCustomer.defaultProtection || '-',
+      '유상옵션': normalizeOptionString(cs.paidOptions) || normalizeOptionString(activeCustomer.defaultPaidOptions) || '-',
+      '보양작업': normalizeOptionString(cs.protection) || normalizeOptionString(activeCustomer.defaultProtection) || '-',
       '사용여부': cs.isActive !== false ? '사용' : '종료',
       '등록 일시': cs.createdAt?.substring(0, 10) || '-'
     }));
@@ -347,13 +347,22 @@ export const Customers: React.FC = () => {
     }
   };
 
-  // 🏷️ 옵션 유틸리티 함수 (금액 쉼표 30,000원 등 숫자 천단위 구분 쉼표 분리 방지)
-  const splitOptions = (str?: string): string[] => {
-    if (!str) return [];
-    return str.split(/(?:,(?!\d{3}(?:[^\d]|$))|\n+)/).map(s => s.trim()).filter(Boolean);
+  // 🏷️ 옵션 정규화 유틸리티 함수 (배열/객체/비문자열 런타임 크래시 원천 방어)
+  const normalizeOptionString = (val: any): string => {
+    if (!val) return '';
+    if (Array.isArray(val)) return val.flat().map((s: any) => String(s).trim()).filter(Boolean).join(', ');
+    if (typeof val === 'string') return val.trim();
+    return String(val).trim();
   };
 
-  const toggleOptionInString = (currentStr: string, optName: string): string => {
+  // 🏷️ 옵션 유틸리티 함수 (금액 쉼표 30,000원 등 숫자 천단위 구분 쉼표 분리 방지)
+  const splitOptions = (str?: any): string[] => {
+    const clean = normalizeOptionString(str);
+    if (!clean) return [];
+    return clean.split(/(?:,(?!\d{3}(?:[^\d]|$))|[;\n]+)/).map(s => s.trim()).filter(Boolean);
+  };
+
+  const toggleOptionInString = (currentStr: any, optName: string): string => {
     let arr = splitOptions(currentStr);
     if (arr.includes(optName)) {
       arr = arr.filter(s => s !== optName);
@@ -366,8 +375,8 @@ export const Customers: React.FC = () => {
   // 🛡️ 고객사 기본 옵션 모달 핸들러
   const handleOpenCustOptionModal = (cust: Customer) => {
     setCustOptionForm({
-      defaultPaidOptions: cust.defaultPaidOptions || '',
-      defaultProtection: cust.defaultProtection || '',
+      defaultPaidOptions: normalizeOptionString(cust.defaultPaidOptions),
+      defaultProtection: normalizeOptionString(cust.defaultProtection),
       defaultCheckedSpecs: cust.defaultCheckedSpecs ? { ...cust.defaultCheckedSpecs } : {},
       specialNotes: cust.specialNotes || ''
     });
@@ -413,8 +422,8 @@ export const Customers: React.FC = () => {
   const handleOpenSiteOptionModal = (cs: CustomerSite) => {
     setEditingSiteOption(cs);
     setSiteOptionForm({
-      paidOptions: cs.paidOptions || '',
-      protection: cs.protection || '',
+      paidOptions: normalizeOptionString(cs.paidOptions),
+      protection: normalizeOptionString(cs.protection),
       checkedSpecs: cs.checkedSpecs ? { ...cs.checkedSpecs } : (activeCustomer?.defaultCheckedSpecs ? { ...activeCustomer.defaultCheckedSpecs } : {})
     });
     setShowSiteOptionSpecs(false);
@@ -443,8 +452,8 @@ export const Customers: React.FC = () => {
   const handleCopyDefaultsToSiteOptionForm = () => {
     if (!activeCustomer) return;
     setSiteOptionForm({
-      paidOptions: activeCustomer.defaultPaidOptions || '',
-      protection: activeCustomer.defaultProtection || '',
+      paidOptions: normalizeOptionString(activeCustomer.defaultPaidOptions),
+      protection: normalizeOptionString(activeCustomer.defaultProtection),
       checkedSpecs: activeCustomer.defaultCheckedSpecs ? { ...activeCustomer.defaultCheckedSpecs } : {}
     });
     showToast(`고객사 기본 옵션을 불러왔습니다.`);
@@ -1104,8 +1113,10 @@ export const Customers: React.FC = () => {
                                 title={canSave ? "클릭하여 현장 옵션 관리" : undefined}
                               >
                                 {(() => {
-                                  const hasPaid = !!(cs.paidOptions && cs.paidOptions.trim() && cs.paidOptions !== '-' && cs.paidOptions !== 'NONE');
-                                  const hasProt = !!(cs.protection && cs.protection.trim() && cs.protection !== 'NONE' && cs.protection !== '-');
+                                  const paidStr = normalizeOptionString(cs.paidOptions);
+                                  const protStr = normalizeOptionString(cs.protection);
+                                  const hasPaid = Boolean(paidStr && paidStr !== '-' && paidStr !== 'NONE' && paidStr !== '없음');
+                                  const hasProt = Boolean(protStr && protStr !== 'NONE' && protStr !== '-' && protStr !== '없음');
                                   const specCount = cs.checkedSpecs ? Object.values(cs.checkedSpecs).filter(Boolean).length : 0;
                                   if (!hasPaid && !hasProt && specCount === 0) {
                                     return (
@@ -1118,12 +1129,12 @@ export const Customers: React.FC = () => {
                                     <div style={{ display: 'flex', gap: '3px', alignItems: 'center' }}>
                                       {hasPaid && (
                                         <span style={{ padding: '1px 5px', fontSize: '9.5px', borderRadius: '3px', backgroundColor: 'rgba(59, 130, 246, 0.12)', color: '#2563eb', border: '1px solid rgba(59, 130, 246, 0.3)', fontWeight: 600 }}>
-                                          {cs.paidOptions}
+                                          {paidStr}
                                         </span>
                                       )}
                                       {hasProt && (
                                         <span style={{ padding: '1px 5px', fontSize: '9.5px', borderRadius: '3px', backgroundColor: 'rgba(16, 185, 129, 0.12)', color: '#059669', border: '1px solid rgba(16, 185, 129, 0.3)', fontWeight: 600 }}>
-                                          {cs.protection}
+                                          {protStr}
                                         </span>
                                       )}
                                       {specCount > 0 && (

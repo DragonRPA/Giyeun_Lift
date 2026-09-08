@@ -3874,7 +3874,33 @@ class LocalDB {
     this.set('permissions', cleanVals); 
   }
 
-  get customers() { return this.get<Customer>('customers', SEED_CUSTOMERS); }
+  get customers() { 
+    const raw = this.get<Customer>('customers', SEED_CUSTOMERS);
+    return raw.map(c => {
+      if (!c) return c;
+      let changed = false;
+      let defPaid = c.defaultPaidOptions;
+      if (Array.isArray(defPaid)) {
+        defPaid = (defPaid as any[]).flat().map(s => String(s).trim()).filter(Boolean).join(', ');
+        changed = true;
+      } else if (defPaid !== undefined && defPaid !== null && typeof defPaid !== 'string') {
+        defPaid = String(defPaid).trim();
+        changed = true;
+      }
+      let defProt = c.defaultProtection;
+      if (Array.isArray(defProt)) {
+        defProt = (defProt as any[]).flat().map(s => String(s).trim()).filter(Boolean).join(', ');
+        changed = true;
+      } else if (defProt !== undefined && defProt !== null && typeof defProt !== 'string') {
+        defProt = String(defProt).trim();
+        changed = true;
+      }
+      if (changed) {
+        return { ...c, defaultPaidOptions: defPaid, defaultProtection: defProt };
+      }
+      return c;
+    });
+  }
   set customers(val: Customer[]) { this.set('customers', val); }
 
   get contacts() { return this.get<CustomerContact>('contacts', SEED_CONTACTS); }
@@ -3882,7 +3908,33 @@ class LocalDB {
   get customerContacts() { return this.contacts; }
   set customerContacts(val: CustomerContact[]) { this.contacts = val; }
 
-  get sites() { return this.get<CustomerSite>('sites', SEED_SITES); }
+  get sites() { 
+    const raw = this.get<CustomerSite>('sites', SEED_SITES);
+    return raw.map(s => {
+      if (!s) return s;
+      let changed = false;
+      let paid = s.paidOptions;
+      if (Array.isArray(paid)) {
+        paid = (paid as any[]).flat().map(v => String(v).trim()).filter(Boolean).join(', ');
+        changed = true;
+      } else if (paid !== undefined && paid !== null && typeof paid !== 'string') {
+        paid = String(paid).trim();
+        changed = true;
+      }
+      let prot = s.protection;
+      if (Array.isArray(prot)) {
+        prot = (prot as any[]).flat().map(v => String(v).trim()).filter(Boolean).join(', ');
+        changed = true;
+      } else if (prot !== undefined && prot !== null && typeof prot !== 'string') {
+        prot = String(prot).trim();
+        changed = true;
+      }
+      if (changed) {
+        return { ...s, paidOptions: paid, protection: prot };
+      }
+      return s;
+    });
+  }
   set sites(val: CustomerSite[]) { this.set('sites', val); }
   get customerSites() { return this.sites; }
   set customerSites(val: CustomerSite[]) { this.sites = val; }
@@ -4269,6 +4321,36 @@ class LocalDB {
         else if (normalized.modelName.includes('지니')) normalized.supplier = '지니 (Genie)';
         else if (normalized.modelName.includes('스카이잭')) normalized.supplier = '스카이잭 (Skyjack)';
         else normalized.supplier = '공용';
+      }
+    }
+
+    // paidOptions, protection, defaultPaidOptions, defaultProtection 정규화 (배열/객체/비문자열 원천 방어)
+    if (normalized.paidOptions !== undefined && normalized.paidOptions !== null) {
+      if (Array.isArray(normalized.paidOptions)) {
+        normalized.paidOptions = normalized.paidOptions.flat().map((s: any) => String(s).trim()).filter(Boolean).join(', ');
+      } else if (typeof normalized.paidOptions !== 'string') {
+        normalized.paidOptions = String(normalized.paidOptions).trim();
+      }
+    }
+    if (normalized.protection !== undefined && normalized.protection !== null) {
+      if (Array.isArray(normalized.protection)) {
+        normalized.protection = normalized.protection.flat().map((s: any) => String(s).trim()).filter(Boolean).join(', ');
+      } else if (typeof normalized.protection !== 'string') {
+        normalized.protection = String(normalized.protection).trim();
+      }
+    }
+    if (normalized.defaultPaidOptions !== undefined && normalized.defaultPaidOptions !== null) {
+      if (Array.isArray(normalized.defaultPaidOptions)) {
+        normalized.defaultPaidOptions = normalized.defaultPaidOptions.flat().map((s: any) => String(s).trim()).filter(Boolean).join(', ');
+      } else if (typeof normalized.defaultPaidOptions !== 'string') {
+        normalized.defaultPaidOptions = String(normalized.defaultPaidOptions).trim();
+      }
+    }
+    if (normalized.defaultProtection !== undefined && normalized.defaultProtection !== null) {
+      if (Array.isArray(normalized.defaultProtection)) {
+        normalized.defaultProtection = normalized.defaultProtection.flat().map((s: any) => String(s).trim()).filter(Boolean).join(', ');
+      } else if (typeof normalized.defaultProtection !== 'string') {
+        normalized.defaultProtection = String(normalized.defaultProtection).trim();
       }
     }
 

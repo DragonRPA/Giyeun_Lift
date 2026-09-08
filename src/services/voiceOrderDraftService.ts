@@ -1482,14 +1482,20 @@ export function isOptionsChangedFromSite(
 ): boolean {
   if (!site) return false;
   
+  const toStr = (v: any) => {
+    if (!v) return '';
+    if (Array.isArray(v)) return v.flat().map((s: any) => String(s).trim()).filter(Boolean).join(', ');
+    return String(v).trim();
+  };
+
   // 1. 유상옵션 비교 (정규화)
-  const sitePaid = (site.paidOptions || '').trim();
-  const reqPaid = (paidOptions || '').trim();
+  const sitePaid = toStr(site.paidOptions);
+  const reqPaid = toStr(paidOptions);
   if (sitePaid !== reqPaid) return true;
 
   // 2. 보양작업 비교 (정규화)
-  const siteProt = (site.protection || '').trim();
-  const reqProt = (protection || '').trim();
+  const siteProt = toStr(site.protection);
+  const reqProt = toStr(protection);
   if (siteProt !== reqProt) return true;
 
   // 3. 21대 안전스펙 비교

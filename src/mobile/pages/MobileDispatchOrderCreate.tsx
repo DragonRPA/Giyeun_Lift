@@ -483,8 +483,8 @@ export const MobileDispatchOrderCreate: React.FC<MobileDispatchOrderCreateProps>
       setSiteAddress(found.address || '');
       setSiteContactName(found.contactName || '');
       setSiteContactPhone(found.contact || '');
-      if (found.paidOptions) setPaidOptions(found.paidOptions);
-      if (found.protection) setProtection(found.protection);
+      if (found.paidOptions) setPaidOptions(typeof found.paidOptions === 'string' ? found.paidOptions : (Array.isArray(found.paidOptions) ? (found.paidOptions as any[]).join(', ') : String(found.paidOptions)));
+      if (found.protection) setProtection(typeof found.protection === 'string' ? found.protection : (Array.isArray(found.protection) ? (found.protection as any[]).join(', ') : String(found.protection)));
       if (found.checkedSpecs) setCheckedSpecs(found.checkedSpecs);
     }
   };
@@ -838,8 +838,8 @@ export const MobileDispatchOrderCreate: React.FC<MobileDispatchOrderCreateProps>
         paymentDay: paymentDay || String(selectedCust.paymentDueDay || 25),
         note: `[모바일 외근 출고의뢰] ${memo}`.trim(),
         rawText: `모바일 출고요청: ${selectedCust.name} / ${finalSiteName} (${totalEquipCount}대)`,
-        paidOptions: paidOptions.trim(),
-        protection: protection.trim(),
+        paidOptions: typeof paidOptions === 'string' ? paidOptions.trim() : String(paidOptions || '').trim(),
+        protection: typeof protection === 'string' ? protection.trim() : String(protection || '').trim(),
         checkedSpecs,
         saveOptionsToSite,
         billableToCustomer,

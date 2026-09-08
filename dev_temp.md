@@ -1,5 +1,29 @@
 # 개발 요구사항 임시 기록 (dev_temp.md)
 
+## [완료] e.paidOptions.trim is not a function 오류 원천 해소 및 옵션 데이터 전방위 정규화 (v1.10.0.Build.30)
+- **요구사항**: "시스템 일시 오류 복구: e.paidOptions.trim is not a function" 런타임 오류 긴급 복구
+- **적용 목적 (헌장 1.1, 1.2, 5.2, 경험.md E-064)**:
+  - DB 또는 API에서 `customer_sites.paidOptions` 및 `customers.defaultPaidOptions` 필드가 단일 문자열이 아닌 배열(`Array`) 또는 비문자열 형태로 유입될 때 발생하던 런타임 크래시(WSOD) 원천 차단.
+  - 전사 `LocalDB` getter 단계 및 UI 렌더링/파싱 전 영역에 타입 가드(`normalizeOptionString`)를 필수 적용하여 데이터 불일치 상황에서도 무중단 안정 운영 보장.
+- **조치 내역**:
+  1. **LocalDB 데이터 조회 방어막 구축 (`src/services/db.ts`)**:
+     - `get customers()`, `get sites()` getter에서 `defaultPaidOptions`, `defaultProtection`, `paidOptions`, `protection`이 배열/객체/비문자열일 경우 쉼표 구분 단일 문자열로 즉시 자동 변환하여 전사 제공.
+     - `normalizePayloadKeys`에서 Supabase pull 시 옵션 필드 강제 문자열 정규화.
+  2. **고객 관리 화면 런타임 방어 강화 (`src/pages/Customers.tsx`)**:
+     - `normalizeOptionString(val)` 유틸리티 도입.
+     - 테이블 렌더링 시 `cs.paidOptions.trim()` 직접 호출을 `normalizeOptionString` 안전 검사로 대체하여 `e.paidOptions.trim is not a function` 원천 소멸.
+     - `splitOptions`, 옵션 모달 핸들러, 엑셀 익스포트 전 영역 방어 처리.
+  3. **출고의뢰 및 음성 대화 스튜디오 방어 강화**:
+     - `SmartDispatchConversationalStudio.tsx`: `hasOptions` 판별 및 토글 시 안전 문자열 변환 적용.
+     - `smart_dispatch4.tsx`: `parseOptionString`에 배열 및 비문자열 안전 평탄화 로직 탑재.
+     - `voiceOrderDraftService.ts`, `MobileDispatchOrderCreate.tsx`, `VoiceGuideWizardModal.tsx`, `migrationEngine.ts`: 옵션 파싱 및 비교부 방어 완료.
+  4. **Supabase 원격 실데이터 일괄 클린징**:
+     - `customer_sites` 281건 및 `customers` 211건에 존재하는 배열형 옵션 데이터를 쉼표 구분 단일 TEXT로 정제 완료.
+  5. **경험.md 갱신 (Rule 7.2)**: `E-064` 이슈 인덱스 및 상세 항목 기록 완료.
+- **검증 결과**:
+  - `cmd /c "npm run build"`: **0 Error 통과** (`built in 1.08s`).
+  - WTT 20회 테스트: **20/20 전수 통과 (100%)**.
+
 ## [완료] 출고의뢰(통합) 고객 현장옵션 3단계 계층 불러오기 개편 및 WTT 20회 완결 (v1.10.0.Build.29)
 - **요구사항**: "출고의리ㅗ(통합) 에서 고객의 현장옵션 불러오기가 안되고 있어. 문제점 파악해서 개편하고 WTT 20회 수행해본 후에 ㄹㅇ"
 - **적용 목적 (헌장 1.1, 1.2, 2.2, 3.1, 5.5)**:

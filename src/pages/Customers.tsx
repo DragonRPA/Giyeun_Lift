@@ -13,7 +13,7 @@ import { matchHangul } from '../utils/hangulSearch';
 
 export const Customers: React.FC = () => {
   const {
-    customers, contacts, sites, contracts, contractAssets, saveCustomer, saveContact, deleteContact, saveSite, hasPermission,
+    customers, contacts, sites, contracts, contractAssets, saveCustomer, saveContact, deleteContact, saveSite, deleteSite, hasPermission,
     navigationPayload, setNavigationPayload, currentUser, refreshAllData, legalNoticeLogs,
     standardOptions, saveStandardOption, deleteStandardOption
   } = useApp();
@@ -340,6 +340,25 @@ export const Customers: React.FC = () => {
       await refreshAllData();
     } catch (err: any) {
       showToast(`현장 저장 실패: ${err?.message || err}`, 'error');
+    }
+  };
+
+  const handleDeleteSite = async (siteId: string, siteName: string) => {
+    const linkedContracts = (contracts || []).filter(c => c.siteId === siteId);
+    let confirmMsg = `정말로 현장 [${siteName}] 정보를 삭제하시겠습니까?`;
+    if (linkedContracts.length > 0) {
+      confirmMsg = `⚠️ 해당 현장에 연결된 계약 ${linkedContracts.length}건이 존재합니다.\n정말로 현장 [${siteName}] 정보를 삭제하시겠습니까?`;
+    }
+    if (!window.confirm(confirmMsg)) return;
+
+    try {
+      await deleteSite(siteId);
+      showToast(`현장 [${siteName}] 정보가 삭제되었습니다.`);
+      setShowSiteModal(false);
+      setEditingSite(null);
+      await refreshAllData();
+    } catch (err: any) {
+      showToast(`현장 삭제 실패: ${err?.message || err}`, 'error');
     }
   };
 
@@ -1149,6 +1168,15 @@ export const Customers: React.FC = () => {
                                   >
                                     수정
                                   </button>
+                                  <button
+                                    type="button"
+                                    className="btn-secondary"
+                                    onClick={() => handleDeleteSite(cs.id, cs.name)}
+                                    style={{ padding: '1px 5px', fontSize: '10.5px', color: 'var(--danger-color, #ef4444)' }}
+                                    title="현장 삭제"
+                                  >
+                                    삭제
+                                  </button>
                                 </div>
                               )}
                             </td>
@@ -1892,9 +1920,32 @@ export const Customers: React.FC = () => {
 
             </div>
 
-            <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', marginTop: '14px', paddingTop: '10px', borderTop: '1px solid var(--border-color)' }}>
-              <button type="button" className="btn-secondary" onClick={() => setShowSiteModal(false)} style={{ padding: '5px 14px', fontSize: '12px' }}>취소</button>
-              <button type="submit" className="btn-primary" style={{ padding: '5px 16px', fontSize: '12px' }}>저장</button>
+            <div style={{ display: 'flex', gap: '8px', justifyContent: (editingSite.id && canSave) ? 'space-between' : 'flex-end', marginTop: '14px', paddingTop: '10px', borderTop: '1px solid var(--border-color)' }}>
+              {editingSite.id && canSave && (
+                <button
+                  type="button"
+                  onClick={() => handleDeleteSite(editingSite.id!, editingSite.name || '')}
+                  style={{
+                    padding: '5px 14px',
+                    fontSize: '12px',
+                    backgroundColor: 'var(--danger-color, #ef4444)',
+                    color: '#fff',
+                    border: 'none',
+                    borderRadius: '4px',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px'
+                  }}
+                >
+                  <Trash2 size={13} />
+                  현장 삭제
+                </button>
+              )}
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <button type="button" className="btn-secondary" onClick={() => setShowSiteModal(false)} style={{ padding: '5px 14px', fontSize: '12px' }}>취소</button>
+                <button type="submit" className="btn-primary" style={{ padding: '5px 16px', fontSize: '12px' }}>저장</button>
+              </div>
             </div>
           </form>
         </div>

@@ -107,11 +107,10 @@ export async function registerPrintStation(station: {
   const now = new Date().toISOString();
   const existingList = db.printStations;
 
-  // 기존 등록 여부 확인 (id 또는 stationName 기준)
+  // 신규 등록 시 고유 ID 채번, 수정 시 지정된 station.id 사용
   let targetId = station.id;
   if (!targetId) {
-    const matched = existingList.find(s => s.stationName.trim() === station.stationName.trim());
-    targetId = matched ? matched.id : `STATION-${String(existingList.length + 1).padStart(2, '0')}`;
+    targetId = `STATION-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
   }
 
   const payload: PrintStation = {

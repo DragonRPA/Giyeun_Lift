@@ -1,5 +1,5 @@
 // src/pages/PrintQueueManager.tsx
-// 🖨️ 분산 무인 인쇄 큐 모니터 및 프린터 스테이션 관리 (전사 표준 헌장 카테고리 I, III, V 전면 준수)
+// 🖨️ 분산 무인 인쇄 큐 모니터 및 프린터 스테이션 관리 (다중 프린터 무제한 증설 지원, 전사 표준 헌장 준수)
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { useApp } from '../context/AppContext';
@@ -14,6 +14,7 @@ import {
   Printer,
   Server,
   RefreshCw,
+  Plus,
   Trash2,
   Play,
   XCircle,
@@ -68,6 +69,18 @@ export const PrintQueueManager: React.FC = () => {
   // 서식 미리보기 모달
   const [previewItem, setPreviewItem] = useState<PrintQueueItem | null>(null);
 
+  // 신규 프린터 추가 폼 초기화 헬퍼 (다음 순번 자동 제안)
+  const handleResetFormForNew = () => {
+    const nextIndex = printStations.length + 1;
+    setEditingStationId(null);
+    setStationName(`프린터${nextIndex}`);
+    setSelectedPrinter(agentStatus.defaultPrinter || (agentStatus.printers[0] || ''));
+    setDocTypeDefault('DISPATCH_ORDER');
+    setMachineName(agentStatus.machineName || '');
+    setDescription('');
+    setFormFeedback(null);
+  };
+
   // 로컬 PC의 eBroAgent 프린터 목록 및 기존 설정 로드
   const scanLocalAgent = async () => {
     setIsScanningAgent(true);
@@ -85,10 +98,9 @@ export const PrintQueueManager: React.FC = () => {
         // 로컬 station_config.json에 이미 저장된 값 조회
         const localCfg = await fetchLocalStationConfigFromAgent();
         if (localCfg) {
-          if (localCfg.stationName) setStationName(localCfg.stationName);
-          if (localCfg.localPrinterName) setSelectedPrinter(localCfg.localPrinterName);
+          if (localCfg.stationName && !editingStationId) setStationName(localCfg.stationName);
+          if (localCfg.localPrinterName && !selectedPrinter) setSelectedPrinter(localCfg.localPrinterName);
           if (localCfg.docTypeDefault) setDocTypeDefault(localCfg.docTypeDefault);
-          if (localCfg.stationId) setEditingStationId(localCfg.stationId);
         }
       }
     } catch (err: any) {
@@ -113,7 +125,7 @@ export const PrintQueueManager: React.FC = () => {
     setFormFeedback(null);
 
     if (!stationName.trim()) {
-      setFormFeedback({ type: 'error', message: '스테이션 명칭을 입력하십시오.' });
+      setFormFeedback({ type: 'error', message: '프린터 명칭을 입력하십시오.' });
       return;
     }
     if (!selectedPrinter.trim()) {
@@ -140,8 +152,13 @@ export const PrintQueueManager: React.FC = () => {
         machineName: saved.machineName
       });
 
-      setFormFeedback({ type: 'success', message: `스테이션 [${saved.stationName}] 설정이 저장되었습니다.` });
-      setEditingStationId(null);
+      setFormFeedback({
+        type: 'success',
+        message: `프린터 [${saved.stationName}] 설정이 ${editingStationId ? '갱신' : '신규 등록'}되었습니다.`
+      });
+
+      // 등록 완료 후 신규 입력 모드로 폼 리셋
+      handleResetFormForNew();
     } catch (err: any) {
       setFormFeedback({ type: 'error', message: `저장 실패: ${err.message || err}` });
     }
@@ -159,9 +176,24 @@ export const PrintQueueManager: React.FC = () => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
+  // 프린터 삭제 핸들러
+  const handleDeleteStation = async (st: PrintStation) => {
+    if (!confirm(`[${st.stationName}] (${st.localPrinterName}) 프린터를 시스템에서 삭제하시겠습니까?\n삭제 후에도 언제든지 새로 등록할 수 있습니다.`)) {
+      return;
+    }
+    try {
+      await deletePrintStation(st.id);
+      if (editingStationId === st.id) {
+        handleResetFormForNew();
+      }
+    } catch (err: any) {
+      alert(`삭제 실패: ${err.message || err}`);
+    }
+  };
+
   // 테스트 인쇄 큐 전송 핸들러
   const handleSendTestPrint = async (station: PrintStation) => {
-    if (!confirm(`스테이션 [${station.stationName}] (${station.localPrinterName})으로 테스트 인쇄를 발행하시겠습니까?`)) {
+    if (!confirm(`[${station.stationName}] (${station.localPrinterName})으로 테스트 인쇄를 발행하시겠습니까?`)) {
       return;
     }
     try {
@@ -174,23 +206,23 @@ export const PrintQueueManager: React.FC = () => {
   <style>
     body { font-family: 'Malgun Gothic', sans-serif; padding: 40px; margin: 0; }
     .box { border: 2px solid #1e293b; padding: 24px; border-radius: 8px; }
-    h1 { margin-top: 0; color: #0f172a; border-bottom: 2px solid #334155; padding-bottom: 10px; }
+    h1 { margin-top: 0; color: #0f172a; border-bottom: 2px solid #334155; padding-bottom: 10px; font-size: 20px; }
     table { width: 100%; border-collapse: collapse; margin-top: 15px; }
-    th, td { border: 1px solid #cbd5e1; padding: 8px 12px; text-align: left; }
-    th { background: #f1f5f9; font-weight: bold; width: 150px; }
+    th, td { border: 1px solid #cbd5e1; padding: 8px 12px; text-align: left; font-size: 13px; }
+    th { background: #f1f5f9; font-weight: bold; width: 140px; }
   </style>
 </head>
 <body>
   <div class="box">
     <h1>기연리프트 분산 인쇄 테스트</h1>
     <table>
-      <tr><th>스테이션 명칭</th><td>${station.stationName}</td></tr>
+      <tr><th>프린터 명칭</th><td>${station.stationName}</td></tr>
       <tr><th>타겟 프린터</th><td>${station.localPrinterName}</td></tr>
-      <tr><th>컴퓨터 명</th><td>${station.machineName || '-'}</td></tr>
-      <tr><th>기본 문서</th><td>${station.docTypeDefault}</td></tr>
+      <tr><th>호스트 PC</th><td>${station.machineName || '-'}</td></tr>
+      <tr><th>기본 서식</th><td>${station.docTypeDefault === 'DISPATCH_ORDER' ? '출고요청서' : station.docTypeDefault === 'RETURN_ORDER' ? '회수요청서' : '공용'}</td></tr>
       <tr><th>발행 시각</th><td>${new Date().toLocaleString('ko-KR')}</td></tr>
       <tr><th>발행자</th><td>${currentUser?.name || '시스템 관리자'}</td></tr>
-      <tr><th>결과 검증</th><td>출고/입고 원격 인쇄 통신 정상 작동 확인 완료</td></tr>
+      <tr><th>통신 상태</th><td>정상 작동 확인 완료</td></tr>
     </table>
   </div>
 </body>
@@ -272,7 +304,7 @@ export const PrintQueueManager: React.FC = () => {
               프린트 큐 모니터
             </h1>
             <p style={{ fontSize: '13px', color: 'var(--text-secondary)', margin: '3px 0 0 0' }}>
-              로컬 프린터 원격 무인 인쇄 및 스테이션 관리
+              로컬 프린터 원격 무인 인쇄 및 다중 프린터 스테이션 관리
             </p>
           </div>
         </div>
@@ -379,7 +411,7 @@ export const PrintQueueManager: React.FC = () => {
       </div>
 
       {/* ═════════════════════════════════════════════════════════════════════ */}
-      {/* 탭 1: 프린터 스테이션 관리 (유형 A: 마스터-디테일 스튜디오)               */}
+      {/* 탭 1: 프린터 스테이션 관리 (다중 프린터 무제한 등록 지원)               */}
       {/* ═════════════════════════════════════════════════════════════════════ */}
       {activeTab === 'stations' && (
         <div
@@ -390,7 +422,7 @@ export const PrintQueueManager: React.FC = () => {
             alignItems: 'start'
           }}
         >
-          {/* ─── 좌측: 등록 스테이션 목록 ─── */}
+          {/* ─── 좌측: 등록 프린터 목록 대장 ─── */}
           <div
             style={{
               backgroundColor: 'var(--bg-card)',
@@ -408,18 +440,48 @@ export const PrintQueueManager: React.FC = () => {
                 justifyContent: 'space-between',
                 alignItems: 'center',
                 paddingBottom: '12px',
-                borderBottom: '1px solid var(--border-color)'
+                borderBottom: '1px solid var(--border-color)',
+                flexWrap: 'wrap',
+                gap: '8px'
               }}
             >
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <Server size={16} color="var(--primary)" />
                 <h2 style={{ fontSize: '15px', fontWeight: '800', color: 'var(--text-main)', margin: 0 }}>
-                  등록 스테이션 목록
+                  등록 프린터 목록
                 </h2>
+                <span
+                  style={{
+                    fontSize: '11px',
+                    fontWeight: '700',
+                    padding: '2px 8px',
+                    borderRadius: '12px',
+                    backgroundColor: 'rgba(79, 70, 229, 0.12)',
+                    color: 'var(--primary)'
+                  }}
+                >
+                  총 {printStations.length}대
+                </span>
               </div>
-              <span style={{ fontSize: '12px', color: 'var(--text-muted)', fontWeight: '600' }}>
-                총 {printStations.length}개소 등록
-              </span>
+
+              {/* + 새 프린터 등록 퀵 액션 버튼 */}
+              <button
+                type="button"
+                className="btn-primary"
+                onClick={handleResetFormForNew}
+                style={{
+                  padding: '5px 12px',
+                  fontSize: '12px',
+                  fontWeight: '700',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                  whiteSpace: 'nowrap'
+                }}
+              >
+                <Plus size={13} />
+                <span>새 프린터 등록</span>
+              </button>
             </div>
 
             {printStations.length === 0 ? (
@@ -439,12 +501,12 @@ export const PrintQueueManager: React.FC = () => {
                   등록된 인쇄 스테이션이 없습니다.
                 </div>
                 <div style={{ fontSize: '12px' }}>
-                  우측 폼에서 현재 PC의 로컬 프린터를 선택하여 스테이션을 등록하십시오.
+                  우측 폼에서 현재 PC의 로컬 프린터를 선택하여 새 프린터를 원하는 만큼 등록하십시오.
                 </div>
               </div>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                {printStations.map(station => {
+                {printStations.map((station, idx) => {
                   const online = isStationOnline(station);
                   const isEditing = editingStationId === station.id;
 
@@ -464,7 +526,22 @@ export const PrintQueueManager: React.FC = () => {
                     >
                       {/* 카드 상단 헤더 */}
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '10px' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                          {/* 순번 배지 */}
+                          <span
+                            style={{
+                              fontSize: '11px',
+                              fontWeight: '800',
+                              padding: '2px 6px',
+                              borderRadius: '4px',
+                              backgroundColor: 'var(--border-color)',
+                              color: 'var(--text-main)',
+                              fontFamily: 'monospace'
+                            }}
+                          >
+                            #{idx + 1}
+                          </span>
+
                           <span style={{ fontSize: '15px', fontWeight: '800', color: 'var(--text-main)' }}>
                             {station.stationName}
                           </span>
@@ -538,7 +615,7 @@ export const PrintQueueManager: React.FC = () => {
                             title="테스트 인쇄 발행"
                           >
                             <Play size={11} />
-                            <span>테스트 인쇄</span>
+                            <span>테스트</span>
                           </button>
 
                           <button
@@ -559,11 +636,7 @@ export const PrintQueueManager: React.FC = () => {
 
                           <button
                             type="button"
-                            onClick={() => {
-                              if (confirm(`스테이션 [${station.stationName}]을 삭제하시겠습니까?`)) {
-                                deletePrintStation(station.id);
-                              }
-                            }}
+                            onClick={() => handleDeleteStation(station)}
                             style={{
                               padding: '4px 8px',
                               fontSize: '11px',
@@ -581,6 +654,7 @@ export const PrintQueueManager: React.FC = () => {
                             title="삭제"
                           >
                             <Trash2 size={11} />
+                            <span>삭제</span>
                           </button>
                         </div>
                       </div>
@@ -589,7 +663,7 @@ export const PrintQueueManager: React.FC = () => {
                       <div
                         style={{
                           display: 'grid',
-                          gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+                          gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
                           gap: '6px',
                           fontSize: '12px',
                           color: 'var(--text-secondary)'
@@ -620,7 +694,7 @@ export const PrintQueueManager: React.FC = () => {
             )}
           </div>
 
-          {/* ─── 우측: 스테이션 등록 / 수정 스튜디오 (헌장 3.4 상하 스택 폼) ─── */}
+          {/* ─── 우측: 프린터 등록 / 수정 스튜디오 (헌장 3.4 상하 스택 폼) ─── */}
           <div
             style={{
               backgroundColor: 'var(--bg-card)',
@@ -644,19 +718,13 @@ export const PrintQueueManager: React.FC = () => {
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <Printer size={16} color="var(--primary)" />
                 <h2 style={{ fontSize: '15px', fontWeight: '800', color: 'var(--text-main)', margin: 0 }}>
-                  {editingStationId ? '스테이션 설정 수정' : '신규 스테이션 등록'}
+                  {editingStationId ? '프린터 설정 수정' : '새 프린터 등록'}
                 </h2>
               </div>
-              {editingStationId && (
+              {editingStationId ? (
                 <button
                   type="button"
-                  onClick={() => {
-                    setEditingStationId(null);
-                    setStationName('프린터1');
-                    setSelectedPrinter(agentStatus.defaultPrinter || '');
-                    setDocTypeDefault('DISPATCH_ORDER');
-                    setFormFeedback(null);
-                  }}
+                  onClick={handleResetFormForNew}
                   style={{
                     fontSize: '12px',
                     color: 'var(--primary)',
@@ -667,12 +735,16 @@ export const PrintQueueManager: React.FC = () => {
                     textDecoration: 'underline'
                   }}
                 >
-                  신규 등록 전환
+                  + 새 프린터 추가로 전환
                 </button>
+              ) : (
+                <span style={{ fontSize: '11.5px', color: 'var(--text-muted)' }}>
+                  원하는 만큼 추가 가능
+                </span>
               )}
             </div>
 
-            {/* 프리셋 버튼군 (건조 명사 표준) */}
+            {/* 빠른 용도 템플릿 칩 (다중 프린터 친화형) */}
             <div
               style={{
                 padding: '12px',
@@ -685,67 +757,89 @@ export const PrintQueueManager: React.FC = () => {
               }}
             >
               <span style={{ fontSize: '11.5px', fontWeight: '700', color: 'var(--text-secondary)' }}>
-                기본 서식 프리셋
+                빠른 용도 선택
               </span>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(110px, 1fr))', gap: '6px' }}>
                 <button
                   type="button"
                   onClick={() => {
-                    setStationName('프린터1');
+                    if (!editingStationId) setStationName(`출고장 프린터`);
                     setDocTypeDefault('DISPATCH_ORDER');
-                    setDescription('출고장 전담 프린터');
+                    setDescription('출고장 전담');
                   }}
                   style={{
-                    padding: '8px',
-                    fontSize: '12px',
+                    padding: '7px 6px',
+                    fontSize: '11.5px',
                     fontWeight: '700',
                     borderRadius: '6px',
                     cursor: 'pointer',
-                    border: `1px solid ${stationName === '프린터1' ? 'var(--primary)' : 'var(--border-color)'}`,
-                    backgroundColor: stationName === '프린터1' ? 'var(--primary)' : 'var(--bg-card)',
-                    color: stationName === '프린터1' ? '#ffffff' : 'var(--text-main)',
+                    border: `1px solid ${docTypeDefault === 'DISPATCH_ORDER' ? 'var(--primary)' : 'var(--border-color)'}`,
+                    backgroundColor: docTypeDefault === 'DISPATCH_ORDER' ? 'rgba(79, 70, 229, 0.15)' : 'var(--bg-card)',
+                    color: docTypeDefault === 'DISPATCH_ORDER' ? 'var(--primary)' : 'var(--text-main)',
                     transition: 'all 0.15s ease'
                   }}
                 >
-                  프린터1 (출고요청)
+                  출고요청서 전담
                 </button>
 
                 <button
                   type="button"
                   onClick={() => {
-                    setStationName('프린터2');
+                    if (!editingStationId) setStationName(`회수장 프린터`);
                     setDocTypeDefault('RETURN_ORDER');
-                    setDescription('입고장 전담 프린터');
+                    setDescription('회수/입고 전담');
                   }}
                   style={{
-                    padding: '8px',
-                    fontSize: '12px',
+                    padding: '7px 6px',
+                    fontSize: '11.5px',
                     fontWeight: '700',
                     borderRadius: '6px',
                     cursor: 'pointer',
-                    border: `1px solid ${stationName === '프린터2' ? 'var(--primary)' : 'var(--border-color)'}`,
-                    backgroundColor: stationName === '프린터2' ? 'var(--primary)' : 'var(--bg-card)',
-                    color: stationName === '프린터2' ? '#ffffff' : 'var(--text-main)',
+                    border: `1px solid ${docTypeDefault === 'RETURN_ORDER' ? 'var(--primary)' : 'var(--border-color)'}`,
+                    backgroundColor: docTypeDefault === 'RETURN_ORDER' ? 'rgba(79, 70, 229, 0.15)' : 'var(--bg-card)',
+                    color: docTypeDefault === 'RETURN_ORDER' ? 'var(--primary)' : 'var(--text-main)',
                     transition: 'all 0.15s ease'
                   }}
                 >
-                  프린터2 (회수요청)
+                  회수요청서 전담
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!editingStationId) setStationName(`사무실 복합기`);
+                    setDocTypeDefault('ALL');
+                    setDescription('사무실 공용');
+                  }}
+                  style={{
+                    padding: '7px 6px',
+                    fontSize: '11.5px',
+                    fontWeight: '700',
+                    borderRadius: '6px',
+                    cursor: 'pointer',
+                    border: `1px solid ${docTypeDefault === 'ALL' ? 'var(--primary)' : 'var(--border-color)'}`,
+                    backgroundColor: docTypeDefault === 'ALL' ? 'rgba(79, 70, 229, 0.15)' : 'var(--bg-card)',
+                    color: docTypeDefault === 'ALL' ? 'var(--primary)' : 'var(--text-main)',
+                    transition: 'all 0.15s ease'
+                  }}
+                >
+                  공용 복합기
                 </button>
               </div>
             </div>
 
             {/* 입력 폼 (헌장 3.4 상하 수직 스택) */}
             <form onSubmit={handleSaveStation} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-              {/* 1. 스테이션 명칭 */}
+              {/* 1. 프린터 명칭 */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
                 <label style={{ fontSize: '12px', fontWeight: '700', color: 'var(--text-secondary)' }}>
-                  스테이션 명칭
+                  프린터 명칭 (식별자)
                 </label>
                 <input
                   type="text"
                   value={stationName}
                   onChange={e => setStationName(e.target.value)}
-                  placeholder="예: 프린터1, 출고장 데스크, 사무실A4"
+                  placeholder="예: 프린터1, 출고장 데스크, 사무실A4, 2공장 프린터"
                   required
                 />
               </div>
@@ -754,7 +848,7 @@ export const PrintQueueManager: React.FC = () => {
               <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <label style={{ fontSize: '12px', fontWeight: '700', color: 'var(--text-secondary)' }}>
-                    연결 프린터
+                    연결 프린터 (OS 드라이버)
                   </label>
                   <button
                     type="button"
@@ -793,7 +887,7 @@ export const PrintQueueManager: React.FC = () => {
                     type="text"
                     value={selectedPrinter}
                     onChange={e => setSelectedPrinter(e.target.value)}
-                    placeholder="직접 프린터 명칭 입력"
+                    placeholder="직접 프린터 드라이버 명칭 입력"
                     required
                   />
                 )}
@@ -802,41 +896,41 @@ export const PrintQueueManager: React.FC = () => {
               {/* 3. 기본 전담 문서 */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
                 <label style={{ fontSize: '12px', fontWeight: '700', color: 'var(--text-secondary)' }}>
-                  문서 구분
+                  출력 용도 (문서 구분)
                 </label>
                 <select
                   value={docTypeDefault}
                   onChange={e => setDocTypeDefault(e.target.value as any)}
                 >
-                  <option value="DISPATCH_ORDER">출고요청서 전용</option>
-                  <option value="RETURN_ORDER">회수요청서 전용</option>
-                  <option value="ALL">공용 (모든 문서 수신)</option>
+                  <option value="DISPATCH_ORDER">출고요청서 전용 (출고의뢰 발행 시 자동 라우팅)</option>
+                  <option value="RETURN_ORDER">회수요청서 전용 (회수의뢰 발행 시 자동 라우팅)</option>
+                  <option value="ALL">공용 (모든 문서 수신 허용)</option>
                 </select>
               </div>
 
               {/* 4. 컴퓨터 명칭 */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
                 <label style={{ fontSize: '12px', fontWeight: '700', color: 'var(--text-secondary)' }}>
-                  컴퓨터 식별명
+                  컴퓨터 식별명 (호스트 PC)
                 </label>
                 <input
                   type="text"
                   value={machineName}
                   onChange={e => setMachineName(e.target.value)}
-                  placeholder="컴퓨터 식별명"
+                  placeholder="자동 탐색되거나 수동 입력"
                 />
               </div>
 
               {/* 5. 비고 / 설명 */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
                 <label style={{ fontSize: '12px', fontWeight: '700', color: 'var(--text-secondary)' }}>
-                  비고
+                  설치 위치 및 비고
                 </label>
                 <input
                   type="text"
                   value={description}
                   onChange={e => setDescription(e.target.value)}
-                  placeholder="설치 위치 및 특이사항"
+                  placeholder="예: 1주기장 출고 사무실 1번 PC"
                 />
               </div>
 
@@ -881,7 +975,7 @@ export const PrintQueueManager: React.FC = () => {
                 }}
               >
                 <Check size={14} />
-                <span>{editingStationId ? '스테이션 설정 갱신' : '스테이션 저장'}</span>
+                <span>{editingStationId ? '프린터 설정 갱신' : '+ 새 프린터 등록 완료'}</span>
               </button>
             </form>
           </div>

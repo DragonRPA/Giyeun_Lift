@@ -1,5 +1,5 @@
 // src/pages/PrintQueueManager.tsx
-// 🖨️ 분산 무인 인쇄 큐 모니터 및 프린터 스테이션 관리 (헌장 1.1, 1.2, 3.1 명사 표준 준수)
+// 🖨️ 분산 무인 인쇄 큐 모니터 및 프린터 스테이션 관리 (전사 표준 헌장 카테고리 I, III, V 전면 준수)
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { useApp } from '../context/AppContext';
@@ -14,7 +14,6 @@ import {
   Printer,
   Server,
   RefreshCw,
-  Plus,
   Trash2,
   Play,
   XCircle,
@@ -22,9 +21,11 @@ import {
   CheckCircle2,
   Clock,
   AlertCircle,
-  Laptop,
   Layers,
-  FileText
+  FileText,
+  Edit2,
+  Check,
+  X
 } from 'lucide-react';
 
 export const PrintQueueManager: React.FC = () => {
@@ -64,7 +65,7 @@ export const PrintQueueManager: React.FC = () => {
   const [filterDocType, setFilterDocType] = useState<string>('ALL');
   const [filterStation, setFilterStation] = useState<string>('ALL');
 
-  // 미리보기 모달
+  // 서식 미리보기 모달
   const [previewItem, setPreviewItem] = useState<PrintQueueItem | null>(null);
 
   // 로컬 PC의 eBroAgent 프린터 목록 및 기존 설정 로드
@@ -228,399 +229,728 @@ export const PrintQueueManager: React.FC = () => {
   }, [printQueue, filterStatus, filterDocType, filterStation]);
 
   return (
-    <div className="p-6 bg-slate-50 min-h-screen">
-      {/* 상단 헤더 (헌장 3.1 무수식어 건조 명사 표준) */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between pb-4 border-b border-slate-200 mb-6 gap-3">
-        <div className="flex items-center gap-3">
-          <div className="p-2.5 bg-slate-800 text-white rounded-lg shadow-sm">
+    <div
+      style={{
+        padding: '24px',
+        backgroundColor: 'var(--bg-app)',
+        minHeight: '100%',
+        color: 'var(--text-main)',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '20px',
+        boxSizing: 'border-box'
+      }}
+    >
+      {/* ═══ 상단 헤더 (헌장 3.1 무수식어 건조 명사 표준) ═══ */}
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          flexWrap: 'wrap',
+          gap: '16px',
+          paddingBottom: '16px',
+          borderBottom: '1px solid var(--border-color)'
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <div
+            style={{
+              padding: '10px',
+              backgroundColor: 'var(--primary)',
+              color: '#ffffff',
+              borderRadius: '8px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center'
+            }}
+          >
             <Printer size={22} />
           </div>
           <div>
-            <h1 className="text-xl font-bold text-slate-900 tracking-tight">프린트 큐 모니터</h1>
-            <p className="text-xs text-slate-500 mt-0.5">현장 분산 로컬 프린터 원격 무인 출력 및 스테이션 관리</p>
+            <h1 style={{ fontSize: '20px', fontWeight: '800', color: 'var(--text-main)', margin: 0, letterSpacing: '-0.3px' }}>
+              프린트 큐 모니터
+            </h1>
+            <p style={{ fontSize: '13px', color: 'var(--text-secondary)', margin: '3px 0 0 0' }}>
+              로컬 프린터 원격 무인 인쇄 및 스테이션 관리
+            </p>
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        {/* 로컬 에이전트 상태 바 & 재탐색 버튼 */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'nowrap' }}>
+          <div
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+              padding: '6px 12px',
+              borderRadius: '20px',
+              fontSize: '12px',
+              fontWeight: '700',
+              whiteSpace: 'nowrap',
+              backgroundColor: agentStatus.online ? 'rgba(16, 185, 129, 0.12)' : 'rgba(239, 68, 68, 0.12)',
+              color: agentStatus.online ? '#10b981' : '#ef4444',
+              border: `1px solid ${agentStatus.online ? 'rgba(16, 185, 129, 0.3)' : 'rgba(239, 68, 68, 0.3)'}`
+            }}
+          >
+            <span
+              style={{
+                width: '8px',
+                height: '8px',
+                borderRadius: '50%',
+                backgroundColor: agentStatus.online ? '#10b981' : '#ef4444'
+              }}
+            />
+            <span>
+              {agentStatus.online
+                ? `에이전트 연결됨 (${agentStatus.machineName || 'PC'})`
+                : '에이전트 미연결'}
+            </span>
+          </div>
+
           <button
             type="button"
+            className="btn-secondary"
             onClick={scanLocalAgent}
             disabled={isScanningAgent}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-slate-300 rounded text-xs font-semibold text-slate-700 hover:bg-slate-100 disabled:opacity-50"
+            style={{ padding: '6px 12px', fontSize: '12px', fontWeight: '700', whiteSpace: 'nowrap' }}
           >
-            <RefreshCw size={13} className={isScanningAgent ? 'animate-spin' : ''} />
-            에이전트 재탐색
+            <RefreshCw size={12} className={isScanningAgent ? 'animate-spin' : ''} />
+            <span>에이전트 재탐색</span>
           </button>
-          <div className={`px-2.5 py-1 rounded text-xs font-bold flex items-center gap-1.5 border ${
-            agentStatus.online
-              ? 'bg-emerald-50 text-emerald-700 border-emerald-300'
-              : 'bg-rose-50 text-rose-700 border-rose-300'
-          }`}>
-            <span className={`w-2 h-2 rounded-full ${agentStatus.online ? 'bg-emerald-500 animate-pulse' : 'bg-rose-500'}`} />
-            {agentStatus.online ? `로컬 에이전트 연결됨 (${agentStatus.machineName || 'PC'})` : '로컬 에이전트 미연결'}
-          </div>
         </div>
       </div>
 
-      {/* 탭 네비게이션 */}
-      <div className="flex border-b border-slate-200 mb-6 bg-white rounded-t-lg px-4 pt-2 shadow-sm">
+      {/* ═══ 탭 네비게이션 ═══ */}
+      <div
+        style={{
+          display: 'flex',
+          gap: '8px',
+          borderBottom: '1px solid var(--border-color)',
+          paddingBottom: '2px'
+        }}
+      >
         <button
           type="button"
           onClick={() => setActiveTab('stations')}
-          className={`flex items-center gap-2 px-5 py-2.5 text-sm font-bold border-b-2 transition-colors ${
-            activeTab === 'stations'
-              ? 'border-slate-800 text-slate-900'
-              : 'border-transparent text-slate-500 hover:text-slate-700'
-          }`}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            padding: '10px 18px',
+            fontSize: '14px',
+            fontWeight: '700',
+            cursor: 'pointer',
+            border: 'none',
+            borderBottom: activeTab === 'stations' ? '3px solid var(--primary)' : '3px solid transparent',
+            backgroundColor: 'transparent',
+            color: activeTab === 'stations' ? 'var(--primary)' : 'var(--text-secondary)',
+            whiteSpace: 'nowrap',
+            transition: 'all 0.15s ease'
+          }}
         >
-          <Server size={15} />
-          프린트 스테이션 현황 ({printStations.length})
+          <Server size={16} />
+          <span>프린터 스테이션 ({printStations.length})</span>
         </button>
+
         <button
           type="button"
           onClick={() => setActiveTab('queue')}
-          className={`flex items-center gap-2 px-5 py-2.5 text-sm font-bold border-b-2 transition-colors ${
-            activeTab === 'queue'
-              ? 'border-slate-800 text-slate-900'
-              : 'border-transparent text-slate-500 hover:text-slate-700'
-          }`}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            padding: '10px 18px',
+            fontSize: '14px',
+            fontWeight: '700',
+            cursor: 'pointer',
+            border: 'none',
+            borderBottom: activeTab === 'queue' ? '3px solid var(--primary)' : '3px solid transparent',
+            backgroundColor: 'transparent',
+            color: activeTab === 'queue' ? 'var(--primary)' : 'var(--text-secondary)',
+            whiteSpace: 'nowrap',
+            transition: 'all 0.15s ease'
+          }}
         >
-          <Layers size={15} />
-          인쇄 대기열 대장 ({printQueue.length})
+          <Layers size={16} />
+          <span>인쇄 대기 대장 ({printQueue.length})</span>
         </button>
       </div>
 
-      {/* 탭 1: 프린트 스테이션 현황 */}
+      {/* ═════════════════════════════════════════════════════════════════════ */}
+      {/* 탭 1: 프린터 스테이션 관리 (유형 A: 마스터-디테일 스튜디오)               */}
+      {/* ═════════════════════════════════════════════════════════════════════ */}
       {activeTab === 'stations' && (
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-          {/* 좌측: 등록된 스테이션 목록 (7 cols) */}
-          <div className="lg:col-span-7 space-y-4">
-            <div className="bg-white border border-slate-200 rounded-lg p-5 shadow-sm">
-              <div className="flex items-center justify-between mb-4 pb-3 border-b border-slate-100">
-                <div className="flex items-center gap-2">
-                  <Server size={16} className="text-slate-600" />
-                  <h2 className="font-bold text-sm text-slate-800">등록 스테이션 목록</h2>
-                </div>
-                <span className="text-xs text-slate-400">총 {printStations.length}개소 등록</span>
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))',
+            gap: '20px',
+            alignItems: 'start'
+          }}
+        >
+          {/* ─── 좌측: 등록 스테이션 목록 ─── */}
+          <div
+            style={{
+              backgroundColor: 'var(--bg-card)',
+              border: '1px solid var(--border-color)',
+              borderRadius: '10px',
+              padding: '20px',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '16px'
+            }}
+          >
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                paddingBottom: '12px',
+                borderBottom: '1px solid var(--border-color)'
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Server size={16} color="var(--primary)" />
+                <h2 style={{ fontSize: '15px', fontWeight: '800', color: 'var(--text-main)', margin: 0 }}>
+                  등록 스테이션 목록
+                </h2>
               </div>
+              <span style={{ fontSize: '12px', color: 'var(--text-muted)', fontWeight: '600' }}>
+                총 {printStations.length}개소 등록
+              </span>
+            </div>
 
-              {printStations.length === 0 ? (
-                <div className="text-center py-10 text-slate-400 text-sm">
-                  <Printer size={32} className="mx-auto mb-2 opacity-30" />
-                  등록된 인쇄 스테이션이 없습니다. 우측 폼에서 현재 PC를 등록하십시오.
+            {printStations.length === 0 ? (
+              <div
+                style={{
+                  padding: '48px 20px',
+                  textAlign: 'center',
+                  color: 'var(--text-muted)',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  gap: '8px'
+                }}
+              >
+                <Printer size={36} style={{ opacity: 0.35, marginBottom: '6px' }} />
+                <div style={{ fontSize: '14px', fontWeight: '700', color: 'var(--text-secondary)' }}>
+                  등록된 인쇄 스테이션이 없습니다.
                 </div>
-              ) : (
-                <div className="space-y-3">
-                  {printStations.map(station => {
-                    const online = isStationOnline(station);
-                    return (
-                      <div
-                        key={station.id}
-                        className={`p-4 border rounded-lg transition-all ${
-                          editingStationId === station.id
-                            ? 'border-blue-500 bg-blue-50/30'
-                            : 'border-slate-200 bg-white hover:border-slate-300'
-                        }`}
-                      >
-                        <div className="flex items-start justify-between">
-                          <div className="flex items-start gap-3">
-                            <div className={`p-2.5 rounded-lg text-white mt-0.5 ${
-                              online ? 'bg-emerald-600' : 'bg-slate-400'
-                            }`}>
-                              <Printer size={18} />
-                            </div>
-                            <div>
-                              <div className="flex items-center gap-2">
-                                <h3 className="font-bold text-base text-slate-900">{station.stationName}</h3>
-                                <span className={`px-2 py-0.5 text-xs font-bold rounded flex items-center gap-1 border ${
-                                  online
-                                    ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                                    : 'bg-slate-100 text-slate-500 border-slate-200'
-                                }`}>
-                                  <span className={`w-1.5 h-1.5 rounded-full ${online ? 'bg-emerald-500' : 'bg-slate-400'}`} />
-                                  {online ? 'ONLINE' : 'OFFLINE'}
-                                </span>
-                                <span className="px-2 py-0.5 text-xs bg-slate-100 text-slate-700 rounded font-semibold border border-slate-200">
-                                  {station.docTypeDefault === 'DISPATCH_ORDER' && '출고요청서 전담'}
-                                  {station.docTypeDefault === 'RETURN_ORDER' && '입고요청서 전담'}
-                                  {station.docTypeDefault === 'ALL' && '공용 서식'}
-                                </span>
-                              </div>
-                              <div className="text-xs text-slate-600 mt-1.5 space-y-0.5">
-                                <div><span className="font-semibold text-slate-500">로컬 프린터:</span> {station.localPrinterName}</div>
-                                <div><span className="font-semibold text-slate-500">호스트 명:</span> {station.machineName || '-'}</div>
-                                {station.description && (
-                                  <div><span className="font-semibold text-slate-500">설명:</span> {station.description}</div>
-                                )}
-                                <div className="text-[11px] text-slate-400 pt-1">
-                                  최근 하트비트: {station.lastHeartbeat ? new Date(station.lastHeartbeat).toLocaleTimeString('ko-KR') : '-'}
-                                </div>
-                              </div>
-                            </div>
-                          </div>
+                <div style={{ fontSize: '12px' }}>
+                  우측 폼에서 현재 PC의 로컬 프린터를 선택하여 스테이션을 등록하십시오.
+                </div>
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                {printStations.map(station => {
+                  const online = isStationOnline(station);
+                  const isEditing = editingStationId === station.id;
 
-                          <div className="flex flex-col gap-1.5 items-end">
-                            <button
-                              type="button"
-                              onClick={() => handleSendTestPrint(station)}
-                              className="px-2.5 py-1 bg-slate-800 text-white hover:bg-slate-900 rounded text-xs font-semibold flex items-center gap-1"
-                            >
-                              <Play size={11} />
-                              테스트 인쇄
-                            </button>
-                            <div className="flex items-center gap-1">
-                              <button
-                                type="button"
-                                onClick={() => handleEditStation(station)}
-                                className="px-2 py-1 bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 rounded text-xs"
-                              >
-                                수정
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  if (confirm(`스테이션 [${station.stationName}]을 삭제하시겠습니까?`)) {
-                                    deletePrintStation(station.id);
-                                  }
-                                }}
-                                className="px-2 py-1 bg-white border border-rose-200 text-rose-600 hover:bg-rose-50 rounded text-xs"
-                              >
-                                <Trash2 size={12} />
-                              </button>
-                            </div>
-                          </div>
+                  return (
+                    <div
+                      key={station.id}
+                      style={{
+                        padding: '16px',
+                        borderRadius: '8px',
+                        backgroundColor: isEditing ? 'rgba(79, 70, 229, 0.08)' : 'var(--bg-app)',
+                        border: `1px solid ${isEditing ? 'var(--primary)' : 'var(--border-color)'}`,
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '12px',
+                        transition: 'all 0.15s ease'
+                      }}
+                    >
+                      {/* 카드 상단 헤더 */}
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '10px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                          <span style={{ fontSize: '15px', fontWeight: '800', color: 'var(--text-main)' }}>
+                            {station.stationName}
+                          </span>
+
+                          {/* 온라인 상태 배지 */}
+                          <span
+                            style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '5px',
+                              padding: '2px 8px',
+                              borderRadius: '12px',
+                              fontSize: '11px',
+                              fontWeight: '700',
+                              backgroundColor: online ? 'rgba(16, 185, 129, 0.15)' : 'rgba(148, 163, 184, 0.15)',
+                              color: online ? '#10b981' : 'var(--text-muted)',
+                              border: `1px solid ${online ? 'rgba(16, 185, 129, 0.3)' : 'rgba(148, 163, 184, 0.3)'}`
+                            }}
+                          >
+                            <span
+                              style={{
+                                width: '6px',
+                                height: '6px',
+                                borderRadius: '50%',
+                                backgroundColor: online ? '#10b981' : 'var(--text-muted)'
+                              }}
+                            />
+                            {online ? 'ONLINE' : 'OFFLINE'}
+                          </span>
+
+                          {/* 문서 구분 태그 */}
+                          <span
+                            style={{
+                              padding: '2px 8px',
+                              borderRadius: '4px',
+                              fontSize: '11px',
+                              fontWeight: '700',
+                              backgroundColor:
+                                station.docTypeDefault === 'DISPATCH_ORDER'
+                                  ? 'rgba(59, 130, 246, 0.15)'
+                                  : station.docTypeDefault === 'RETURN_ORDER'
+                                  ? 'rgba(168, 85, 247, 0.15)'
+                                  : 'rgba(100, 116, 139, 0.15)',
+                              color:
+                                station.docTypeDefault === 'DISPATCH_ORDER'
+                                  ? '#3b82f6'
+                                  : station.docTypeDefault === 'RETURN_ORDER'
+                                  ? '#a855f7'
+                                  : 'var(--text-secondary)',
+                              border: '1px solid var(--border-color)'
+                            }}
+                          >
+                            {station.docTypeDefault === 'DISPATCH_ORDER' && '출고요청서 전용'}
+                            {station.docTypeDefault === 'RETURN_ORDER' && '회수요청서 전용'}
+                            {station.docTypeDefault === 'ALL' && '공용 서식'}
+                          </span>
+                        </div>
+
+                        {/* 조치 버튼군 (상단 우측) */}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <button
+                            type="button"
+                            className="btn-secondary"
+                            onClick={() => handleSendTestPrint(station)}
+                            style={{
+                              padding: '4px 8px',
+                              fontSize: '11px',
+                              fontWeight: '700',
+                              whiteSpace: 'nowrap'
+                            }}
+                            title="테스트 인쇄 발행"
+                          >
+                            <Play size={11} />
+                            <span>테스트 인쇄</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            className="btn-secondary"
+                            onClick={() => handleEditStation(station)}
+                            style={{
+                              padding: '4px 8px',
+                              fontSize: '11px',
+                              fontWeight: '700',
+                              whiteSpace: 'nowrap'
+                            }}
+                            title="수정"
+                          >
+                            <Edit2 size={11} />
+                            <span>수정</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (confirm(`스테이션 [${station.stationName}]을 삭제하시겠습니까?`)) {
+                                deletePrintStation(station.id);
+                              }
+                            }}
+                            style={{
+                              padding: '4px 8px',
+                              fontSize: '11px',
+                              fontWeight: '700',
+                              color: '#ef4444',
+                              backgroundColor: 'transparent',
+                              border: '1px solid rgba(239, 68, 68, 0.3)',
+                              borderRadius: '4px',
+                              cursor: 'pointer',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '4px',
+                              whiteSpace: 'nowrap'
+                            }}
+                            title="삭제"
+                          >
+                            <Trash2 size={11} />
+                          </button>
                         </div>
                       </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
+
+                      {/* 스테이션 상세 제원 그리드 */}
+                      <div
+                        style={{
+                          display: 'grid',
+                          gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+                          gap: '6px',
+                          fontSize: '12px',
+                          color: 'var(--text-secondary)'
+                        }}
+                      >
+                        <div>
+                          <span style={{ fontWeight: '700', color: 'var(--text-muted)', marginRight: '6px' }}>연결 프린터:</span>
+                          <span style={{ fontWeight: '600', color: 'var(--text-main)' }}>{station.localPrinterName}</span>
+                        </div>
+                        <div>
+                          <span style={{ fontWeight: '700', color: 'var(--text-muted)', marginRight: '6px' }}>컴퓨터명:</span>
+                          <span>{station.machineName || '-'}</span>
+                        </div>
+                        {station.description && (
+                          <div style={{ gridColumn: '1 / -1' }}>
+                            <span style={{ fontWeight: '700', color: 'var(--text-muted)', marginRight: '6px' }}>비고:</span>
+                            <span>{station.description}</span>
+                          </div>
+                        )}
+                        <div style={{ gridColumn: '1 / -1', fontSize: '11px', color: 'var(--text-muted)' }}>
+                          최근 하트비트: {station.lastHeartbeat ? new Date(station.lastHeartbeat).toLocaleString('ko-KR') : '-'}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
 
-          {/* 우측: 현재 PC 스테이션 등록/수정 폼 (5 cols) - 헌장 3.4 상하 스택 레이아웃 */}
-          <div className="lg:col-span-5">
-            <div className="bg-white border border-slate-200 rounded-lg p-5 shadow-sm sticky top-4">
-              <div className="flex items-center justify-between mb-4 pb-3 border-b border-slate-100">
-                <div className="flex items-center gap-2">
-                  <Laptop size={16} className="text-slate-600" />
-                  <h2 className="font-bold text-sm text-slate-800">
-                    {editingStationId ? '스테이션 설정 수정' : '현재 PC 스테이션 등록'}
-                  </h2>
-                </div>
-                {editingStationId && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setEditingStationId(null);
-                      setStationName('프린터1');
-                      setSelectedPrinter(agentStatus.defaultPrinter || '');
-                      setDocTypeDefault('DISPATCH_ORDER');
-                    }}
-                    className="text-xs text-slate-500 hover:text-slate-700 underline"
-                  >
-                    신규 등록으로 전환
-                  </button>
-                )}
+          {/* ─── 우측: 스테이션 등록 / 수정 스튜디오 (헌장 3.4 상하 스택 폼) ─── */}
+          <div
+            style={{
+              backgroundColor: 'var(--bg-card)',
+              border: '1px solid var(--border-color)',
+              borderRadius: '10px',
+              padding: '20px',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '16px'
+            }}
+          >
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                paddingBottom: '12px',
+                borderBottom: '1px solid var(--border-color)'
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Printer size={16} color="var(--primary)" />
+                <h2 style={{ fontSize: '15px', fontWeight: '800', color: 'var(--text-main)', margin: 0 }}>
+                  {editingStationId ? '스테이션 설정 수정' : '신규 스테이션 등록'}
+                </h2>
               </div>
+              {editingStationId && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditingStationId(null);
+                    setStationName('프린터1');
+                    setSelectedPrinter(agentStatus.defaultPrinter || '');
+                    setDocTypeDefault('DISPATCH_ORDER');
+                    setFormFeedback(null);
+                  }}
+                  style={{
+                    fontSize: '12px',
+                    color: 'var(--primary)',
+                    background: 'none',
+                    border: 'none',
+                    cursor: 'pointer',
+                    fontWeight: '700',
+                    textDecoration: 'underline'
+                  }}
+                >
+                  신규 등록 전환
+                </button>
+              )}
+            </div>
 
-              {/* 퀵 셋업 버튼군 */}
-              <div className="mb-4 p-3 bg-slate-50 rounded border border-slate-200">
-                <span className="text-xs font-semibold text-slate-600 block mb-2">원터치 스테이션 서식 지정:</span>
-                <div className="grid grid-cols-2 gap-2">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setStationName('프린터1');
-                      setDocTypeDefault('DISPATCH_ORDER');
-                      setDescription('출고장 전담 프린터');
-                    }}
-                    className={`py-1.5 px-2 rounded text-xs font-bold border text-center transition-all ${
-                      stationName === '프린터1'
-                        ? 'bg-blue-600 text-white border-blue-700'
-                        : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-100'
-                    }`}
-                  >
-                    프린터1 (출고요청서)
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setStationName('프린터2');
-                      setDocTypeDefault('RETURN_ORDER');
-                      setDescription('입고장 전담 프린터');
-                    }}
-                    className={`py-1.5 px-2 rounded text-xs font-bold border text-center transition-all ${
-                      stationName === '프린터2'
-                        ? 'bg-blue-600 text-white border-blue-700'
-                        : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-100'
-                    }`}
-                  >
-                    프린터2 (입고요청서)
-                  </button>
-                </div>
-              </div>
-
-              <form onSubmit={handleSaveStation} className="space-y-4">
-                {/* 스테이션 명칭 */}
-                <div className="flex flex-col gap-1">
-                  <label className="text-xs font-bold text-slate-700">스테이션 명칭 (식별자)</label>
-                  <input
-                    type="text"
-                    value={stationName}
-                    onChange={e => setStationName(e.target.value)}
-                    placeholder="예: 프린터1, 프린터2, 주기장 출고 데스크"
-                    className="w-full px-3 py-2 text-sm border border-slate-300 rounded focus:outline-none focus:ring-1 focus:ring-slate-800"
-                    required
-                  />
-                </div>
-
-                {/* 로컬 프린터 선택 */}
-                <div className="flex flex-col gap-1">
-                  <div className="flex items-center justify-between">
-                    <label className="text-xs font-bold text-slate-700">로컬 프린터 선택</label>
-                    <button
-                      type="button"
-                      onClick={scanLocalAgent}
-                      className="text-[11px] text-blue-600 hover:underline flex items-center gap-1"
-                    >
-                      <RefreshCw size={10} />
-                      목록 새로고침
-                    </button>
-                  </div>
-
-                  {agentStatus.online && agentStatus.printers.length > 0 ? (
-                    <select
-                      value={selectedPrinter}
-                      onChange={e => setSelectedPrinter(e.target.value)}
-                      className="w-full px-3 py-2 text-sm border border-slate-300 rounded focus:outline-none focus:ring-1 focus:ring-slate-800 bg-white"
-                      required
-                    >
-                      <option value="">-- 로컬 프린터 선택 --</option>
-                      {agentStatus.printers.map(p => (
-                        <option key={p} value={p}>
-                          {p} {p === agentStatus.defaultPrinter ? '(기본 프린터)' : ''}
-                        </option>
-                      ))}
-                    </select>
-                  ) : (
-                    <input
-                      type="text"
-                      value={selectedPrinter}
-                      onChange={e => setSelectedPrinter(e.target.value)}
-                      placeholder="에이전트 미연결 시 직접 프린터 이름 입력"
-                      className="w-full px-3 py-2 text-sm border border-slate-300 rounded focus:outline-none focus:ring-1 focus:ring-slate-800"
-                      required
-                    />
-                  )}
-                  <p className="text-[11px] text-slate-500">
-                    현재 컴퓨터에 Windows 드라이버로 연결된 물리 프린터 이름입니다.
-                  </p>
-                </div>
-
-                {/* 기본 처리 문서 유형 */}
-                <div className="flex flex-col gap-1">
-                  <label className="text-xs font-bold text-slate-700">기본 전담 문서 서식</label>
-                  <select
-                    value={docTypeDefault}
-                    onChange={e => setDocTypeDefault(e.target.value as any)}
-                    className="w-full px-3 py-2 text-sm border border-slate-300 rounded focus:outline-none focus:ring-1 focus:ring-slate-800 bg-white"
-                  >
-                    <option value="DISPATCH_ORDER">출고요청서 전담 (사무실 출고요청 발행 시 자동 라우팅)</option>
-                    <option value="RETURN_ORDER">입고요청서 전담 (사무실 입고요청 발행 시 자동 라우팅)</option>
-                    <option value="ALL">공용 (모든 문서 수신 허용)</option>
-                  </select>
-                </div>
-
-                {/* 호스트 컴퓨터 명칭 */}
-                <div className="flex flex-col gap-1">
-                  <label className="text-xs font-bold text-slate-700">호스트 컴퓨터 명</label>
-                  <input
-                    type="text"
-                    value={machineName}
-                    onChange={e => setMachineName(e.target.value)}
-                    placeholder="자동 탐색되거나 수동 입력"
-                    className="w-full px-3 py-2 text-sm border border-slate-300 rounded bg-slate-50 focus:outline-none"
-                  />
-                </div>
-
-                {/* 설치 위치 및 설명 */}
-                <div className="flex flex-col gap-1">
-                  <label className="text-xs font-bold text-slate-700">설치 위치 및 부가 설명</label>
-                  <input
-                    type="text"
-                    value={description}
-                    onChange={e => setDescription(e.target.value)}
-                    placeholder="예: 1주기장 출고 사무실 1번 PC"
-                    className="w-full px-3 py-2 text-sm border border-slate-300 rounded focus:outline-none focus:ring-1 focus:ring-slate-800"
-                  />
-                </div>
-
-                {formFeedback && (
-                  <div className={`p-3 rounded text-xs font-semibold flex items-center gap-2 ${
-                    formFeedback.type === 'success'
-                      ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
-                      : 'bg-rose-50 text-rose-800 border border-rose-200'
-                  }`}>
-                    {formFeedback.type === 'success' ? <CheckCircle2 size={14} /> : <AlertCircle size={14} />}
-                    {formFeedback.message}
-                  </div>
-                )}
+            {/* 프리셋 버튼군 (건조 명사 표준) */}
+            <div
+              style={{
+                padding: '12px',
+                backgroundColor: 'var(--bg-app)',
+                borderRadius: '8px',
+                border: '1px solid var(--border-color)',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '8px'
+              }}
+            >
+              <span style={{ fontSize: '11.5px', fontWeight: '700', color: 'var(--text-secondary)' }}>
+                기본 서식 프리셋
+              </span>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setStationName('프린터1');
+                    setDocTypeDefault('DISPATCH_ORDER');
+                    setDescription('출고장 전담 프린터');
+                  }}
+                  style={{
+                    padding: '8px',
+                    fontSize: '12px',
+                    fontWeight: '700',
+                    borderRadius: '6px',
+                    cursor: 'pointer',
+                    border: `1px solid ${stationName === '프린터1' ? 'var(--primary)' : 'var(--border-color)'}`,
+                    backgroundColor: stationName === '프린터1' ? 'var(--primary)' : 'var(--bg-card)',
+                    color: stationName === '프린터1' ? '#ffffff' : 'var(--text-main)',
+                    transition: 'all 0.15s ease'
+                  }}
+                >
+                  프린터1 (출고요청)
+                </button>
 
                 <button
-                  type="submit"
-                  className="w-full py-2.5 bg-slate-800 hover:bg-slate-900 text-white rounded text-sm font-bold flex items-center justify-center gap-2 shadow-sm transition-colors"
+                  type="button"
+                  onClick={() => {
+                    setStationName('프린터2');
+                    setDocTypeDefault('RETURN_ORDER');
+                    setDescription('입고장 전담 프린터');
+                  }}
+                  style={{
+                    padding: '8px',
+                    fontSize: '12px',
+                    fontWeight: '700',
+                    borderRadius: '6px',
+                    cursor: 'pointer',
+                    border: `1px solid ${stationName === '프린터2' ? 'var(--primary)' : 'var(--border-color)'}`,
+                    backgroundColor: stationName === '프린터2' ? 'var(--primary)' : 'var(--bg-card)',
+                    color: stationName === '프린터2' ? '#ffffff' : 'var(--text-main)',
+                    transition: 'all 0.15s ease'
+                  }}
                 >
-                  <Printer size={15} />
-                  {editingStationId ? '스테이션 설정 갱신' : '스테이션 등록 및 에이전트 동기화'}
+                  프린터2 (회수요청)
                 </button>
-              </form>
+              </div>
             </div>
+
+            {/* 입력 폼 (헌장 3.4 상하 수직 스택) */}
+            <form onSubmit={handleSaveStation} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+              {/* 1. 스테이션 명칭 */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+                <label style={{ fontSize: '12px', fontWeight: '700', color: 'var(--text-secondary)' }}>
+                  스테이션 명칭
+                </label>
+                <input
+                  type="text"
+                  value={stationName}
+                  onChange={e => setStationName(e.target.value)}
+                  placeholder="예: 프린터1, 출고장 데스크, 사무실A4"
+                  required
+                />
+              </div>
+
+              {/* 2. 연결 로컬 프린터 드라이버 */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <label style={{ fontSize: '12px', fontWeight: '700', color: 'var(--text-secondary)' }}>
+                    연결 프린터
+                  </label>
+                  <button
+                    type="button"
+                    onClick={scanLocalAgent}
+                    style={{
+                      fontSize: '11px',
+                      color: 'var(--primary)',
+                      background: 'none',
+                      border: 'none',
+                      cursor: 'pointer',
+                      fontWeight: '700',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '4px'
+                    }}
+                  >
+                    <RefreshCw size={10} /> 목록 갱신
+                  </button>
+                </div>
+
+                {agentStatus.online && agentStatus.printers.length > 0 ? (
+                  <select
+                    value={selectedPrinter}
+                    onChange={e => setSelectedPrinter(e.target.value)}
+                    required
+                  >
+                    <option value="">-- 프린터 선택 --</option>
+                    {agentStatus.printers.map(p => (
+                      <option key={p} value={p}>
+                        {p} {p === agentStatus.defaultPrinter ? '(기본 프린터)' : ''}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <input
+                    type="text"
+                    value={selectedPrinter}
+                    onChange={e => setSelectedPrinter(e.target.value)}
+                    placeholder="직접 프린터 명칭 입력"
+                    required
+                  />
+                )}
+              </div>
+
+              {/* 3. 기본 전담 문서 */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+                <label style={{ fontSize: '12px', fontWeight: '700', color: 'var(--text-secondary)' }}>
+                  문서 구분
+                </label>
+                <select
+                  value={docTypeDefault}
+                  onChange={e => setDocTypeDefault(e.target.value as any)}
+                >
+                  <option value="DISPATCH_ORDER">출고요청서 전용</option>
+                  <option value="RETURN_ORDER">회수요청서 전용</option>
+                  <option value="ALL">공용 (모든 문서 수신)</option>
+                </select>
+              </div>
+
+              {/* 4. 컴퓨터 명칭 */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+                <label style={{ fontSize: '12px', fontWeight: '700', color: 'var(--text-secondary)' }}>
+                  컴퓨터 식별명
+                </label>
+                <input
+                  type="text"
+                  value={machineName}
+                  onChange={e => setMachineName(e.target.value)}
+                  placeholder="컴퓨터 식별명"
+                />
+              </div>
+
+              {/* 5. 비고 / 설명 */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+                <label style={{ fontSize: '12px', fontWeight: '700', color: 'var(--text-secondary)' }}>
+                  비고
+                </label>
+                <input
+                  type="text"
+                  value={description}
+                  onChange={e => setDescription(e.target.value)}
+                  placeholder="설치 위치 및 특이사항"
+                />
+              </div>
+
+              {/* 피드백 메시지 */}
+              {formFeedback && (
+                <div
+                  style={{
+                    padding: '10px 14px',
+                    borderRadius: '6px',
+                    fontSize: '12px',
+                    fontWeight: '700',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    backgroundColor:
+                      formFeedback.type === 'success' ? 'rgba(16, 185, 129, 0.12)' : 'rgba(239, 68, 68, 0.12)',
+                    color: formFeedback.type === 'success' ? '#10b981' : '#ef4444',
+                    border: `1px solid ${
+                      formFeedback.type === 'success' ? 'rgba(16, 185, 129, 0.3)' : 'rgba(239, 68, 68, 0.3)'
+                    }`
+                  }}
+                >
+                  {formFeedback.type === 'success' ? <CheckCircle2 size={14} /> : <AlertCircle size={14} />}
+                  <span>{formFeedback.message}</span>
+                </div>
+              )}
+
+              {/* 저장 제출 버튼 (Gutenberg 우하단 터미널 액션) */}
+              <button
+                type="submit"
+                className="btn-primary"
+                style={{
+                  width: '100%',
+                  padding: '10px',
+                  fontSize: '13px',
+                  fontWeight: '800',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '8px',
+                  marginTop: '6px'
+                }}
+              >
+                <Check size={14} />
+                <span>{editingStationId ? '스테이션 설정 갱신' : '스테이션 저장'}</span>
+              </button>
+            </form>
           </div>
         </div>
       )}
 
-      {/* 탭 2: 인쇄 대기열 대장 (고밀도 그리드형 - 헌장 3.6 아키타입 B) */}
+      {/* ═════════════════════════════════════════════════════════════════════ */}
+      {/* 탭 2: 인쇄 대기열 대장 (유형 B: 고밀도 그리드형 - 헌장 3.6 아키타입 B)       */}
+      {/* ═════════════════════════════════════════════════════════════════════ */}
       {activeTab === 'queue' && (
-        <div className="bg-white border border-slate-200 rounded-lg shadow-sm">
-          {/* 상단 필터 바 */}
-          <div className="p-4 border-b border-slate-200 flex flex-wrap items-center justify-between gap-3 bg-slate-50/50">
-            <div className="flex flex-wrap items-center gap-3">
-              <div className="flex items-center gap-1.5">
-                <span className="text-xs font-bold text-slate-600">상태:</span>
+        <div
+          style={{
+            backgroundColor: 'var(--bg-card)',
+            border: '1px solid var(--border-color)',
+            borderRadius: '10px',
+            overflow: 'hidden',
+            display: 'flex',
+            flexDirection: 'column'
+          }}
+        >
+          {/* 상단 필터 바 (헌장 3.5 좌상단 Scope & 우상단 Pipeline) */}
+          <div
+            style={{
+              padding: '14px 18px',
+              borderBottom: '1px solid var(--border-color)',
+              backgroundColor: 'var(--bg-app)',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              flexWrap: 'wrap',
+              gap: '12px'
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '14px', flexWrap: 'wrap' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', whiteSpace: 'nowrap' }}>
+                <span style={{ fontSize: '12px', fontWeight: '700', color: 'var(--text-secondary)' }}>상태:</span>
                 <select
                   value={filterStatus}
                   onChange={e => setFilterStatus(e.target.value)}
-                  className="px-2.5 py-1.5 text-xs border border-slate-300 rounded bg-white font-semibold"
+                  style={{ width: 'auto', padding: '6px 10px', fontSize: '12px', fontWeight: '700' }}
                 >
                   <option value="ALL">전체 상태</option>
-                  <option value="PENDING">대기중 (PENDING)</option>
-                  <option value="PRINTING">출력중 (PRINTING)</option>
-                  <option value="COMPLETED">출력완료 (COMPLETED)</option>
-                  <option value="FAILED">출력실패 (FAILED)</option>
-                  <option value="CANCELLED">취소됨 (CANCELLED)</option>
+                  <option value="PENDING">대기중</option>
+                  <option value="PRINTING">출력중</option>
+                  <option value="COMPLETED">출력완료</option>
+                  <option value="FAILED">출력오류</option>
+                  <option value="CANCELLED">취소됨</option>
                 </select>
               </div>
 
-              <div className="flex items-center gap-1.5">
-                <span className="text-xs font-bold text-slate-600">문서:</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', whiteSpace: 'nowrap' }}>
+                <span style={{ fontSize: '12px', fontWeight: '700', color: 'var(--text-secondary)' }}>문서:</span>
                 <select
                   value={filterDocType}
                   onChange={e => setFilterDocType(e.target.value)}
-                  className="px-2.5 py-1.5 text-xs border border-slate-300 rounded bg-white font-semibold"
+                  style={{ width: 'auto', padding: '6px 10px', fontSize: '12px', fontWeight: '700' }}
                 >
                   <option value="ALL">전체 문서</option>
                   <option value="DISPATCH_ORDER">출고요청서</option>
-                  <option value="RETURN_ORDER">입고요청서</option>
+                  <option value="RETURN_ORDER">회수요청서</option>
                 </select>
               </div>
 
-              <div className="flex items-center gap-1.5">
-                <span className="text-xs font-bold text-slate-600">스테이션:</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', whiteSpace: 'nowrap' }}>
+                <span style={{ fontSize: '12px', fontWeight: '700', color: 'var(--text-secondary)' }}>스테이션:</span>
                 <select
                   value={filterStation}
                   onChange={e => setFilterStation(e.target.value)}
-                  className="px-2.5 py-1.5 text-xs border border-slate-300 rounded bg-white font-semibold"
+                  style={{ width: 'auto', padding: '6px 10px', fontSize: '12px', fontWeight: '700' }}
                 >
                   <option value="ALL">전체 스테이션</option>
                   {printStations.map(st => (
@@ -632,140 +962,259 @@ export const PrintQueueManager: React.FC = () => {
               </div>
             </div>
 
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-slate-500 font-semibold">
-                조회 결과: {filteredQueue.length}건
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <span style={{ fontSize: '12px', fontWeight: '700', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>
+                조회 {filteredQueue.length}건
               </span>
               <button
                 type="button"
+                className="btn-secondary"
                 onClick={() => refreshAllData()}
-                className="p-1.5 border border-slate-300 rounded bg-white hover:bg-slate-100 text-slate-700"
+                style={{ padding: '6px 10px', fontSize: '12px' }}
                 title="새로고침"
               >
-                <RefreshCw size={13} />
+                <RefreshCw size={12} />
               </button>
             </div>
           </div>
 
           {/* 고밀도 대사 테이블 (헌장 3.2 줄바꿈 방지 적용) */}
-          <div className="overflow-x-auto">
-            <table className="w-full text-xs text-left border-collapse">
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', fontSize: '12px', borderCollapse: 'collapse', textAlign: 'left' }}>
               <thead>
-                <tr className="bg-slate-100/80 text-slate-700 font-bold border-b border-slate-200">
-                  <th className="p-2.5 whitespace-nowrap">발행시각</th>
-                  <th className="p-2.5 whitespace-nowrap">문서구분</th>
-                  <th className="p-2.5 whitespace-nowrap">문서번호</th>
-                  <th className="p-2.5 whitespace-nowrap">문서제목</th>
-                  <th className="p-2.5 whitespace-nowrap">타겟 스테이션</th>
-                  <th className="p-2.5 whitespace-nowrap">요청자</th>
-                  <th className="p-2.5 whitespace-nowrap">상태</th>
-                  <th className="p-2.5 whitespace-nowrap">시도</th>
-                  <th className="p-2.5 whitespace-nowrap">오류내용</th>
-                  <th className="p-2.5 whitespace-nowrap">완료시각</th>
-                  <th className="p-2.5 whitespace-nowrap text-center">조치</th>
+                <tr
+                  style={{
+                    backgroundColor: 'var(--bg-app)',
+                    borderBottom: '2px solid var(--border-color)',
+                    color: 'var(--text-secondary)',
+                    fontWeight: '700'
+                  }}
+                >
+                  <th style={{ padding: '10px 12px', whiteSpace: 'nowrap' }}>발행시각</th>
+                  <th style={{ padding: '10px 12px', whiteSpace: 'nowrap' }}>문서구분</th>
+                  <th style={{ padding: '10px 12px', whiteSpace: 'nowrap' }}>문서번호</th>
+                  <th style={{ padding: '10px 12px', whiteSpace: 'nowrap' }}>제목</th>
+                  <th style={{ padding: '10px 12px', whiteSpace: 'nowrap' }}>타겟 스테이션</th>
+                  <th style={{ padding: '10px 12px', whiteSpace: 'nowrap' }}>요청자</th>
+                  <th style={{ padding: '10px 12px', whiteSpace: 'nowrap' }}>상태</th>
+                  <th style={{ padding: '10px 12px', whiteSpace: 'nowrap', textAlign: 'center' }}>시도</th>
+                  <th style={{ padding: '10px 12px', whiteSpace: 'nowrap' }}>오류</th>
+                  <th style={{ padding: '10px 12px', whiteSpace: 'nowrap' }}>완료시각</th>
+                  <th style={{ padding: '10px 12px', whiteSpace: 'nowrap', textAlign: 'center' }}>조치</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100">
+              <tbody>
                 {filteredQueue.length === 0 ? (
                   <tr>
-                    <td colSpan={11} className="py-12 text-center text-slate-400">
-                      인쇄 대기열 작업이 없습니다.
+                    <td
+                      colSpan={11}
+                      style={{
+                        padding: '48px 20px',
+                        textAlign: 'center',
+                        color: 'var(--text-muted)'
+                      }}
+                    >
+                      인쇄 대기 작업이 없습니다.
                     </td>
                   </tr>
                 ) : (
                   filteredQueue.map(item => {
                     const st = printStations.find(s => s.id === item.stationId);
                     return (
-                      <tr key={item.id} className="hover:bg-slate-50 transition-colors">
-                        <td className="p-2.5 whitespace-nowrap font-mono text-slate-600">
-                          {new Date(item.createdAt).toLocaleDateString('ko-KR', {
+                      <tr
+                        key={item.id}
+                        style={{
+                          borderBottom: '1px solid var(--border-color)',
+                          color: 'var(--text-main)'
+                        }}
+                      >
+                        <td style={{ padding: '9px 12px', whiteSpace: 'nowrap', fontFamily: 'monospace' }}>
+                          {new Date(item.createdAt).toLocaleString('ko-KR', {
                             month: '2-digit',
                             day: '2-digit',
                             hour: '2-digit',
                             minute: '2-digit'
                           })}
                         </td>
-                        <td className="p-2.5 whitespace-nowrap">
-                          <span className={`px-2 py-0.5 rounded font-bold ${
-                            item.docType === 'DISPATCH_ORDER'
-                              ? 'bg-blue-100 text-blue-800'
-                              : 'bg-purple-100 text-purple-800'
-                          }`}>
-                            {item.docType === 'DISPATCH_ORDER' ? '출고요청' : '입고요청'}
+                        <td style={{ padding: '9px 12px', whiteSpace: 'nowrap' }}>
+                          <span
+                            style={{
+                              padding: '2px 8px',
+                              borderRadius: '4px',
+                              fontWeight: '700',
+                              fontSize: '11px',
+                              backgroundColor:
+                                item.docType === 'DISPATCH_ORDER'
+                                  ? 'rgba(59, 130, 246, 0.15)'
+                                  : 'rgba(168, 85, 247, 0.15)',
+                              color: item.docType === 'DISPATCH_ORDER' ? '#3b82f6' : '#a855f7',
+                              border: '1px solid var(--border-color)'
+                            }}
+                          >
+                            {item.docType === 'DISPATCH_ORDER' ? '출고요청' : '회수요청'}
                           </span>
                         </td>
-                        <td className="p-2.5 whitespace-nowrap font-mono text-slate-700">
+                        <td style={{ padding: '9px 12px', whiteSpace: 'nowrap', fontFamily: 'monospace', fontWeight: '700' }}>
                           {item.docNo || '-'}
                         </td>
-                        <td className="p-2.5 whitespace-nowrap font-semibold text-slate-800 max-w-[200px] truncate" title={item.title}>
+                        <td
+                          style={{
+                            padding: '9px 12px',
+                            whiteSpace: 'nowrap',
+                            fontWeight: '600',
+                            maxWidth: '220px',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis'
+                          }}
+                          title={item.title}
+                        >
                           {item.title}
                         </td>
-                        <td className="p-2.5 whitespace-nowrap">
-                          <span className="font-bold text-slate-700">{st?.stationName || item.stationId}</span>
-                          <span className="text-slate-400 ml-1">({item.localPrinterName || st?.localPrinterName || '-'})</span>
+                        <td style={{ padding: '9px 12px', whiteSpace: 'nowrap' }}>
+                          <span style={{ fontWeight: '700' }}>{st?.stationName || item.stationId}</span>
+                          <span style={{ color: 'var(--text-muted)', marginLeft: '4px' }}>
+                            ({item.localPrinterName || st?.localPrinterName || '-'})
+                          </span>
                         </td>
-                        <td className="p-2.5 whitespace-nowrap text-slate-600">
+                        <td style={{ padding: '9px 12px', whiteSpace: 'nowrap', color: 'var(--text-secondary)' }}>
                           {item.requestedByName || '-'}
                         </td>
-                        <td className="p-2.5 whitespace-nowrap">
+                        <td style={{ padding: '9px 12px', whiteSpace: 'nowrap' }}>
                           {item.status === 'PENDING' && (
-                            <span className="px-2 py-0.5 rounded bg-amber-100 text-amber-800 font-bold flex items-center gap-1 w-max">
+                            <span
+                              style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '4px',
+                                padding: '2px 8px',
+                                borderRadius: '4px',
+                                fontSize: '11px',
+                                fontWeight: '700',
+                                backgroundColor: 'rgba(245, 158, 11, 0.15)',
+                                color: '#f59e0b',
+                                border: '1px solid rgba(245, 158, 11, 0.3)'
+                              }}
+                            >
                               <Clock size={11} /> 대기중
                             </span>
                           )}
                           {item.status === 'PRINTING' && (
-                            <span className="px-2 py-0.5 rounded bg-blue-100 text-blue-800 font-bold flex items-center gap-1 w-max animate-pulse">
+                            <span
+                              style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '4px',
+                                padding: '2px 8px',
+                                borderRadius: '4px',
+                                fontSize: '11px',
+                                fontWeight: '700',
+                                backgroundColor: 'rgba(59, 130, 246, 0.15)',
+                                color: '#3b82f6',
+                                border: '1px solid rgba(59, 130, 246, 0.3)'
+                              }}
+                            >
                               <RefreshCw size={11} className="animate-spin" /> 출력중
                             </span>
                           )}
                           {item.status === 'COMPLETED' && (
-                            <span className="px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 font-bold flex items-center gap-1 w-max">
+                            <span
+                              style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '4px',
+                                padding: '2px 8px',
+                                borderRadius: '4px',
+                                fontSize: '11px',
+                                fontWeight: '700',
+                                backgroundColor: 'rgba(16, 185, 129, 0.15)',
+                                color: '#10b981',
+                                border: '1px solid rgba(16, 185, 129, 0.3)'
+                              }}
+                            >
                               <CheckCircle2 size={11} /> 완료
                             </span>
                           )}
                           {item.status === 'FAILED' && (
-                            <span className="px-2 py-0.5 rounded bg-rose-100 text-rose-800 font-bold flex items-center gap-1 w-max">
+                            <span
+                              style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '4px',
+                                padding: '2px 8px',
+                                borderRadius: '4px',
+                                fontSize: '11px',
+                                fontWeight: '700',
+                                backgroundColor: 'rgba(239, 68, 68, 0.15)',
+                                color: '#ef4444',
+                                border: '1px solid rgba(239, 68, 68, 0.3)'
+                              }}
+                            >
                               <AlertCircle size={11} /> 오류
                             </span>
                           )}
                           {item.status === 'CANCELLED' && (
-                            <span className="px-2 py-0.5 rounded bg-slate-200 text-slate-600 font-bold flex items-center gap-1 w-max">
+                            <span
+                              style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '4px',
+                                padding: '2px 8px',
+                                borderRadius: '4px',
+                                fontSize: '11px',
+                                fontWeight: '700',
+                                backgroundColor: 'rgba(148, 163, 184, 0.15)',
+                                color: 'var(--text-muted)',
+                                border: '1px solid var(--border-color)'
+                              }}
+                            >
                               <XCircle size={11} /> 취소
                             </span>
                           )}
                         </td>
-                        <td className="p-2.5 whitespace-nowrap text-center text-slate-600">
+                        <td style={{ padding: '9px 12px', whiteSpace: 'nowrap', textAlign: 'center' }}>
                           {item.attempts}
                         </td>
-                        <td className="p-2.5 whitespace-nowrap text-rose-600 max-w-[150px] truncate" title={item.lastError || ''}>
+                        <td
+                          style={{
+                            padding: '9px 12px',
+                            whiteSpace: 'nowrap',
+                            color: '#ef4444',
+                            maxWidth: '140px',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis'
+                          }}
+                          title={item.lastError || ''}
+                        >
                           {item.lastError || '-'}
                         </td>
-                        <td className="p-2.5 whitespace-nowrap font-mono text-slate-500">
+                        <td style={{ padding: '9px 12px', whiteSpace: 'nowrap', fontFamily: 'monospace', color: 'var(--text-secondary)' }}>
                           {item.completedAt
                             ? new Date(item.completedAt).toLocaleTimeString('ko-KR')
                             : '-'}
                         </td>
-                        <td className="p-2.5 whitespace-nowrap text-center">
-                          <div className="flex items-center justify-center gap-1">
+                        <td style={{ padding: '9px 12px', whiteSpace: 'nowrap', textAlign: 'center' }}>
+                          <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
                             <button
                               type="button"
+                              className="btn-secondary"
                               onClick={() => setPreviewItem(item)}
-                              className="px-2 py-1 bg-white border border-slate-300 text-slate-700 hover:bg-slate-100 rounded text-[11px] font-semibold flex items-center gap-1"
+                              style={{ padding: '3px 8px', fontSize: '11px', fontWeight: '700' }}
                               title="서식 미리보기"
                             >
                               <Eye size={11} />
-                              미리보기
+                              <span>미리보기</span>
                             </button>
 
                             {(item.status === 'FAILED' || item.status === 'COMPLETED') && (
                               <button
                                 type="button"
+                                className="btn-secondary"
                                 onClick={() => retryPrintJob(item.id)}
-                                className="px-2 py-1 bg-slate-800 text-white hover:bg-slate-900 rounded text-[11px] font-semibold flex items-center gap-1"
-                                title="재출력 큐 전송"
+                                style={{ padding: '3px 8px', fontSize: '11px', fontWeight: '700' }}
+                                title="재출력"
                               >
                                 <RefreshCw size={11} />
-                                재출력
+                                <span>재출력</span>
                               </button>
                             )}
 
@@ -773,11 +1222,23 @@ export const PrintQueueManager: React.FC = () => {
                               <button
                                 type="button"
                                 onClick={() => cancelPrintJob(item.id)}
-                                className="px-2 py-1 bg-rose-50 border border-rose-200 text-rose-700 hover:bg-rose-100 rounded text-[11px] font-semibold flex items-center gap-1"
+                                style={{
+                                  padding: '3px 8px',
+                                  fontSize: '11px',
+                                  fontWeight: '700',
+                                  color: '#ef4444',
+                                  backgroundColor: 'transparent',
+                                  border: '1px solid rgba(239, 68, 68, 0.3)',
+                                  borderRadius: '4px',
+                                  cursor: 'pointer',
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '4px'
+                                }}
                                 title="출력 취소"
                               >
                                 <XCircle size={11} />
-                                취소
+                                <span>취소</span>
                               </button>
                             )}
                           </div>
@@ -792,37 +1253,95 @@ export const PrintQueueManager: React.FC = () => {
         </div>
       )}
 
-      {/* 서식 미리보기 모달 */}
+      {/* ═══ 서식 미리보기 모달 ═══ */}
       {previewItem && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
-          <div className="bg-white rounded-lg shadow-xl w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden">
-            <div className="flex items-center justify-between p-4 border-b border-slate-200 bg-slate-50">
-              <div className="flex items-center gap-2">
-                <FileText size={18} className="text-slate-700" />
-                <h3 className="font-bold text-sm text-slate-900">
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 9999,
+            backgroundColor: 'rgba(0, 0, 0, 0.65)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '16px'
+          }}
+        >
+          <div
+            style={{
+              backgroundColor: 'var(--bg-card)',
+              border: '1px solid var(--border-color)',
+              borderRadius: '12px',
+              width: '100%',
+              maxWidth: '850px',
+              maxHeight: '90vh',
+              display: 'flex',
+              flexDirection: 'column',
+              boxShadow: '0 20px 40px rgba(0, 0, 0, 0.35)',
+              overflow: 'hidden'
+            }}
+          >
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                padding: '14px 20px',
+                borderBottom: '1px solid var(--border-color)',
+                backgroundColor: 'var(--bg-card)'
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <FileText size={18} color="var(--primary)" />
+                <h3 style={{ fontSize: '15px', fontWeight: '800', color: 'var(--text-main)', margin: 0 }}>
                   인쇄 서식 미리보기: {previewItem.title}
                 </h3>
               </div>
               <button
                 type="button"
                 onClick={() => setPreviewItem(null)}
-                className="p-1 hover:bg-slate-200 rounded text-slate-500"
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  cursor: 'pointer',
+                  color: 'var(--text-muted)',
+                  display: 'flex',
+                  alignItems: 'center'
+                }}
               >
-                <XCircle size={18} />
+                <X size={18} />
               </button>
             </div>
-            <div className="flex-1 p-4 bg-slate-200 overflow-auto">
+
+            <div style={{ flex: 1, padding: '16px', backgroundColor: '#e2e8f0', overflow: 'auto' }}>
               <iframe
                 title="Document Preview"
                 srcDoc={previewItem.documentHtml}
-                className="w-full h-[650px] bg-white border border-slate-300 shadow-sm"
+                style={{
+                  width: '100%',
+                  height: '650px',
+                  backgroundColor: '#ffffff',
+                  border: '1px solid #cbd5e1',
+                  borderRadius: '4px',
+                  boxShadow: '0 2px 8px rgba(0, 0, 0, 0.1)'
+                }}
               />
             </div>
-            <div className="p-3 border-t border-slate-200 flex justify-end gap-2 bg-slate-50">
+
+            <div
+              style={{
+                padding: '12px 20px',
+                borderTop: '1px solid var(--border-color)',
+                display: 'flex',
+                justifyContent: 'flex-end',
+                backgroundColor: 'var(--bg-card)'
+              }}
+            >
               <button
                 type="button"
+                className="btn-primary"
                 onClick={() => setPreviewItem(null)}
-                className="px-4 py-2 bg-slate-800 text-white rounded text-xs font-bold"
+                style={{ padding: '8px 18px', fontSize: '12px' }}
               >
                 닫기
               </button>

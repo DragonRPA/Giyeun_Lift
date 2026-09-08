@@ -12,6 +12,7 @@ interface Department {
   id: string;
   name: string;
   parentDepartmentId: string | null;
+  managerId?: string | null;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -43,7 +44,7 @@ const INITIAL_USERS: UserNode[] = [];
 export const OrganizationSettings: React.FC = () => {
   const { currentUser, saveUser, refreshAllData, showErrorModal, hasPermission } = useApp();
   const isSuperAdmin = currentUser?.loginId === 'admin';
-  const canEdit = currentUser?.role === 'ADMIN' || currentUser?.role === 'MANAGER';
+  const canEdit = currentUser?.role === 'ADMIN' || hasPermission('organization', 'save');
   const canViewPayroll = hasPermission('payroll', 'view'); // 급여 정산 권한자 여부
   
   // --- States ---
@@ -138,8 +139,35 @@ const enforceManagerPolicies = (usersList: UserNode[], deptList: Department[]) =
     let loadedDepts: Department[] = INITIAL_DEPTS;
     let loadedUsers: UserNode[] = INITIAL_USERS;
 
-    if (savedDepts) loadedDepts = JSON.parse(savedDepts);
-    if (savedUsers) loadedUsers = JSON.parse(savedUsers);
+    if (savedDepts) {
+      try {
+        loadedDepts = JSON.parse(savedDepts);
+      } catch (e) {
+        loadedDepts = (db.departments && db.departments.length > 0) ? db.departments : INITIAL_DEPTS;
+      }
+    } else if (db.departments && db.departments.length > 0) {
+      loadedDepts = db.departments;
+    }
+
+    if (savedUsers) {
+      try {
+        loadedUsers = JSON.parse(savedUsers);
+      } catch (e) {
+        loadedUsers = (db.users && db.users.length > 0) ? (db.users as any) : INITIAL_USERS;
+      }
+    } else if (db.users && db.users.length > 0) {
+      loadedUsers = db.users as any;
+    }
+
+    // 로컬 스토리지에 잔류할 수 있는 오염 필드(modelName, supplier 등) 원천 제거
+    loadedDepts = loadedDepts.map(d => {
+      const { modelName, supplier, ...rest } = (d as any);
+      return rest as Department;
+    });
+    loadedUsers = loadedUsers.map(u => {
+      const { modelName, supplier, ...rest } = (u as any);
+      return rest as UserNode;
+    });
 
     // 고아(Orphan) 직원 구출: 현재 존재하지 않는 부서 ID를 가진 직원은 '미배정(null)'으로 강제 이동
     const validDeptIds = new Set(loadedDepts.map(d => d.id));
@@ -177,16 +205,28 @@ const enforceManagerPolicies = (usersList: UserNode[], deptList: Department[]) =
   // --- Manual Save (Batch to Supabase/DB) ---
   const handleSaveAll = async () => {
     try {
+      // 로컬 스토리지 및 캐시 오염 필드(modelName, supplier 등) 정화
+      const cleanDepts = departments.map(d => {
+        const { modelName, supplier, ...rest } = (d as any);
+        return rest as Department;
+      });
+      const cleanUsers = users.map(u => {
+        const { modelName, supplier, ...rest } = (u as any);
+        return rest as UserNode;
+      });
+
       // 실제 DB (또는 로컬 백그라운드 큐)에 일괄 업데이트
-      await db.saveOrganizationBatch(departments, users as any);
+      await db.saveOrganizationBatch(cleanDepts, cleanUsers as any);
       await db.awaitPendingWrites();
       
       // 상태 초기화
       setIsDirty(false);
+      setDepartments(cleanDepts);
+      setUsers(cleanUsers);
       
       // 혹시 모를 로컬스토리지 찌꺼기 덮어쓰기 (강제 동기화)
-      localStorage.setItem('erp_departments', JSON.stringify(departments));
-      localStorage.setItem('erp_users', JSON.stringify(users));
+      localStorage.setItem('erp_departments', JSON.stringify(cleanDepts));
+      localStorage.setItem('erp_users', JSON.stringify(cleanUsers));
       
       if (refreshAllData) {
         await refreshAllData();
@@ -797,6 +837,30 @@ const enforceManagerPolicies = (usersList: UserNode[], deptList: Department[]) =
                       <option value="USER">USER</option>
                     </select>
                   </div>
+                </div>
+
+                <div>
+                  <label style={{ marginBottom: '2px', fontSize: '12px', fontWeight: 'bold', color: 'var(--text-main)' }}>소속 부서 (부서 이동)</label>
+                  <select
+                    value={selectedProfile.departmentId || ''}
+                    style={{ padding: '4px 8px', fontSize: '12px', width: '100%', borderRadius: '4px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-card)', color: 'var(--text-main)' }}
+                    onChange={e => {
+                      const newDeptId = e.target.value || null;
+                      setSelectedProfile({ ...selectedProfile, departmentId: newDeptId });
+                      let updated = users.map(u => u.id === selectedProfile.id ? { ...u, departmentId: newDeptId } : u);
+                      updated = enforceManagerPolicies(updated, departments);
+                      setUsers(updated);
+                      setIsDirty(true);
+                      const targetDept = departments.find(d => d.id === newDeptId);
+                      showToast(`소속 부서가 [${targetDept?.name || '미배정'}] (으)로 변경되었습니다. 상단 저장을 눌러 확정하세요.`, 'warning');
+                    }}
+                    disabled={!canEdit}
+                  >
+                    <option value="">(미배정 인재풀)</option>
+                    {departments.map(d => (
+                      <option key={d.id} value={d.id}>{d.name}</option>
+                    ))}
+                  </select>
                 </div>
 
                 <div>

@@ -863,6 +863,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const hasPermission = (menuId: string, action: 'view' | 'save'): boolean => {
     if (!currentUser) return false;
+
+    // 0. 퇴사(RETIRED) 계정은 전사 모든 메뉴 권한 즉시 전면 차단 (Zero-Access Security)
+    if (currentUser.status === 'RETIRED') return false;
+
+    // 0-1. 휴직(LEAVE_OF_ABSENCE) 계정은 변경/저장(save) 권한 원천 차단 (조회만 허용)
+    if (currentUser.status === 'LEAVE_OF_ABSENCE' && action === 'save') return false;
+
     // 1. 시스템 최고관리자 계정 및 ADMIN 역할 사용자는 모든 메뉴에 100% 무조건 권한 부여
     if (currentUser.role === 'ADMIN' || currentUser.loginId === 'admin' || currentUser.id === 'sys-admin' || currentUser.id === 'u-1') return true;
 

@@ -1,3 +1,50 @@
+## [v1.10.0.Build.24] - 2026-09-08 14:35
+
+### 🛡️ [권한통제 WTT 20회 관통 스트레스 테스트 완결 & 4대 개선과제 개편]
+- **WTT 20회 관통 스트레스 테스트 5대 축 전수 통과 (TOTAL 20, PASS 20, FAIL 0)**:
+  - [공간] 비인가 메뉴/URL/탭 강제 진입 차단 라우트 가드 방어벽 검증.
+  - [물리] 읽기 전용 사용자의 CUD 조작 차단, 인사조직 CUD 권한 격리, 비-ADMIN 권한설정 메뉴 차단, 최고관리자 무조건 권한 보존 검증.
+  - [시간] 부서 미배정 사원 최소 권한 격리, 인사이동 즉시 직무 권한 승계, 퇴사자(RETIRED) Zero-Access 잠금, 휴직자(LEAVE_OF_ABSENCE) CUD 일괄 정지 검증.
+  - [비용] 비인가자 기본급(baseSalary) 마스킹, 급여 정산 권한 격리, 영업부 외상미수금 조회 vs 매출 결재 분리, 자금/법인카드 접근 차단 검증.
+  - [수량] 40개 전체 메뉴 식별자 복수형/별칭 정규화, 템플릿(True) vs DB회수(False) 우선순위, 템플릿(False) vs DB부여(True) 권한위임, users_permissions 직무 템플릿 기본값 보존 검증.
+- **임직원 생애주기 보안 실드 신설 (`src/context/AppContext.tsx`)**:
+  - 퇴사(`status === 'RETIRED'`) 계정 감지 시 전사 모든 메뉴 권한 즉각 `false` 전면 차단(Zero-Access Security) 탑재.
+  - 휴직(`status === 'LEAVE_OF_ABSENCE'`) 계정 감지 시 `action === 'save'` CUD 권한 일괄 차단(열람만 가능).
+- **사용자 권한 설정 화면 직무 템플릿 보존 엔진 탑재 (`src/pages/users_permissions.tsx`)**:
+  - 화면 마운트 시 누락된 권한 레코드에 대해 일괄 `false`를 채워 직무 템플릿을 무력화하던 결함을 해결하고, `getRoleTemplatePermission` 기반으로 직무 템플릿 기본값을 상속 보존하도록 개선.
+- **조직/인사 관리 화면 RBAC CUD 권한 판정 표준화 (`src/pages/OrganizationSettings.tsx`)**:
+  - `role === 'MANAGER'` 임의 판정 조건을 제거하고 `hasPermission('organization', 'save')`로 전사 표준화하여 관리부 담당자의 인사 권한을 보장하고 타 부서 관리자의 무인가 수정을 차단.
+- **메뉴 식별자 별칭(Canonical Aliases) 정규화 확장 (`src/config/menu_config.ts`)**:
+  - `smart-dispatch`, `smart-dispatch4`, `truck-dispatch`, `corporate_cards`, `payrolls` 등 하이픈 및 복수형 별칭 흡수 정규화 완비.
+
+- **검증 결과**:
+  - `cmd /c "npm run build"`: **0 Error 통과** (`built in 1.01s`).
+  - `wtt_permission_matrix.ts`: **20/20 PASS**.
+
+---
+
+## [v1.10.0.Build.23] - 2026-09-08 14:26
+
+### 🐛 [조직도 및 부서/임직원 저장 시 Supabase 스키마 오염(modelName 누출) 결함 해결]
+- **PostgREST 스키마 캐시 불일치 오류 원천 차단 (`Could not find the 'modelName' column of 'departments'`)**:
+  - `src/services/db.ts`의 `normalizePayloadKeys` 함수에서 `name` 속성을 가진 모든 객체에 대해 `tableName` 구분 없이 `modelName: name` 및 `supplier: '공용'`을 강제 주입하여 부서/임직원 객체가 오염되던 결함 수정.
+  - `normalizePayloadKeys(item, tableName)`으로 시그니처를 확장하고, 소모품(`consumables`) 테이블에만 엄격히 제한 적용.
+- **Supabase 페이로드 화이트리스트 스키마 방어벽 수립 (`src/services/db.ts`)**:
+  - `sanitizeSupabasePayload`에 컬럼 검증 필터를 강화하여 `modelName` 컬럼을 지원하는 8개 테이블 외에는 `modelName`이 절대로 누출되지 않도록 차단.
+  - `departments` 및 `users` 테이블에 대해 실제 DB 스키마에 정의된 정규 컬럼만 전송하도록 화이트리스트 필터링 탑재.
+- **조직도 일괄 저장(Batch) 페이로드 정규화 및 캐시 정제 (`saveOrganizationBatch`)**:
+  - `departments` 저장 시 `id`, `name`, `parentDepartmentId`, `managerId`, `createdAt`, `updatedAt`만 정확히 전송.
+  - `users` 저장 시 20개 정규 컬럼만 정밀 매핑하여 전송.
+  - 로컬 인메모리 캐시 및 `localStorage`(`erp_departments`, `erp_users`)에서 잔류 오염 필드를 즉시 정제.
+- **조직 관리 UI 인사이동 및 데이터 적재 안정화 (`src/pages/OrganizationSettings.tsx`)**:
+  - 마운트 시 `localStorage`에 남아있던 오염 필드를 원천 제거하여 클린 상태로 승계.
+  - 부서 선택 드롭다운을 통한 부서 이동 및 일괄 저장 시 100% 무오류 동기화 보장.
+
+- **검증 결과**:
+  - `npm run build`: **0 Error 통과** (`built in 1.07s`).
+
+---
+
 ## [v1.10.0.Build.22] - 2026-09-08 14:15
 
 ### 🛡️ [직무 템플릿 기반 RBAC 권한 체계 전면 개편 & 대시보드 피드 권한 무결성 확립]

@@ -133,7 +133,20 @@ export const CANONICAL_MENU_ALIASES: Record<string, string> = {
   'permissions': 'permission',
   'dispatch': 'delivery',
   'dispatches': 'delivery',
-  'truck_dispatch': 'delivery'
+  'truck_dispatch': 'delivery',
+  'truck-dispatch': 'delivery',
+  'delivery-dispatch': 'delivery',
+  'smart-dispatch': 'smart_dispatch',
+  'smart-dispatch4': 'smart_dispatch4',
+  'smart-return': 'smart_return',
+  'smart-as-request': 'smart_as_request',
+  'smart_as': 'smart_as_request',
+  'purchase_settlements': 'purchase_settlement',
+  'payrolls': 'payroll',
+  'corporate_cards': 'corporate_card',
+  'leave-ot': 'leave_ot',
+  'vehicle-log': 'vehicle_log',
+  'outbound_inspection': 'outbound_inspections'
 };
 
 export function normalizeMenuId(menuId: string): string {

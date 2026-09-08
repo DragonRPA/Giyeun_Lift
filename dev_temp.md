@@ -1,5 +1,55 @@
 # 개발 요구사항 임시 기록 (dev_temp.md)
 
+## [완료] 권한통제 관련 도메인 관통 스트레스 테스트(WTT) 20회 수행 및 4대 개선과제 개편 (v1.10.0.Build.24)
+- **요구사항**: "권한통제 관련 WTT 20 회 수행후 개선과제 개편하여 ㄹㅇ"
+- **WTT 20회 관통 스트레스 테스트 5대 축 매트릭스 수행 결과**:
+  - [축 1: 공간] 비인가 메뉴/URL/탭 강제 진입 차단 라우트 가드 검증 (WTT-01 ~ WTT-04) ➔ **PASS**
+  - [축 2: 물리] 읽기 전용 사용자의 CUD 조작 차단, 조직/인사 관리 CUD 권한 격리, 비-ADMIN 권한설정 메뉴 차단, 최고관리자 무조건 권한 보존 검증 (WTT-05 ~ WTT-08) ➔ **PASS**
+  - [축 3: 시간] 부서 미배정 사원 최소 권한 격리, 인사이동 즉시 직무 권한 승계, 퇴사자(RETIRED) Zero-Access 잠금, 휴직자(LEAVE_OF_ABSENCE) CUD 일괄 정지 검증 (WTT-09 ~ WTT-12) ➔ **PASS**
+  - [축 4: 비용] 비인가자 기본급(baseSalary) 마스킹, 급여 정산 권한 격리, 영업부 외상미수금 조회 vs 매출 결재 분리, 자금/법인카드 접근 차단 검증 (WTT-13 ~ WTT-16) ➔ **PASS**
+  - [축 5: 수량] 40개 전체 메뉴 식별자 복수형/별칭 정규화, 템플릿(True) vs DB회수(False) 우선순위, 템플릿(False) vs DB부여(True) 권한위임, users_permissions 직무 템플릿 기본값 보존 검증 (WTT-17 ~ WTT-20) ➔ **PASS**
+  - **결과: 20회 전수 100% 통과 (TOTAL 20, PASS: 20, FAIL: 0)**
+- **4대 핵심 개선과제 개편 조치 내역**:
+  1. **임직원 생애주기 보안 실드 신설 (`src/context/AppContext.tsx`)**:
+     - `hasPermission` 최상단에 `currentUser.status === 'RETIRED'` 퇴사자 감지 시 전사 모든 메뉴 권한 즉각 `false` 전면 차단 (Zero-Access Security).
+     - `currentUser.status === 'LEAVE_OF_ABSENCE'` 휴직자 감지 시 `action === 'save'` 저장/수정 권한 일괄 차단.
+  2. **`users_permissions.tsx` 직무 템플릿 무력화 결함 원천 해결 (`src/pages/users_permissions.tsx`)**:
+     - 기존에 권한 없는 비-ADMIN 사용자에게 `false, false`를 하드코딩하여 백필하던 로직을 `getRoleTemplatePermission` 기반으로 전면 교체.
+     - 화면 로드 시 직무 템플릿 상속 기본값을 그대로 렌더링하고 보존함으로써 직무 권한 파괴 결함 완전 해결.
+  3. **조직/인사 관리 화면 RBAC CUD 권한 판정 표준화 (`src/pages/OrganizationSettings.tsx`)**:
+     - 구버전의 `currentUser?.role === 'ADMIN' || currentUser?.role === 'MANAGER'` 조건을 제거.
+     - `currentUser?.role === 'ADMIN' || hasPermission('organization', 'save')`로 전면 개편하여, 관리부 사원의 조직 수정 권한을 정당하게 보장하고 타 부서 매니저의 무인가 침범을 차단.
+  4. **메뉴 별칭(Canonical Aliases) 및 정규화 확장 (`src/config/menu_config.ts`)**:
+     - 하이픈 표기(`smart-dispatch`, `smart-dispatch4`, `truck-dispatch` 등) 및 변형 명칭을 표준 단수형 ID로 100% 흡수 정규화.
+- **검증 결과**:
+  - `cmd /c "npm run build"`: **0 Error 통과** (`built in 1.01s`).
+  - `wtt_permission_matrix.ts`: **20/20 PASS**.
+
+## [완료] 조직도 및 부서/임직원 저장 시 Supabase 스키마 오염(modelName 누출) 결함 해결 (v1.10.0.Build.23)
+- **증상**: `[조직 / 인사 관리]`에서 부서 이동 또는 조직도 저장 시 `⚠️ 조직도 및 구성원 저장 중 DB 동기화 오류가 발생했습니다: Could not find the 'modelName' column of 'departments' in the schema cache` 오류 발생.
+- **근본 원인 분석**:
+  1. `src/services/db.ts`의 `normalizePayloadKeys` 함수에서 `name` 속성을 가진 모든 객체에 대해 `tableName` 구분 없이 `modelName: name` 및 `supplier: '공용'`을 강제 주입하고 있었음.
+  2. Supabase에서 `departments` 또는 `users` 데이터를 로드할 때 각 레코드에 `modelName`과 `supplier`가 주입되어 로컬 스토리지에 캐시됨.
+  3. `saveOrganizationBatch` 실행 시 해당 오염된 객체(`departments`, `users`)가 그대로 Supabase PostgREST upsert로 전달되어, `departments` 테이블에 존재하지 않는 `modelName` 컬럼을 참조한다는 PostgREST 에러(`PGRST204` / `42703`) 발생.
+- **조치 내역**:
+  1. **`normalizePayloadKeys(item, tableName)` 스코프 제한 (`src/services/db.ts`)**:
+     - `name ➔ modelName` 및 공급사 추론 로직을 오직 `tableName === 'consumables'`에만 엄격히 한정 적용.
+     - `pullTableFromSupabase` 및 `pullFromSupabase` 호출 시 `tableName`을 명시적으로 전달.
+  2. **`sanitizeSupabasePayload` 테이블별 스키마 방어벽 수립 (`src/services/db.ts`)**:
+     - `modelName` 허용 테이블(`products`, `assets`, `contract_assets` 등 8종) 이외의 모든 테이블로의 `modelName` 누출 원천 차단.
+     - `supplier` 컬럼 미지원 테이블로의 `supplier` 누출 원천 차단.
+     - `departments` 및 `users` 테이블에 대해 실제 DB 스키마에 정의된 컬럼만 전달되도록 화이트리스트 필터링 적용.
+  3. **`saveOrganizationBatch` 페이로드 정규화 및 캐시 정화 (`src/services/db.ts`)**:
+     - 로컬 스토리지 및 메모리 캐시에서 `modelName`, `supplier` 오염 필드를 즉시 정제.
+     - `departments` upsert 시 `id`, `name`, `parentDepartmentId`, `managerId`, `createdAt`, `updatedAt`만 정확히 전송.
+     - `users` upsert 시 `users` 스키마 20개 정규 컬럼만 정밀 매핑하여 전송.
+  4. **`OrganizationSettings.tsx` 로컬 스토리지 정화 및 인사이동 안정화**:
+     - 페이지 마운트 시 `localStorage`에 남아있던 오염 필드를 원천 제거하여 클린 상태로 승계.
+     - `handleSaveAll` 실행 시 정화된 데이터로 DB 동기화 및 `localStorage` 갱신.
+     - 부서 인터페이스에 `managerId` 명시.
+- **검증 결과**:
+  - `npm run build`: **0 Error 통과** (`built in 1.07s`).
+
 ## [완료] 직무 템플릿 기반 RBAC 권한 관리 체계 전면 개편 & 대시보드 피드 권한 무결성 확립 (v1.10.0.Build.22)
 - **요구사항**: "대시보드에서 표시될 수 있는 항목종류와 각항목은 어떤 권한설정에 의해서 표시되는가를 명세서로 작성해줘" ➔ "개편적용. ㄹㅇ"
 - **조치 내역**:

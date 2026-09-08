@@ -4,7 +4,8 @@ import { useApp } from '../context/AppContext';
 import { Shield, Check, Lock, Save, FolderKanban, ChevronDown, ChevronRight } from 'lucide-react';
 import { MenuPermission, User, createMenuPermission, db } from '../services/db';
 
-import { SYSTEM_MENU_CONFIG, getAllSystemMenuIds, MenuGroupConfig } from '../config/menu_config';
+import { SYSTEM_MENU_CONFIG, getAllSystemMenuIds, MenuGroupConfig, normalizeMenuId } from '../config/menu_config';
+import { getRoleTemplatePermission } from '../config/role_templates';
 
 export type MenuCategoryGroup = MenuGroupConfig;
 export const MENU_CATEGORIES = SYSTEM_MENU_CONFIG;
@@ -40,17 +41,22 @@ export const UsersPermissions: React.FC = () => {
   }, [users, selectedUserId]);
 
   useEffect(() => {
-    // 모든 시스템 메뉴 ID 스캔 및 누락된 권한 항목 자가 복구 (Auto Backfill)
+    // 모든 시스템 메뉴 ID 스캔 및 누락된 권한 항목 자가 복구 (Auto Backfill - 직무 템플릿 상속 보존)
     const allMenuIds = getAllSystemMenuIds();
     const merged = [...permissions];
     let addedCount = 0;
 
     users.forEach(u => {
+      const dept = u.departmentId || u.department;
       allMenuIds.forEach(menuId => {
-        const exists = merged.some(p => p.userId === u.id && p.menuId === menuId);
+        const normId = normalizeMenuId(menuId);
+        const exists = merged.some(p => p.userId === u.id && normalizeMenuId(p.menuId) === normId);
         if (!exists) {
           const isAdmin = u.role === 'ADMIN' || u.id === 'u-1' || u.id === 'sys-admin' || u.id === 'USR-0000002';
-          merged.push(createMenuPermission(u.id, menuId, isAdmin, isAdmin));
+          // 직무 템플릿 표준 기본값 상속 (false 하드코딩으로 직무 권한을 파괴하던 결함 해결)
+          const templateView = isAdmin ? true : (getRoleTemplatePermission(u.role, dept, normId, 'view') ?? false);
+          const templateSave = isAdmin ? true : (getRoleTemplatePermission(u.role, dept, normId, 'save') ?? false);
+          merged.push(createMenuPermission(u.id, normId, templateView, templateSave));
           addedCount++;
         }
       });

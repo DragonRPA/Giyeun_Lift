@@ -196,6 +196,7 @@ export interface Department {
   id: string;
   name: string;
   parentDepartmentId: string | null;
+  managerId?: string | null;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -4136,10 +4137,10 @@ class LocalDB {
     return !!supabase;
   }
 
-  private normalizePayloadKeys(item: any): any {
+  private normalizePayloadKeys(item: any, tableName?: string): any {
     if (!item || typeof item !== 'object') return item;
     if (Array.isArray(item)) {
-      return item.map(i => this.normalizePayloadKeys(i));
+      return item.map(i => this.normalizePayloadKeys(i, tableName));
     }
     const normalized = { ...item };
     
@@ -4215,15 +4216,17 @@ class LocalDB {
       delete normalized.asset_id;
     }
 
-    // consumables 호환 (name ➔ modelName, supplier 추론)
-    if (normalized.name && !normalized.modelName) {
-      normalized.modelName = normalized.name;
-    }
-    if (normalized.modelName && !normalized.supplier) {
-      if (normalized.modelName.includes('JLG')) normalized.supplier = 'JLG';
-      else if (normalized.modelName.includes('지니')) normalized.supplier = '지니 (Genie)';
-      else if (normalized.modelName.includes('스카이잭')) normalized.supplier = '스카이잭 (Skyjack)';
-      else normalized.supplier = '공용';
+    // consumables 호환 (name ➔ modelName, supplier 추론) - 반드시 consumables 테이블에만 한정 적용
+    if (tableName === 'consumables') {
+      if (normalized.name && !normalized.modelName) {
+        normalized.modelName = normalized.name;
+      }
+      if (normalized.modelName && !normalized.supplier) {
+        if (normalized.modelName.includes('JLG')) normalized.supplier = 'JLG';
+        else if (normalized.modelName.includes('지니')) normalized.supplier = '지니 (Genie)';
+        else if (normalized.modelName.includes('스카이잭')) normalized.supplier = '스카이잭 (Skyjack)';
+        else normalized.supplier = '공용';
+      }
     }
 
     return normalized;
@@ -4276,7 +4279,7 @@ class LocalDB {
       const tableName = this.mapToSupabaseTable(key);
       const data = await this.fetchAllRowsFromSupabase(tableName);
       if (data !== null) {
-        const normalizedData = this.normalizePayloadKeys(data);
+        const normalizedData = this.normalizePayloadKeys(data, tableName);
         this.set(key as keyof LocalDB, normalizedData);
         return normalizedData;
       }
@@ -4320,7 +4323,7 @@ class LocalDB {
               console.warn(`Supabase pull failed for table ${tableName}`);
               return { key, data: null };
             }
-            return { key, data: this.normalizePayloadKeys(data) };
+            return { key, data: this.normalizePayloadKeys(data, tableName) };
           } catch (e) {
             console.warn(`Supabase pull failed for key ${key}:`, e);
             return { key, data: null };
@@ -4467,6 +4470,22 @@ class LocalDB {
       }
       // DB repairs 스키마에 아직 없는 siteAddress 컬럼 오염 및 PostgreSQL 42703 에러 방지
       if (tableName === 'repairs' && (key === 'siteAddress')) {
+        continue;
+      }
+      // modelName 컬럼이 존재하지 않는 테이블로의 modelName 누출 원천 방지 (departments, users, customers 등)
+      if (key === 'modelName' && !['products', 'assets', 'product_specs', 'product_spec_items', 'contract_assets', 'contract_history', 'inspection_checklist_items', 'equipment_manuals'].includes(tableName || '')) {
+        continue;
+      }
+      // supplier 컬럼이 존재하지 않는 테이블로의 supplier 누출 원천 방지
+      if (key === 'supplier' && !['assets', 'vendors'].includes(tableName || '')) {
+        continue;
+      }
+      // departments 테이블 전용 허용 컬럼 방어벽
+      if (tableName === 'departments' && !['id', 'name', 'parentDepartmentId', 'managerId', 'createdAt', 'updatedAt'].includes(key)) {
+        continue;
+      }
+      // users 테이블 전용 허용 컬럼 방어벽
+      if (tableName === 'users' && !['id', 'loginId', 'passwordHash', 'name', 'departmentId', 'position', 'managerId', 'role', 'status', 'department', 'baseSalary', 'phone', 'email', 'address', 'birthDate', 'joinDate', 'retireDate', 'profileImageUrl', 'createdAt', 'updatedAt'].includes(key)) {
         continue;
       }
       if (typeof val === 'string' && (key === 'userId' || key === 'salespersonId' || key === 'requesterId' || key === 'accepterId' || key === 'completerId' || key === 'inbounderId' || key === 'createdById' || key === 'updatedById' || key.toLowerCase().includes('user'))) {
@@ -4785,8 +4804,18 @@ class LocalDB {
 
   // 조직도 및 구성원 일괄 저장 (Batch) - 기존 데이터를 전부 덮어씌움
   async saveOrganizationBatch(departments: Department[], users: User[]): Promise<void> {
-    this.set('departments', departments);
-    this.set('users', users);
+    // 로컬 인메모리 캐시 및 스토리지 오염 필드(modelName, supplier 등) 제거
+    const cleanDepts: Department[] = departments.map(d => {
+      const { modelName, supplier, ...rest } = (d as any);
+      return rest as Department;
+    });
+    const cleanUsers: User[] = users.map(u => {
+      const { modelName, supplier, ...rest } = (u as any);
+      return rest as User;
+    });
+
+    this.set('departments', cleanDepts);
+    this.set('users', cleanUsers);
     
     if (supabase) {
       const promise = (async () => {
@@ -4795,7 +4824,7 @@ class LocalDB {
         if (currentDepts.data) {
           const deptsToDelete = currentDepts.data
             .map(d => d.id)
-            .filter(id => !departments.some(d => d.id === id));
+            .filter(id => !cleanDepts.some(d => d.id === id));
           if (deptsToDelete.length > 0) {
             const { error: delErr } = await supabase.from('departments').delete().in('id', deptsToDelete);
             if (delErr) {
@@ -4804,10 +4833,13 @@ class LocalDB {
             }
           }
         }
-        if (departments.length > 0) {
+        if (cleanDepts.length > 0) {
           const nowIso = new Date().toISOString();
-          const sanitizedDepts = departments.map(d => ({
-            ...d,
+          const sanitizedDepts = cleanDepts.map(d => ({
+            id: d.id,
+            name: d.name,
+            parentDepartmentId: d.parentDepartmentId || null,
+            managerId: (d as any).managerId || null,
             createdAt: d.createdAt || nowIso,
             updatedAt: nowIso
           }));
@@ -4824,7 +4856,7 @@ class LocalDB {
           const usersToDelete = currentUsers.data
             .map(u => u.id)
             // admin 계정은 절대 삭제 리스트에서 제외
-            .filter(id => id !== 'u-1' && id !== 'sys-admin' && !users.some(u => u.id === id));
+            .filter(id => id !== 'u-1' && id !== 'sys-admin' && !cleanUsers.some(u => u.id === id));
           if (usersToDelete.length > 0) {
             const { error: delErr } = await supabase.from('users').delete().in('id', usersToDelete);
             if (delErr) {
@@ -4833,10 +4865,27 @@ class LocalDB {
             }
           }
         }
-        if (users.length > 0) {
+        if (cleanUsers.length > 0) {
           const nowIso = new Date().toISOString();
-          const sanitizedUsers = users.map(u => ({
-            ...u,
+          const sanitizedUsers = cleanUsers.map(u => ({
+            id: u.id,
+            loginId: u.loginId || '',
+            passwordHash: u.passwordHash || '',
+            name: u.name,
+            departmentId: u.departmentId || null,
+            position: u.position || '',
+            managerId: (u as any).managerId || null,
+            role: u.role || 'USER',
+            status: u.status || 'ACTIVE',
+            department: u.department || '',
+            baseSalary: u.baseSalary ?? 0,
+            phone: u.phone || null,
+            email: u.email || null,
+            address: u.address || null,
+            birthDate: u.birthDate || null,
+            joinDate: u.joinDate || null,
+            retireDate: (u as any).retireDate || null,
+            profileImageUrl: u.profileImageUrl || null,
             createdAt: u.createdAt || nowIso,
             updatedAt: nowIso
           }));

@@ -179,7 +179,7 @@ export function runWttSuite(): WttResult[] {
     });
   }
 
-  // WTT-DISP-03: 유상옵션 + 보양작업 + 21대 안전스펙
+  // WTT-DISP-03: 유상옵션 + 보양작업 + 요구사양
   {
     const issues: string[] = [];
     const utterance = '4면 철망 장착해주시고 바닥 플라베니아 보양 필수 상부 협착 방지봉이랑 원판 소화기 챙겨주세요';
@@ -191,7 +191,7 @@ export function runWttSuite(): WttResult[] {
     if (!res.checkedSpecs['spec13']) issues.push('소화기(spec13) 누락');
     results.push({
       scenarioId: 'WTT-DISP-03',
-      name: '유상옵션(4면 철망) + 바닥보양(플라베니아) + 21대 안전스펙 3EA',
+      name: '유상옵션(4면 철망) + 바닥보양(플라베니아) + 요구사양 3EA',
       axis: '물리(안전/보양/유상옵션)',
       passed: issues.length === 0,
       issues,

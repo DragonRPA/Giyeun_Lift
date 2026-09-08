@@ -6,7 +6,7 @@
  *
  * [5대 축 스트레스 주입 매트릭스]
  *  ① 공간 축 (WTT-01 ~ WTT-04): 대형 반도체 FAB, 협소 도심지, 클린룸, 지방 교량/터널 현장
- *  ② 물리 축 (WTT-05 ~ WTT-08): 단일 옵션, 4종 복합 장착, 단독 보양, 21대 안전스펙 전수 활성화
+ *  ② 물리 축 (WTT-05 ~ WTT-08): 단일 옵션, 4종 복합 장착, 단독 보양, 표준 요구사양 전수 활성화
  *  ③ 시간 축 (WTT-09 ~ WTT-12): 사전 세팅 자동상속, 사후 변경 일괄전파, 개별 이탈 후 기본값 복원, 마스터 단가 인상
  *  ④ 비용 축 (WTT-13 ~ WTT-16): 옵션 단가 합산 수지 보존, 비규격 커스텀 직접입력, 무상(NONE) 수지 무결성, 단위 정규화 및 비활성화 차단
  *  ⑤ 수량 축 (WTT-17 ~ WTT-20): 1:1 단일 현장 CRUD, 1:10 부분 분기(Partial Branching), 10개 현장 일괄 전파, 극한 문자열/공백/쉼표 정규화
@@ -14,7 +14,7 @@
  * [3대 종단 보존 법칙]
  *  1. 상태 보존 법칙 (Conservation of State): 오버라이드 ➔ 기본값 상속 복원 시 1비트의 오차도 없이 원상 복구
  *  2. 수지 보존 법칙 (Conservation of Balance): 옵션 단가 합산액과 청구 명세 기준액 100% 일치
- *  3. 데이터 보존 법칙 (Conservation of Data Integrity): 21대 스펙 및 쉼표 구분 옵션의 무손실 파싱/직렬화
+ *  3. 데이터 보존 법칙 (Conservation of Data Integrity): 표준 요구사양 및 쉼표 구분 옵션의 무손실 파싱/직렬화
  * =========================================================================
  */
 
@@ -104,7 +104,7 @@ if (staticPassCount !== staticAudits.length) {
 // ── 2. 20회 도메인 관통 스트레스 테스트 (WTT Suite) ───────────────────────────
 console.log('⚡ [2단계: 5대 축 매트릭스 도메인 관통 스트레스 테스트 20회 집행]\n');
 
-// 21대 표준 스펙 키 목록
+// 표준 요구사양 키 목록
 const SPEC_KEYS = [
   'spec1', 'spec2', 'spec3', 'spec4', 'spec5', 'spec6', 'spec7',
   'spec8', 'spec9', 'spec10', 'spec11', 'spec12', 'spec13', 'spec14',
@@ -288,7 +288,7 @@ runTest('WTT-07', '물리(Physical)', '보양작업 단독 선택 (사다리 보
   return `탑승구 사다리 보양 단독 선택 무결성 확인`;
 });
 
-runTest('WTT-08', '물리(Physical)', '21대 안전기술 스펙 전체(21종) 일괄 체크 및 무손실 보존', () => {
+runTest('WTT-08', '물리(Physical)', '표준 요구사양 전체 일괄 체크 및 무손실 보존', () => {
   const allSpecs = {};
   SPEC_KEYS.forEach(k => { allSpecs[k] = true; });
   
@@ -296,8 +296,8 @@ runTest('WTT-08', '물리(Physical)', '21대 안전기술 스펙 전체(21종) �
   const deserialized = JSON.parse(serialized);
   
   const trueCount = SPEC_KEYS.filter(k => deserialized[k] === true).length;
-  if (trueCount !== 21) throw new Error(`21대 스펙 복원 누락: 21개 중 ${trueCount}개만 보존됨`);
-  return `21대 스펙 JSON 직렬화/역직렬화 100% 무손실 보존`;
+  if (trueCount !== SPEC_KEYS.length) throw new Error(`표준 요구사양 복원 누락: ${SPEC_KEYS.length}개 중 ${trueCount}개만 보존됨`);
+  return `표준 요구사양 JSON 직렬화/역직렬화 100% 무손실 보존`;
 });
 
 // =========================================================================
@@ -539,7 +539,7 @@ if (passedWtt === totalWtt) {
   console.log('\n🏆 [3대 종단 보존 법칙 검증 완료]');
   console.log('  1. 상태 보존 법칙 (Conservation of State)      : 100% PASS');
   console.log('  2. 수지 보존 법칙 (Conservation of Balance)    : 100% PASS (대차 차액 ₩0)');
-  console.log('  3. 데이터 무결성 법칙 (Data Integrity Law)      : 100% PASS (21대 스펙 무손실)');
+  console.log('  3. 데이터 무결성 법칙 (Data Integrity Law)      : 100% PASS (표준 요구사양 무손실)');
   console.log('='.repeat(75) + '\n');
   process.exit(0);
 } else {

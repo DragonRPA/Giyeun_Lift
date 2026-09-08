@@ -1526,12 +1526,12 @@ export const MobileDispatchOrderCreate: React.FC<MobileDispatchOrderCreateProps>
           </div>
         </div>
 
-        {/* 4. 유상옵션 및 보양작업 / 21대 안전스펙 (출고 및 대차 모드) */}
+        {/* 4. 유상옵션 및 보양작업 / 요구 사양 (출고 및 대차 모드) */}
         {dispatchMode !== 'RETURN' && (
           <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 flex flex-col gap-3.5">
             <span className="text-xs font-bold text-purple-400 flex items-center gap-1.5">
               <Shield className="w-3.5 h-3.5" />
-              현장 유상옵션 및 보양 / 안전스펙
+              현장 옵션 및 요구 사양
             </span>
 
             {/* 유상옵션 입력 및 추천 칩 */}
@@ -1632,7 +1632,7 @@ export const MobileDispatchOrderCreate: React.FC<MobileDispatchOrderCreateProps>
               </div>
             </div>
 
-            {/* 21대 안전 스펙 빠른 체크 아코디언 */}
+            {/* 요구 사양 체크 아코디언 */}
             <div className="pt-1 border-t border-slate-800/80 flex flex-col gap-2">
               <button
                 type="button"
@@ -1641,7 +1641,7 @@ export const MobileDispatchOrderCreate: React.FC<MobileDispatchOrderCreateProps>
               >
                 <span className="flex items-center gap-1.5">
                   <Wrench className="w-3 h-3 text-amber-400" />
-                  현장 필수 안전장치 스펙 ({Object.values(checkedSpecs).filter(Boolean).length}개 선택됨)
+                  현장 요구 사양 ({Object.values(checkedSpecs).filter(Boolean).length}건)
                 </span>
                 {isSpecsAccordionOpen ? <ChevronUp className="w-3.5 h-3.5 text-slate-400" /> : <ChevronDown className="w-3.5 h-3.5 text-slate-400" />}
               </button>

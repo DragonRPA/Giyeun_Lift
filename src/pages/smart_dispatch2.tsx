@@ -185,7 +185,7 @@ export const SmartDispatch2: React.FC = () => {
         Object.entries(matchedCustomer.defaultCheckedSpecs).forEach(([k, v]) => {
           if (v && !nextCheckedSpecs[k]) { nextCheckedSpecs[k] = true; any = true; }
         });
-        if (any) inherited.push('기술스펙(고객기본)');
+        if (any) inherited.push('요구사양(고객기본)');
       }
 
       const matchedSite = sites.find(s =>
@@ -212,7 +212,7 @@ export const SmartDispatch2: React.FC = () => {
           Object.entries(matchedSite.checkedSpecs).forEach(([k, v]) => {
             if (v && !nextCheckedSpecs[k]) { nextCheckedSpecs[k] = true; any = true; }
           });
-          if (any) inherited.push('기술스펙(현장)');
+          if (any) inherited.push('요구사양(현장)');
         }
       }
 

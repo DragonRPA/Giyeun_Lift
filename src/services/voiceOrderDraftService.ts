@@ -25,7 +25,7 @@ export interface VoiceOrderDraft {
   // 전체 출고의뢰 구조 확장 필드 (8대 도메인)
   paidOptions?: string;          // 유상옵션 (철망, 함석, 에어배관 등)
   protection?: string;           // 보양작업 (바닥보양, 휠보양 등)
-  checkedSpecs?: Record<string, boolean>; // 21대 표준 스펙 체크
+  checkedSpecs?: Record<string, boolean>; // 요구 사양 체크
   saveOptionsToSite?: boolean;   // 변경된 옵션을 현장 기본값으로 저장할지 여부 (1회성: false)
   billableToCustomer?: boolean;  // 운송비 청구 (고객부담: true, 당사부담: false)
   closingDay?: string;           // 마감일 (말일, 20일, 25일 등)
@@ -385,7 +385,7 @@ export function mergeVoiceFragmentToDraft(
       ...(updated.checkedSpecs || {}),
       ...optResult.checkedSpecs
     };
-    modifiedFields.push(`안전스펙(${Object.keys(optResult.checkedSpecs).length}종) 체크`);
+    modifiedFields.push(`요구사양(${Object.keys(optResult.checkedSpecs).length}종) 체크`);
   }
 
   // 10. 물류 운송비 부담 & 마감조건 파싱
@@ -429,7 +429,7 @@ export function mergeVoiceFragmentToDraft(
 }
 
 // ─────────────────────────────────────────────────────────────
-// 🛡️ 유상옵션, 보양작업, 21대 안전스펙 음성 파서
+// 🛡️ 유상옵션, 보양작업, 요구사양 음성 파서
 // ─────────────────────────────────────────────────────────────
 export interface ParsedOptionsSpecsResult {
   paidOptions: string;
@@ -511,7 +511,7 @@ export function parseOptionsAndSpecsVoiceInput(text: string): ParsedOptionsSpecs
     modifiedFields.push('모서리/난간 랩핑');
   }
 
-  // 3. 21대 안전 스펙 키워드 매핑
+  // 3. 요구 사양 키워드 매핑
   if (/감지봉|방지봉|협착\s*방지|협착\s*센서|상단감지|상부\s*협착/i.test(clean)) {
     checkedSpecs['spec3'] = true;
     paidOpts.push('상단 협착감지봉(4EA)');
@@ -1460,14 +1460,14 @@ export function parseContactPhoneVoiceInput(text: string): string | null {
 }
 
 /**
- * 현장의 기존 출고 옵션 요약 생성 (예: "4면 철망, 바닥보양(플라베니아), 안전스펙 3건")
+ * 현장의 기존 출고 옵션 요약 생성 (예: "4면 철망, 바닥보양(플라베니아), 요구사양 3건")
  */
 export function getSiteOptionsSummary(site: CustomerSite): string {
   const parts: string[] = [];
   if (site.paidOptions) parts.push(site.paidOptions);
   if (site.protection) parts.push(site.protection);
   const specCount = Object.values(site.checkedSpecs || {}).filter(Boolean).length;
-  if (specCount > 0) parts.push(`안전스펙 ${specCount}건`);
+  if (specCount > 0) parts.push(`요구사양 ${specCount}건`);
   return parts.length > 0 ? parts.join(', ') : '표준 사양';
 }
 
@@ -1498,7 +1498,7 @@ export function isOptionsChangedFromSite(
   const reqProt = toStr(protection);
   if (siteProt !== reqProt) return true;
 
-  // 3. 21대 안전스펙 비교
+  // 3. 요구사양 비교
   const siteSpecs = site.checkedSpecs || {};
   const reqSpecs = checkedSpecs || {};
   const allSpecKeys = Array.from(new Set([...Object.keys(siteSpecs), ...Object.keys(reqSpecs)]));

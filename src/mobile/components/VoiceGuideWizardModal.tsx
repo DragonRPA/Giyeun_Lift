@@ -661,7 +661,7 @@ export const VoiceGuideWizardModal: React.FC<VoiceGuideWizardModalProps> = ({
         if (pendingSite?.checkedSpecs) setCheckedSpecs(pendingSite.checkedSpecs);
         
         setSiteSubStep('SITE_SELECT');
-        setStatusMessage('기존 출고 옵션 및 안전스펙 100% 상속 완료.');
+        setStatusMessage('기존 출고 옵션 및 요구사양 100% 상속 완료.');
         setTimeout(() => {
           setCurrentStep('EQUIPMENT');
           guideCurrentStep('EQUIPMENT', '출고할 장비의 제조사나 모델명, 대수를 말씀해주세요.');

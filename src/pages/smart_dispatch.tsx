@@ -299,7 +299,7 @@ export const SmartDispatch: React.FC = () => {
             anySpecInherited = true;
           }
         });
-        if (anySpecInherited) inherited.push('기술스펙(고객기본)');
+        if (anySpecInherited) inherited.push('요구사양(고객기본)');
       }
 
       // 2. 현장(Site) 정보 상속 (현장 전용 설정이 있다면 고객 기본값보다 우선 적용!)
@@ -341,7 +341,7 @@ export const SmartDispatch: React.FC = () => {
               anySiteSpecInherited = true;
             }
           });
-          if (anySiteSpecInherited && !inherited.includes('기술스펙(현장)')) inherited.push('기술스펙(현장)');
+          if (anySiteSpecInherited && !inherited.includes('요구사양(현장)')) inherited.push('요구사양(현장)');
         }
       }
 
@@ -1674,15 +1674,15 @@ ${activeSpecs.map((s, idx) => `  ${idx + 1}. [적용] ${s.label}`).join('\n') ||
               </div>
             </div>
 
-            {/* 섹션 4: 필수 기술 요구사항 체크리스트 (자연어 원문 텍스트 동적 생성 반영) */}
+            {/* 섹션 4: 요구 사양 체크리스트 */}
             <div>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px', borderBottom: '1px solid var(--border-color)', paddingBottom: '4px' }}>
                 <h4 style={{ fontSize: '14px', fontWeight: '700', color: 'var(--primary)', margin: 0, display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  4. 필수 요구사항 체크리스트 (요청 텍스트 분석 동적 생성)
+                  4. 요구 사양 체크리스트
                 </h4>
                 <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
                   <button type="button" className="btn-secondary" onClick={() => setShowAllSpecs(!showAllSpecs)} style={{ padding: '3px 8px', fontSize: '11.5px', fontWeight: 700 }}>
-                    {showAllSpecs ? '▲ 추출 항목만 보기' : '▼ 전체 21개 스펙 펼치기'}
+                    {showAllSpecs ? '▲ 추출 항목만 보기' : '▼ 전체 사양 펼치기'}
                   </button>
                   <button type="button" className="btn-secondary" onClick={() => handleSetAllSpecs(true)} style={{ padding: '2px 6px', fontSize: '11px' }}>전체선택</button>
                   <button type="button" className="btn-secondary" onClick={() => handleSetAllSpecs(false)} style={{ padding: '2px 6px', fontSize: '11px' }}>전체해제</button>

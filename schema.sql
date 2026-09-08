@@ -255,7 +255,7 @@ CREATE TABLE customers (
     "prepaidBalance"      DOUBLE PRECISION NOT NULL DEFAULT 0,
     "defaultPaidOptions"  TEXT, -- 고객사 기본 유상옵션
     "defaultProtection"   TEXT, -- 고객사 기본 보양작업
-    "defaultCheckedSpecs" JSONB, -- 고객사 기본 21대 표준 스펙 체크 상태
+    "defaultCheckedSpecs" JSONB, -- 고객사 기본 요구사양 체크 상태
     "bankAccounts"        JSONB, -- 고객사 환불/거래 계좌 목록
     "driveFolderId"       TEXT,
     "isClosed"            BOOLEAN NOT NULL DEFAULT FALSE,
@@ -290,7 +290,7 @@ CREATE TABLE customer_sites (
     email                 TEXT,
     "paidOptions"         TEXT, -- 현장별 유상옵션
     "protection"          TEXT, -- 현장별 보양작업
-    "checkedSpecs"        JSONB, -- 현장별 21대 표준 스펙 체크
+    "checkedSpecs"        JSONB, -- 현장별 요구사양 체크 상태
     "isActive"            BOOLEAN NOT NULL DEFAULT TRUE,
     "createdAt"           TEXT NOT NULL,
     "updatedAt"           TEXT NOT NULL

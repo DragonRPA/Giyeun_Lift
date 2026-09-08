@@ -270,7 +270,7 @@ export const STANDARD_SPECS: SpecItem[] = [
   { id: 'spec21', label: '부착물 세트 (인증서, 제원표, 보험증권, 반입전 체크리스트)', keywords: ['부착물', '제원표', '비상하강사용법', '보험증권', '인증서', '반입전', '체크리스트', '출고서류', '안전점검결과서', '직인날인', '점검자 직인'] }
 ];
 
-// 🏷️ 전사 표준 옵션 마스터 인터페이스 (유상옵션 / 보양작업 / 기술스펙)
+// 🏷️ 전사 표준 옵션 마스터 인터페이스 (유상옵션 / 보양작업 / 요구사양)
 export interface StandardOption {
   id: string;
   category: 'PAID' | 'PROTECTION' | 'SPEC';
@@ -327,10 +327,10 @@ export interface Customer {
   paymentTermDays?: number; // Net Terms 결제기한 (발행 후 N일)
   bankAccounts?: CustomerBankAccount[]; // 고객사 다중 계좌 목록
   
-  // 🌟 [신규] 고객사 기본 옵션/보양/요구스펙 자동 재사용 마스터
+  // 🌟 [신규] 고객사 기본 옵션/보양/요구사양 자동 재사용 마스터
   defaultPaidOptions?: string;       // 기본 유상옵션 (예: '협착방지봉 4EA, 소화기함')
   defaultProtection?: string;        // 기본 보양작업 (예: '4면 철망 보양, 탑승구 사다리')
-  defaultCheckedSpecs?: Record<string, boolean>; // 기본 21대 표준 스펙 체크 상태
+  defaultCheckedSpecs?: Record<string, boolean>; // 기본 요구 사양 체크 상태
   specialNotes?: string;             // 고객사 특이사항 메모 (예: '재임대 출고건으로 운반비 및 배차 한솔렌탈 부담')
 
   createdAt: string;
@@ -359,10 +359,10 @@ export interface CustomerSite {
   email: string;
   isActive?: boolean; // 사용/미사용 (공사 완공 시 미사용)
   
-  // 🌟 [신규] 현장 전용 옵션/보양/요구스펙 (미입력 시 고객사 기본값 자동 상속)
+  // 🌟 [신규] 현장 전용 옵션/보양/요구사양 (미입력 시 고객사 기본값 자동 상속)
   paidOptions?: string;              // 현장 전용 유상옵션
   protection?: string;               // 현장 전용 보양작업
-  checkedSpecs?: Record<string, boolean>; // 현장 전용 21대 표준 스펙 체크 상태
+  checkedSpecs?: Record<string, boolean>; // 현장 전용 요구 사양 체크 상태
 
   createdAt: string;
   updatedAt?: string;

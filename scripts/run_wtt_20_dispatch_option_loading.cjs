@@ -6,7 +6,7 @@
  *
  * [5대 축 스트레스 주입 매트릭스]
  *  ① 공간 축 (WTT-01 ~ WTT-04): 대형 현장 고객사 기본상속, 도심지 현장 고유옵션, 클린룸 현장 미선택 고객옵션, 교량현장 배차이력 옵션
- *  ② 물리 축 (WTT-05 ~ WTT-08): 유상옵션 다중 품목 Set 적재, 보양 NONE 자동 여과, 21대 스펙 한글라벨 변환, 조이스틱커버 유상옵션 정밀 격리
+ *  ② 물리 축 (WTT-05 ~ WTT-08): 유상옵션 다중 품목 Set 적재, 보양 NONE 자동 여과, 표준 요구사양 한글라벨 변환, 조이스틱커버 유상옵션 정밀 격리
  *  ③ 시간 축 (WTT-09 ~ WTT-12): 고객 선택 즉시 로드, 현장 선택 즉시 전환, 신규현장등록 시 고객옵션 상속, 재불러오기 시 100% 원복 (상태보존)
  *  ④ 비용 축 (WTT-13 ~ WTT-16): 천단위 금액(30,000원) 쉼표 보존, 유상/보양 분리 대차대조, 전원 해제 시 NONE 클린 저장, 마스터 추천칩 연동
  *  ⑤ 수량 축 (WTT-17 ~ WTT-20): 10개 현장 보유 시 개별 vs 상속 격리, AI 텍스트 파싱 현장미인식 시 상속, 초안(Draft) 로드 시 상속, 더티 텍스트 정규화
@@ -14,7 +14,7 @@
  * [3대 종단 보존 법칙]
  *  1. 상태 보존 법칙 (Conservation of State): 옵션 변경 후 [현장옵션 불러오기] 클릭 시 1비트 오차 없이 원본 복구
  *  2. 수지 보존 법칙 (Conservation of Balance): 유상옵션 + 보양작업 분리 저장 시 원본 태그 수 및 명칭 100% 보존
- *  3. 데이터 무결성 법칙 (Data Integrity Law): 21대 스펙 체크 상태의 한글 라벨 변환 및 역방향 무손실 보존
+ *  3. 데이터 무결성 법칙 (Data Integrity Law): 표준 요구사양 체크 상태의 한글 라벨 변환 및 역방향 무손실 보존
  * =========================================================================
  */
 
@@ -37,7 +37,7 @@ const staticAudits = [
     id: 'AUDIT-01',
     name: 'STANDARD_SPECS 및 StandardOption 임포트 구비',
     pass: code.includes('STANDARD_SPECS') && code.includes('StandardOption'),
-    desc: 'db.ts의 21대 표준 스펙 및 표준 옵션 마스터 인터페이스 연동'
+    desc: 'db.ts의 표준 요구사양 및 표준 옵션 마스터 인터페이스 연동'
   },
   {
     id: 'AUDIT-02',
@@ -53,9 +53,9 @@ const staticAudits = [
   },
   {
     id: 'AUDIT-04',
-    name: '고객/현장 21대 표준 스펙(checkedSpecs, defaultCheckedSpecs) 옵션 태그화',
+    name: '고객/현장 표준 요구사양(checkedSpecs, defaultCheckedSpecs) 옵션 태그화',
     pass: code.includes('site.checkedSpecs') && (code.includes('cust.defaultCheckedSpecs') || code.includes('custSpecs')),
-    desc: '체크된 21대 표준 스펙을 안전옵션 목록에 자동으로 라벨 변환하여 탑재'
+    desc: '체크된 표준 요구사양을 안전옵션 목록에 자동으로 라벨 변환하여 탑재'
   },
   {
     id: 'AUDIT-05',
@@ -326,7 +326,7 @@ runTest('WTT-06', '물리(Physical)', '보양작업 NONE 및 무의미한 대시
   return `NONE 토큰 100% 필터링 및 순수 유상옵션만 보존`;
 });
 
-runTest('WTT-07', '물리(Physical)', '21대 표준 스펙(checkedSpecs) 체크 항목 한글 라벨 변환 및 옵션 탑재', () => {
+runTest('WTT-07', '물리(Physical)', '표준 요구사양(checkedSpecs) 체크 항목 한글 라벨 변환 및 옵션 탑재', () => {
   const site = {
     checkedSpecs: {
       spec1: true, // 철망 / 함석 설치
@@ -336,7 +336,7 @@ runTest('WTT-07', '물리(Physical)', '21대 표준 스펙(checkedSpecs) 체크 
   };
   const loaded = simulateLoadSiteSafetyOptions(site, null);
   if (!loaded.has('철망 / 함석 설치') || !loaded.has('풋스위치 (발판스위치)')) {
-    throw new Error('21대 스펙 라벨 변환 탑재 누락');
+    throw new Error('표준 요구사양 라벨 변환 탑재 누락');
   }
   return `checkedSpecs 2종 ➔ 표준 라벨 변환 완결`;
 });
@@ -514,7 +514,7 @@ if (passedWtt === totalWtt) {
   console.log('\n🏆 [3대 종단 보존 법칙 검증 완료]');
   console.log('  1. 상태 보존 법칙 (Conservation of State)      : 100% PASS (원형 100% 복구)');
   console.log('  2. 수지 보존 법칙 (Conservation of Balance)    : 100% PASS (유상/보양 대차 분리 무결성)');
-  console.log('  3. 데이터 무결성 법칙 (Data Integrity Law)      : 100% PASS (21대 스펙 라벨 변환 및 천단위 쉼표 보존)');
+  console.log('  3. 데이터 무결성 법칙 (Data Integrity Law)      : 100% PASS (표준 요구사양 라벨 변환 및 천단위 쉼표 보존)');
   console.log('='.repeat(75) + '\n');
   process.exit(0);
 } else {

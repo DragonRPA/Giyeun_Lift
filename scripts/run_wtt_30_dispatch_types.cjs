@@ -49,7 +49,7 @@ const staticChecks = [
     desc: '기존 고객사의 신규 현장 등록 시 전용 폼(현장명/주소/담당자) 분기 및 목록 복귀 지원'
   },
   {
-    name: '고객 요구 옵션 자유 입력 및 현장 연동 체계 (하드코딩 9대/21대 표준옵션 배제)',
+    name: '고객 요구 옵션 자유 입력 및 현장 연동 체계 (하드코딩 표준옵션 배제)',
     check: code.includes('handleAddOption') && code.includes('QUICK_OPTION_SUGGESTIONS') && !code.includes('STANDARD_SAFETY_OPTIONS'),
     desc: '임의의 고정 표준옵션 강요 배제, 고객 요구사항 있는 그대로 직접 추가/삭제 및 추천 칩'
   },

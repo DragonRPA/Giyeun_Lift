@@ -532,7 +532,7 @@ export const Customers: React.FC = () => {
       protection: activeCustomer.defaultProtection || '',
       checkedSpecs: activeCustomer.defaultCheckedSpecs ? { ...activeCustomer.defaultCheckedSpecs } : {}
     }));
-    showToast(`고객사 기본 옵션/보양/기술스펙을 불러왔습니다.`);
+    showToast(`고객사 기본 옵션/보양/요구사양을 불러왔습니다.`);
   };
 
   // 계좌 관리
@@ -987,7 +987,7 @@ export const Customers: React.FC = () => {
                       보양작업: {activeCustomer.defaultProtection || '(없음)'}
                     </span>
                     <span className="badge badge-secondary" style={{ fontSize: '10px' }}>
-                      기술스펙: {activeCustomer.defaultCheckedSpecs ? Object.values(activeCustomer.defaultCheckedSpecs).filter(Boolean).length + '개' : '0개'}
+                      요구사양: {activeCustomer.defaultCheckedSpecs ? Object.values(activeCustomer.defaultCheckedSpecs).filter(Boolean).length + '개' : '0개'}
                     </span>
                   </div>
 
@@ -1009,7 +1009,7 @@ export const Customers: React.FC = () => {
                           alignItems: 'center',
                           gap: '4px'
                         }}
-                        title="고객사 기본 유상옵션/보양/기술스펙 설정"
+                        title="고객사 기본 옵션/보양/요구사양 설정"
                       >
                         <Sliders size={12} /> 기본 옵션 설정
                       </button>
@@ -1139,7 +1139,7 @@ export const Customers: React.FC = () => {
                                       )}
                                       {specCount > 0 && (
                                         <span style={{ padding: '1px 4px', fontSize: '9.5px', borderRadius: '3px', backgroundColor: 'var(--bg-card)', color: 'var(--text-secondary)', border: '1px solid var(--border-color)' }}>
-                                          스펙 {specCount}
+                                          사양 {specCount}
                                         </span>
                                       )}
                                     </div>
@@ -1630,11 +1630,11 @@ export const Customers: React.FC = () => {
                   </div>
                 </div>
 
-                {/* 21대 기술요구스펙 */}
+                {/* 기본 요구 사양 */}
                 <div style={{ marginTop: '8px', borderTop: '1px solid var(--border-color)', paddingTop: '6px' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
-                      기본 21대 기술스펙 ({Object.values(editingCust.defaultCheckedSpecs || {}).filter(Boolean).length}개 선택)
+                      기본 요구 사양 ({Object.values(editingCust.defaultCheckedSpecs || {}).filter(Boolean).length}개 선택)
                     </span>
                     <button
                       type="button"
@@ -1951,11 +1951,11 @@ export const Customers: React.FC = () => {
                   </div>
                 </div>
 
-                {/* 21대 현장 스펙 아코디언 */}
+                {/* 현장 요구 사양 */}
                 <div style={{ marginTop: '8px', borderTop: '1px solid var(--border-color)', paddingTop: '6px' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
-                      현장 21대 기술스펙 ({Object.values(editingSite.checkedSpecs || {}).filter(Boolean).length}개 선택)
+                      현장 요구 사양 ({Object.values(editingSite.checkedSpecs || {}).filter(Boolean).length}개 선택)
                     </span>
                     <button
                       type="button"
@@ -2206,12 +2206,12 @@ export const Customers: React.FC = () => {
                 </div>
               </div>
 
-              {/* 3. 기본 21대 기술스펙 */}
+              {/* 3. 기본 요구 사양 */}
               <div style={{ border: '1px solid var(--border-color)', borderRadius: '6px', padding: '10px 12px', backgroundColor: 'var(--bg-app)' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                     <label style={{ ...labelStyle, fontSize: '12px', fontWeight: 700, color: 'var(--text-main)', margin: 0 }}>
-                      기본 21대 기술요구스펙
+                      기본 요구 사양
                     </label>
                     <span className="badge badge-secondary" style={{ fontSize: '10px' }}>
                       {Object.values(custOptionForm.defaultCheckedSpecs || {}).filter(Boolean).length}개 적용
@@ -2432,12 +2432,12 @@ export const Customers: React.FC = () => {
                 />
               </div>
 
-              {/* 3. 현장 전용 21대 스펙 */}
+              {/* 3. 현장 요구 사양 */}
               <div style={{ border: '1px solid var(--border-color)', borderRadius: '6px', padding: '10px 12px', backgroundColor: 'var(--bg-app)' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                     <label style={{ ...labelStyle, fontSize: '12px', fontWeight: 700, color: 'var(--text-main)', margin: 0 }}>
-                      현장 21대 기술스펙
+                      현장 요구 사양
                     </label>
                     <span className="badge badge-secondary" style={{ fontSize: '10px' }}>
                       {Object.values(siteOptionForm.checkedSpecs || {}).filter(Boolean).length}개 선택

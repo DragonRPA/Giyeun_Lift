@@ -117,11 +117,38 @@ export const getAllSystemMenuIds = (): string[] => {
   return ids;
 };
 
+// 전사 복수형/변형 메뉴 ID를 단일 표준(SSOT) 단수형 ID로 정규화하는 별칭 맵
+export const CANONICAL_MENU_ALIASES: Record<string, string> = {
+  'consumables': 'consumable',
+  'repairs': 'repair',
+  'repairing': 'repair',
+  'billings': 'billing',
+  'contracts': 'contract',
+  'customers': 'customer',
+  'deliveries': 'delivery',
+  'products': 'product',
+  'assets': 'asset',
+  'sites': 'customer',
+  'organizations': 'organization',
+  'permissions': 'permission',
+  'dispatch': 'delivery',
+  'dispatches': 'delivery',
+  'truck_dispatch': 'delivery'
+};
+
+export function normalizeMenuId(menuId: string): string {
+  if (!menuId) return '';
+  const trimmed = menuId.trim().toLowerCase();
+  return CANONICAL_MENU_ALIASES[trimmed] || trimmed;
+}
+
 // menuId로 메뉴 한글 명칭 검색 도우미
 export const getMenuNameById = (menuId: string): string => {
+  const normId = normalizeMenuId(menuId);
   for (const grp of SYSTEM_MENU_CONFIG) {
-    const item = grp.items.find(i => i.id === menuId);
+    const item = grp.items.find(i => i.id === normId);
     if (item) return item.name;
   }
   return menuId;
 };
+

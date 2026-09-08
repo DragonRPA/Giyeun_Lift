@@ -1,7 +1,8 @@
 import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import { db, supabase, Tenant, TenantWorkplace, TenantYard, TenantBusinessType, TenantBankAccount, OFFICIAL_STAMP_BASE64, User, MenuPermission, createMenuPermission, Customer, CustomerContact, CustomerSite, Product, Asset, Consumable, ConsumableLog, ConsumablePurchaseRequest, MechanicConsumableStock, Contract, ContractAsset, ContractHistory, Delivery, Billing, BillingType, BillingDetail, Receivable, Payment, PaymentDepositLink, Repair, RepairConsumable, Todo, BankTransaction, BankMatchingRule, BankAccountInitialBalance, AssetInOutLog, GoogleConfig, Vendor, CashFlowSnapshot, OutboundInspection, TransportCompany, TransportDriver, TransportNegotiation, SubleaseNegotiation, DepreciationLog, PurchaseSettlement, PurchaseSettlementItem, SettlementPaymentLog, ExternalLease, PurchaseSettlementType, PurchaseSettlementStatus, findCustomerByNormalizedName, AnnualLeaveQuota, LeaveUsage, OvertimeRecord, PayrollClosing, InspectionChecklistItem, EquipmentManual, InboundDefectDetail, PrepaidTransaction, DelinquencyActionLog, LegalNoticeLog, LegalNoticeTemplate, calculateAssetDepreciation, FieldAsTicket, FieldAsPartUsed, FieldAsCollectedPart, CorporateVehicle, VehicleOperationLog, VehicleFuelLog, RepairPartUsed, RepairCollectedPart, SaleContractTerms, StocktakingAudit, StocktakingAuditItem, CollectedPart } from '../services/db';
 import { ErrorModal } from '../components/ErrorModal';
-import { getAllSystemMenuIds } from '../config/menu_config';
+import { getAllSystemMenuIds, normalizeMenuId } from '../config/menu_config';
+import { getRoleTemplatePermission } from '../config/role_templates';
 import { broadcastWorkNotification } from '../utils/workNotificationService';
 import { issueHandoverTask, clearHandoverTasks, findActiveTasksForUser } from '../utils/taskHandoverPipeline';
 import { resolveSiteDetailedAddress } from '../utils/nativeLauncher';
@@ -862,16 +863,30 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const hasPermission = (menuId: string, action: 'view' | 'save'): boolean => {
     if (!currentUser) return false;
-    // 시스템 최고관리자 계정 및 ADMIN 역할 사용자는 모든 메뉴에 100% 무조건 권한 부여
+    // 1. 시스템 최고관리자 계정 및 ADMIN 역할 사용자는 모든 메뉴에 100% 무조건 권한 부여
     if (currentUser.role === 'ADMIN' || currentUser.loginId === 'admin' || currentUser.id === 'sys-admin' || currentUser.id === 'u-1') return true;
 
-    // userId / user_id 양방향 호환 탐색 (파편화 방지)
-    const perm = permissions.find(p => (p.userId === currentUser.id || (p as any).user_id === currentUser.id) && p.menuId === menuId);
-    if (!perm) {
-      // 권한 레코드가 누락된 신규 메뉴의 경우 조회(view)는 기본 허용(true), 저장(save)은 false
-      return action === 'view';
+    // 2. 단일 표준(SSOT) 단수형 메뉴 ID로 정규화
+    const normMenuId = normalizeMenuId(menuId);
+
+    // 3. 사용자별 명시적 오버라이드(개인 예외 권한) 우선 판정
+    const perm = permissions.find(p => 
+      (p.userId === currentUser.id || (p as any).user_id === currentUser.id) && 
+      normalizeMenuId(p.menuId) === normMenuId
+    );
+    if (perm) {
+      return action === 'view' ? Boolean(perm.canView) : Boolean(perm.canSave);
     }
-    return action === 'view' ? perm.canView : perm.canSave;
+
+    // 4. 직무 템플릿(RBAC) 기반 자동 상속 판정
+    const dept = currentUser.departmentId || currentUser.department;
+    const templateRule = getRoleTemplatePermission(currentUser.role, dept, normMenuId, action);
+    if (templateRule !== undefined) {
+      return templateRule;
+    }
+
+    // 5. 엄격한 거부 우선 (Deny-by-Default): 정의되지 않은 메뉴는 전면 차단
+    return false;
   };
 
   const updatePermissions = async (updated: MenuPermission[]) => {

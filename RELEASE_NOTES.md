@@ -1,3 +1,25 @@
+## [v1.10.0.Build.22] - 2026-09-08 14:15
+
+### 🛡️ [직무 템플릿 기반 RBAC 권한 체계 전면 개편 & 대시보드 피드 권한 무결성 확립]
+- **직무 표준 권한 템플릿(Role Templates) 엔진 신설 (`src/config/role_templates.ts`)**:
+  - 관리부(`ACCOUNTING`), 영업부(`SALES`), 출고팀(`LOGISTICS`), AS팀(`MECHANIC`), 최고관리자(`ADMIN`) 표준 권한 템플릿 정립.
+  - 사용자의 직무 Role 및 소속 부서(`departmentId`/`department`)에 따른 권한 자동 상속 엔진(`getRoleTemplatePermission`) 구축.
+  - 신규 사원 등록 시 직무/부서 지정만으로 40개 메뉴 권한이 0초 만에 완비되어 관리자의 설정 조작 피로 원천 해소.
+- **메뉴 식별자 SSOT 단일화 및 별칭 정규화 (`src/config/menu_config.ts`)**:
+  - 복수형 키(`consumables`, `repairs`, `billings`, `contracts`, `deliveries` 등)를 단일 표준 단수형 ID로 자동 치환하는 `normalizeMenuId` 엔진 탑재.
+  - `getMenuNameById` 호출 시 정규화 키를 자동 적용하여 라벨 조회 정합성 확보.
+- **권한 판정 3단계 엔진 개편 & '거부 우선(Deny-by-Default)' 보안 원칙 확립 (`src/context/AppContext.tsx`)**:
+  - [1단계] `ADMIN` 무조건 허용 ➔ [2단계] 사용자별 명시적 DB 오버라이드 우선 평가 ➔ [3단계] 직무 템플릿 자동 상속 ➔ [미등록 시] 무조건 차단(`false`).
+  - 과거 미등록 메뉴에 대해 `view: true`로 자동 통과되던 취약점과 권한 우회 버그를 원천 박멸.
+- **대시보드 업무 피드 카드 권한 무결성 결합 (`src/pages/Dashboard.tsx`)**:
+  - 6대 업무 피드 카드의 권한 플래그를 정규 단수형 키(`consumable`, `repair`, `billing`, `contract`, `delivery`, `rent_asset`)로 단일화.
+  - 관리부 소속 일반 사원(김원진 님 등)에게 정비/소모품 피드가 누출되던 임의의 `role === 'MANAGER'` 우회 조건을 제거하고, 실제 해당 메뉴 권한(`canView`) 보유자에게만 격리 노출.
+
+- **검증 결과**:
+  - `npm run build`: **0 Error 통과** (`built in 1.03s`).
+
+---
+
 ## [v1.10.0.Build.21] - 2026-09-08 13:27
 
 ### 🛠️ [관리자 테스트 사용자 전환, 소모품 마스터 관리, 스마트 AS 텍스트 파서 & 거래처 현장 가동 집계]

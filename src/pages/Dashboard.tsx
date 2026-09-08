@@ -49,13 +49,13 @@ export const Dashboard: React.FC = () => {
   const userDept = (currentUser?.department || '').toUpperCase();
   const isExecUser = userRole === 'ADMIN' || userRole === 'EXECUTIVE' || userRole === 'MANAGER' || userDept.includes('경영') || userDept.includes('대표');
 
-  // 사용자 메뉴 권한 기반 카드 노출 판단 플래그 (메뉴 저장/조회 권한 보유 여부)
-  const canSaveDelivery = hasPermission('delivery', 'save') || hasPermission('delivery', 'view');
-  const canSaveRepair = hasPermission('repairs', 'save') || hasPermission('repair', 'save') || hasPermission('repairs', 'view') || hasPermission('repair', 'view');
-  const canSaveBilling = hasPermission('billings', 'save') || hasPermission('billing', 'save') || hasPermission('billings', 'view') || hasPermission('billing', 'view');
-  const canSaveContract = hasPermission('contracts', 'save') || hasPermission('contract', 'save') || hasPermission('contracts', 'view') || hasPermission('contract', 'view');
-  const canSaveConsumable = hasPermission('consumables', 'save') || hasPermission('consumable', 'save') || hasPermission('consumables', 'view') || hasPermission('consumable', 'view');
-  const canSaveRentAsset = hasPermission('rent_asset', 'save') || hasPermission('rent_asset', 'view');
+  // 사용자 메뉴 권한 기반 카드 노출 판단 플래그 (단일 표준 단수형 ID)
+  const canViewDelivery = hasPermission('delivery', 'view');
+  const canViewRepair = hasPermission('repair', 'view');
+  const canViewBilling = hasPermission('billing', 'view');
+  const canViewContract = hasPermission('contract', 'view');
+  const canViewConsumable = hasPermission('consumable', 'view');
+  const canViewRentAsset = hasPermission('rent_asset', 'view');
 
   // ── 🤖 로컬 사이드카 에이전트 실시간 모니터링 상태 ──
   const [agentStatus, setAgentStatus] = useState<'ONLINE' | 'OFFLINE'>('OFFLINE');
@@ -493,12 +493,12 @@ export const Dashboard: React.FC = () => {
       {/* ──────────────────────────────────────────────────────── */}
       {(() => {
         const requestedDeliveries = deliveries.filter(d => d.status === 'REQUESTED');
-        const showDeliveryFeed = requestedDeliveries.length > 0 && canSaveDelivery;
-        const showBillingFeed = unpaidBillings.length > 0 && (canSaveBilling || role === 'ADMIN' || role === 'MANAGER');
-        const showRentAssetFeed = (overdueRentedCount > 0 || mismatchRentedCount > 0) && (canSaveRentAsset || role === 'ADMIN' || role === 'MANAGER');
-        const showRepairFeed = pendingRepairs > 0 && (canSaveRepair || role === 'ADMIN' || role === 'MANAGER');
-        const showConsumableFeed = lowStockConsumables > 0 && (canSaveConsumable || canSaveRepair || role === 'ADMIN' || role === 'MANAGER');
-        const showContractFeed = activeContracts > 0 && canSaveContract;
+        const showDeliveryFeed = requestedDeliveries.length > 0 && canViewDelivery;
+        const showBillingFeed = unpaidBillings.length > 0 && canViewBilling;
+        const showRentAssetFeed = (overdueRentedCount > 0 || mismatchRentedCount > 0) && canViewRentAsset;
+        const showRepairFeed = pendingRepairs > 0 && canViewRepair;
+        const showConsumableFeed = lowStockConsumables > 0 && canViewConsumable;
+        const showContractFeed = activeContracts > 0 && canViewContract;
         const showTodoFeed = myTodos.length > 0;
 
         const visibleCount = [showDeliveryFeed, showBillingFeed, showRentAssetFeed, showRepairFeed, showConsumableFeed, showContractFeed, showTodoFeed].filter(Boolean).length;

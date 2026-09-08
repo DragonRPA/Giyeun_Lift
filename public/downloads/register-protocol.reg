@@ -1,0 +1,15 @@
+Windows Registry Editor Version 5.00
+
+[HKEY_CURRENT_USER\Software\Classes\broagent]
+@="URL:BroAgent Protocol"
+"URL Protocol"=""
+
+[HKEY_CURRENT_USER\Software\Classes\broagent\shell\open\command]
+@="C:\\eBroAgent\\start-agent.bat"
+
+[HKEY_CURRENT_USER\Software\Classes\ebro]
+@="URL:eBro Protocol"
+"URL Protocol"=""
+
+[HKEY_CURRENT_USER\Software\Classes\ebro\shell\open\command]
+@="C:\\eBroAgent\\start-agent.bat"

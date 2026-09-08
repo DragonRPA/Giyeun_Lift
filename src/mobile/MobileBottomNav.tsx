@@ -4,6 +4,7 @@ import { MobileDeptMode } from './MobileHeader';
 
 export type MobileTabType = 
   | 'home' 
+  | 'assignment'
   | 'assets' 
   | 'sales_order' 
   | 'my_contracts' 
@@ -26,6 +27,7 @@ interface MobileBottomNavProps {
   pendingAsCount?: number;
   pendingDispatchCount?: number;
   pendingInspectionCount?: number;
+  pendingAssignmentCount?: number;
   subleaseLeakCount?: number;
   overdueBadgeCount?: number;
   incompleteCustomerCount?: number;
@@ -38,6 +40,7 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
   pendingAsCount = 0,
   pendingDispatchCount = 0,
   pendingInspectionCount = 0,
+  pendingAssignmentCount = 0,
   subleaseLeakCount = 0,
   overdueBadgeCount = 0,
   incompleteCustomerCount = 0,
@@ -64,9 +67,10 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
       { id: 'assets', label: '가용자산', icon: Search, badge: 0 },
     ];
   } else if (deptMode === 'OUTBOUND') {
-    // 🏗️ 출고/자산팀 모바일 4대 전용 탭 (R&R 위반 발주작성 영구 배제 - 과제 10)
+    // 🏗️ 출고/자산팀 모바일 5대 정예 탭 (장비할당 신설 & 출고 라이프사이클 완성)
     navItems = [
       { id: 'home', label: '홈', icon: Home, badge: 0 },
+      { id: 'assignment', label: '장비할당', icon: Layers, badge: pendingAssignmentCount },
       { id: 'inspection', label: '출고검수', icon: CheckSquare, badge: pendingInspectionCount },
       { id: 'inbound_register', label: '입고등록', icon: ArrowDownToLine, badge: 0 },
       { id: 'assets', label: '주기장자산', icon: Search, badge: 0 },
@@ -103,8 +107,8 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
         backdropFilter: 'blur(16px)',
         borderTop: '1px solid #1e293b',
         paddingTop: '6px',
-        paddingLeft: '8px',
-        paddingRight: '8px',
+        paddingLeft: '4px',
+        paddingRight: '4px',
         paddingBottom: 'calc(8px + env(safe-area-inset-bottom, 0px))',
         display: 'flex',
         alignItems: 'center',
@@ -126,7 +130,8 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
               alignItems: 'center',
               justifyContent: 'center',
               flex: 1,
-              padding: '6px 4px',
+              minWidth: 0,
+              padding: '4px 2px',
               borderRadius: '12px',
               backgroundColor: 'transparent',
               border: 'none',
@@ -136,35 +141,41 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
             }}
           >
             <div style={{ position: 'relative' }}>
-              <Icon size={22} color={isActive ? '#60a5fa' : '#94a3b8'} strokeWidth={isActive ? 2.4 : 1.8} />
+              <Icon size={20} color={isActive ? '#60a5fa' : '#94a3b8'} strokeWidth={isActive ? 2.4 : 1.8} />
               {item.badge > 0 && (
                 <span style={{
                   position: 'absolute',
-                  top: '-6px',
-                  right: '-10px',
-                  minWidth: '18px',
-                  height: '18px',
-                  padding: '0 4px',
+                  top: '-5px',
+                  right: '-8px',
+                  minWidth: '16px',
+                  height: '16px',
+                  padding: '0 3px',
                   backgroundColor: '#ef4444',
                   color: '#ffffff',
-                  fontSize: '10px',
+                  fontSize: '9px',
                   fontWeight: '900',
                   borderRadius: '9999px',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  border: '1px solid #0f172a'
+                  border: '1px solid #0f172a',
+                  whiteSpace: 'nowrap',
+                  flexShrink: 0
                 }}>
                   {item.badge > 99 ? '99+' : item.badge}
                 </span>
               )}
             </div>
             <span style={{
-              fontSize: '11px',
-              marginTop: '4px',
+              fontSize: '10.5px',
+              marginTop: '3px',
               color: isActive ? '#60a5fa' : '#94a3b8',
               fontWeight: isActive ? '800' : '500',
-              whiteSpace: 'nowrap'
+              whiteSpace: 'nowrap',
+              textOverflow: 'ellipsis',
+              overflow: 'hidden',
+              maxWidth: '100%',
+              letterSpacing: '-0.3px'
             }}>
               {item.label}
             </span>

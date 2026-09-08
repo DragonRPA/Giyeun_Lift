@@ -1,23 +1,63 @@
 @echo off
-chcp 65001 >nul
-title [BroAgent] 브라우저 원클릭 실행 프로토콜 등록기
-echo =================================================================
-echo  🏢 e-Bro ERP — 브라우저 원클릭 에이전트 실행 프로토콜 등록
-echo =================================================================
+title [eBroAgent] One-Click Protocol Register
+
+echo ========================================================
+echo   e-Bro ERP - One-Click Agent Protocol Register
+echo ========================================================
 echo.
 
-set "CMD=cmd.exe /c start \"\" powershell.exe -NoProfile -WindowStyle Normal -Command \"$host.ui.RawUI.WindowTitle = '[BroAgent] Local Sidecar Agent'; if (Test-Path 'C:\eBroAgent\BroAgent.js') { Set-Location 'C:\eBroAgent'; node BroAgent.js } elseif (Test-Path 'C:\eBroAgent\agent.js') { Set-Location 'C:\eBroAgent'; node agent.js } elseif (Test-Path 'C:\eBroAgent\eBroAgent.js') { Set-Location 'C:\eBroAgent'; node eBroAgent.js } elseif (Test-Path \\\"$env:USERPROFILE\Downloads\BroAgent.js\\\" ) { Set-Location \\\"$env:USERPROFILE\Downloads\\\"; node BroAgent.js } elseif (Test-Path \\\"$env:USERPROFILE\Downloads\agent.js\\\" ) { Set-Location \\\"$env:USERPROFILE\Downloads\\\"; node agent.js } elseif (Test-Path \\\"$env:USERPROFILE\Downloads\eBroAgent.js\\\" ) { Set-Location \\\"$env:USERPROFILE\Downloads\\\"; node eBroAgent.js } else { Write-Host '[BroAgent] BroAgent.js를 찾지 못했습니다.' -ForegroundColor Red; pause }\""
+if not exist "C:\eBroAgent" mkdir "C:\eBroAgent"
 
-reg add "HKCU\Software\Classes\broagent" /ve /d "URL:BroAgent Protocol" /f >nul
-reg add "HKCU\Software\Classes\broagent" /v "URL Protocol" /d "" /f >nul
-reg add "HKCU\Software\Classes\broagent\shell\open\command" /ve /d "%CMD%" /f >nul
+if exist "%USERPROFILE%\Downloads\BroAgent.js" (
+    copy /y "%USERPROFILE%\Downloads\BroAgent.js" "C:\eBroAgent\BroAgent.js" >nul 2>&1
+)
+if exist "%~dp0BroAgent.js" (
+    copy /y "%~dp0BroAgent.js" "C:\eBroAgent\BroAgent.js" >nul 2>&1
+)
+if exist "%~dp0start-agent.bat" (
+    copy /y "%~dp0start-agent.bat" "C:\eBroAgent\start-agent.bat" >nul 2>&1
+)
 
-reg add "HKCU\Software\Classes\ebro" /ve /d "URL:eBro Protocol" /f >nul
-reg add "HKCU\Software\Classes\ebro" /v "URL Protocol" /d "" /f >nul
-reg add "HKCU\Software\Classes\ebro\shell\open\command" /ve /d "%CMD%" /f >nul
+:: Create temporary .reg file and import cleanly
+set "TMP_REG=%TEMP%\ebro_agent_register.reg"
+(
+echo Windows Registry Editor Version 5.00
+echo.
+echo [HKEY_CURRENT_USER\Software\Classes\broagent]
+echo @="URL:BroAgent Protocol"
+echo "URL Protocol"=""
+echo.
+echo [HKEY_CURRENT_USER\Software\Classes\broagent\shell\open\command]
+echo @="C:\\eBroAgent\\start-agent.bat"
+echo.
+echo [HKEY_CURRENT_USER\Software\Classes\ebro]
+echo @="URL:eBro Protocol"
+echo "URL Protocol"=""
+echo.
+echo [HKEY_CURRENT_USER\Software\Classes\ebro\shell\open\command]
+echo @="C:\\eBroAgent\\start-agent.bat"
+) > "%TMP_REG%"
 
-echo ✅ 브라우저 원클릭 실행 프로토콜(broagent://) 등록 완료!
-echo    이제 웹사이트에서 [🚀 사이트에서 에이전트 실행] 버튼을 누르면
-echo    Node.js BroAgent가 즉시 실행됩니다.
+reg.exe import "%TMP_REG%" >nul 2>&1
+del /f /q "%TMP_REG%" >nul 2>&1
+
+:: Chrome/Edge Loopback Access Policy and QuickEdit disable
+reg.exe add "HKLM\SOFTWARE\Policies\Google\Chrome\LoopbackNetworkAllowedForUrls" /v "1" /t REG_SZ /d "https://giyuenlift.ebro.run" /f >nul 2>&1
+reg.exe add "HKLM\SOFTWARE\Policies\Google\Chrome\LoopbackNetworkAllowedForUrls" /v "2" /t REG_SZ /d "https://*.ebro.run" /f >nul 2>&1
+reg.exe add "HKLM\SOFTWARE\Policies\Google\Chrome\LocalNetworkAccessAllowedForUrls" /v "1" /t REG_SZ /d "https://giyuenlift.ebro.run" /f >nul 2>&1
+reg.exe add "HKLM\SOFTWARE\Policies\Google\Chrome\LocalNetworkAccessAllowedForUrls" /v "2" /t REG_SZ /d "https://*.ebro.run" /f >nul 2>&1
+reg.exe add "HKLM\SOFTWARE\Policies\Microsoft\Edge\LoopbackNetworkAllowedForUrls" /v "1" /t REG_SZ /d "https://giyuenlift.ebro.run" /f >nul 2>&1
+reg.exe add "HKLM\SOFTWARE\Policies\Microsoft\Edge\LoopbackNetworkAllowedForUrls" /v "2" /t REG_SZ /d "https://*.ebro.run" /f >nul 2>&1
+reg.exe add "HKLM\SOFTWARE\Policies\Microsoft\Edge\LocalNetworkAccessAllowedForUrls" /v "1" /t REG_SZ /d "https://giyuenlift.ebro.run" /f >nul 2>&1
+reg.exe add "HKLM\SOFTWARE\Policies\Microsoft\Edge\LocalNetworkAccessAllowedForUrls" /v "2" /t REG_SZ /d "https://*.ebro.run" /f >nul 2>&1
+reg.exe add "HKCU\Console" /v QuickEdit /t REG_DWORD /d 0 /f >nul 2>&1
+
+echo.
+echo ========================================================
+echo   [SUCCESS] Browser Protocol (broagent://) Registered!
+echo.
+echo   You can now click [Launch Agent from Browser]
+echo   on the website to start the agent automatically.
+echo ========================================================
 echo.
 pause

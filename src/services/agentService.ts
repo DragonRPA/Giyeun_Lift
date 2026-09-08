@@ -63,7 +63,12 @@ export async function fetchWithAgentFallback(path: string, init?: RequestInit): 
   let lastErr: any = null;
   for (const host of candidateHosts) {
     try {
-      const res = await fetch(`${host}${path}`, init);
+      const mergedInit: any = {
+        ...init,
+        // Chrome/Edge W3C Local Network Access(LNA) 표준: loopback 접근 권한 명시
+        targetAddressSpace: 'loopback'
+      };
+      const res = await fetch(`${host}${path}`, mergedInit);
       if (res.ok || res.status < 500) {
         activeAgentBaseUrl = host;
         return res;

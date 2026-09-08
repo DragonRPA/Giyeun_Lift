@@ -11,6 +11,7 @@ import { MobileAsDetail } from './pages/MobileAsDetail';
 import { MobileAsCreate } from './pages/MobileAsCreate';
 import { MobileDispatchList } from './pages/MobileDispatchList';
 import { MobileInspectionList } from './pages/MobileInspectionList';
+import { MobileAssetAssignment } from './pages/MobileAssetAssignment';
 import { MobileAssetSearch } from './pages/MobileAssetSearch';
 import { MobileDispatchOrderCreate } from './pages/MobileDispatchOrderCreate';
 import { MobileMyContracts } from './pages/MobileMyContracts';
@@ -39,7 +40,7 @@ interface MobileAppProps {
 }
 
 export const MobileApp: React.FC<MobileAppProps> = ({ onSwitchToPc: _onSwitchToPc }) => {
-  const { fieldAsTickets, deliveries, outboundInspections, currentUser, assets, customers, billings, currentTenant } = useApp();
+  const { fieldAsTickets, deliveries, outboundInspections, currentUser, assets, customers, billings, currentTenant, contractAssets } = useApp();
 
   // 전대 장비 주기장 유휴 누수 위험 건수
   const subleaseLeakCount = useMemo(() => {
@@ -213,6 +214,11 @@ export const MobileApp: React.FC<MobileAppProps> = ({ onSwitchToPc: _onSwitchToP
 
   const pendingInspectionCount = outboundInspections.filter((ins) => ins.status === 'PENDING').length;
 
+  // 🏗️ 미할당 슬롯 수 (장비할당 대기 배지)
+  const pendingAssignmentCount = useMemo(() => {
+    return (contractAssets || []).filter((ca) => !ca.assetId).length;
+  }, [contractAssets]);
+
   // 네비게이션 핸들러
   const handleTabChange = (tab: MobileTabType) => {
     setSelectedAsTicketId(null);
@@ -329,6 +335,11 @@ export const MobileApp: React.FC<MobileAppProps> = ({ onSwitchToPc: _onSwitchToP
           />
         ) : activeTab === 'delinquency' ? (
           <MobileDelinquencyManage />
+        ) : activeTab === 'assignment' ? (
+          <MobileAssetAssignment 
+            onNavigate={(tab) => handleTabChange(tab)}
+            onBack={() => handleTabChange('home')}
+          />
         ) : activeTab === 'inspection' ? (
           <MobileInspectionList />
         ) : activeTab === 'inbound_register' ? (
@@ -361,6 +372,7 @@ export const MobileApp: React.FC<MobileAppProps> = ({ onSwitchToPc: _onSwitchToP
           pendingAsCount={pendingAsCount}
           pendingDispatchCount={pendingDispatchCount}
           pendingInspectionCount={pendingInspectionCount}
+          pendingAssignmentCount={pendingAssignmentCount}
           subleaseLeakCount={subleaseLeakCount}
           overdueBadgeCount={overdueBadgeCount}
           incompleteCustomerCount={incompleteCustomerCount}

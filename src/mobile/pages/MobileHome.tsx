@@ -4,7 +4,7 @@ import { useApp } from '../../context/AppContext';
 import { 
   Wrench, Truck, CheckSquare, Search, Send, Building2, 
   ArrowRight, AlertTriangle, Clock, Plus, Boxes, ArrowDownToLine, Users, Car, BookOpen,
-  Smartphone, Download, UploadCloud
+  Smartphone, Download, UploadCloud, Layers
 } from 'lucide-react';
 import { MobileTabType } from '../MobileBottomNav';
 import { MobileDeptMode } from '../MobileHeader';
@@ -24,7 +24,7 @@ export const MobileHome: React.FC<MobileHomeProps> = ({
   onOpenAsDetail,
   onOpenCreateAs,
 }) => {
-  const { fieldAsTickets, deliveries, outboundInspections, currentUser, assets, contracts, mechanicConsumableStocks, customers, currentTenant } = useApp();
+  const { fieldAsTickets, deliveries, outboundInspections, currentUser, assets, contracts, contractAssets, mechanicConsumableStocks, customers, currentTenant } = useApp();
 
   const defaultYard = currentTenant?.yards?.find((y: any) => y.isDefault) || currentTenant?.yards?.[0];
   const defaultYardName = defaultYard?.name || (currentTenant?.tradeName ? `${currentTenant.tradeName} 주기장` : '본사 주기장');
@@ -72,6 +72,7 @@ export const MobileHome: React.FC<MobileHomeProps> = ({
     (d) => d.status === 'PENDING' || d.status === 'REQUESTED' || d.status === 'DISPATCHED'
   );
   const pendingInspections = outboundInspections.filter((ins) => ins.status === 'PENDING');
+  const pendingAssignmentSlots = (contractAssets || []).filter((ca) => !ca.assetId).length;
   const activeContracts = contracts.filter(c => c.status === 'ACTIVE' || c.status === 'EXTENDED');
 
   // ── 근무 상태 카드 (공통) ─────────────────────────────
@@ -306,10 +307,32 @@ export const MobileHome: React.FC<MobileHomeProps> = ({
             </span>
           </div>
           <h2 className="text-xl font-black text-white leading-tight">
-            출고 검수 대기 <span className="text-emerald-400">{pendingInspections.length}건</span><br />
-            임대 가능 자산 <span className="text-sky-400">{availableAssetCount}대</span>
+            장비 할당 대기 <span className="text-blue-400">{pendingAssignmentSlots}대</span><br />
+            출고 검수 대기 <span className="text-emerald-400">{pendingInspections.length}건</span>
           </h2>
         </div>
+
+        {/* 계약 장비 할당 대형 버튼 (신규) */}
+        <button
+          type="button"
+          onClick={() => onNavigate('assignment')}
+          className="w-full py-4 px-5 rounded-2xl bg-blue-600 hover:bg-blue-500 text-white font-black text-base flex items-center justify-between shadow-xl shadow-blue-600/30 active:scale-98 transition-all"
+        >
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-white/20 flex items-center justify-center">
+              <Layers className="w-5 h-5 stroke-[2.5]" />
+            </div>
+            <div className="flex items-center gap-2">
+              <span>계약 장비 할당</span>
+              {pendingAssignmentSlots > 0 && (
+                <span className="text-xs bg-white text-blue-700 px-2 py-0.5 rounded-full font-bold">
+                  {pendingAssignmentSlots}대 미할당
+                </span>
+              )}
+            </div>
+          </div>
+          <ArrowRight className="w-5 h-5" />
+        </button>
 
         {/* 출고 검수(PDI) 마감 대형 버튼 (헌장 1.3 준수) */}
         <button

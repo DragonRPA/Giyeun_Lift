@@ -368,14 +368,20 @@ export const AgentHeaderBadge: React.FC<Props> = ({ currentUser }) => {
             }}>
               <div style={{ fontWeight: '800', color: '#dc2626', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '4px' }}>
                 <AlertTriangle size={13} />
-                콘솔 창이 켜져 있는데 미연결로 표시될 때
+                콘솔 창이 켜져 있는데 미연결로 표시될 때 조치법
               </div>
               <div style={{ color: 'var(--text-secondary)' }}>
-                Chrome/Edge 보안 정책에 의해 로컬 접속이 차단되었을 수 있습니다:
-                <div style={{ marginTop: '5px', color: 'var(--text-main)', fontSize: '11px', background: 'var(--bg-card)', padding: '6px 8px', borderRadius: '5px', border: '1px solid var(--border-color)' }}>
-                  <b>1.</b> 주소창 좌측 <b>[사이트 설정 (아이콘)]</b> 클릭<br />
-                  <b>2.</b> <b>[안전하지 않은 콘텐츠]</b>를 <b>[허용]</b>으로 변경<br />
-                  <b>3.</b> <b>[F5]</b> 새로고침 시 즉시 🟢 정상 연결 완료!
+                Chrome/Edge 로컬 루프백 보안 차단 또는 콘솔 일시정지 상태입니다:
+                <div style={{ marginTop: '5px', color: 'var(--text-main)', fontSize: '11px', background: 'var(--bg-card)', padding: '6px 8px', borderRadius: '5px', border: '1px solid var(--border-color)', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                  <div>
+                    <b>1.</b> 주소창 좌측 <b>[설정/조정 아이콘]</b> 클릭 ➔ <b>[기기의 앱 (Apps on device)]</b>을 <b>[허용(ON)]</b>으로 변경 (안 보이면 [사이트 설정] 클릭 후 허용)
+                  </div>
+                  <div>
+                    <b>2.</b> 검은색 콘솔 창 제목에 <b>'선택'</b> 글자가 있으면 마우스 클릭으로 일시정지된 상태입니다. 콘솔 창을 클릭 후 <b>[Enter]</b> 또는 <b>[Esc]</b>를 1회 누르세요.
+                  </div>
+                  <div style={{ color: '#16a34a', fontWeight: '800' }}>
+                    <b>3.</b> <b>[F5]</b> 새로고침 시 즉시 🟢 정상 연결 완료!
+                  </div>
                 </div>
               </div>
             </div>

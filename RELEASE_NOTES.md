@@ -1,3 +1,48 @@
+## [v1.11.2.Build.1] - 2026-09-08 23:05
+
+### 📱 [웹앱 출고팀 계약 장비할당 신설 및 하단 5대 정예 탭 최적화]
+- **주기장 현장 모바일 장비할당 전용 스튜디오 신설 (`MobileAssetAssignment.tsx`) (헌장 1.1, 1.2, 2.1, 3.1, 3.2, 3.4)**:
+  - 출고/자산 부서의 핵심 R&R(Rule 2.1: 가용 자산 초이스 및 슬롯 매핑)을 모바일 현장에서도 스마트폰으로 즉각 수행할 수 있도록 전용 화면 신설.
+  - 상단 건조 명사 `장비 할당` 타이틀, 미할당 계약 `N건`, 미할당 슬롯 `M대` 실시간 배지 및 `[출고검수 이동 ➔]` 퀵 링크 배치.
+  - 검색 및 3대 필터(`전체` | `대차/교체 우선` | `일반계약`): 대차/교체 발생 건 최상단 고정 배지 노출.
+  - 슬롯-장비 1:1 매핑 스튜디오: 요구 모델 일치 가용 자산(`status === 'AVAILABLE'`) 필터링, 정비점수(`maintenanceScore`) 오름차순 추천, 관리번호 직접 검색 및 원클릭 일괄 할당(`batchAssignAssetsToContract`), 할당 즉시 출고검수 대기(`PENDING`) 자동 발행.
+- **모바일 하단 내비게이션 5대 탭 레이아웃 최적화 (`MobileBottomNav.tsx`)**:
+  - `OUTBOUND` 모바일 탭에 `assignment: 장비할당` 탭을 추가하여 5개 탭으로 확장.
+  - 360px 소형 기기에서도 줄바꿈(Word-wrap) 없는 1줄 렌더링을 위해 버튼 패딩(`px-1`), 폰트(`10.5px`), 자간(`-0.3px`), `white-space: nowrap` 반응형 최적화 완결.
+- **모바일 홈 피드 및 라우팅 연동 (`MobileHome.tsx`, `MobileApp.tsx`)**:
+  - 모바일 홈 주기장 출고 피드 최상단에 `장비 할당 대기 N대` 현황 카운터 및 1터치 진입 대형 버튼(`[계약 장비 할당]`) 배치.
+
+### 🌐 [Chrome 140+ Local Network Access(LNA) 루프백 차단 대응 및 콘솔 QuickEdit 프리징 방지]
+- **W3C Local Network Access `targetAddressSpace: 'loopback'` 옵션 탑재 (경험.md E-067, 헌장 1.1, 5.2)**:
+  - 퍼블릭 HTTPS 웹사이트(`https://giyuenlift.ebro.run`)에서 로컬 데몬(`http://127.0.0.1:5175`) 호출 시 Chrome 140+ 최신 보안 정책(Local Network Access)에 의해 루프백 주소 공간 접근이 거부되던 결함 원천 해결.
+  - `src/services/agentService.ts` 내 `fetchWithAgentFallback` 함수에 W3C LNA 표준 `targetAddressSpace: 'loopback'` 옵션을 명시하여 브라우저 루프백 권한 요청 정상화.
+- **Chromium 신규 권한 `기기의 앱` (Apps on device) 설정 가이드 탑재 (`AgentHeaderBadge.tsx`, `PrintQueueManager.tsx`)**:
+  - Chrome/Edge 최신 버전에서 '안전하지 않은 콘텐츠'와 별도로 분리된 **주소창 좌측 설정 아이콘 ➔ `기기의 앱` (Apps on device) ➔ [허용(ON)] 후 F5** 원클릭 해결 가이드 UI 탑재.
+- **Windows CMD 콘솔 QuickEdit 프리징 방지 레지스트리 자동 주입 및 안내**:
+  - 콘솔 창 내부 마우스 클릭으로 CMD 창 타이틀이 `선택` 모드로 전환되며 Node.js 이벤트 루프와 네트워크 I/O가 OS 레벨에서 일시정지되던 결함 해결.
+  - `agent/start-agent.bat`, `public/downloads/start-agent.bat`, `agent/등록-원클릭실행.bat`에 `reg.exe add "HKCU\Console" /v QuickEdit /t REG_DWORD /d 0 /f` 자동 탑재로 프리징 원천 예방.
+  - 에이전트 모달 및 프린트 큐 모니터에 콘솔 창 타이틀에 `선택`이 보일 경우 `Enter` 또는 `Esc`로 해제하는 비상 조치 가이드 추가.
+- **검증 결과**:
+  - Headless Chrome CDP Live Probe (`test_live_chrome.js`) 진단 완결 및 해결책 실증.
+  - TypeScript 전체 빌드 (`cmd /c "npm run build"`): **0 Error 정상 완결 (`built in 1.18s`)**
+
+---
+
+## [v1.11.1.Build.4] - 2026-09-08 22:50
+
+### 🛠️ [등록-원클릭실행.bat Windows 배치파일 구문 및 인코딩 오류 전면 척결]
+- **배치파일 멀티바이트 인코딩 및 구문 파편화 결함 원천 해결 (경험.md E-018, 헌장 1.1, 5.2)**:
+  - 브라우저 다운로드 탭에서 `등록-원클릭실행.bat` 실행 시 cmd 창에 `'"$host.ui.RawUI.WindowTitle..."'은(는) 내부 또는 외부 명령이 아닙니다`, `'L'`, `'cho'`, `'관'은(는) 내부 또는 외부 명령이 아닙니다` 등 오류가 발생하던 결함 완벽 해결.
+  - 이모지(`🏢`, `🚀`, `✅`) 및 한글 주석으로 인한 Windows CP949 텍스트 파편화를 방지하기 위해 **100% 순수 표준 ASCII 배치파일**로 전면 재작성.
+  - Windows 네이티브 `reg.exe import` 표준을 적용하여 `broagent://` 및 `ebro://` URL 프로토콜이 `C:\eBroAgent\start-agent.bat`로 오차 없이 100% 등록되도록 개편.
+- **다운로드 및 로컬 실행 환경 즉시 동기화**:
+  - `public/downloads/등록-원클릭실행.bat`, `agent/등록-원클릭실행.bat`, `C:\eBroAgent\등록-원클릭실행.bat`, `%USERPROFILE%\Downloads\등록-원클릭실행.bat`에 즉각 교체 동기화 완료.
+- **검증 결과**:
+  - `start broagent://run`: 브라우저 프로토콜 호출 시 `C:\eBroAgent\start-agent.bat` 즉시 실행 및 5175 포트 정상 LISTEN 검증 완료.
+  - TypeScript 전체 빌드 (`cmd /c "npm run build"`): **0 Error 정상 완결 (`built in 1.09s`)**
+
+---
+
 ## [v1.11.1.Build.3] - 2026-09-08 22:23
 
 ### 🔒 [W3C Private Network Access(PNA) 헤더 탑재 및 로컬 에이전트 브라우저 보안 차단 완벽 해결]

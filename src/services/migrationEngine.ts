@@ -1,5 +1,5 @@
 // @ts-nocheck
-import { supabase, db, calculateAssetDepreciation, normalizeCustomerName, STANDARD_SPECS, findCustomerByNormalizedName } from './db';
+import { supabase, db, calculateAssetDepreciation, normalizeCustomerName, findCustomerByNormalizedName } from './db';
 import * as XLSX from 'xlsx';
 import { PRESET_PRODUCT_SPECS, ProductPresetSpec } from '../data/presetProductSpecs';
 
@@ -2640,7 +2640,6 @@ export interface ParsedDispatchPost {
   closingDay: string;
   paymentDay: string;
   note: string;
-  matchedSpecs: Record<string, boolean>;
   rawText: string;
 }
 
@@ -2654,7 +2653,6 @@ export interface CustomerEnrichmentSummary {
   extractedDefaults: {
     defaultPaidOptions?: string;
     defaultProtection?: string;
-    defaultCheckedSpecs?: Record<string, boolean>;
     defaultBillingDay?: number;
     specialNotes?: string;
   };
@@ -2664,7 +2662,6 @@ export interface CustomerEnrichmentSummary {
     siteAddress?: string;
     paidOptions?: string;
     protection?: string;
-    checkedSpecs?: Record<string, boolean>;
     contactName?: string;
     contact?: string;
     email?: string;
@@ -2694,7 +2691,6 @@ export interface DispatchAnalysisResult {
     ignoredCount: number;
     extractedOptionCount: number;
     extractedProtectionCount: number;
-    extractedSpecCount: number;
   };
 }
 
@@ -2802,8 +2798,6 @@ export function parseDispatchHistoryText(rawText: string): ParsedDispatchPost[] 
       return namePart.replace(/[:\-]/g, '').replace(/선임|책임|담당자|소장|부장|과장|대리|팀장/g, '').trim();
     };
 
-    const matchedSpecs: Record<string, boolean> = {};
-
     rawContent.forEach(l => {
       const val = l.includes(':') ? l.substring(l.indexOf(':') + 1).trim() : (l.includes('：') ? l.substring(l.indexOf('：') + 1).trim() : '');
 
@@ -2822,7 +2816,6 @@ export function parseDispatchHistoryText(rawText: string): ParsedDispatchPost[] 
         if (siteOptMatch) {
           const extOpt = siteOptMatch[1].trim();
           if (extOpt.includes('소화기')) {
-            matchedSpecs['spec13'] = true;
             if (!paidOptions.includes(extOpt)) paidOptions = paidOptions ? `${paidOptions}, ${extOpt}` : extOpt;
           } else if (extOpt.includes('보양')) {
             if (!protection.includes(extOpt)) protection = protection ? `${protection}, ${extOpt}` : extOpt;
@@ -2876,7 +2869,6 @@ export function parseDispatchHistoryText(rawText: string): ParsedDispatchPost[] 
           paidOptions = paidOptions ? `${paidOptions}, ${l}` : l;
         }
       } else if (/출고서류|안전점검|직인날인/i.test(l)) {
-        matchedSpecs['spec21'] = true;
         const docVal = l.replace(/[\*:]/g, '').trim();
         if (docVal && !note.includes(docVal)) {
           note = note ? `${note} | ${docVal}` : docVal;
@@ -2888,17 +2880,10 @@ export function parseDispatchHistoryText(rawText: string): ParsedDispatchPost[] 
       } else if (/^(?:\d+[\.\)]\s*)?(?:특이사항|비고|배차\s*메모|배차메모)/i.test(l)) {
         note = val || l.replace(/^(?:\d+[\.\)]\s*)?(?:특이사항|비고|배차\s*메모|배차메모)\s*[:：]?\s*/i, '');
       } else if (l.includes('옵션작업') || l.includes('튜브소화기')) {
-        if (l.includes('튜브소화기') || l.includes('소화기')) matchedSpecs['spec13'] = true;
         if (!note.includes(l)) {
           note = note ? `${note} | ${l}` : l;
         }
       }
-    });
-
-    const cleanedText = fullContentText.replace(/\s+/g, '');
-    STANDARD_SPECS.forEach(spec => {
-      const isMatched = spec.keywords.some(kw => cleanedText.includes(kw.replace(/\s+/g, '')));
-      if (isMatched) matchedSpecs[spec.id] = true;
     });
 
     posts.push({
@@ -2922,7 +2907,6 @@ export function parseDispatchHistoryText(rawText: string): ParsedDispatchPost[] 
       closingDay: closingDay.trim(),
       paymentDay: paymentDay.trim(),
       note: note.trim(),
-      matchedSpecs,
       rawText: fullContentText
     });
   });
@@ -2990,7 +2974,6 @@ export function analyzeDispatchHistoryForCustomerDefaults(
 
   let totalExtractedOptions = 0;
   let totalExtractedProtections = 0;
-  let totalExtractedSpecs = 0;
   let matchedSitesCount = 0;
 
   customerGroupMap.forEach((custPosts, custId) => {
@@ -2999,14 +2982,6 @@ export function analyzeDispatchHistoryForCustomerDefaults(
     
     // 가장 최신 게시글이 최우선
     const latestPost = custPosts[0];
-
-    // 스펙 합집합
-    const aggregatedSpecs: Record<string, boolean> = {};
-    custPosts.forEach(p => {
-      Object.entries(p.matchedSpecs).forEach(([k, v]) => {
-        if (v) aggregatedSpecs[k] = true;
-      });
-    });
 
     // 기본 유상옵션 및 보양 (기존 마스터 등록값 + 밴드 포스트 통합)
     const combinedPaidOpts = new Set<string>();
@@ -3069,7 +3044,6 @@ export function analyzeDispatchHistoryForCustomerDefaults(
           siteAddress: p.siteAddress || matchedSite?.address,
           paidOptions: p.paidOptions || defaultPaidOptions,
           protection: p.protection || defaultProtection,
-          checkedSpecs: Object.keys(p.matchedSpecs).length > 0 ? p.matchedSpecs : aggregatedSpecs,
           contactName: p.siteContactName || matchedSite?.contactName,
           contact: p.siteContactPhone || matchedSite?.contact,
           email: p.siteContactEmail || matchedSite?.email
@@ -3088,7 +3062,6 @@ export function analyzeDispatchHistoryForCustomerDefaults(
           siteAddress: s.address,
           paidOptions: defaultPaidOptions,
           protection: defaultProtection,
-          checkedSpecs: aggregatedSpecs,
           contactName: s.contactName,
           contact: s.contact,
           email: s.email
@@ -3123,7 +3096,6 @@ export function analyzeDispatchHistoryForCustomerDefaults(
 
     if (defaultPaidOptions) totalExtractedOptions++;
     if (defaultProtection) totalExtractedProtections++;
-    if (Object.keys(aggregatedSpecs).length > 0) totalExtractedSpecs++;
 
     matchedEnrichments.push({
       customerId: custId,
@@ -3135,7 +3107,6 @@ export function analyzeDispatchHistoryForCustomerDefaults(
       extractedDefaults: {
         defaultPaidOptions,
         defaultProtection,
-        defaultCheckedSpecs: Object.keys(aggregatedSpecs).length > 0 ? aggregatedSpecs : undefined,
         defaultBillingDay,
         specialNotes
       },
@@ -3154,8 +3125,7 @@ export function analyzeDispatchHistoryForCustomerDefaults(
       contractedSiteCount: matchedSitesCount,
       ignoredCount: ignoredPosts.length,
       extractedOptionCount: totalExtractedOptions,
-      extractedProtectionCount: totalExtractedProtections,
-      extractedSpecCount: totalExtractedSpecs
+      extractedProtectionCount: totalExtractedProtections
     }
   };
 }
@@ -3194,9 +3164,6 @@ export async function ingestCustomerDefaultsFromDispatchHistory(
       if (isEmptyVal(existingCust.defaultProtection) && item.extractedDefaults.defaultProtection) {
         updates.defaultProtection = item.extractedDefaults.defaultProtection;
       }
-      if (isEmptyVal(existingCust.defaultCheckedSpecs) && item.extractedDefaults.defaultCheckedSpecs) {
-        updates.defaultCheckedSpecs = item.extractedDefaults.defaultCheckedSpecs;
-      }
       if (isEmptyVal(existingCust.specialNotes) && item.extractedDefaults.specialNotes) {
         updates.specialNotes = item.extractedDefaults.specialNotes;
       }
@@ -3233,9 +3200,6 @@ export async function ingestCustomerDefaultsFromDispatchHistory(
           }
           if (isEmptyVal(existingSite.protection) && siteItem.protection) {
             siteUpdates.protection = siteItem.protection;
-          }
-          if (isEmptyVal(existingSite.checkedSpecs) && siteItem.checkedSpecs) {
-            siteUpdates.checkedSpecs = siteItem.checkedSpecs;
           }
           if ((!existingSite.address || existingSite.address === '미상') && siteItem.siteAddress) {
             siteUpdates.address = siteItem.siteAddress;

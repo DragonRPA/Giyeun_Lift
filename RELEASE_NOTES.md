@@ -1,3 +1,33 @@
+## [v1.10.0.Build.32] - 2026-09-08 20:05
+
+### 🧹 [기본 요구사항 체크리스트(checkedSpecs) 전면 제거 및 유상옵션·보양작업 단일화]
+- **현장 실무 중심 단일화 (헌장 1.1, 1.2, 3.1 무수식어 건조 표준, 5.5)**:
+  - 전국 각지 공사현장 담당자마다 사용하는 용어와 요구사항이 상이하여 규격화할 수 없는 인위적 체크박스(`checkedSpecs`) 전면 배제.
+  - 고객사 및 현장 옵션 관리를 실제 회계 계약 단가 및 공정 작업과 1:1 직결되는 **`유상옵션(paidOptions)`** 및 **`보양작업(protection)`** 단일 소스로 완벽 일원화.
+- **고객사 및 현장 관리 마스터 화면 정제 (`src/pages/Customers.tsx`)**:
+  - 고객사 상세 카드 헤더: `요구사양: 4개` 인위적 수량 배지 삭제.
+  - 현장 목록 테이블: `사양 4` 배지 및 카운트 연산 완전 제거.
+  - 고객사 등록·수정 모달: `기본 요구 사양` 체크리스트 전면 삭제.
+  - 현장 등록·수정 모달: `현장 요구 사양` 체크리스트 전면 삭제.
+  - 고객 옵션 설정 모달 (`showCustOptionModal`): `기본 요구 사양` 체크박스 섹션 전면 삭제.
+  - 현장 옵션 설정 모달 (`showSiteOptionModal`): `현장 요구 사양` 체크박스 섹션 전면 삭제.
+  - `STANDARD_SPECS` 임포트 및 관련 상태/핸들러(`defaultCheckedSpecs`, `checkedSpecs`) 완전 청소.
+- **초기 DB 업로더 및 마이그레이션 엔진 정제 (`InitialDbUploader.tsx`, `migrationEngine.ts`)**:
+  - 파서 및 스키마 인터페이스(`ParsedDispatchPost`, `CustomerEnrichmentSummary`, `DispatchAnalysisResult`)에서 `matchedSpecs`, `defaultCheckedSpecs`, `checkedSpecs`, `extractedSpecCount` 제거.
+  - 과거 배차 텍스트 파싱 시 인위적 체크박스 매핑 코드를 배제하고, 소화기/인증서 등은 유상옵션 및 특이사항 메모로 무손실 수집 보존.
+  - 고객 및 현장 마스터 빈칸 안전 보완 시 `defaultCheckedSpecs`, `checkedSpecs` 업데이트 코드 제거.
+- **출고의뢰 및 모바일 배차 연동 정제 (`smart_dispatch4.tsx`, `MobileDispatchOrderCreate.tsx`, `voiceOrderDraftService.ts`)**:
+  - `loadSiteSafetyOptions`: `checkedSpecs` 라벨 변환 로직 제거 ➔ 현장/고객사 순수 `paidOptions`, `protection` 로드 단일화.
+  - 모바일 출고의뢰: `현장 요구 사양` 체크 아코디언 제거 및 `isOptionsDiff`를 순수 유상옵션·보양작업 1:1 비교로 간소화.
+  - `getSiteOptionsSummary`: `요구사양 N건` 제거 ➔ 유상옵션 및 보양작업만 깔끔하게 요약 렌더링.
+- **도메인 관통 스트레스 테스트(WTT) 갱신 및 전수 검증 (`scripts/run_wtt_20_dispatch_option_loading.cjs`, `run_wtt_20_options_suite.cjs`)**:
+  - 정적 감사 및 물리 축(WTT-07)을 순수 유상옵션·보양작업 텍스트 분할 및 로드 무결성 검증으로 전환.
+  - WTT 20회 출고옵션 불러오기 테스트: **20/20 전수 통과 (100%)**
+  - WTT 20회 옵션 마스터 스위트: **20/20 전수 통과 (100%)**
+  - TypeScript 전체 빌드 (`cmd /c "npm run build"`): **0 Error 정상 완결**
+
+---
+
 ## [v1.10.0.Build.31] - 2026-09-08 19:46
 
 ### 🏷️ [프로젝트 전반 21대/21개 하드코딩 수식어 전면 제거 및 요구 사양 표준화]

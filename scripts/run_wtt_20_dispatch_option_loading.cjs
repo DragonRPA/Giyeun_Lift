@@ -35,9 +35,9 @@ const code = fs.readFileSync(targetPath, 'utf-8');
 const staticAudits = [
   {
     id: 'AUDIT-01',
-    name: 'STANDARD_SPECS 및 StandardOption 임포트 구비',
-    pass: code.includes('STANDARD_SPECS') && code.includes('StandardOption'),
-    desc: 'db.ts의 표준 요구사양 및 표준 옵션 마스터 인터페이스 연동'
+    name: 'StandardOption 임포트 구비',
+    pass: code.includes('StandardOption'),
+    desc: 'db.ts의 표준 옵션 마스터 인터페이스 연동'
   },
   {
     id: 'AUDIT-02',
@@ -53,9 +53,9 @@ const staticAudits = [
   },
   {
     id: 'AUDIT-04',
-    name: '고객/현장 표준 요구사양(checkedSpecs, defaultCheckedSpecs) 옵션 태그화',
-    pass: code.includes('site.checkedSpecs') && (code.includes('cust.defaultCheckedSpecs') || code.includes('custSpecs')),
-    desc: '체크된 표준 요구사양을 안전옵션 목록에 자동으로 라벨 변환하여 탑재'
+    name: '유상옵션 및 보양작업 단일화 정책 (체크리스트 배제)',
+    pass: !code.includes('site.checkedSpecs') && code.includes('site.paidOptions') && code.includes('site.protection'),
+    desc: '규격화 불가능한 임의 체크리스트 제거 및 유상옵션·보양작업 단일화 체계 준수'
   },
   {
     id: 'AUDIT-05',
@@ -154,21 +154,13 @@ const isProtectionOption = (label, standardOptions) => {
 const simulateLoadSiteSafetyOptions = (site, cust, deliveries = []) => {
   const inherited = new Set();
 
-  // 1순위: 현장 직접 등록
+  // 1순위: 선택된 현장 마스터
   if (site) {
     if (site.paidOptions) {
       parseOptionString(site.paidOptions).forEach(opt => inherited.add(opt));
     }
     if (site.protection && site.protection !== 'NONE' && site.protection !== '-') {
       parseOptionString(site.protection).forEach(opt => inherited.add(opt));
-    }
-    if (site.checkedSpecs) {
-      Object.entries(site.checkedSpecs).forEach(([k, v]) => {
-        if (v) {
-          const specDef = STANDARD_SPECS.find(s => s.id === k);
-          if (specDef) inherited.add(specDef.label);
-        }
-      });
     }
   }
 
@@ -179,15 +171,6 @@ const simulateLoadSiteSafetyOptions = (site, cust, deliveries = []) => {
     }
     if (cust.defaultProtection && cust.defaultProtection !== 'NONE' && cust.defaultProtection !== '-') {
       parseOptionString(cust.defaultProtection).forEach(opt => inherited.add(opt));
-    }
-    const custSpecs = cust.defaultCheckedSpecs || cust.defaultSpecs;
-    if (custSpecs) {
-      Object.entries(custSpecs).forEach(([k, v]) => {
-        if (v) {
-          const specDef = STANDARD_SPECS.find(s => s.id === k);
-          if (specDef) inherited.add(specDef.label);
-        }
-      });
     }
   }
 
@@ -235,8 +218,7 @@ runTest('WTT-01', '공간(Space)', '대형 반도체 FAB (삼성 평택) 현장 
     id: 'cust-sec',
     name: '삼성물산(주)',
     defaultPaidOptions: '협착방지봉 / 상부센서 (4EA), 4면 철망 설치',
-    defaultProtection: '4면 철망 보양',
-    defaultCheckedSpecs: { spec2: true, spec4: true }
+    defaultProtection: '4면 철망 보양'
   };
   const site = {
     id: 'site-p3',
@@ -247,8 +229,8 @@ runTest('WTT-01', '공간(Space)', '대형 반도체 FAB (삼성 평택) 현장 
   };
 
   const loaded = simulateLoadSiteSafetyOptions(site, cust);
-  if (loaded.size < 3) throw new Error(`상속 누락: ${loaded.size}개만 로드됨`);
-  if (!loaded.has('협착방지봉 / 상부센서 (4EA)') || !loaded.has('4면 철망 보양')) throw new Error('핵심 옵션 상속 누락');
+  if (loaded.size !== 3) throw new Error(`상속 누락: ${loaded.size}개만 로드됨 (기대: 3개)`);
+  if (!loaded.has('협착방지봉 / 상부센서 (4EA)') || !loaded.has('4면 철망 보양') || !loaded.has('4면 철망 설치')) throw new Error('핵심 옵션 상속 누락');
   return `고객사 기본옵션(협착센서, 철망보양 등 ${loaded.size}건) 현장으로 100% 자동 상속 성공`;
 });
 
@@ -326,19 +308,16 @@ runTest('WTT-06', '물리(Physical)', '보양작업 NONE 및 무의미한 대시
   return `NONE 토큰 100% 필터링 및 순수 유상옵션만 보존`;
 });
 
-runTest('WTT-07', '물리(Physical)', '표준 요구사양(checkedSpecs) 체크 항목 한글 라벨 변환 및 옵션 탑재', () => {
+runTest('WTT-07', '물리(Physical)', '유상옵션 및 보양작업의 순수 텍스트 콤마 분할 및 단일 옵션 라벨 탑재 무결성', () => {
   const site = {
-    checkedSpecs: {
-      spec1: true, // 철망 / 함석 설치
-      spec3: true, // 풋스위치 (발판스위치)
-      spec5: false
-    }
+    paidOptions: '철망 / 함석 설치, 풋스위치 (발판스위치)',
+    protection: '전면부 2개소 보양'
   };
   const loaded = simulateLoadSiteSafetyOptions(site, null);
-  if (!loaded.has('철망 / 함석 설치') || !loaded.has('풋스위치 (발판스위치)')) {
-    throw new Error('표준 요구사양 라벨 변환 탑재 누락');
+  if (!loaded.has('철망 / 함석 설치') || !loaded.has('풋스위치 (발판스위치)') || !loaded.has('전면부 2개소 보양')) {
+    throw new Error('유상옵션 및 보양작업 텍스트 분할 탑재 누락');
   }
-  return `checkedSpecs 2종 ➔ 표준 라벨 변환 완결`;
+  return `인위적 체크리스트 없이 유상옵션 및 보양작업 3종 순수 탑재 완결`;
 });
 
 runTest('WTT-08', '물리(Physical)', '조이스틱 커버 등 유상옵션의 보양작업 오분류 원천 방지', () => {

@@ -5,7 +5,7 @@ import {
   Building2, MapPin, Phone, Calendar, Clock, Plus, Minus, 
   Send, AlertTriangle, CheckCircle2, ChevronRight, ArrowLeft, Bot,
   Mic, MicOff, RotateCcw, FileText, Check, Sparkles, ClipboardList,
-  RotateCw, Truck, ArrowDownLeft, ArrowUpRight, Shield, ChevronDown, ChevronUp, Wrench
+  RotateCw, Truck, ArrowDownLeft, ArrowUpRight, Shield, ChevronDown, ChevronUp
 } from 'lucide-react';
 import { matchHangul } from '../../utils/hangulSearch';
 import { 
@@ -17,7 +17,7 @@ import {
   VoiceOrderDraft, 
   EquipmentOrderItem 
 } from '../../services/voiceOrderDraftService';
-import { db, ContractHistory, Delivery, ContractAsset, STANDARD_SPECS } from '../../services/db';
+import { db, ContractHistory, Delivery, ContractAsset } from '../../services/db';
 import { broadcastWorkNotification } from '../../utils/workNotificationService';
 import { VoiceGuideWizardModal, VoiceGuideWizardCompleteData } from '../components/VoiceGuideWizardModal';
 
@@ -82,11 +82,10 @@ export const MobileDispatchOrderCreate: React.FC<MobileDispatchOrderCreateProps>
   const [paymentDay, setPaymentDay] = useState('익월 25일');
   const [taxBillEmail, setTaxBillEmail] = useState('');
   const [vehicleType, setVehicleType] = useState('5톤 렉카');
-  const [isSpecsAccordionOpen, setIsSpecsAccordionOpen] = useState(false);
 
   // 🌟 선택된 현장 객체 및 옵션 변경 발생 여부 실시간 감지
   const selectedSite = useMemo(() => sites.find(s => s.id === selectedSiteId), [sites, selectedSiteId]);
-  const isOptionsDiff = useMemo(() => isOptionsChangedFromSite(selectedSite, paidOptions, protection, checkedSpecs), [selectedSite, paidOptions, protection, checkedSpecs]);
+  const isOptionsDiff = useMemo(() => isOptionsChangedFromSite(selectedSite, paidOptions, protection), [selectedSite, paidOptions, protection]);
   
   // 납품/회수 일시 (기본값: 내일 08:00)
   const tomorrow = useMemo(() => {
@@ -1630,55 +1629,6 @@ export const MobileDispatchOrderCreate: React.FC<MobileDispatchOrderCreateProps>
                   );
                 })}
               </div>
-            </div>
-
-            {/* 요구 사양 체크 아코디언 */}
-            <div className="pt-1 border-t border-slate-800/80 flex flex-col gap-2">
-              <button
-                type="button"
-                onClick={() => setIsSpecsAccordionOpen(prev => !prev)}
-                className="flex items-center justify-between text-[11px] font-bold text-slate-300 py-1 hover:text-white"
-              >
-                <span className="flex items-center gap-1.5">
-                  <Wrench className="w-3 h-3 text-amber-400" />
-                  현장 요구 사양 ({Object.values(checkedSpecs).filter(Boolean).length}건)
-                </span>
-                {isSpecsAccordionOpen ? <ChevronUp className="w-3.5 h-3.5 text-slate-400" /> : <ChevronDown className="w-3.5 h-3.5 text-slate-400" />}
-              </button>
-
-              {isSpecsAccordionOpen && (
-                <div className="grid grid-cols-2 gap-1.5 pt-1">
-                  {[
-                    { id: 'spec3', label: '상단 감지봉/협착센서' },
-                    { id: 'spec4', label: '원판 설치' },
-                    { id: 'spec11', label: '탑승구 사다리 보양' },
-                    { id: 'spec13', label: '소화기함/손잡이 부착' },
-                    { id: 'spec15', label: '점멸등/비상정지장치' },
-                    { id: 'spec21', label: '인증서/보험증권 서류세트' },
-                  ].map(item => {
-                    const isChecked = !!checkedSpecs[item.id];
-                    return (
-                      <button
-                        key={item.id}
-                        type="button"
-                        onClick={() => setCheckedSpecs(prev => ({ ...prev, [item.id]: !prev[item.id] }))}
-                        className={`p-2 rounded-xl border text-[11px] font-bold flex items-center gap-1.5 text-left transition-all ${
-                          isChecked
-                            ? 'bg-amber-950/40 border-amber-500 text-amber-200'
-                            : 'bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-700'
-                        }`}
-                      >
-                        <div className={`w-3.5 h-3.5 rounded flex items-center justify-center border shrink-0 ${
-                          isChecked ? 'bg-amber-600 border-amber-500 text-white' : 'border-slate-700 bg-slate-900'
-                        }`}>
-                          {isChecked && <Check className="w-2.5 h-2.5" />}
-                        </div>
-                        <span className="truncate">{item.label}</span>
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
             </div>
 
             {/* 🌟 옵션 변경 시 현장 마스터 저장 확인 토글 */}

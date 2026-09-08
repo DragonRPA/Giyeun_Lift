@@ -1460,14 +1460,12 @@ export function parseContactPhoneVoiceInput(text: string): string | null {
 }
 
 /**
- * 현장의 기존 출고 옵션 요약 생성 (예: "4면 철망, 바닥보양(플라베니아), 요구사양 3건")
+ * 현장의 기존 출고 옵션 요약 생성 (예: "4면 철망, 바닥보양(플라베니아)")
  */
 export function getSiteOptionsSummary(site: CustomerSite): string {
   const parts: string[] = [];
   if (site.paidOptions) parts.push(site.paidOptions);
-  if (site.protection) parts.push(site.protection);
-  const specCount = Object.values(site.checkedSpecs || {}).filter(Boolean).length;
-  if (specCount > 0) parts.push(`요구사양 ${specCount}건`);
+  if (site.protection && site.protection !== 'NONE' && site.protection !== '-') parts.push(site.protection);
   return parts.length > 0 ? parts.join(', ') : '표준 사양';
 }
 
@@ -1478,7 +1476,7 @@ export function isOptionsChangedFromSite(
   site: CustomerSite | null | undefined,
   paidOptions?: string,
   protection?: string,
-  checkedSpecs?: Record<string, boolean>
+  _checkedSpecs?: Record<string, boolean>
 ): boolean {
   if (!site) return false;
   
@@ -1497,16 +1495,6 @@ export function isOptionsChangedFromSite(
   const siteProt = toStr(site.protection);
   const reqProt = toStr(protection);
   if (siteProt !== reqProt) return true;
-
-  // 3. 요구사양 비교
-  const siteSpecs = site.checkedSpecs || {};
-  const reqSpecs = checkedSpecs || {};
-  const allSpecKeys = Array.from(new Set([...Object.keys(siteSpecs), ...Object.keys(reqSpecs)]));
-  for (const k of allSpecKeys) {
-    if (!!siteSpecs[k] !== !!reqSpecs[k]) {
-      return true;
-    }
-  }
 
   return false;
 }

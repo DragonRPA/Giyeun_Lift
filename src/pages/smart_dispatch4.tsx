@@ -13,7 +13,7 @@
 // └─────────────────────────────────────────────────────────────────────────┘
 import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { useApp } from '../context/AppContext';
-import { db, Customer, CustomerSite, findCustomerByNormalizedName, STANDARD_SPECS, StandardOption } from '../services/db';
+import { db, Customer, CustomerSite, findCustomerByNormalizedName, StandardOption } from '../services/db';
 import { EQUIPMENT_SPEC_MATRIX } from '../services/voiceOrderDraftService';
 import { matchHangul } from '../utils/hangulSearch';
 import {
@@ -374,14 +374,6 @@ export const SmartDispatch4: React.FC = () => {
       if (site.protection && site.protection !== 'NONE' && site.protection !== '-') {
         parseOptionString(site.protection).forEach(opt => inherited.add(opt));
       }
-      if (site.checkedSpecs) {
-        Object.entries(site.checkedSpecs).forEach(([k, v]) => {
-          if (v) {
-            const specDef = STANDARD_SPECS.find(s => s.id === k);
-            if (specDef) inherited.add(specDef.label);
-          }
-        });
-      }
     }
 
     // ── 2순위: 고객사 기본 상속 옵션 (현장 옵션이 비어있거나 현장 미선택 시) ───
@@ -391,15 +383,6 @@ export const SmartDispatch4: React.FC = () => {
       }
       if (cust.defaultProtection && cust.defaultProtection !== 'NONE' && cust.defaultProtection !== '-') {
         parseOptionString(cust.defaultProtection).forEach(opt => inherited.add(opt));
-      }
-      const custSpecs = cust.defaultCheckedSpecs || (cust as any).defaultSpecs;
-      if (custSpecs) {
-        Object.entries(custSpecs).forEach(([k, v]) => {
-          if (v) {
-            const specDef = STANDARD_SPECS.find(s => s.id === k);
-            if (specDef) inherited.add(specDef.label);
-          }
-        });
       }
     }
 

@@ -7,7 +7,7 @@ import {
   X, Edit2, Trash2, RefreshCw, Layers, Check, Building2, Circle,
   Sliders, Tag, Settings, CheckSquare, Square, ChevronDown, ChevronUp
 } from 'lucide-react';
-import { db, Customer, CustomerContact, CustomerSite, CustomerBankAccount, STANDARD_SPECS, StandardOption } from '../services/db';
+import { db, Customer, CustomerContact, CustomerSite, CustomerBankAccount, StandardOption } from '../services/db';
 import { exportToExcel } from '../services/excel';
 import { matchHangul } from '../utils/hangulSearch';
 
@@ -61,10 +61,8 @@ export const Customers: React.FC = () => {
   const [custOptionForm, setCustOptionForm] = useState<{
     defaultPaidOptions: string;
     defaultProtection: string;
-    defaultCheckedSpecs: Record<string, boolean>;
     specialNotes: string;
-  }>({ defaultPaidOptions: '', defaultProtection: '', defaultCheckedSpecs: {}, specialNotes: '' });
-  const [showCustOptionSpecs, setShowCustOptionSpecs] = useState(false);
+  }>({ defaultPaidOptions: '', defaultProtection: '', specialNotes: '' });
 
   // 🏗️ 현장 전용 옵션 관리 모달 상태
   const [showSiteOptionModal, setShowSiteOptionModal] = useState(false);
@@ -72,9 +70,7 @@ export const Customers: React.FC = () => {
   const [siteOptionForm, setSiteOptionForm] = useState<{
     paidOptions: string;
     protection: string;
-    checkedSpecs: Record<string, boolean>;
-  }>({ paidOptions: '', protection: '', checkedSpecs: {} });
-  const [showSiteOptionSpecs, setShowSiteOptionSpecs] = useState(false);
+  }>({ paidOptions: '', protection: '' });
 
   // 외부 네비게이션 연동
   useEffect(() => {
@@ -377,10 +373,8 @@ export const Customers: React.FC = () => {
     setCustOptionForm({
       defaultPaidOptions: normalizeOptionString(cust.defaultPaidOptions),
       defaultProtection: normalizeOptionString(cust.defaultProtection),
-      defaultCheckedSpecs: cust.defaultCheckedSpecs ? { ...cust.defaultCheckedSpecs } : {},
       specialNotes: cust.specialNotes || ''
     });
-    setShowCustOptionSpecs(false);
     setShowCustOptionModal(true);
   };
 
@@ -390,7 +384,6 @@ export const Customers: React.FC = () => {
       db.updateRow<Customer>('customers', activeCustomer.id, {
         defaultPaidOptions: custOptionForm.defaultPaidOptions,
         defaultProtection: custOptionForm.defaultProtection,
-        defaultCheckedSpecs: custOptionForm.defaultCheckedSpecs,
         specialNotes: custOptionForm.specialNotes,
         updatedAt: new Date().toISOString()
       });
@@ -401,7 +394,6 @@ export const Customers: React.FC = () => {
           db.updateRow<CustomerSite>('sites', s.id, {
             paidOptions: custOptionForm.defaultPaidOptions,
             protection: custOptionForm.defaultProtection,
-            checkedSpecs: custOptionForm.defaultCheckedSpecs,
             updatedAt: new Date().toISOString()
           });
         }
@@ -423,10 +415,8 @@ export const Customers: React.FC = () => {
     setEditingSiteOption(cs);
     setSiteOptionForm({
       paidOptions: normalizeOptionString(cs.paidOptions),
-      protection: normalizeOptionString(cs.protection),
-      checkedSpecs: cs.checkedSpecs ? { ...cs.checkedSpecs } : (activeCustomer?.defaultCheckedSpecs ? { ...activeCustomer.defaultCheckedSpecs } : {})
+      protection: normalizeOptionString(cs.protection)
     });
-    setShowSiteOptionSpecs(false);
     setShowSiteOptionModal(true);
   };
 
@@ -436,7 +426,6 @@ export const Customers: React.FC = () => {
       db.updateRow<CustomerSite>('sites', editingSiteOption.id, {
         paidOptions: siteOptionForm.paidOptions,
         protection: siteOptionForm.protection,
-        checkedSpecs: siteOptionForm.checkedSpecs,
         updatedAt: new Date().toISOString()
       });
       await db.awaitPendingWrites();
@@ -453,8 +442,7 @@ export const Customers: React.FC = () => {
     if (!activeCustomer) return;
     setSiteOptionForm({
       paidOptions: normalizeOptionString(activeCustomer.defaultPaidOptions),
-      protection: normalizeOptionString(activeCustomer.defaultProtection),
-      checkedSpecs: activeCustomer.defaultCheckedSpecs ? { ...activeCustomer.defaultCheckedSpecs } : {}
+      protection: normalizeOptionString(activeCustomer.defaultProtection)
     });
     showToast(`고객사 기본 옵션을 불러왔습니다.`);
   };
@@ -512,13 +500,12 @@ export const Customers: React.FC = () => {
       for (const s of targetSites) {
         db.updateRow<CustomerSite>('sites', s.id, {
           paidOptions: cust.defaultPaidOptions || s.paidOptions,
-          protection: cust.defaultProtection || s.protection,
-          checkedSpecs: cust.defaultCheckedSpecs || s.checkedSpecs
+          protection: cust.defaultProtection || s.protection
         });
       }
       await db.awaitPendingWrites();
       await refreshAllData();
-      showToast(`'${cust.name}'의 ${targetSites.length}개 현장에 기본 옵션/보양/스펙이 일괄 적용되었습니다.`);
+      showToast(`'${cust.name}'의 ${targetSites.length}개 현장에 기본 옵션/보양이 일괄 적용되었습니다.`);
     } catch (err: any) {
       showToast(`일괄 전파 실패: ${err.message}`, 'error');
     }
@@ -529,10 +516,9 @@ export const Customers: React.FC = () => {
     setEditingSite(prev => ({
       ...prev,
       paidOptions: activeCustomer.defaultPaidOptions || '',
-      protection: activeCustomer.defaultProtection || '',
-      checkedSpecs: activeCustomer.defaultCheckedSpecs ? { ...activeCustomer.defaultCheckedSpecs } : {}
+      protection: activeCustomer.defaultProtection || ''
     }));
-    showToast(`고객사 기본 옵션/보양/요구사양을 불러왔습니다.`);
+    showToast(`고객사 기본 옵션 및 보양작업을 불러왔습니다.`);
   };
 
   // 계좌 관리
@@ -986,9 +972,6 @@ export const Customers: React.FC = () => {
                     <span className="badge badge-secondary" style={{ fontSize: '10px' }}>
                       보양작업: {activeCustomer.defaultProtection || '(없음)'}
                     </span>
-                    <span className="badge badge-secondary" style={{ fontSize: '10px' }}>
-                      요구사양: {activeCustomer.defaultCheckedSpecs ? Object.values(activeCustomer.defaultCheckedSpecs).filter(Boolean).length + '개' : '0개'}
-                    </span>
                   </div>
 
                   {canSave && (
@@ -1009,7 +992,7 @@ export const Customers: React.FC = () => {
                           alignItems: 'center',
                           gap: '4px'
                         }}
-                        title="고객사 기본 옵션/보양/요구사양 설정"
+                        title="고객사 기본 유상옵션 및 보양작업 설정"
                       >
                         <Sliders size={12} /> 기본 옵션 설정
                       </button>
@@ -1117,8 +1100,7 @@ export const Customers: React.FC = () => {
                                   const protStr = normalizeOptionString(cs.protection);
                                   const hasPaid = Boolean(paidStr && paidStr !== '-' && paidStr !== 'NONE' && paidStr !== '없음');
                                   const hasProt = Boolean(protStr && protStr !== 'NONE' && protStr !== '-' && protStr !== '없음');
-                                  const specCount = cs.checkedSpecs ? Object.values(cs.checkedSpecs).filter(Boolean).length : 0;
-                                  if (!hasPaid && !hasProt && specCount === 0) {
+                                  if (!hasPaid && !hasProt) {
                                     return (
                                       <span style={{ padding: '1px 6px', fontSize: '10px', borderRadius: '3px', backgroundColor: 'var(--bg-app)', color: 'var(--text-muted)', border: '1px dashed var(--border-color)' }}>
                                         (기본상속)
@@ -1135,11 +1117,6 @@ export const Customers: React.FC = () => {
                                       {hasProt && (
                                         <span style={{ padding: '1px 5px', fontSize: '9.5px', borderRadius: '3px', backgroundColor: 'rgba(16, 185, 129, 0.12)', color: '#059669', border: '1px solid rgba(16, 185, 129, 0.3)', fontWeight: 600 }}>
                                           {protStr}
-                                        </span>
-                                      )}
-                                      {specCount > 0 && (
-                                        <span style={{ padding: '1px 4px', fontSize: '9.5px', borderRadius: '3px', backgroundColor: 'var(--bg-card)', color: 'var(--text-secondary)', border: '1px solid var(--border-color)' }}>
-                                          사양 {specCount}
                                         </span>
                                       )}
                                     </div>
@@ -1160,7 +1137,7 @@ export const Customers: React.FC = () => {
                                     className="btn-secondary"
                                     onClick={() => handleOpenSiteOptionModal(cs)}
                                     style={{ padding: '1px 5px', fontSize: '10.5px', color: '#0070C0', border: '1px solid rgba(0, 112, 192, 0.3)' }}
-                                    title="현장 전용 옵션/보양/스펙 관리"
+                                    title="현장 전용 유상옵션 및 보양작업 관리"
                                   >
                                     옵션
                                   </button>
@@ -1629,45 +1606,6 @@ export const Customers: React.FC = () => {
                     />
                   </div>
                 </div>
-
-                {/* 기본 요구 사양 */}
-                <div style={{ marginTop: '8px', borderTop: '1px solid var(--border-color)', paddingTop: '6px' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
-                      기본 요구 사양 ({Object.values(editingCust.defaultCheckedSpecs || {}).filter(Boolean).length}개 선택)
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => setShowCustSpecs(!showCustSpecs)}
-                      style={{ fontSize: '10.5px', padding: '1px 6px', border: '1px solid var(--border-color)', borderRadius: '3px', backgroundColor: 'transparent', cursor: 'pointer' }}
-                    >
-                      {showCustSpecs ? '접기' : '펼치기'}
-                    </button>
-                  </div>
-
-                  {showCustSpecs && (
-                    <div style={{ marginTop: '6px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px', maxHeight: '140px', overflowY: 'auto' }}>
-                      {STANDARD_SPECS.map(spec => {
-                        const isChecked = !!editingCust.defaultCheckedSpecs?.[spec.id];
-                        return (
-                          <label key={spec.id} style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '10.5px', cursor: 'pointer' }}>
-                            <input
-                              type="checkbox"
-                              checked={isChecked}
-                              onChange={e => {
-                                const nextSpecs = { ...(editingCust.defaultCheckedSpecs || {}) };
-                                if (e.target.checked) nextSpecs[spec.id] = true;
-                                else delete nextSpecs[spec.id];
-                                setEditingCust({ ...editingCust, defaultCheckedSpecs: nextSpecs });
-                              }}
-                            />
-                            <span>{spec.label}</span>
-                          </label>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
               </div>
 
             </div>
@@ -1950,45 +1888,6 @@ export const Customers: React.FC = () => {
                     />
                   </div>
                 </div>
-
-                {/* 현장 요구 사양 */}
-                <div style={{ marginTop: '8px', borderTop: '1px solid var(--border-color)', paddingTop: '6px' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
-                      현장 요구 사양 ({Object.values(editingSite.checkedSpecs || {}).filter(Boolean).length}개 선택)
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => setShowSiteSpecs(!showSiteSpecs)}
-                      style={{ fontSize: '10.5px', padding: '1px 6px', border: '1px solid var(--border-color)', borderRadius: '3px', backgroundColor: 'transparent', cursor: 'pointer' }}
-                    >
-                      {showSiteSpecs ? '접기' : '펼치기'}
-                    </button>
-                  </div>
-
-                  {showSiteSpecs && (
-                    <div style={{ marginTop: '6px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px', maxHeight: '140px', overflowY: 'auto' }}>
-                      {STANDARD_SPECS.map(spec => {
-                        const isChecked = !!editingSite.checkedSpecs?.[spec.id];
-                        return (
-                          <label key={spec.id} style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '10.5px', cursor: 'pointer' }}>
-                            <input
-                              type="checkbox"
-                              checked={isChecked}
-                              onChange={e => {
-                                const nextSpecs = { ...(editingSite.checkedSpecs || {}) };
-                                if (e.target.checked) nextSpecs[spec.id] = true;
-                                else delete nextSpecs[spec.id];
-                                setEditingSite({ ...editingSite, checkedSpecs: nextSpecs });
-                              }}
-                            />
-                            <span>{spec.label}</span>
-                          </label>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
               </div>
 
             </div>
@@ -2206,71 +2105,7 @@ export const Customers: React.FC = () => {
                 </div>
               </div>
 
-              {/* 3. 기본 요구 사양 */}
-              <div style={{ border: '1px solid var(--border-color)', borderRadius: '6px', padding: '10px 12px', backgroundColor: 'var(--bg-app)' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <label style={{ ...labelStyle, fontSize: '12px', fontWeight: 700, color: 'var(--text-main)', margin: 0 }}>
-                      기본 요구 사양
-                    </label>
-                    <span className="badge badge-secondary" style={{ fontSize: '10px' }}>
-                      {Object.values(custOptionForm.defaultCheckedSpecs || {}).filter(Boolean).length}개 적용
-                    </span>
-                  </div>
-                  <div style={{ display: 'flex', gap: '6px' }}>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const all: Record<string, boolean> = {};
-                        STANDARD_SPECS.forEach(s => { all[s.id] = true; });
-                        setCustOptionForm({ ...custOptionForm, defaultCheckedSpecs: all });
-                      }}
-                      style={{ fontSize: '10.5px', padding: '1px 6px', border: '1px solid var(--border-color)', borderRadius: '3px', backgroundColor: 'var(--bg-card)', cursor: 'pointer' }}
-                    >
-                      전체선택
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setCustOptionForm({ ...custOptionForm, defaultCheckedSpecs: {} })}
-                      style={{ fontSize: '10.5px', padding: '1px 6px', border: '1px solid var(--border-color)', borderRadius: '3px', backgroundColor: 'var(--bg-card)', cursor: 'pointer' }}
-                    >
-                      전체해제
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setShowCustOptionSpecs(!showCustOptionSpecs)}
-                      style={{ fontSize: '10.5px', padding: '1px 6px', border: '1px solid var(--border-color)', borderRadius: '3px', backgroundColor: 'var(--bg-card)', cursor: 'pointer' }}
-                    >
-                      {showCustOptionSpecs ? '접기' : '상세펼치기'}
-                    </button>
-                  </div>
-                </div>
-
-                {showCustOptionSpecs && (
-                  <div style={{ marginTop: '8px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '5px', maxHeight: '160px', overflowY: 'auto', borderTop: '1px solid var(--border-color)', paddingTop: '6px' }}>
-                    {STANDARD_SPECS.map(spec => {
-                      const isChecked = !!custOptionForm.defaultCheckedSpecs?.[spec.id];
-                      return (
-                        <label key={spec.id} style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '10.5px', cursor: 'pointer', padding: '2px 4px', borderRadius: '3px', backgroundColor: isChecked ? 'rgba(0, 112, 192, 0.08)' : 'transparent' }}>
-                          <input
-                            type="checkbox"
-                            checked={isChecked}
-                            onChange={e => {
-                              const nextSpecs = { ...(custOptionForm.defaultCheckedSpecs || {}) };
-                              if (e.target.checked) nextSpecs[spec.id] = true;
-                              else delete nextSpecs[spec.id];
-                              setCustOptionForm({ ...custOptionForm, defaultCheckedSpecs: nextSpecs });
-                            }}
-                          />
-                          <span style={{ color: isChecked ? '#0070C0' : 'var(--text-main)', fontWeight: isChecked ? 600 : 400 }}>{spec.label}</span>
-                        </label>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-
-              {/* 4. 고객사 특이사항 메모 */}
+              {/* 3. 고객사 특이사항 메모 */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
                 <label style={labelStyle}>고객사 옵션/출고 특약 메모</label>
                 <textarea
@@ -2430,50 +2265,6 @@ export const Customers: React.FC = () => {
                   onChange={e => setSiteOptionForm({ ...siteOptionForm, protection: e.target.value })}
                   placeholder="비어있으면 고객사 기본값 상속"
                 />
-              </div>
-
-              {/* 3. 현장 요구 사양 */}
-              <div style={{ border: '1px solid var(--border-color)', borderRadius: '6px', padding: '10px 12px', backgroundColor: 'var(--bg-app)' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <label style={{ ...labelStyle, fontSize: '12px', fontWeight: 700, color: 'var(--text-main)', margin: 0 }}>
-                      현장 요구 사양
-                    </label>
-                    <span className="badge badge-secondary" style={{ fontSize: '10px' }}>
-                      {Object.values(siteOptionForm.checkedSpecs || {}).filter(Boolean).length}개 선택
-                    </span>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setShowSiteOptionSpecs(!showSiteOptionSpecs)}
-                    style={{ fontSize: '10.5px', padding: '1px 6px', border: '1px solid var(--border-color)', borderRadius: '3px', backgroundColor: 'var(--bg-card)', cursor: 'pointer' }}
-                  >
-                    {showSiteOptionSpecs ? '접기' : '펼치기'}
-                  </button>
-                </div>
-
-                {showSiteOptionSpecs && (
-                  <div style={{ marginTop: '8px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px', maxHeight: '150px', overflowY: 'auto', borderTop: '1px solid var(--border-color)', paddingTop: '6px' }}>
-                    {STANDARD_SPECS.map(spec => {
-                      const isChecked = !!siteOptionForm.checkedSpecs?.[spec.id];
-                      return (
-                        <label key={spec.id} style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '10.5px', cursor: 'pointer', padding: '2px 4px', borderRadius: '3px', backgroundColor: isChecked ? 'rgba(0, 112, 192, 0.08)' : 'transparent' }}>
-                          <input
-                            type="checkbox"
-                            checked={isChecked}
-                            onChange={e => {
-                              const nextSpecs = { ...(siteOptionForm.checkedSpecs || {}) };
-                              if (e.target.checked) nextSpecs[spec.id] = true;
-                              else delete nextSpecs[spec.id];
-                              setSiteOptionForm({ ...siteOptionForm, checkedSpecs: nextSpecs });
-                            }}
-                          />
-                          <span style={{ color: isChecked ? '#0070C0' : 'var(--text-main)' }}>{spec.label}</span>
-                        </label>
-                      );
-                    })}
-                  </div>
-                )}
               </div>
             </div>
 

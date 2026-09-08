@@ -1757,7 +1757,6 @@ export const InitialDbUploader: React.FC = () => {
                       </thead>
                       <tbody>
                         {dispatchAnalysisResult.matchedEnrichments.map(item => {
-                          const specCount = item.extractedDefaults.defaultCheckedSpecs ? Object.keys(item.extractedDefaults.defaultCheckedSpecs).length : 0;
                           return (
                             <tr key={item.customerId} style={{ borderBottom: '1px solid #f1f5f9' }}>
                               <td style={{ padding: '8px 10px', fontWeight: 600, color: 'var(--text-main)', whiteSpace: 'nowrap' }}>

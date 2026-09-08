@@ -1,5 +1,42 @@
 # 개발 요구사항 임시 기록 (dev_temp.md)
 
+## [완료] 기본 요구사항 체크리스트(checkedSpecs) 전면 제거 및 유상옵션·보양작업 단일화 (v1.10.0.Build.32)
+- **요구사항**: "표시한 요구사항을 갯수로 모두 정의 할 수 없고 항목을 동일하게 적용 하지도 않아. 우리의 고객은 전국 각지의 공사현장 담당자들인데, 용어도 모두 다르게 사용하고, 요구사항이 모두 달라서 규격화된 표기를 할수 없어. 대신에 기본유상옵션과, 기본 보양작업이 있으니까, 기본요구사항 항목들은 제거해도 되고, 초기DB 업로드 메뉴에서 이번에 제거되는 스키마에 연결되는 코드들도 함께 제거해"
+- **적용 목적 (헌장 1.1, 1.2, 3.1 무수식어 건조 표준, 5.5)**:
+  - 전국 공사현장 담당자마다 천차만별인 용어와 요구사항을 21개 등 인위적인 고정 체크박스(`checkedSpecs`)로 묶으려던 모순을 원천 해소.
+  - 고객사 및 현장의 실질적인 옵션 스펙 관리를 실제 현장 계약 및 회계 속성과 직결되는 **`유상옵션(paidOptions)`** 및 **`보양작업(protection)`** 단일 소스로 100% 통합.
+  - UI 화면 곳곳(모달, 테이블, 배지, 카드 헤더)에 존재하던 인위적 체크리스트 섹션 및 수량 배지(`요구사양: 4개`, `사양 4`)를 완전 박멸하여 화면 정보 밀도와 편익 극대화.
+  - 초기DB 업로드 및 마이그레이션 엔진에서 불필요해진 `checkedSpecs` / `defaultCheckedSpecs` / `matchedSpecs` / `extractedSpecCount` 추출 및 저장 코드를 완전 제거.
+- **수정 및 정제 내역**:
+  1. **`src/pages/Customers.tsx`**:
+     - 고객 카드 헤더의 `요구사양: {N}개` 배지 제거.
+     - 현장 목록 테이블의 `사양 {N}` 배지 및 관련 계산 로직 제거.
+     - 고객사 등록·수정 모달 (`editingCust`) 내 `기본 요구 사양` 체크리스트 섹션 제거.
+     - 현장 등록·수정 모달 (`editingSite`) 내 `현장 요구 사양` 체크리스트 섹션 제거.
+     - 고객 옵션 전용 모달 (`showCustOptionModal`) 내 `3. 기본 요구 사양` 섹션 제거.
+     - 현장 옵션 전용 모달 (`showSiteOptionModal`) 내 `3. 현장 요구 사양` 섹션 제거.
+     - `STANDARD_SPECS` 임포트 및 관련 상태/핸들러(`defaultCheckedSpecs`, `checkedSpecs`, `showCustOptionSpecs`, `showSiteOptionSpecs`) 완전 삭제.
+  2. **`src/pages/InitialDbUploader.tsx`**:
+     - 테이블 내 미사용 `specCount` 변수 제거.
+  3. **`src/services/migrationEngine.ts`**:
+     - `ParsedDispatchPost`, `CustomerEnrichmentSummary`, `DispatchAnalysisResult` 인터페이스에서 `matchedSpecs`, `defaultCheckedSpecs`, `checkedSpecs`, `extractedSpecCount` 제거.
+     - `parseDispatchHistoryText`: `STANDARD_SPECS` 키워드 매칭 및 `matchedSpecs` 수집 로직 제거 (소화기/서류 등은 유상옵션 및 메모로 보존).
+     - `analyzeDispatchHistoryForCustomerDefaults`: `aggregatedSpecs`, `totalExtractedSpecs` 집계 로직 제거.
+     - `ingestCustomerDefaultsFromDispatchHistory`: 고객 및 현장 마스터 동기화 시 `defaultCheckedSpecs`, `checkedSpecs` 업데이트 코드 제거.
+  4. **`src/pages/smart_dispatch4.tsx`**:
+     - `loadSiteSafetyOptions`에서 `site.checkedSpecs` 및 `cust.defaultCheckedSpecs` 라벨 변환 로직 제거 ➔ 순수 `paidOptions` 및 `protection` 로드로 단일화.
+     - `STANDARD_SPECS` 임포트 제거.
+  5. **`src/mobile/pages/MobileDispatchOrderCreate.tsx` & `src/services/voiceOrderDraftService.ts`**:
+     - 모바일 출고의뢰 화면 내 `현장 요구 사양` 체크 아코디언 섹션 및 관련 임포트 제거.
+     - `getSiteOptionsSummary`: `요구사양 N건` 제거하고 순수 유상옵션·보양작업만 요약 표기.
+     - `isOptionsChangedFromSite`: `checkedSpecs` 비교 제거, 유상옵션 및 보양작업만 1:1 비교.
+  6. **WTT 테스트 스위트 갱신 (`scripts/run_wtt_20_dispatch_option_loading.cjs`)**:
+     - 정적 감사 및 물리 축(WTT-07)을 순수 유상옵션·보양작업 텍스트 분할 및 로드 무결성 검증으로 전환.
+- **검증 결과**:
+  - TypeScript 빌드 (`cmd /c "npm run build"`): **0 Error 통과**
+  - WTT 20회 출고옵션 불러오기 테스트: **20/20 전수 통과 (100%)**
+  - WTT 20회 옵션 마스터 스위트: **20/20 전수 통과 (100%)**
+
 ## [완료] 프로젝트 전반 21대/21개 하드코딩 수식어 전면 제거 및 요구 사양 표준화 (v1.10.0.Build.31)
 - **요구사항**: "프로젝트 전반에 21대 기술요구 스펙 같은 이런 톤은 사용하지 말라고 몇번째 지시하고 있어. 50대 요구사항이면 어떻고 100대 요구사항이면 어떻다는거야. 시스템에다가 21대 요구사항이라고 적어놓으면 어쩌라는거지? 고객요구사항이 한두개 증가하고나면, 또 하드코딩을 변경해서 22, 23 수정하자는 말인가?"
 - **적용 목적 (헌장 1.1, 1.2, 3.1 건조한 명사 단일 표준, 5.5)**:

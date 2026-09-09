@@ -1,3 +1,30 @@
+## [v1.12.0.Build.21] - 2026-09-09 22:15
+
+### 🚀 [초기DB 배차·AS 업로드 데이터 안전 롤백(일괄삭제) 탑재 & 밴드 AS 자산 마스터 기준 현장/고객사 역추적 매핑 파이프라인 구축]
+
+**배경**:
+1. 사장님 요청 ("초기DB 업로드 메뉴의 배차이력과 AS이력이 업로드 하는 모든 자료를 삭제하고 재업로드 하고 싶은데, (현재 올라온 데이터가 잘못 처리되어 있기 때문에), 업로드하기 전으로 롤백 하는 기능을 추가 하는것이 가능한가?")을 전면 수용함.
+2. 밴드 AS 게시글 파싱 시 `현장명:` 라벨이 누락되어 시스템 자산 대장에 실존하는 대여중(`RENTED`) 자산임에도 불구하고 `siteName = '미지정현장'`으로 적재되던 문제를, 장비번호(`assetNo`)를 통해 자산 대장 및 계약 대장을 역추적(Back-tracking)하여 실제 현장명과 고객사명으로 100% 자동 복원·매핑하는 파이프라인을 구축함.
+
+**개편 내역**:
+1. **배차 및 밴드 AS 업로드 데이터 안전 롤백(일괄 삭제) 엔진 구축 (`src/services/migrationEngine.ts`)**:
+   - `rollbackDispatchData`: `deliveries` 테이블의 `DEL-HIST-*` 레코드(현재 417건) 및 자동생성 운송사(`TCOM-2026-*`)를 100건 단위 청크 배치로 안전하게 삭제하고 로컬 메모리 상태를 즉시 동기화.
+   - `rollbackBandAsHistory`: `repairs` 테이블의 `source = 'BAND_IMPORT'`, `rep-band-*` 레코드(현재 8,314건) 및 연관 `asset_in_out_logs(aiog-band-*)`, `contract_history(ch-as-band-*)`를 100건 단위 청크 배치로 완전 삭제하고 로컬 메모리 상태를 즉시 동기화.
+2. **자산 마스터 기준 현장/고객사 역추적(Back-tracking) 파이프라인 탑재 (`src/services/migrationEngine.ts`, `src/context/AppContext.tsx`)**:
+   - `parseBandAsHistoryText`: 본문 내 `장비번호:`, `장비:`, `호기:` 키워드 및 정규식 폴백을 추가하여 장비번호 인식률을 극대화.
+   - `analyzeBandAsHistory` & `importBandAsHistory`: 텍스트에 현장명이 없거나 `미지정현장`인 경우, 장비번호로 매칭된 자산(`matchedAsset.currentSiteId`, `matchedAsset.currentCustomerId`) 및 계약(`matchedContract.siteId`)을 1순위로 역추적하여 실제 출고 현장(`용인 SK하이닉스 팹동` 등)과 고객사명(`화성엔지니어링` 등)으로 100% 자동 매핑 복원.
+   - `ParsedBandAsRecord`에 `isAssetBacktracked: boolean` 플래그 및 `assetBacktrackedSiteCount` 지표 추가.
+3. **기존 DB 미지정현장 AS 티켓 일괄 자동 복원 엔진 탑재 (`reconcileUnassignedBandRepairsWithAssets`)**:
+   - 롤백 후 재업로드하지 않더라도, 기존 DB에 이미 적재된 미지정현장 티켓을 원클릭으로 자산 대장과 대사하여 실제 현장명/고객사명으로 즉시 업데이트하는 실시간 동기화 지원.
+4. **초기DB 업로드 UI 전면 개편 (`src/pages/InitialDbUploader.tsx`)**:
+   - Card ③ (배차 이력): 헤더에 `DB 적재됨: {N}건` 배지 및 `[배차 이력 롤백 ({N}건 삭제)]` 안전 확인 버튼 탑재.
+   - Card ④ (밴드 AS): 헤더에 `DB 적재됨: {N}건`, `미지정현장: {N}건` 배지 및 `[미지정현장 매핑 복원]` 원클릭 버튼, `[밴드 AS 이력 롤백 ({N}건 삭제)]` 안전 확인 버튼 탑재.
+   - Card ④ 6대 지표 카드에 `자산 역추적 현장 매핑` 지표 추가 및 대사 테이블에 `자산역추적` 배지 표출.
+5. **검증 결과**:
+   - TypeScript 컴파일 및 번들 빌드 (`npm run build`): **0 Error 정상 통과 (`built in 1.16s`)**.
+
+---
+
 ## [v1.12.0.Build.20] - 2026-09-09 21:52
 
 ### 🚀 ['21대/핵심요구사항' 인위적 표기 전면 배제 & 고객 옵션·보양 요구사항 순수 '기본옵션 설정' 단일 로딩 체계 확립]

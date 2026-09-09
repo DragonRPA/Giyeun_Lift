@@ -2327,6 +2327,70 @@ export async function ingestDispatchData(
   };
 }
 
+/** 🚚 배차 이력 업로드 데이터 일괄 삭제 (롤백) */
+export async function rollbackDispatchData(
+  onProgress?: (msg: string) => void
+): Promise<{ success: boolean; message: string; deletedCount: number }> {
+  try {
+    onProgress?.('배차 이력 업로드 데이터(DEL-HIST-*) 조회 중...');
+    let deletedDeliveriesCount = 0;
+
+    if (supabase) {
+      // 1. deliveries 테이블에서 DEL-HIST-% 대상 조회
+      const { data: delRows, error: fetchErr } = await supabase
+        .from('deliveries')
+        .select('id')
+        .like('id', 'DEL-HIST-%');
+
+      if (fetchErr) throw fetchErr;
+
+      const delIds = (delRows || []).map(r => r.id);
+      deletedDeliveriesCount = delIds.length;
+
+      if (delIds.length > 0) {
+        onProgress?.(`배차 이력 ${delIds.length}건 삭제 중...`);
+        for (let i = 0; i < delIds.length; i += 100) {
+          const chunk = delIds.slice(i, i + 100);
+          const { error: delErr } = await supabase.from('deliveries').delete().in('id', chunk);
+          if (delErr) throw delErr;
+          onProgress?.(`배차 이력 삭제 중 (${Math.min(i + 100, delIds.length)}/${delIds.length})...`);
+        }
+      }
+
+      // 2. 2026년 자동생성 운송사(TCOM-2026-*)도 정리
+      const { data: tcomRows } = await supabase
+        .from('transport_companies')
+        .select('id')
+        .like('id', 'TCOM-2026-%');
+      if (tcomRows && tcomRows.length > 0) {
+        const tcomIds = tcomRows.map(r => r.id);
+        await supabase.from('transport_companies').delete().in('id', tcomIds);
+      }
+    }
+
+    // 로컬 메모리 DB에서도 삭제
+    const dbAny = db as any;
+    if (dbAny.deliveries) {
+      dbAny.deliveries = dbAny.deliveries.filter((d: any) => !d.id?.startsWith('DEL-HIST-'));
+    }
+    if (dbAny.transportCompanies) {
+      dbAny.transportCompanies = dbAny.transportCompanies.filter((tc: any) => !tc.id?.startsWith('TCOM-2026-'));
+    }
+
+    return {
+      success: true,
+      message: `배차 이력 업로드 데이터 총 ${deletedDeliveriesCount.toLocaleString()}건 및 자동생성 운송사 정리(롤백) 완료`,
+      deletedCount: deletedDeliveriesCount
+    };
+  } catch (e: any) {
+    return {
+      success: false,
+      message: `배차 이력 롤백 실패: ${e.message}`,
+      deletedCount: 0
+    };
+  }
+}
+
 /**
  * 💡 과거 소급 청구서 독립 선택 생성 및 적재 (기능 테스트 및 선택적 실행용)
  * 🌟 [전사 표준 헌장 4.1 준수] 소급 청구 생성 시 자산별 누적렌탈료(cumRentalFee) 1원도 오차 없이 정밀 가산 및 기존 소급액 롤백
@@ -3347,6 +3411,7 @@ export interface ParsedBandAsRecord {
   resolutionType: 'REPAIR_DONE' | 'REVISIT_NEEDED' | 'GUIDED_END';
   actionTaken: string;
   isSingleAssetGuessed: boolean;
+  isAssetBacktracked?: boolean; // 🌟 자산 마스터 기준 현장/고객사 역추적 성공 여부
   inspectionItemCode?: string;
   degradationScore?: number;
 }
@@ -3356,6 +3421,7 @@ export interface BandAsAnalysisResult {
   uniqueAssetsCount: number;
   matchedContractCount: number;
   singleAssetGuessedCount: number;
+  assetBacktrackedSiteCount: number; // 🌟 자산 마스터 기준 현장/고객사 역추적 성공 건수
   completedCount: number;
   revisitCount: number;
   guidedCount: number;
@@ -3429,6 +3495,20 @@ export function parseBandAsHistoryText(rawText: string): { author: string; date:
 
         if (assetNo.startsWith(':')) assetNo = assetNo.substring(1).trim();
 
+        // 🛡️ 장비번호 미인식 시 대체 키워드 및 패턴 매칭
+        if (!assetNo || assetNo === '현장확인') {
+          const altAsset = extractKeywordSection(full, ['장비번호 :', '장비번호:', '장비번호', '장비 :', '장비:', '호기 :', '호기:', '관리 :'], ['고장내용', '접수자:', '위치']);
+          if (altAsset) {
+            assetNo = altAsset.startsWith(':') ? altAsset.substring(1).trim() : altAsset.trim();
+          }
+        }
+        if (!assetNo || assetNo === '현장확인') {
+          const assetMatch = full.match(/\b([A-Za-z]{1,4}[- ]?\d{2,5}|\d{4,5})\b/);
+          if (assetMatch && !['2026', '2025', '2024'].includes(assetMatch[1])) {
+            assetNo = assetMatch[1];
+          }
+        }
+
         records.push({
           author,
           date: dateStr,
@@ -3465,6 +3545,7 @@ export function analyzeBandAsHistory(
   const uniqueAssetSet = new Set<string>();
   let matchedContractCount = 0;
   let singleAssetGuessedCount = 0;
+  let assetBacktrackedSiteCount = 0;
   let completedCount = 0;
   let revisitCount = 0;
   let guidedCount = 0;
@@ -3499,11 +3580,11 @@ export function analyzeBandAsHistory(
     const mechanicId = matchedUser?.id || '';
     const mechanicName = matchedUser?.name || authorName || '정비기사';
 
-    // 2. 고객사 & 현장 매칭
+    // 2. 고객사 & 현장 텍스트 1차 매칭
     const contractorName = (post.customer || '').trim();
     const siteName = (post.site || '').trim();
 
-    const matchedCustomer = (customers || []).find((c: any) =>
+    let matchedCustomer = (customers || []).find((c: any) =>
       c.name && contractorName && (
         c.name.trim() === contractorName ||
         contractorName.includes(c.name.trim()) ||
@@ -3511,7 +3592,7 @@ export function analyzeBandAsHistory(
       )
     );
 
-    const matchedSite = (sites || []).find((s: any) =>
+    let matchedSite = (sites || []).find((s: any) =>
       s.name && siteName && (
         s.name.trim() === siteName ||
         siteName.includes(s.name.trim()) ||
@@ -3519,7 +3600,7 @@ export function analyzeBandAsHistory(
       )
     );
 
-    // 3. 계약 매칭
+    // 3. 계약 매칭 (고객/현장 기준)
     let matchedContract = (contracts || []).find((c: any) =>
       (matchedCustomer && c.customerId === matchedCustomer.id) ||
       (matchedSite && c.siteId === matchedSite.id)
@@ -3528,6 +3609,13 @@ export function analyzeBandAsHistory(
     // 4. 자산 매핑 & 5대 매트릭스 사장님 확정 1번 원칙 (단독 1대 계약 자동 추정)
     let finalAssetNo = post.assetNo;
     let matchedAsset = (assets || []).find((a: any) => a.assetNo && finalAssetNo && a.assetNo.trim().toUpperCase() === finalAssetNo.trim().toUpperCase());
+    
+    // 정규화 비교 (하이픈/공백 제거 비교)
+    if (!matchedAsset && finalAssetNo && finalAssetNo !== '현장확인') {
+      const cleanNo = finalAssetNo.replace(/[^A-Za-z0-9]/g, '').toUpperCase();
+      matchedAsset = (assets || []).find((a: any) => a.assetNo && a.assetNo.replace(/[^A-Za-z0-9]/g, '').toUpperCase() === cleanNo);
+    }
+
     let isSingleGuessed = false;
 
     if ((!finalAssetNo || finalAssetNo === '현장확인' || finalAssetNo === '전체장비' || finalAssetNo === '미지정') && matchedContract) {
@@ -3546,6 +3634,44 @@ export function analyzeBandAsHistory(
       if (activeCa) {
         matchedContract = (contracts || []).find((c: any) => c.id === activeCa.contractId);
       }
+    }
+
+    // 🌟 5. 자산 마스터(assets) 및 계약(contracts) 기반 현장/고객사 역추적 (Back-tracking)
+    let isAssetBacktracked = false;
+    if (matchedAsset) {
+      // 5-1. 현장명이 누락되었거나 미지정현장인 경우, 자산의 현재 현장 정보 역추적
+      if ((!matchedSite || !post.site || post.site === '미지정현장' || post.site === '일반 현장') && matchedAsset.currentSiteId) {
+        const foundSite = (sites || []).find((s: any) => s.id === matchedAsset.currentSiteId);
+        if (foundSite) {
+          matchedSite = foundSite;
+          isAssetBacktracked = true;
+        }
+      }
+      // 5-2. 고객사명이 누락되었거나 협력업체인 경우, 자산의 현재 고객사 정보 역추적
+      if ((!matchedCustomer || !post.customer || post.customer === '현장 협력업체' || post.customer === '협력업체') && matchedAsset.currentCustomerId) {
+        const foundCust = (customers || []).find((c: any) => c.id === matchedAsset.currentCustomerId);
+        if (foundCust) {
+          matchedCustomer = foundCust;
+        }
+      }
+      // 5-3. 계약 역추적을 통한 현장/고객 보완
+      if (matchedContract) {
+        if ((!matchedSite || isAssetBacktracked) && matchedContract.siteId) {
+          const contSite = (sites || []).find((s: any) => s.id === matchedContract.siteId);
+          if (contSite) {
+            matchedSite = contSite;
+            isAssetBacktracked = true;
+          }
+        }
+        if (!matchedCustomer && matchedContract.customerId) {
+          const contCust = (customers || []).find((c: any) => c.id === matchedContract.customerId);
+          if (contCust) matchedCustomer = contCust;
+        }
+      }
+    }
+
+    if (isAssetBacktracked) {
+      assetBacktrackedSiteCount++;
     }
 
     if (matchedContract) {
@@ -3578,8 +3704,8 @@ export function analyzeBandAsHistory(
       idx: idx + 1,
       author: authorName,
       date: post.date,
-      site: post.site,
-      customer: post.customer,
+      site: matchedSite?.name || post.site,
+      customer: matchedCustomer?.name || post.customer,
       location: post.location,
       assetNo: finalAssetNo || '현장확인',
       issue: post.issue,
@@ -3602,6 +3728,7 @@ export function analyzeBandAsHistory(
       resolutionType,
       actionTaken: actionText,
       isSingleAssetGuessed: isSingleGuessed,
+      isAssetBacktracked,
       inspectionItemCode,
       degradationScore
     });
@@ -3612,6 +3739,7 @@ export function analyzeBandAsHistory(
     uniqueAssetsCount: uniqueAssetSet.size,
     matchedContractCount,
     singleAssetGuessedCount,
+    assetBacktrackedSiteCount,
     completedCount,
     revisitCount,
     guidedCount,
@@ -3768,6 +3896,224 @@ export async function ingestBandAsHistoryDirect(
     message: `🎉 밴드 과거 AS 이력 총 ${importedCount.toLocaleString()}건이 정비 마스터(repairs) 및 자산/계약 이력에 성공적으로 일괄 적재되었습니다.`,
     count: importedCount
   };
+}
+
+/** 🔧 밴드 AS 과거 이력 일괄 삭제 (롤백) */
+export async function rollbackBandAsHistory(
+  onProgress?: (msg: string) => void
+): Promise<{ success: boolean; message: string; deletedCount: number }> {
+  try {
+    onProgress?.('밴드 AS 이력 데이터(source=BAND_IMPORT) 조회 중...');
+    let deletedRepairsCount = 0;
+
+    if (supabase) {
+      // 1. repairs 테이블에서 source = 'BAND_IMPORT' 대상 조회
+      const { data: repRows, error: repErr } = await supabase
+        .from('repairs')
+        .select('id')
+        .eq('source', 'BAND_IMPORT');
+
+      if (repErr) throw repErr;
+
+      const repIds = (repRows || []).map(r => r.id);
+      deletedRepairsCount = repIds.length;
+
+      if (repIds.length > 0) {
+        onProgress?.(`밴드 AS 이력 ${repIds.length}건 삭제 중...`);
+        for (let i = 0; i < repIds.length; i += 100) {
+          const chunk = repIds.slice(i, i + 100);
+          const { error: delErr } = await supabase.from('repairs').delete().in('id', chunk);
+          if (delErr) throw delErr;
+          onProgress?.(`밴드 AS 이력 삭제 중 (${Math.min(i + 100, repIds.length)}/${repIds.length})...`);
+        }
+      }
+
+      // 2. id LIKE 'rep-band-%' 대상 추가 청소
+      const { data: extraRows } = await supabase
+        .from('repairs')
+        .select('id')
+        .like('id', 'rep-band-%');
+      if (extraRows && extraRows.length > 0) {
+        const extraIds = extraRows.map(r => r.id);
+        for (let i = 0; i < extraIds.length; i += 100) {
+          const chunk = extraIds.slice(i, i + 100);
+          await supabase.from('repairs').delete().in('id', chunk);
+        }
+      }
+
+      // 3. asset_in_out_logs 에서 id LIKE 'aiog-band-%' 대상 정리
+      const { data: aiogRows } = await supabase
+        .from('asset_in_out_logs')
+        .select('id')
+        .like('id', 'aiog-band-%');
+      if (aiogRows && aiogRows.length > 0) {
+        const aiogIds = aiogRows.map(r => r.id);
+        for (let i = 0; i < aiogIds.length; i += 100) {
+          const chunk = aiogIds.slice(i, i + 100);
+          await supabase.from('asset_in_out_logs').delete().in('id', chunk);
+        }
+      }
+
+      // 4. contract_history 에서 id LIKE 'ch-as-band-%' 대상 정리
+      const { data: chRows } = await supabase
+        .from('contract_history')
+        .select('id')
+        .like('id', 'ch-as-band-%');
+      if (chRows && chRows.length > 0) {
+        const chIds = chRows.map(r => r.id);
+        for (let i = 0; i < chIds.length; i += 100) {
+          const chunk = chIds.slice(i, i + 100);
+          await supabase.from('contract_history').delete().in('id', chunk);
+        }
+      }
+    }
+
+    // 로컬 메모리 DB에서도 삭제
+    const dbAny = db as any;
+    if (dbAny.repairs) {
+      dbAny.repairs = dbAny.repairs.filter((r: any) => r.source !== 'BAND_IMPORT' && !r.id?.startsWith('rep-band-') && !r.ticketNo?.startsWith('BAND-'));
+    }
+    if (dbAny.assetInOutLogs) {
+      dbAny.assetInOutLogs = dbAny.assetInOutLogs.filter((l: any) => !l.id?.startsWith('aiog-band-'));
+    }
+    if (dbAny.contractHistories) {
+      dbAny.contractHistories = dbAny.contractHistories.filter((h: any) => !h.id?.startsWith('ch-as-band-'));
+    }
+
+    return {
+      success: true,
+      message: `밴드 AS 이력 데이터 총 ${deletedRepairsCount.toLocaleString()}건 및 연관 이력 정리(롤백) 완료`,
+      deletedCount: deletedRepairsCount
+    };
+  } catch (e: any) {
+    return {
+      success: false,
+      message: `밴드 AS 이력 롤백 실패: ${e.message}`,
+      deletedCount: 0
+    };
+  }
+}
+
+/** 🌟 기존 DB의 미지정현장 AS 티켓들을 자산 마스터 기준으로 일괄 역추적 매핑 복원 */
+export async function reconcileUnassignedBandRepairsWithAssets(
+  assets: any[],
+  sites: any[],
+  customers: any[],
+  contracts: any[],
+  onProgress?: (step: number, total: number, msg: string) => void
+): Promise<{ success: boolean; message: string; updatedCount: number; remainingCount: number }> {
+  try {
+    onProgress?.(1, 4, '미지정현장 AS 티켓 조회 중...');
+    let unassignedRepairs: any[] = [];
+
+    if (supabase) {
+      const { data, error } = await supabase
+        .from('repairs')
+        .select('*')
+        .or('siteName.eq.미지정현장,siteName.eq.일반 현장,siteId.is.null');
+      if (error) throw error;
+      unassignedRepairs = data || [];
+    } else {
+      unassignedRepairs = (db.repairs || []).filter(
+        (r: any) => !r.siteId || r.siteName === '미지정현장' || r.siteName === '일반 현장'
+      );
+    }
+
+    const total = unassignedRepairs.length;
+    if (total === 0) {
+      return { success: true, message: '미지정현장 AS 티켓이 없습니다. 모두 정상 매핑되어 있습니다.', updatedCount: 0, remainingCount: 0 };
+    }
+
+    onProgress?.(2, 4, `미지정현장 ${total.toLocaleString()}건 자산 마스터 대사 중...`);
+
+    const assetMap = new Map<string, any>();
+    (assets || []).forEach(a => {
+      if (a.assetNo) {
+        assetMap.set(a.assetNo.trim().toUpperCase(), a);
+        assetMap.set(a.assetNo.replace(/[^A-Za-z0-9]/g, '').toUpperCase(), a);
+      }
+    });
+
+    const siteMap = new Map<string, any>();
+    (sites || []).forEach(s => siteMap.set(s.id, s));
+
+    const custMap = new Map<string, any>();
+    (customers || []).forEach(c => custMap.set(c.id, c));
+
+    const toUpdate: any[] = [];
+    let updatedCount = 0;
+
+    unassignedRepairs.forEach(rep => {
+      const rawNo = rep.assetNo || '';
+      if (!rawNo || rawNo === '현장확인' || rawNo === '전체장비') return;
+
+      const cleanNo = rawNo.replace(/[^A-Za-z0-9]/g, '').toUpperCase();
+      const matchedAsset = assetMap.get(cleanNo);
+
+      if (matchedAsset && matchedAsset.currentSiteId) {
+        const foundSite = siteMap.get(matchedAsset.currentSiteId);
+        const foundCust = matchedAsset.currentCustomerId ? custMap.get(matchedAsset.currentCustomerId) : undefined;
+
+        if (foundSite) {
+          toUpdate.push({
+            id: rep.id,
+            siteId: foundSite.id,
+            siteName: foundSite.name,
+            siteAddress: foundSite.address || rep.siteAddress || '',
+            customerId: foundCust?.id || rep.customerId,
+            customerName: foundCust?.name || rep.customerName,
+            assetId: rep.assetId || matchedAsset.id,
+            updatedAt: new Date().toISOString()
+          });
+          updatedCount++;
+        }
+      }
+    });
+
+    if (toUpdate.length > 0) {
+      onProgress?.(3, 4, `매핑 성공 ${toUpdate.length.toLocaleString()}건 Supabase DB 반영 중...`);
+      if (supabase) {
+        for (let i = 0; i < toUpdate.length; i += 100) {
+          const chunk = toUpdate.slice(i, i + 100);
+          await supabase.from('repairs').upsert(chunk, { onConflict: 'id' });
+          onProgress?.(3, 4, `DB 반영 중 (${Math.min(i + 100, toUpdate.length)}/${toUpdate.length})...`);
+        }
+      }
+
+      // 로컬 메모리 동기화
+      const updateMap = new Map<string, any>(toUpdate.map(u => [u.id, u]));
+      if (db.repairs) {
+        db.repairs.forEach((r: any) => {
+          const u = updateMap.get(r.id);
+          if (u) {
+            r.siteId = u.siteId;
+            r.siteName = u.siteName;
+            r.siteAddress = u.siteAddress;
+            r.customerId = u.customerId;
+            r.customerName = u.customerName;
+            r.assetId = u.assetId;
+          }
+        });
+      }
+    }
+
+    onProgress?.(4, 4, '동기화 완료');
+    const remainingCount = total - updatedCount;
+
+    return {
+      success: true,
+      message: `총 ${total.toLocaleString()}건 중 ${updatedCount.toLocaleString()}건(약 ${Math.round((updatedCount / total) * 100)}%) 자산 대장 기준 실제 현장/고객사 매핑 완료 (미식별 잔여: ${remainingCount.toLocaleString()}건)`,
+      updatedCount,
+      remainingCount
+    };
+  } catch (e: any) {
+    return {
+      success: false,
+      message: `미지정현장 매핑 복원 실패: ${e.message}`,
+      updatedCount: 0,
+      remainingCount: 0
+    };
+  }
 }
 
 

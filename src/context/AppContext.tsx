@@ -3993,14 +3993,14 @@ ${currentTenant?.corporateName || tenantCorp} 배상
 
         // 💡 고객사 및 현장 매칭
         const contractorName = (r.contractor || '').trim();
-        const matchedCustomer = db.customers.find(c => 
+        let matchedCustomer = db.customers.find(c => 
           c.name && contractorName && (
             c.name.trim() === contractorName || 
             contractorName.includes(c.name.trim()) || 
             c.name.trim().includes(contractorName)
           )
         );
-        const matchedSite = db.customerSites.find(s => 
+        let matchedSite = db.customerSites.find(s => 
           s.name && site && (
             s.name.trim() === site.trim() || 
             site.includes(s.name.trim()) || 
@@ -4017,6 +4017,10 @@ ${currentTenant?.corporateName || tenantCorp} 배상
         // 💡 5대 매트릭스 & 사장님 확정 원칙 1: 관리번호 미기재 시 1대 단독 계약이면 해당 자산으로 자동 추정 매핑
         let finalAssetNo = asset;
         let matchedAsset = db.assets.find(a => a.assetNo && asset && a.assetNo.trim().toUpperCase() === asset.trim().toUpperCase());
+        if (!matchedAsset && asset && asset !== '현장확인') {
+          const cleanNo = asset.replace(/[^A-Za-z0-9]/g, '').toUpperCase();
+          matchedAsset = db.assets.find(a => a.assetNo && a.assetNo.replace(/[^A-Za-z0-9]/g, '').toUpperCase() === cleanNo);
+        }
         let assetId = matchedAsset?.id || '';
 
         const currentContract = matchedContract;
@@ -4035,6 +4039,30 @@ ${currentTenant?.corporateName || tenantCorp} 배상
           const activeCa = db.contractAssets.find(ca => ca.assetId === currentAsset.id && ca.status !== 'RETURNED');
           if (activeCa) {
             matchedContract = db.contracts.find(c => c.id === activeCa.contractId);
+          }
+        }
+
+        // 🌟 자산 마스터 기준 현장 및 고객사 역추적 (Back-tracking)
+        if (matchedAsset) {
+          if ((!matchedSite || !site || site === '미지정현장' || site === '일반 현장') && matchedAsset.currentSiteId) {
+            const foundSite = db.customerSites.find(s => s.id === matchedAsset.currentSiteId);
+            if (foundSite) {
+              matchedSite = foundSite;
+            }
+          }
+          if ((!matchedCustomer || !r.contractor || r.contractor === '현장 협력업체' || r.contractor === '협력업체') && matchedAsset.currentCustomerId) {
+            const foundCust = db.customers.find(c => c.id === matchedAsset.currentCustomerId);
+            if (foundCust) {
+              matchedCustomer = foundCust;
+            }
+          }
+          if (matchedContract) {
+            if (!matchedSite && matchedContract.siteId) {
+              matchedSite = db.customerSites.find(s => s.id === matchedContract.siteId);
+            }
+            if (!matchedCustomer && matchedContract.customerId) {
+              matchedCustomer = db.customers.find(c => c.id === matchedContract.customerId);
+            }
           }
         }
 

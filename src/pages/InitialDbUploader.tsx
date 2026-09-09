@@ -20,6 +20,9 @@ import {
   parseBandAsHistoryText,
   analyzeBandAsHistory,
   ingestBandAsHistoryDirect,
+  rollbackDispatchData,
+  rollbackBandAsHistory,
+  reconcileUnassignedBandRepairsWithAssets,
   BandAsAnalysisResult,
   ParsedBandAsRecord
 } from '../services/migrationEngine';
@@ -106,6 +109,7 @@ export const InitialDbUploader: React.FC = () => {
   const [dispatchParsedData, setDispatchParsedData] = useState<ParsedDispatchData | null>(null);
   const [isDispatchParsing, setIsDispatchParsing] = useState(false);
   const [isDispatchIngesting, setIsDispatchIngesting] = useState(false);
+  const [isDispatchRollingBack, setIsDispatchRollingBack] = useState(false);
   const [dispatchProgressMsg, setDispatchProgressMsg] = useState('');
 
   const dispatchFileInputRef = useRef<HTMLInputElement>(null);
@@ -118,10 +122,18 @@ export const InitialDbUploader: React.FC = () => {
   const [bandContractFilter, setBandContractFilter] = useState<'ALL' | 'MATCHED' | 'UNMATCHED' | 'GUESSED'>('ALL');
   const [isBandParsing, setIsBandParsing] = useState(false);
   const [isBandIngesting, setIsBandIngesting] = useState(false);
+  const [isBandRollingBack, setIsBandRollingBack] = useState(false);
+  const [isReconcilingAs, setIsReconcilingAs] = useState(false);
+  const [reconcileAsProgressMsg, setReconcileAsProgressMsg] = useState('');
   const [bandProgressMsg, setBandProgressMsg] = useState('');
   const [selectedAsRecord, setSelectedAsRecord] = useState<ParsedBandAsRecord | null>(null);
 
   const bandFileInputRef = useRef<HTMLInputElement>(null);
+
+  // 📊 업로드 적재 건수 실시간 집계
+  const uploadedDispatchCount = (db.deliveries || []).filter((d: any) => d.id?.startsWith('DEL-HIST-')).length;
+  const uploadedBandAsCount = (db.repairs || []).filter((r: any) => r.source === 'BAND_IMPORT' || r.ticketNo?.startsWith('BAND-') || r.id?.startsWith('rep-band-')).length;
+  const unassignedAsCount = (db.repairs || []).filter((r: any) => !r.siteId || r.siteName === '미지정현장' || r.siteName === '일반 현장').length;
 
   // 🌟 밴드 출고요청 분석 및 고객사/현장 기본 요구사항 마스터 동기화 상태
   const [dispatchHistFileName, setDispatchHistFileName] = useState<string>('');
@@ -507,6 +519,31 @@ export const InitialDbUploader: React.FC = () => {
     }
   };
 
+  // ── 배차 이력 일괄 롤백 (삭제) ──
+  const handleDispatchRollback = async () => {
+    if (!window.confirm(`현재 DB에 적재된 배차 이력 데이터(${uploadedDispatchCount.toLocaleString()}건)를 영구 삭제하고 업로드 전으로 되돌리시겠습니까?`)) {
+      return;
+    }
+    setIsDispatchRollingBack(true);
+    setDispatchProgressMsg('배차 이력 롤백(삭제) 진행 중...');
+    try {
+      const res = await rollbackDispatchData((msg) => setDispatchProgressMsg(msg));
+      if (res.success) {
+        showSuccessToast?.(res.message);
+        setDispatchParsedData(null);
+        setDispatchFileName('');
+        await fullRefreshFromServer();
+      } else {
+        showErrorModal?.(res.message);
+      }
+    } catch (err: any) {
+      showErrorModal?.(`배차 이력 롤백 실패: ${err.message || err}`);
+    } finally {
+      setIsDispatchRollingBack(false);
+      setDispatchProgressMsg('');
+    }
+  };
+
   // ── 과거 소급 청구서 독립 선택 생성 및 적재 ──
   const handleDirectHistBillingIngest = async () => {
     if (!contracts || contracts.length === 0) {
@@ -737,6 +774,64 @@ export const InitialDbUploader: React.FC = () => {
     } finally {
       setIsBandIngesting(false);
       setBandProgressMsg('');
+    }
+  };
+
+  // ── 밴드 AS 이력 일괄 롤백 (삭제) ──
+  const handleBandRollback = async () => {
+    if (!window.confirm(`현재 DB에 적재된 밴드 AS 이력 데이터(${uploadedBandAsCount.toLocaleString()}건)를 영구 삭제하고 업로드 전으로 되돌리시겠습니까?`)) {
+      return;
+    }
+    setIsBandRollingBack(true);
+    setBandProgressMsg('밴드 AS 이력 롤백(삭제) 진행 중...');
+    try {
+      const res = await rollbackBandAsHistory((msg) => setBandProgressMsg(msg));
+      if (res.success) {
+        showSuccessToast?.(res.message);
+        setBandAnalysisResult(null);
+        setBandFileName('');
+        await fullRefreshFromServer();
+      } else {
+        showErrorModal?.(res.message);
+      }
+    } catch (err: any) {
+      showErrorModal?.(`밴드 AS 이력 롤백 실패: ${err.message || err}`);
+    } finally {
+      setIsBandRollingBack(false);
+      setBandProgressMsg('');
+    }
+  };
+
+  // ── 기존 DB 미지정현장 AS 티켓 자산 대장 기준 일괄 역추적 복원 ──
+  const handleReconcileUnassignedAs = async () => {
+    if (unassignedAsCount === 0) {
+      showSuccessToast?.('현재 DB에 미지정현장 AS 티켓이 없습니다. 모두 정상 매핑되어 있습니다.');
+      return;
+    }
+    if (!window.confirm(`현재 DB의 미지정현장 AS 티켓(${unassignedAsCount.toLocaleString()}건)을 자산 마스터 기준으로 일괄 역추적 매핑 복원하시겠습니까?`)) {
+      return;
+    }
+    setIsReconcilingAs(true);
+    setReconcileAsProgressMsg('미지정현장 AS 티켓 자산 대장 대사 및 복원 시작...');
+    try {
+      const res = await reconcileUnassignedBandRepairsWithAssets(
+        assets || db.assets || [],
+        customerSites || db.customerSites || [],
+        customers || db.customers || [],
+        contracts || db.contracts || [],
+        (_step, _total, msg) => setReconcileAsProgressMsg(msg)
+      );
+      if (res.success) {
+        showSuccessToast?.(res.message);
+        await fullRefreshFromServer();
+      } else {
+        showErrorModal?.(res.message);
+      }
+    } catch (err: any) {
+      showErrorModal?.(`미지정현장 매핑 복원 실패: ${err.message || err}`);
+    } finally {
+      setIsReconcilingAs(false);
+      setReconcileAsProgressMsg('');
     }
   };
 
@@ -1333,14 +1428,42 @@ export const InitialDbUploader: React.FC = () => {
 
           {/* ③ 배차 이력 업로드 카드 */}
           <div style={{ backgroundColor: 'var(--bg-card)', borderRadius: '8px', border: '1px solid var(--border-color)', padding: '20px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px' }}>
-              <Truck size={16} color="#0369a1" />
-              <span style={{ fontSize: '14px', fontWeight: 600, color: '#0369a1', whiteSpace: 'nowrap' }}>
-                배차 이력 업로드
-              </span>
-              <span style={{ fontSize: '12px', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
-                배차현황 엑셀 파일 (2025-04 ~ 2026-09)
-              </span>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '12px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <Truck size={16} color="#0369a1" />
+                <span style={{ fontSize: '14px', fontWeight: 600, color: '#0369a1', whiteSpace: 'nowrap' }}>
+                  배차 이력 업로드
+                </span>
+                <span style={{ fontSize: '12px', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
+                  배차현황 엑셀 파일 (2025-04 ~ 2026-09)
+                </span>
+                {uploadedDispatchCount > 0 && (
+                  <span style={{ fontSize: '11px', padding: '2px 8px', borderRadius: '9999px', backgroundColor: '#e0f2fe', color: '#0369a1', fontWeight: 700, whiteSpace: 'nowrap' }}>
+                    DB 적재됨: {uploadedDispatchCount.toLocaleString()}건
+                  </span>
+                )}
+              </div>
+
+              {/* 우측 배차 이력 롤백 버튼 */}
+              {uploadedDispatchCount > 0 && (
+                <button
+                  type="button"
+                  onClick={handleDispatchRollback}
+                  disabled={isDispatchRollingBack || isDispatchIngesting}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: '6px',
+                    padding: '6px 12px', borderRadius: '6px',
+                    border: '1px solid #fca5a5', backgroundColor: isDispatchRollingBack ? '#fee2e2' : '#fef2f2',
+                    color: '#dc2626', fontSize: '12px', fontWeight: 600,
+                    cursor: (isDispatchRollingBack || isDispatchIngesting) ? 'not-allowed' : 'pointer',
+                    whiteSpace: 'nowrap',
+                    opacity: (isDispatchRollingBack || isDispatchIngesting) ? 0.6 : 1
+                  }}
+                >
+                  {isDispatchRollingBack ? <RefreshCw size={13} className="animate-spin" /> : <Trash2 size={13} />}
+                  배차 이력 롤백 ({uploadedDispatchCount.toLocaleString()}건 삭제)
+                </button>
+              )}
             </div>
 
             {/* 파일 선택 버튼 */}
@@ -1430,15 +1553,78 @@ export const InitialDbUploader: React.FC = () => {
 
           {/* ④ 밴드 과거 AS 이력 빅데이터 업로드 카드 */}
           <div style={{ backgroundColor: 'var(--bg-card)', borderRadius: '8px', border: '1px solid var(--border-color)', padding: '20px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px' }}>
-              <Wrench size={16} color="#16a34a" />
-              <span style={{ fontSize: '14px', fontWeight: 600, color: '#16a34a', whiteSpace: 'nowrap' }}>
-                현장 AS 과거 이력 (네이버 밴드) 빅데이터 업로드
-              </span>
-              <span style={{ fontSize: '12px', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
-                네이버 밴드 AS 게시글 텍스트 파일 (총 5,518건, 2,171대 장비 이력 및 단독계약 1대 추정 연동)
-              </span>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '12px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                <Wrench size={16} color="#16a34a" />
+                <span style={{ fontSize: '14px', fontWeight: 600, color: '#16a34a', whiteSpace: 'nowrap' }}>
+                  현장 AS 과거 이력 (네이버 밴드) 빅데이터 업로드
+                </span>
+                <span style={{ fontSize: '12px', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
+                  네이버 밴드 AS 게시글 텍스트 파일 (자산 기반 현장 자동 역추적 탑재)
+                </span>
+                {uploadedBandAsCount > 0 && (
+                  <span style={{ fontSize: '11px', padding: '2px 8px', borderRadius: '9999px', backgroundColor: '#dcfce7', color: '#15803d', fontWeight: 700, whiteSpace: 'nowrap' }}>
+                    DB 적재됨: {uploadedBandAsCount.toLocaleString()}건
+                  </span>
+                )}
+                {unassignedAsCount > 0 && (
+                  <span style={{ fontSize: '11px', padding: '2px 8px', borderRadius: '9999px', backgroundColor: '#fef3c7', color: '#b45309', fontWeight: 700, whiteSpace: 'nowrap' }}>
+                    미지정현장: {unassignedAsCount.toLocaleString()}건
+                  </span>
+                )}
+              </div>
+
+              {/* 우측 액션 버튼군 */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                {unassignedAsCount > 0 && (
+                  <button
+                    type="button"
+                    onClick={handleReconcileUnassignedAs}
+                    disabled={isReconcilingAs || isBandRollingBack || isBandIngesting}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: '6px',
+                      padding: '6px 12px', borderRadius: '6px',
+                      border: '1px solid #fcd34d', backgroundColor: isReconcilingAs ? '#fef3c7' : '#fffbeb',
+                      color: '#b45309', fontSize: '12px', fontWeight: 600,
+                      cursor: (isReconcilingAs || isBandRollingBack || isBandIngesting) ? 'not-allowed' : 'pointer',
+                      whiteSpace: 'nowrap',
+                      opacity: (isReconcilingAs || isBandRollingBack || isBandIngesting) ? 0.6 : 1
+                    }}
+                  >
+                    {isReconcilingAs ? <RefreshCw size={13} className="animate-spin" /> : <RefreshCw size={13} />}
+                    미지정현장 매핑 복원 ({unassignedAsCount.toLocaleString()}건)
+                  </button>
+                )}
+
+                {uploadedBandAsCount > 0 && (
+                  <button
+                    type="button"
+                    onClick={handleBandRollback}
+                    disabled={isBandRollingBack || isBandIngesting || isReconcilingAs}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: '6px',
+                      padding: '6px 12px', borderRadius: '6px',
+                      border: '1px solid #fca5a5', backgroundColor: isBandRollingBack ? '#fee2e2' : '#fef2f2',
+                      color: '#dc2626', fontSize: '12px', fontWeight: 600,
+                      cursor: (isBandRollingBack || isBandIngesting || isReconcilingAs) ? 'not-allowed' : 'pointer',
+                      whiteSpace: 'nowrap',
+                      opacity: (isBandRollingBack || isBandIngesting || isReconcilingAs) ? 0.6 : 1
+                    }}
+                  >
+                    {isBandRollingBack ? <RefreshCw size={13} className="animate-spin" /> : <Trash2 size={13} />}
+                    밴드 AS 이력 롤백 ({uploadedBandAsCount.toLocaleString()}건 삭제)
+                  </button>
+                )}
+              </div>
             </div>
+
+            {/* 미지정현장 복원 진행 상태 바 */}
+            {reconcileAsProgressMsg && (
+              <div style={{ marginBottom: '12px', fontSize: '13px', color: '#b45309', display: 'flex', alignItems: 'center', gap: '8px', backgroundColor: '#fef3c7', padding: '10px 14px', borderRadius: '6px', border: '1px solid #fcd34d' }}>
+                <RefreshCw size={14} className="animate-spin" />
+                <span>{reconcileAsProgressMsg}</span>
+              </div>
+            )}
 
             {/* 파일 선택 버튼 & 샘플 로드 */}
             <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
@@ -1480,11 +1666,12 @@ export const InitialDbUploader: React.FC = () => {
             {/* 파싱 결과 프리뷰 */}
             {bandAnalysisResult && (
               <div style={{ marginTop: '16px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
-                {/* 5대 지표 바 */}
+                {/* 6대 지표 바 */}
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '8px' }}>
                   {[
                     { label: '총 AS 분석 건수', value: `${bandAnalysisResult.totalCount.toLocaleString()}건`, color: 'var(--text-main)' },
                     { label: '고유 장비 매핑', value: `${bandAnalysisResult.uniqueAssetsCount.toLocaleString()}대`, color: '#2563eb' },
+                    { label: '자산 역추적 현장 매핑', value: `${(bandAnalysisResult.assetBacktrackedSiteCount || 0).toLocaleString()}건`, color: '#059669', sub: '현장명 자동 복원' },
                     { label: '유효 계약 연동', value: `${bandAnalysisResult.matchedContractCount.toLocaleString()}건`, color: '#7c3aed', sub: bandAnalysisResult.singleAssetGuessedCount > 0 ? `(1대 계약 추정 ${bandAnalysisResult.singleAssetGuessedCount}건)` : undefined },
                     { label: '현장 조치완료', value: `${bandAnalysisResult.completedCount.toLocaleString()}건`, color: '#16a34a' },
                     { label: '익일방문 / 안내', value: `${(bandAnalysisResult.revisitCount + bandAnalysisResult.guidedCount).toLocaleString()}건`, color: '#d97706' },
@@ -1492,7 +1679,7 @@ export const InitialDbUploader: React.FC = () => {
                     <div key={label} style={{ backgroundColor: 'var(--bg-app)', padding: '10px 14px', borderRadius: '6px', border: '1px solid var(--border-color)' }}>
                       <div style={{ fontSize: '11px', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>{label}</div>
                       <div style={{ fontSize: '18px', fontWeight: 700, color, marginTop: '2px' }}>{value}</div>
-                      {sub && <div style={{ fontSize: '10px', color: '#7c3aed', marginTop: '1px' }}>{sub}</div>}
+                      {sub && <div style={{ fontSize: '10px', color: '#059669', marginTop: '1px' }}>{sub}</div>}
                     </div>
                   ))}
                 </div>
@@ -1594,7 +1781,14 @@ export const InitialDbUploader: React.FC = () => {
                                 <td style={{ padding: '6px 10px', color: 'var(--text-secondary)' }}>{r.date}</td>
                                 <td style={{ padding: '6px 10px', fontWeight: 600 }}>{r.author || '-'}</td>
                                 <td style={{ padding: '6px 10px' }}>
-                                  <div style={{ fontWeight: 600, color: 'var(--text-main)' }}>{r.matchedCustomerName || r.customer}</div>
+                                  <div style={{ fontWeight: 600, color: 'var(--text-main)', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                    <span>{r.matchedCustomerName || r.customer}</span>
+                                    {r.isAssetBacktracked && (
+                                      <span style={{ fontSize: '9px', padding: '1px 5px', borderRadius: '4px', backgroundColor: '#dcfce7', color: '#15803d', fontWeight: 700, whiteSpace: 'nowrap' }}>
+                                        자산역추적
+                                      </span>
+                                    )}
+                                  </div>
                                   <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{r.matchedSiteName || r.site}</div>
                                   <div style={{ fontSize: '10.5px', color: '#0284c7' }}>📍 {r.matchedSiteAddress || r.address || '주소 미등록'}</div>
                                 </td>

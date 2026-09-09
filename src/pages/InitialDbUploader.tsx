@@ -70,15 +70,17 @@ import {
   X,
   Copy,
   Boxes,
-  Package
+  Package,
+  ShieldAlert
 } from 'lucide-react';
+import { OrphanDataCleanupStudio } from '../components/OrphanDataCleanupStudio';
 
 export const InitialDbUploader: React.FC = () => {
   const { showSuccessToast, showErrorModal, fullRefreshFromServer, users, customers, contracts, contractAssets, sites, customerSites: appCustomerSites, assets, importBandAsHistory, currentUser } = useApp();
   const customerSites = sites || appCustomerSites || db.sites || [];
 
   // 상태 관리
-  const [activeTab, setActiveTab] = useState<'INGEST' | 'BACKUP' | 'RESET'>('INGEST');
+  const [activeTab, setActiveTab] = useState<'INGEST' | 'CLEANUP' | 'BACKUP' | 'RESET'>('INGEST');
   const [isBackingUp, setIsBackingUp] = useState(false);
   const [backupResult, setBackupResult] = useState<{ filename: string; count: number } | null>(null);
 
@@ -1238,6 +1240,26 @@ export const InitialDbUploader: React.FC = () => {
           >
             <Upload size={16} />
             초기DB 업로드
+          </button>
+
+          <button
+            onClick={() => setActiveTab('CLEANUP')}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              padding: '8px 16px',
+              borderRadius: '6px',
+              border: activeTab === 'CLEANUP' ? '1px solid #ef4444' : '1px solid var(--border-color)',
+              backgroundColor: activeTab === 'CLEANUP' ? 'rgba(239, 68, 68, 0.12)' : 'var(--bg-card)',
+              color: activeTab === 'CLEANUP' ? '#dc2626' : 'var(--text-secondary)',
+              fontWeight: 600,
+              cursor: 'pointer',
+              whiteSpace: 'nowrap'
+            }}
+          >
+            <ShieldAlert size={16} />
+            불부합 데이터 정리
           </button>
 
           <button
@@ -2749,6 +2771,11 @@ export const InitialDbUploader: React.FC = () => {
             </div>
           )}
         </div>
+      )}
+
+      {/* ── TAB: 불부합 데이터 정리 (고아계약, 각종 의뢰 등) ── */}
+      {activeTab === 'CLEANUP' && (
+        <OrphanDataCleanupStudio />
       )}
 
       {/* ── TAB 2: DB 전체 백업 ── */}

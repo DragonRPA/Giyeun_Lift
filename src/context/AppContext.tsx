@@ -5641,13 +5641,13 @@ ${currentTenant?.corporateName || tenantCorp} 배상
   };
 
   /**
-   * 일할 금액 계산 (B-1: 30일 고정, 역일 기준, 100원 단위 반올림 업계 전사 표준)
+   * 일할 금액 계산 (B-1: 30일 고정, 역일 기준, 1,000원 단위 반올림 업계 전사 표준)
    */
   const calcProRataAmount = (monthlyFee: number, dailyFee: number, days: number): number => {
     if (dailyFee > 0) {
-      return Math.round((dailyFee * days) / 100) * 100;
+      return Math.round((dailyFee * days) / 1000) * 1000;
     }
-    return Math.round(((monthlyFee / 30) * days) / 100) * 100;
+    return Math.round(((monthlyFee / 30) * days) / 1000) * 1000;
   };
 
   /**

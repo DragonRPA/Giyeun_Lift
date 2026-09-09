@@ -236,11 +236,11 @@ export const RentAssets: React.FC = () => {
       return Math.max(0, Math.round((t2 - t1) / (1000 * 60 * 60 * 24)) + 1);
     };
 
-    // 렌탈 업계 전사 표준 일할 계산 (30일 분모 고정 + 100원 단위 반올림)
-    const calcProratedFee = (monthlyFee: number, days: number): number => {
+    // 렌탈 업계 전사 표준 일할 계산 (30일 분모 고정 + 1,000원 단위 반올림 기본, 100원 단위 호환)
+    const calcProratedFee = (monthlyFee: number, days: number, unit: number = 1000): number => {
       if (!monthlyFee || days <= 0) return 0;
       if (days >= 30) return monthlyFee;
-      return Math.round(((monthlyFee / 30) * days) / 100) * 100;
+      return Math.round(((monthlyFee / 30) * days) / unit) * unit;
     };
 
     // A. 임차처 거래명세서 행 기준으로 자사 DB 자산 대조 (오직 관리번호 기준 1:1 매칭)
@@ -310,14 +310,21 @@ export const RentAssets: React.FC = () => {
         const targetDays = validReturnDays > 0 ? validReturnDays : (mDays > 0 && mDays < 30 ? mDays : rDays);
 
         if (targetDays > 0 && targetDays < 30) {
-          const feeBoth = calcProratedFee(baseMonthlyFee, targetDays);
-          const feeOne = calcProratedFee(baseMonthlyFee, targetDays - 1);
-          if (rBilled > 0 && Math.abs(rBilled - feeOne) <= 100) {
-            expected = feeOne; // 한편넣기(25일 등) 적용된 청구액 정합 인정
-          } else if (rBilled > 0 && Math.abs(rBilled - feeBoth) <= 100) {
-            expected = feeBoth; // 양편넣기(26일 등) 적용된 청구액 정합 인정
+          const feeBoth1000 = calcProratedFee(baseMonthlyFee, targetDays, 1000);
+          const feeOne1000 = calcProratedFee(baseMonthlyFee, targetDays - 1, 1000);
+          const feeBoth100 = calcProratedFee(baseMonthlyFee, targetDays, 100);
+          const feeOne100 = calcProratedFee(baseMonthlyFee, targetDays - 1, 100);
+
+          if (rBilled > 0 && Math.abs(rBilled - feeBoth1000) <= 100) {
+            expected = feeBoth1000; // 1,000원 단위 양편넣기 일치
+          } else if (rBilled > 0 && Math.abs(rBilled - feeOne1000) <= 100) {
+            expected = feeOne1000; // 1,000원 단위 한편넣기 일치 (하이로드 43,000 등)
+          } else if (rBilled > 0 && Math.abs(rBilled - feeBoth100) <= 100) {
+            expected = feeBoth100; // 100원 단위 양편넣기 일치 (한솔렌탈 186,700 등)
+          } else if (rBilled > 0 && Math.abs(rBilled - feeOne100) <= 100) {
+            expected = feeOne100; // 100원 단위 한편넣기 일치
           } else {
-            expected = feeBoth;
+            expected = feeBoth1000;
           }
         } else if (isReturned && mReturn) {
           expected = baseMonthlyFee;

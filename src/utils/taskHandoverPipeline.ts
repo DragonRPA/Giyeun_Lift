@@ -141,7 +141,8 @@ export async function clearHandoverTasks(params: ClearHandoverTasksParams): Prom
  */
 export function findActiveTasksForUser(
   todos: Todo[],
-  currentUser: { id?: string; department?: string; role?: string } | null
+  currentUser: { id?: string; department?: string; role?: string } | null,
+  hasPermission?: (menuId: string, action: 'view' | 'save') => boolean
 ): Todo[] {
   if (!currentUser || !todos) return [];
 
@@ -183,6 +184,14 @@ export function findActiveTasksForUser(
       if (uRole.includes(tr)) return true;
     }
 
+    // 5. 🌟 계약서패키지 재발송 ToDo: 발송 권한 보유자 또는 영업/출고 부서원 매칭
+    if (t.taskCategory === 'CONTRACT_PACKAGE_RESEND') {
+      if (hasPermission && hasPermission('agent_badge', 'view')) return true;
+      if (t.assignedUserId && t.assignedUserId === currentUser.id) return true;
+      if (uDept.includes('SALES') || uDept.includes('영업') || uRole.includes('SALES')) return true;
+      if (uDept.includes('출고') || uDept.includes('배차') || uRole.includes('LOGISTICS')) return true;
+    }
+
     return false;
   });
 
@@ -201,4 +210,72 @@ export function findActiveTasksForUser(
 
     return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
   });
+}
+
+/**
+ * 🚀 [4] 출고 진행 중 자산 변경 감지 시 계약서패키지 재발송 ToDo 자동 발행
+ */
+export async function checkAndIssuePackageResendTask(params: {
+  contractId: string;
+  oldAssetId?: string;
+  newAssetId?: string;
+  reason?: string;
+  senderName?: string;
+}): Promise<Todo | null> {
+  const contract = db.contracts.find(c => c.id === params.contractId);
+  if (!contract) return null;
+
+  // 1. 해당 계약에 고객 발송 이력(DOCUMENT_SENT)이 존재하는지 확인
+  const sentHistories = db.contractHistory.filter(
+    h => h.contractId === params.contractId && h.changeType === 'DOCUMENT_SENT'
+  );
+  if (sentHistories.length === 0) {
+    // 발송된 적이 없으면 변경되어도 재발송 ToDo 불필요 (초기 출고 정상 진행)
+    return null;
+  }
+
+  // 2. 자산 정보 및 고객사 정보 조회
+  const oldAsset = params.oldAssetId ? db.assets.find(a => a.id === params.oldAssetId) : undefined;
+  const newAsset = params.newAssetId ? db.assets.find(a => a.id === params.newAssetId) : undefined;
+  const customer = db.customers.find(c => c.id === contract.customerId);
+
+  const oldAssetStr = oldAsset ? `${oldAsset.assetNo}(${oldAsset.modelName})` : '기존장비';
+  const newAssetStr = newAsset ? `${newAsset.assetNo}(${newAsset.modelName})` : '신규대체장비';
+  const custName = customer?.name || '고객사';
+
+  // 3. 이미 미완료 상태인 동일 계약의 CONTRACT_PACKAGE_RESEND ToDo가 있다면 내용만 갱신 (Idempotency 보장)
+  const existingTodo = db.todos.find(
+    t => !t.isCompleted && t.entityId === contract.id && t.taskCategory === 'CONTRACT_PACKAGE_RESEND'
+  );
+
+  const title = `[계약서패키지 재발송 필요] ${contract.contractNo} (${custName})`;
+  const content = `출고 진행 중 자산이 변경(${oldAssetStr} ➔ ${newAssetStr})되었습니다.\n` +
+    `기존 발송된 패키지 구성 서류(반입전점검표, 안전인증서, 제원표 등)와 실출고 장비가 불일치하므로, 서류를 갱신하여 고객사(${custName})로 재발송해 주십시오.` +
+    (params.reason ? `\n• 교체 사유: ${params.reason}` : '');
+
+  if (existingTodo) {
+    return db.updateRow<Todo>('todos', existingTodo.id, {
+      title,
+      content,
+      updatedAt: new Date().toISOString()
+    });
+  }
+
+  // 4. ToDo 신규 발행
+  // 대상: 계약 담당자(salespersonId) 및 계약서패키지 발송 권한자(SALES/LOGISTICS)
+  const todo = await issueHandoverTask({
+    category: 'CONTRACT_PACKAGE_RESEND',
+    title,
+    content,
+    priority: 'HIGH',
+    targetType: 'DEPT',
+    targetDept: 'SALES',
+    assignedUserId: contract.salespersonId || undefined,
+    actionUrl: '/admin/contract',
+    entityType: 'CONTRACT',
+    entityId: contract.id,
+    senderName: params.senderName || '출고검수시스템'
+  });
+
+  return todo;
 }

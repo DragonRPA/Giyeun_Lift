@@ -1,3 +1,31 @@
+## [v1.11.4.Build.13] - 2026-09-09 13:45
+
+### 📄 [계약서패키지 발송 후 출고 중 자산 변경 재발송 ToDo & WTT 10회 완결]
+
+**배경**: 계약 체결 및 고객사로 계약서패키지(임대차계약서, 반입전체크리스트, 안전점검서, 제원표, PL보험증권 등)를 발송 완료한 후, 출고 진행 중(출고 검수 중 결함 발생 교체, 장비 재할당, 슬롯 해제 등)에 자산이 변경되는 경우, 기존 발송된 패키지 구성 서류(자산번호, 차대번호, 안전인증서)와의 불일치를 방지하기 위해 발송 권한자들의 대시보드에 ToDo를 자동 생성하고 원스톱 재발송을 지원하도록 전면 개편. 10회 도메인 관통 스트레스 테스트(WTT)를 통해 멱등성, RBAC 권한 격리, 종단 보존 법칙 100% 입증.
+
+**개선 내역**:
+1. **`CONTRACT_PACKAGE_RESEND` 업무 카테고리 신설 (`src/services/db.ts`)**:
+   - `TaskCategory`에 `'CONTRACT_PACKAGE_RESEND'`(출고 중 자산 변경에 따른 계약서패키지 재발송) 정식 등록.
+2. **패키지 재발송 ToDo 자동 발행 파이프라인 (`src/utils/taskHandoverPipeline.ts`)**:
+   - `checkAndIssuePackageResendTask`: 해당 계약의 `contractHistory`에 `DOCUMENT_SENT` 이력이 존재할 때만 트리거되어 불필요 ToDo 공해 방지.
+   - 멱등성(Idempotency) 보장: 연속 장비 교체 시 ToDo가 중복 증식하지 않고 1건으로 유지되며 최신 자산 정보로 자동 갱신.
+   - `findActiveTasksForUser` 권한 체크 확장: `agent_badge` 권한 보유자, 영업부/출고부 계정, 계약 담당 영업사원에게 해당 ToDo가 100% 매핑.
+3. **자산 변경 트랜잭션 전방위 연동 (`src/context/AppContext.tsx`)**:
+   - `exchangeOutboundAsset` (출고 검수 중 장비 스왑/교체 시)
+   - `batchAssignAssetsToContract` (기존 슬롯 장비 변경 시)
+   - `unassignAssetFromContract` (출고 전 장비 할당 해제/취소 시)
+   - 상기 3대 경로에서 자산 변경 시 `checkAndIssuePackageResendTask` 자동 호출.
+4. **대시보드 원클릭 패키지 재발송 스튜디오 연동 (`src/pages/Dashboard.tsx`)**:
+   - ToDo 피드에 `📄 패키지 재발송 필요` 전용 배지 및 `[패키지 재발송 ➔]` 버튼 신설.
+   - 대시보드를 이탈하지 않고 `ContractDocumentBundleModal`이 원클릭 즉시 팝업되어 변경된 신규 자산의 서류를 즉시 확인하고 발송 완결 지원 (최대 편익 달성).
+5. **재발송 완료 시 ToDo 원자적 자동 상계 (`ContractDocumentBundleModal.tsx`)**:
+   - `handleSendPackageEmail` 성공 시 `clearHandoverTasks`를 호출하여 해당 ToDo 자동 완료 상계 처리.
+6. **WTT 10회 도메인 관통 스트레스 테스트 전수 통과 (10/10 PASS)**:
+   - 단일/복수 장비 교체, 미발송 방어, 연속 교체 멱등성, RBAC 격리, 대차 복합 체인 등 10개 시나리오 100% PASS.
+
+---
+
 ## [v1.11.4.Build.12] - 2026-09-09 13:40
 
 ### 🛠️ [주기장 입고 결함 정비 스튜디오 PC/모바일 전면 개편 & WTT 100회 완결]

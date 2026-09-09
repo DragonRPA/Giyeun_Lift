@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { emailService } from '../services/email';
 import { db, formatContractEndDate } from '../services/db';
+import { clearHandoverTasks } from '../utils/taskHandoverPipeline';
 
 interface Props {
   isOpen: boolean;
@@ -450,6 +451,17 @@ export const ContractDocumentBundleModal: React.FC<Props> = ({ isOpen, onClose, 
           description: `계약서패키지 이메일 발송 완료 (총 ${recipients.length}명: ${recipientSummary} / 발송자: ${senderName})`,
           changeDate: new Date().toISOString().split('T')[0],
           createdAt: new Date().toISOString()
+        });
+
+        // 🌟 [ToDo 자동 상계]: 계약서패키지 재발송 ToDo가 존재했다면 원자적 자동 완료(Clearance)
+        await clearHandoverTasks({
+          entityType: 'CONTRACT',
+          entityId: selectedContract.id,
+          category: 'CONTRACT_PACKAGE_RESEND',
+          completedByUserId: currentUser?.id,
+          completedByName: currentUser?.name || senderName,
+          completionAction: 'PACKAGE_RESENT',
+          resolutionNote: `계약서패키지 이메일 재발송 완료 (${recipients.length}명 수신)`
         });
 
         await db.awaitPendingWrites();

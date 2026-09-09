@@ -1205,6 +1205,7 @@ export type TaskCategory =
   | 'OUTBOUND_PDI_INSPECTION'     // 출고 전 PDI 기능 및 안전옵션 검수
   | 'OUTBOUND_SHIPMENT_START'     // PDI 합격 장비 상차 및 화물 출발
   | 'SITE_ARRIVAL_CONFIRM'        // 현장 도착 하차 및 가동 개시 확인
+  | 'CONTRACT_PACKAGE_RESEND'     // 🌟 출고 중 자산 변경에 따른 계약서패키지(구성서류) 재발송
   | 'AS_DISPATCH_REPAIR'          // 현장 AS 긴급 출동 및 조치
   | 'BILLABLE_REPAIR_BILLING'     // 유상 수리비 매출 청구서 바인딩
   | 'INBOUND_INSPECTION'          // 회수 장비 입고 검수

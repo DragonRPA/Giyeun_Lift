@@ -1,5 +1,23 @@
 # 개발 요구사항 임시 기록 (dev_temp.md)
 
+## [완료] 계약서패키지 발송 후 출고 중 자산 변경 재발송 ToDo & WTT 10회 완결 (v1.11.4.Build.13)
+- **요구사항**: "계약이 생겨나서 고객에게 계약서패키지를 발송 했는데 그 이후 출고 진행중에 자산이 변경되었고, 계약서패키지의 구성 서류 를 변경해서 재발송 해야 되는 상태가 발생 한다면, 계약패키지 발송 권한을 보유한 사람들의 대시보드에 todo 를 생성하게 개편. 이 절차의 WTT 도 10회 수행후 문제점 도출. 즉시 개편후 ㄹㅇ"
+- **적용 목적 (헌장 1.1 최대 편익, 1.2 사건 무누락 DB 저장, 3.3 직무 맞춤형 ToDo 피드, 5.5 WTT 도메인 관통 스트레스 테스트)**:
+  - 고객사에게 계약서패키지(임대차계약서, 반입전체크리스트, 안전점검서, 제원표 등) 발송 후 출고 진행 중 자산 교체/변경 발생 시 구성 서류와 실출고 장비의 불일치 사고를 원천 방지.
+  - 계약패키지 발송 권한(`agent_badge`) 보유자 및 영업담당자의 대시보드에 `[계약서패키지 재발송 필요]` ToDo를 자동 발행.
+  - 대시보드에서 `[패키지 재발송 ➔]` 원클릭 버튼을 통해 `ContractDocumentBundleModal`을 즉시 팝업하여 3초 만에 갱신 및 재발송 완결 지원.
+  - 이메일 재발송 성공 시 해당 ToDo를 원자적 자동 상계(Clearance) 처리.
+  - 10회 WTT를 통해 멱등성, RBAC 권한 격리, 종단 보존 법칙 100% 입증 (10/10 PASS).
+- **개편 내역**:
+  1. `src/services/db.ts`: `TaskCategory`에 `'CONTRACT_PACKAGE_RESEND'` 신설.
+  2. `src/utils/taskHandoverPipeline.ts`: `checkAndIssuePackageResendTask` 신설 및 `findActiveTasksForUser` 권한 체크 확장.
+  3. `src/context/AppContext.tsx`: `exchangeOutboundAsset`, `batchAssignAssetsToContract`, `unassignAssetFromContract`에 패키지 재발송 ToDo 감지 및 발행 연동.
+  4. `src/components/ContractDocumentBundleModal.tsx`: 재발송 완료 시 `clearHandoverTasks` 자동 상계 연동.
+  5. `src/pages/Dashboard.tsx`: ToDo 피드 전용 배지 및 `[패키지 재발송 ➔]` 모달 원클릭 팝업 탑재.
+- **검증 결과**: WTT 10회 전수 통과 (10/10 PASS), TypeScript & Vite 빌드 0 Error 완결.
+
+---
+
 ## [완료] 주기장 입고 결함 정비 스튜디오 PC/모바일 전면 개편 & WTT 100회 완결 (v1.11.4.Build.12)
 - **요구사항**: "불량상태를 식별한 입고된 자산을 주기장에서 정비 할때의 업무를 WTT 100건 수행하여 각 PC모드와 웹앱에서 50건씩 분할 수행하고, 메뉴의 본질 목적과 사용자 편의성 및 글로벌 정책 준수하여 개선과제 발굴 및 즉시 개편, ㄹㅇ"
 - **적용 목적 (헌장 1.1 최대 편익, 1.2 렌탈 도메인 3대 핵심가치, 3.1 무수식어 건조 표준, 3.6 본질 속성별 UI 아키타입, 5.5 WTT 도메인 관통 스트레스 테스트)**:

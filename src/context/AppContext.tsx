@@ -5,7 +5,7 @@ import { ErrorModal } from '../components/ErrorModal';
 import { getAllSystemMenuIds, normalizeMenuId } from '../config/menu_config';
 import { getRoleTemplatePermission } from '../config/role_templates';
 import { broadcastWorkNotification } from '../utils/workNotificationService';
-import { issueHandoverTask, clearHandoverTasks, findActiveTasksForUser } from '../utils/taskHandoverPipeline';
+import { issueHandoverTask, clearHandoverTasks, findActiveTasksForUser, checkAndIssuePackageResendTask } from '../utils/taskHandoverPipeline';
 import { resolveSiteDetailedAddress } from '../utils/nativeLauncher';
 import { emailService } from '../services/email';
 
@@ -4730,7 +4730,20 @@ ${currentTenant?.corporateName || tenantCorp} 배상
           createdAt: nowIso,
           updatedAt: nowIso
         });
-        createdInspectionIds.push(createdInsp.id);
+        // 2-4. 🌟 [패키지 서류 무결성]: 기존 슬롯에 다른 장비가 배정되어 있었는데 교체된 경우 ToDo 발행
+        if (origCa.assetId && origCa.assetId !== origAsset.id) {
+          try {
+            await checkAndIssuePackageResendTask({
+              contractId: origCa.contractId,
+              oldAssetId: origCa.assetId,
+              newAssetId: origAsset.id,
+              reason: '출고 전 장비 재할당/교체',
+              senderName: '장비할당시스템'
+            });
+          } catch (taskErr) {
+            console.warn('계약서패키지 재발송 ToDo 발행 경고 (무시):', taskErr);
+          }
+        }
       }
 
       // 3. 단 1회의 원격 DB 쓰기 완결 동기 대기 & 단 1회의 전역 리렌더링!
@@ -4796,7 +4809,20 @@ ${currentTenant?.corporateName || tenantCorp} 배상
       );
       pendingInsps.forEach(i => db.deleteRow('outboundInspections', i.id));
 
-      // 4. DB 완결 동기 대기 & 전역 리렌더링
+      // 4. 🌟 [패키지 서류 무결성]: 계약서패키지 발송 후 출고 전 장비 할당 해제 시 ToDo 자동 발행
+      try {
+        await checkAndIssuePackageResendTask({
+          contractId: origCa.contractId,
+          oldAssetId: origAssetId,
+          newAssetId: undefined,
+          reason: '출고 전 장비 할당 해제/취소',
+          senderName: '장비할당시스템'
+        });
+      } catch (taskErr) {
+        console.warn('계약서패키지 재발송 ToDo 발행 경고 (무시):', taskErr);
+      }
+
+      // 5. DB 완결 동기 대기 & 전역 리렌더링
       await db.awaitPendingWrites();
       refreshAllData();
 
@@ -5003,7 +5029,20 @@ ${currentTenant?.corporateName || tenantCorp} 배상
         createdAt: nowIso
       });
 
-      // 6. DB 완결 동기 대기 (실패 시 catch 블록에서 자동 롤백!)
+      // 6. 🌟 [패키지 서류 무결성 보존]: 계약서패키지 발송 후 출고 자산 교체 시 ToDo 자동 발행
+      try {
+        await checkAndIssuePackageResendTask({
+          contractId: caOrig.contractId,
+          oldAssetId,
+          newAssetId,
+          reason,
+          senderName: '출고검수시스템'
+        });
+      } catch (taskErr) {
+        console.warn('계약서패키지 재발송 ToDo 발행 경고 (무시):', taskErr);
+      }
+
+      // 7. DB 완결 동기 대기 (실패 시 catch 블록에서 자동 롤백!)
       await db.awaitPendingWrites();
       refreshAllData();
     } catch (err: any) {

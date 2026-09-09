@@ -14,6 +14,7 @@ import { getDriveReadToken, extractDriveFolderId, listFilesInDriveFolder } from 
 import { EXPECTED_AGENT_VERSION, AGENT_DOWNLOAD_URL, AGENT_CERT_URL, AGENT_INSTALL_BAT_URL, AGENT_KILL_BAT_URL } from '../services/agentService';
 import { findActiveTasksForUser } from '../utils/taskHandoverPipeline';
 import { ExecutiveDirectiveModal } from '../components/ExecutiveDirectiveModal';
+import { ContractDocumentBundleModal } from '../components/ContractDocumentBundleModal';
 import { Todo } from '../services/db';
 
 export const Dashboard: React.FC = () => {
@@ -45,8 +46,8 @@ export const Dashboard: React.FC = () => {
   const [directiveReportNote, setDirectiveReportNote] = useState<string>('');
   const [isSubmittingReport, setIsSubmittingReport] = useState(false);
 
-  const userRole = (currentUser?.role || '').toUpperCase();
-  const userDept = (currentUser?.department || '').toUpperCase();
+  const userRole = currentUser?.role || 'SALES';
+  const userDept = currentUser?.department || '';
   const isExecUser = userRole === 'ADMIN' || userRole === 'EXECUTIVE' || userRole === 'MANAGER' || userDept.includes('경영') || userDept.includes('대표');
 
   // 사용자 메뉴 권한 기반 카드 노출 판단 플래그 (조치/저장 실행 권한 기준 단일 표준 ID)
@@ -57,6 +58,10 @@ export const Dashboard: React.FC = () => {
   const canActConsumable = hasPermission('consumable', 'save');
   const canActRentAsset = hasPermission('rent_asset', 'save');
   const canGeneratePackage = hasPermission('agent_badge', 'view');  // 계약서 패키지 생성 권한 = agent_badge
+
+  // ── 📄 계약서패키지 재발송 모달 상태 ──
+  const [showBundleModal, setShowBundleModal] = useState(false);
+  const [bundleTargetContractId, setBundleTargetContractId] = useState<string | undefined>(undefined);
 
   // ── 🤖 로컬 사이드카 에이전트 실시간 모니터링 상태 ──
   const [agentStatus, setAgentStatus] = useState<'ONLINE' | 'OFFLINE'>('OFFLINE');
@@ -313,7 +318,7 @@ export const Dashboard: React.FC = () => {
     }
   };
 
-  const activeTasks = useMemo(() => findActiveTasksForUser(todos, currentUser), [todos, currentUser]);
+  const activeTasks = useMemo(() => findActiveTasksForUser(todos, currentUser, hasPermission), [todos, currentUser, hasPermission]);
   const myTodos = activeTasks;
 
   const totalAssets = assets.length;
@@ -720,13 +725,14 @@ export const Dashboard: React.FC = () => {
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '14px' }}>
                   {activeTasks.slice(0, 8).map(task => {
                     const isDirective = task.taskCategory === 'EXECUTIVE_DIRECTIVE';
+                    const isPackageResend = task.taskCategory === 'CONTRACT_PACKAGE_RESEND';
                     const priorityColor = task.priority === 'URGENT' ? '#ef4444' : task.priority === 'HIGH' ? '#f59e0b' : '#3b82f6';
                     
                     return (
                       <div key={task.id} style={{
-                        backgroundColor: isDirective ? 'rgba(239, 68, 68, 0.03)' : 'var(--bg-secondary)',
+                        backgroundColor: isDirective ? 'rgba(239, 68, 68, 0.03)' : isPackageResend ? 'rgba(99, 102, 241, 0.04)' : 'var(--bg-secondary)',
                         padding: '14px 16px', borderRadius: '8px',
-                        border: isDirective ? '1.5px solid rgba(239, 68, 68, 0.35)' : '1px solid var(--border-color)',
+                        border: isDirective ? '1.5px solid rgba(239, 68, 68, 0.35)' : isPackageResend ? '1.5px solid rgba(99, 102, 241, 0.4)' : '1px solid var(--border-color)',
                         display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', flexWrap: 'wrap'
                       }}>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '5px', flex: 1, minWidth: '260px' }}>
@@ -737,6 +743,13 @@ export const Dashboard: React.FC = () => {
                                 backgroundColor: '#ef4444', color: '#fff', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: '3px'
                               }}>
                                 ⚡ 경영진 특별지시
+                              </span>
+                            ) : isPackageResend ? (
+                              <span style={{
+                                fontSize: '11px', fontWeight: '900', padding: '2px 8px', borderRadius: '4px',
+                                backgroundColor: '#6366f1', color: '#fff', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: '3px'
+                              }}>
+                                <FileText size={11} /> 패키지 재발송 필요
                               </span>
                             ) : (
                               <span style={{
@@ -774,7 +787,25 @@ export const Dashboard: React.FC = () => {
                           </div>
                         </div>
 
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0, flexWrap: 'wrap' }}>
+                          {/* 🌟 계약서패키지 원클릭 재발송 모달 호출 버튼 */}
+                          {isPackageResend && (
+                            <button
+                              onClick={() => {
+                                setBundleTargetContractId(task.entityId);
+                                setShowBundleModal(true);
+                              }}
+                              style={{
+                                fontSize: '12px', padding: '6px 12px', borderRadius: '6px', border: 'none',
+                                backgroundColor: '#4f46e5', color: '#fff', fontWeight: '800', cursor: 'pointer',
+                                display: 'flex', alignItems: 'center', gap: '4px', boxShadow: '0 2px 6px rgba(79,70,229,0.3)',
+                                whiteSpace: 'nowrap'
+                              }}
+                            >
+                              <FileText size={13} /> 패키지 재발송 ➔
+                            </button>
+                          )}
+
                           {task.actionUrl && task.actionUrl !== '/' && (
                             <button
                               className="btn-primary"
@@ -794,7 +825,7 @@ export const Dashboard: React.FC = () => {
                                 const target = tabMap[task.actionUrl || ''] || 'dashboard';
                                 setActiveTab(target);
                               }}
-                              style={{ fontSize: '12px', padding: '6px 12px', display: 'flex', alignItems: 'center', gap: '4px' }}
+                              style={{ fontSize: '12px', padding: '6px 12px', display: 'flex', alignItems: 'center', gap: '4px', whiteSpace: 'nowrap' }}
                             >
                               처리 이동 <ArrowRight size={12} />
                             </button>
@@ -809,7 +840,8 @@ export const Dashboard: React.FC = () => {
                               style={{
                                 fontSize: '12px', padding: '6px 12px', borderRadius: '6px', border: 'none',
                                 backgroundColor: '#10b981', color: '#fff', fontWeight: '800', cursor: 'pointer',
-                                display: 'flex', alignItems: 'center', gap: '4px', boxShadow: '0 2px 6px rgba(16,185,129,0.25)'
+                                display: 'flex', alignItems: 'center', gap: '4px', boxShadow: '0 2px 6px rgba(16,185,129,0.25)',
+                                whiteSpace: 'nowrap'
                               }}
                             >
                               <CheckSquare size={13} /> 조치 결과 보고 & 완료
@@ -819,7 +851,8 @@ export const Dashboard: React.FC = () => {
                               onClick={() => completeTodo(task.id)}
                               style={{
                                 fontSize: '12px', padding: '6px 10px', borderRadius: '6px', border: '1px solid var(--border-color)',
-                                backgroundColor: 'transparent', color: 'var(--text-muted)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px'
+                                backgroundColor: 'transparent', color: 'var(--text-muted)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px',
+                                whiteSpace: 'nowrap'
                               }}
                               title="수동 완료 처리"
                             >
@@ -1105,6 +1138,16 @@ export const Dashboard: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* 📄 계약서패키지 원클릭 재발송 모달 */}
+      <ContractDocumentBundleModal
+        isOpen={showBundleModal}
+        onClose={() => {
+          setShowBundleModal(false);
+          setBundleTargetContractId(undefined);
+        }}
+        initialContractId={bundleTargetContractId}
+      />
 
     </div>
   );

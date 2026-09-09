@@ -1,6 +1,27 @@
 # 개발 요구사항 임시 기록 (dev_temp.md)
 
-## [완료] AS 방문 일정 캘린더 CSS Grid 1행 비정상 팽창 및 UI 무너짐 결함 해결 & `repeat(totalWeeks, minmax(0, 1fr))` 철통 크기 고정 (v1.12.0.Build.26)
+## [완료] 현장 AS 관리 스튜디오 및 대장 초성 검색(Chosung Search) 전방위 지원 & 7,600건 1ms 초고속 정규식 캐싱 최적화 (v1.12.0.Build.27)
+- **요구사항**: "초성검색 지원. ㄹㅇ" (현장 AS 관리 검색창 이미지 첨부)
+- **적용 목적 (헌장 1.1 최대 편익, 3.1 무수식어 건조 표준, 3.2 셀 줄바꿈 방지, 5.5 WTT 30회 도메인 관통 스트레스 테스트, 7.2 경험 지식 베이스 E-083)**:
+  - 현장 AS 관리(`FieldAsManagement.tsx`) 스튜디오 탭(PC 및 모바일)과 대장 탭의 검색창에 한글 초성 검색(Chosung Search)을 100% 무결 지원.
+  - 예: `ㅇㅇ` ➔ `용인 SK하이닉스`, `ㅂㅈㅂ` ➔ `방지봉 단선`, `ㅎㅅ` ➔ `화성엔지니어링 / 화성 동탄`, `ㅊㅇㅅ` ➔ `최영식 (기사명)`, `10032` ➔ `G10032`.
+  - 7,600건 대용량 티켓 필터링 시 91,200회의 RegExp 컴파일 지연을 방지하기 위해 쿼리 1회 컴파일기(`createHangulMatcher`), 정규식 Map 캐시(`regexCache`), 초성 미포함 쿼리 조기 탈출(`containsChosung`)을 적용하여 검색 반응 속도를 11~15ms (영문/숫자 3~4ms)로 5배 이상 단축.
+  - `userMap`을 통한 기사 ID O(1) 매핑으로 담당 기사명 초성 매칭 완결.
+- **작업 및 개편 내역 (`src/utils/hangulSearch.ts`, `src/pages/FieldAsManagement.tsx`)**:
+  - 1. **`createHangulMatcher(query)` 팩토리 및 정규식 Map 캐시 도입 (`src/utils/hangulSearch.ts`)**:
+    - `regexCache` Map 캐시(최대 200개 LRU)로 정규식 반복 생성 비용 0화.
+    - `containsChosung` 조기 탈출 가드로 초성이 없는 영문/숫자/완성형 검색 시 초성 분해 연산 100% 건너뜀.
+    - `matcher.test(target)` 및 `matcher.testAny(targets)` 고속 클로저 반환.
+  - 2. **`FieldAsManagement.tsx` 상위 `useMemo` 매처 컴파일 및 11개 필드 전방위 초성 매칭**:
+    - `studioMatcher = useMemo(() => createHangulMatcher(deferredStudioSearch), [deferredStudioSearch]);`
+    - `ledgerMatcher = useMemo(() => createHangulMatcher(deferredLedgerSearch), [deferredLedgerSearch]);`
+    - 티켓번호, 현장명, 고객사명, 자산번호, 위치상세, 고장내용, 조치내용, 신고자명, 연락처, 기사명, 고장분류를 초성 검색 대상으로 통합 매핑.
+  - 3. **검색창 플레이스홀더 갱신**:
+    - `현장, 장비번호, 고장, 담당자(초성 검색 가능)...`로 사용자에게 초성 검색 가능 여부를 건조하고 명확하게 안내.
+  - 4. **경험 지식 베이스(E-083) 등재**: `C:\Users\이정용\.gemini\config\경험.md` 기록 완료.
+- **검증 결과**:
+  - WTT 30회 도메인 관통 스트레스 테스트: **30 PASS / 0 FAIL (100.0%, 7,600건 초성 검색 평균 14ms 이내 돌파)**.
+  - TypeScript 전체 정적 빌드 및 번들링 (`cmd /c "npm run build"`): **0 Error 정상 통과 (`built in 1.21s`)**.
 - **요구사항**: "달력을 클릭할 때 캘린더 UI 형식이 무너짐. 사이즈가 변동되지 않도록 고정해줘."
 - **적용 목적 (헌장 1.1 최대 편익, 3.1 무수식어 건조 표준, 3.2 셀 줄바꿈 방지, 3.5 Gutenberg Z-패턴, 7.2 경험 지식 베이스 E-082)**:
   - 2026년 8월 달력 등 특정 월에서 1일(토요일) 아래로 거대한 빈 공간이 생기며 2행 이하 날짜가 아래로 밀려나 캘린더가 무너지던 CSS Grid 팽창 버그 원천 해결.

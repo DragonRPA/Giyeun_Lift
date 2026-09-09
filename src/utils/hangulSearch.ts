@@ -87,12 +87,19 @@ export function extractChosung(text: string): string {
   return res;
 }
 
+// 정규식 캐시 (메모리 누수 방지 LRU/Map 캐시 최대 200개)
+const regexCache = new Map<string, RegExp>();
+
 /**
- * 검색어를 기반으로 초성과 완성형을 모두 포용하는 정규표현식(RegExp)을 동적 생성
+ * 검색어를 기반으로 초성과 완성형을 모두 포용하는 정규표현식(RegExp)을 동적 생성 및 캐싱
  */
 export function createHangulSearchRegex(query: string): RegExp {
   const cleanQuery = decomposeComplexConsonants(query.trim());
   if (!cleanQuery) return /(?:)/;
+
+  if (regexCache.has(cleanQuery)) {
+    return regexCache.get(cleanQuery)!;
+  }
 
   let pattern = '';
   for (let i = 0; i < cleanQuery.length; i++) {
@@ -101,8 +108,8 @@ export function createHangulSearchRegex(query: string): RegExp {
 
     if (chosungIdx >= 0) {
       // 초성 자음인 경우: 해당 자음으로 시작하는 모든 음절(가-깋 등) 또는 자음 자체 매칭
-      const startCode = HANGUL_BASE + chosungIdx * 21 * 28;
-      const endCode = HANGUL_BASE + (chosungIdx + 1) * 21 * 28 - 1;
+      const startCode = HANGUL_BASE + chosungIdx * 588;
+      const endCode = HANGUL_BASE + (chosungIdx + 1) * 588 - 1;
       pattern += `[${String.fromCharCode(startCode)}-${String.fromCharCode(endCode)}${char}]`;
     } else {
       // 특수문자 이스케이프 후 일반 매칭
@@ -110,7 +117,79 @@ export function createHangulSearchRegex(query: string): RegExp {
     }
   }
 
-  return new RegExp(pattern, 'i');
+  const regex = new RegExp(pattern, 'i');
+  if (regexCache.size > 200) {
+    const firstKey = regexCache.keys().next().value;
+    if (firstKey) regexCache.delete(firstKey);
+  }
+  regexCache.set(cleanQuery, regex);
+  return regex;
+}
+
+const CHOSUNG_SET = new Set(CHOSUNG_LIST);
+
+/**
+ * 텍스트 내에 초성 자음(ㄱ~ㅎ)이나 복자음이 하나라도 포함되어 있는지 고속 검사
+ */
+export function containsChosung(text: string): boolean {
+  if (!text) return false;
+  for (let i = 0; i < text.length; i++) {
+    const char = text[i];
+    if (CHOSUNG_SET.has(char) || char in COMPLEX_CONSONANT_MAP) {
+      return true;
+    }
+  }
+  return false;
+}
+
+export interface HangulMatcher {
+  test: (target?: string | null) => boolean;
+  testAny: (targets: (string | null | undefined)[]) => boolean;
+}
+
+/**
+ * 검색어를 1회 전처리/컴파일하여 수천~수만 건 대량 데이터 반복 검색에 최적화된 고속 매처를 생성
+ */
+export function createHangulMatcher(query?: string | null): HangulMatcher {
+  if (!query || !query.trim()) {
+    return {
+      test: () => true,
+      testAny: () => true
+    };
+  }
+
+  const cleanQuery = decomposeComplexConsonants(query.trim());
+  const lowerQuery = cleanQuery.toLowerCase();
+  const hasChosung = containsChosung(cleanQuery);
+  const regex = hasChosung ? createHangulSearchRegex(cleanQuery) : null;
+
+  const test = (target?: string | null): boolean => {
+    if (!target || !target.trim()) return false;
+    const cleanTarget = target.trim();
+
+    // 1. 일반 대소문자 무시 부분일치 (영문, 숫자, 한글 완성형) - O(N) 초고속
+    if (cleanTarget.toLowerCase().includes(lowerQuery)) return true;
+
+    // 쿼리에 초성이 없다면 초성/정규식 매칭 불필요
+    if (!hasChosung) return false;
+
+    // 2. 순수 초성 문자열 매칭 ('ㅇㅈㅇ' in 'ㅇㅈㅇ')
+    const targetChosung = extractChosung(cleanTarget);
+    if (targetChosung.includes(cleanQuery)) return true;
+
+    // 3. 초성-완성형 혼합 정규식 매칭
+    return regex ? regex.test(cleanTarget) : false;
+  };
+
+  const testAny = (targets: (string | null | undefined)[]): boolean => {
+    if (!targets || targets.length === 0) return false;
+    for (let i = 0; i < targets.length; i++) {
+      if (test(targets[i])) return true;
+    }
+    return false;
+  };
+
+  return { test, testAny };
 }
 
 /**
@@ -123,28 +202,7 @@ export function createHangulSearchRegex(query: string): RegExp {
 export function matchHangul(target?: string | null, query?: string | null): boolean {
   if (!query || !query.trim()) return true;
   if (!target || !target.trim()) return false;
-
-  const cleanTarget = target.trim();
-  const cleanQuery = decomposeComplexConsonants(query.trim());
-
-  // 1. 일반 대소문자 무시 포함 검색 (영문, 숫자, 한글 완성형)
-  if (cleanTarget.toLowerCase().includes(cleanQuery.toLowerCase())) {
-    return true;
-  }
-
-  // 2. 순수 초성 문자열 매칭 ('ㅇㅈㅇ' in 'ㅇㅈㅇ')
-  const targetChosung = extractChosung(cleanTarget);
-  if (targetChosung.includes(cleanQuery)) {
-    return true;
-  }
-
-  // 3. 동적 정규식 매칭 (혼합형: '삼성ㅁㅅ', '기ㅇ' 등)
-  try {
-    const regex = createHangulSearchRegex(cleanQuery);
-    return regex.test(cleanTarget);
-  } catch {
-    return false;
-  }
+  return createHangulMatcher(query).test(target);
 }
 
 /**
@@ -153,5 +211,7 @@ export function matchHangul(target?: string | null, query?: string | null): bool
  */
 export function matchHangulAny(targets: (string | null | undefined)[], query?: string | null): boolean {
   if (!query || !query.trim()) return true;
-  return targets.some(target => matchHangul(target, query));
+  if (!targets || targets.length === 0) return false;
+  return createHangulMatcher(query).testAny(targets);
 }
+

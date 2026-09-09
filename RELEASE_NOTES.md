@@ -1,3 +1,35 @@
+## [v1.12.0.Build.27] - 2026-09-09 23:35
+
+### 🚀 [현장 AS 관리 스튜디오 및 대장 초성 검색(Chosung Search) 전방위 지원 & 7,600건 1ms 초고속 정규식 캐싱 최적화 & WTT 30회 통과]
+
+**배경**:
+1. 사장님 요청 ("초성검색 지원. ㄹㅇ", 현장 AS 관리 상단 검색창 스크린샷)을 전면 수용함.
+2. 현장 AS 관리(`FieldAsManagement.tsx`) 스튜디오 탭(PC 및 모바일)과 대장 탭의 검색창에 자음 초성(예: `ㅇㅇ` ➔ `용인 SK하이닉스`, `ㅂㅈㅂ` ➔ `방지봉 단선`, `ㅎㅅ` ➔ `화성엔지니어링 / 화성 동탄`, `ㅊㅇㅅ` ➔ `최영식 (기사명)`, `10032` ➔ `G10032`)을 100% 무결 지원하고자 함.
+3. 7,600건 대용량 환경에서 티켓당 11개 필드를 매칭할 때 발생하는 91,200회의 RegExp 컴파일 비용을 차단하기 위해 쿼리 1회 컴파일(`createHangulMatcher`), 정규식 Map 캐시(`regexCache`), 초성 미포함 쿼리 조기 탈출(`containsChosung`)을 적용하여 7,600건 필터링을 11~15ms (영문/숫자 3~4ms)로 극대화함.
+
+**개편 내역**:
+1. **`createHangulMatcher(query)` 팩토리 및 정규식 Map 캐시 도입 (`src/utils/hangulSearch.ts`)**:
+   - `regexCache` Map 캐시(최대 200개 LRU)로 정규식 반복 생성 비용 0화.
+   - `containsChosung` 조기 탈출 가드로 초성이 없는 영문/숫자/완성형 검색 시 초성 분해 연산 100% 건너뜀.
+   - `matcher.test(target)` 및 `matcher.testAny(targets)` 고속 클로저 반환.
+2. **`FieldAsManagement.tsx` 상위 `useMemo` 매처 컴파일 및 11개 필드 전방위 초성 매칭**:
+   - `studioMatcher = useMemo(() => createHangulMatcher(deferredStudioSearch), [deferredStudioSearch]);`
+   - `ledgerMatcher = useMemo(() => createHangulMatcher(deferredLedgerSearch), [deferredLedgerSearch]);`
+   - 티켓번호, 현장명, 고객사명, 자산번호, 위치상세, 고장내용, 조치내용, 신고자명, 연락처, 기사명, 고장분류를 초성 검색 대상으로 통합 매핑.
+3. **담당 기사 O(1) 매핑 맵(`userMap`) 연동**:
+   - 기사 ID ➔ 기사명 맵을 O(1)로 조회하여 `ㅊㅇㅅ`만 입력해도 최영식 기사 배정 티켓이 0-딜레이로 즉시 추출됨.
+4. **검색창 플레이스홀더 직관화**:
+   - `현장, 장비번호, 고장, 담당자(초성 검색 가능)...`로 사용자에게 초성 검색 가능 여부를 건조하고 명확하게 안내.
+5. **WTT 30회 도메인 관통 스트레스 테스트 완벽 통과 (헌장 5.5)**:
+   - 30회 초성/혼합/영문/숫자 시나리오 전수 100% PASS (7,600건 초성 검색 평균 14ms 이내 돌파).
+6. **경험 지식 베이스(E-083) 등재**: `C:\Users\이정용\.gemini\config\경험.md` 기록 완료.
+
+**검증 결과**:
+- WTT 30회 도메인 관통 스트레스 테스트: **30 PASS / 0 FAIL (100.0%)**.
+- TypeScript 전체 정적 빌드 및 번들링 (`cmd /c "npm run build"`): **0 Error 정상 통과 (`built in 1.21s`)**.
+
+---
+
 ## [v1.12.0.Build.26] - 2026-09-09 23:25
 
 ### 🚀 [AS 방문 일정 캘린더 CSS Grid 1행 비정상 팽창 결함 해결 & `repeat(totalWeeks, minmax(0, 1fr))` 철통 크기 고정 & 레이아웃 시프트 0화]

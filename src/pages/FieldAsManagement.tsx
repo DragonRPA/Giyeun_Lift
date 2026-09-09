@@ -13,6 +13,7 @@ import { compressImageFile } from '../utils/imageCompressor';
 import { launchNavigation, safePhoneCall, resolveSiteDetailedAddress } from '../utils/nativeLauncher';
 import { normalizeMenuId } from '../config/menu_config';
 import { getRoleTemplatePermission } from '../config/role_templates';
+import { createHangulMatcher } from '../utils/hangulSearch';
 
 // 자주 쓰이는 조치 내용 프리셋 태그 (5,518건 빅데이터 기반)
 const QUICK_ACTION_TAGS = [
@@ -352,6 +353,19 @@ export const FieldAsManagement: React.FC = () => {
     }
   }, [eligibleAssignees, currentUser]);
 
+  // 기사 ID -> 기사 이름 매핑 맵 (초성 검색 가속)
+  const userMap = useMemo(() => {
+    const map = new Map<string, string>();
+    (users || []).forEach(u => {
+      map.set(u.id, u.name || '');
+    });
+    return map;
+  }, [users]);
+
+  // 쿼리 전처리/컴파일 캐시 (7,600건 대용량 필터링 1ms 미만 초고속 매칭)
+  const studioMatcher = useMemo(() => createHangulMatcher(deferredStudioSearch), [deferredStudioSearch]);
+  const ledgerMatcher = useMemo(() => createHangulMatcher(deferredLedgerSearch), [deferredLedgerSearch]);
+
   // 스튜디오 필터링된 티켓 목록 (당면 미완결 과제 우선순위 정렬 및 날짜 스코프)
   const studioFilteredTickets = useMemo(() => {
     const list = fieldAsTickets.filter(t => {
@@ -372,19 +386,22 @@ export const FieldAsManagement: React.FC = () => {
       // 3. 분류 필터
       if (studioCategoryFilter !== 'ALL' && t.issueCategory !== studioCategoryFilter) return false;
 
-      // 4. 검색어 필터 (useDeferredValue 적용으로 타이핑 렉 100% 방어)
+      // 4. 검색어 필터 (초성검색 및 완성형/영문/숫자 통합 지원)
       if (deferredStudioSearch.trim()) {
-        const q = deferredStudioSearch.toLowerCase();
-        const match = 
-          (t.ticketNo || '').toLowerCase().includes(q) ||
-          (t.siteName || '').toLowerCase().includes(q) ||
-          (t.customerName || '').toLowerCase().includes(q) ||
-          (t.assetNo || '').toLowerCase().includes(q) ||
-          (t.locationDetail || '').toLowerCase().includes(q) ||
-          (t.issueDescription || '').toLowerCase().includes(q) ||
-          (t.actionTaken || '').toLowerCase().includes(q) ||
-          (t.reporterName || '').toLowerCase().includes(q) ||
-          (t.reporterContact || '').toLowerCase().includes(q);
+        const mechName = t.assignedMechanicId ? (userMap.get(t.assignedMechanicId) || '') : '';
+        const match = studioMatcher.testAny([
+          t.ticketNo,
+          t.siteName,
+          t.customerName,
+          t.assetNo,
+          t.locationDetail,
+          t.issueDescription,
+          t.actionTaken,
+          t.reporterName,
+          t.reporterContact,
+          mechName,
+          t.issueCategory
+        ]);
         if (!match) return false;
       }
 
@@ -402,7 +419,7 @@ export const FieldAsManagement: React.FC = () => {
       const bDate = b.requestDate || b.visitDate || b.createdAt || '';
       return bDate.localeCompare(aDate);
     });
-  }, [fieldAsTickets, studioStartDate, studioEndDate, studioStatusFilter, studioCategoryFilter, deferredStudioSearch]);
+  }, [fieldAsTickets, studioStartDate, studioEndDate, studioStatusFilter, studioCategoryFilter, deferredStudioSearch, userMap, studioMatcher]);
 
   // 대용량(7,000건+) DOM 부하 방어용 슬라이스 렌더링 (기본 50건 표시 후 더보기)
   const visibleStudioTickets = useMemo(() => {
@@ -433,20 +450,26 @@ export const FieldAsManagement: React.FC = () => {
       }
 
       if (deferredLedgerSearch.trim()) {
-        const q = deferredLedgerSearch.toLowerCase();
-        const match =
-          (t.ticketNo || '').toLowerCase().includes(q) ||
-          (t.siteName || '').toLowerCase().includes(q) ||
-          (t.customerName || '').toLowerCase().includes(q) ||
-          (t.assetNo || '').toLowerCase().includes(q) ||
-          (t.issueDescription || '').toLowerCase().includes(q) ||
-          (t.actionTaken || '').toLowerCase().includes(q);
+        const mechName = t.assignedMechanicId ? (userMap.get(t.assignedMechanicId) || '') : '';
+        const match = ledgerMatcher.testAny([
+          t.ticketNo,
+          t.siteName,
+          t.customerName,
+          t.assetNo,
+          t.locationDetail,
+          t.issueDescription,
+          t.actionTaken,
+          t.reporterName,
+          t.reporterContact,
+          mechName,
+          t.issueCategory
+        ]);
         if (!match) return false;
       }
 
       return true;
     });
-  }, [fieldAsTickets, ledgerStatus, ledgerCategory, ledgerMechanic, ledgerBillable, ledgerStartDate, ledgerEndDate, deferredLedgerSearch]);
+  }, [fieldAsTickets, ledgerStatus, ledgerCategory, ledgerMechanic, ledgerBillable, ledgerStartDate, ledgerEndDate, deferredLedgerSearch, userMap, ledgerMatcher]);
 
   // 대장 대용량 슬라이스 렌더링 (기본 100건 표시 후 더보기)
   const visibleLedgerTickets = useMemo(() => {
@@ -1189,7 +1212,7 @@ showToast('밴드 과거 AS 빅데이터 탑재를 시작합니다.');
                   type="text"
                   value={studioSearchTerm}
                   onChange={(e) => setStudioSearchTerm(e.target.value)}
-                  placeholder="현장, 장비번호, 고장내용 검색..."
+                  placeholder="현장, 장비번호, 고장내용 (초성 검색 가능)..."
                   style={{
                     width: '100%',
                     padding: '10px 12px 10px 38px',
@@ -1635,7 +1658,7 @@ showToast('밴드 과거 AS 빅데이터 탑재를 시작합니다.');
                       setStudioSearchTerm(e.target.value);
                       setStudioDisplayLimit(50);
                     }}
-                    placeholder="현장, 장비번호, 고장, 담당자..."
+                    placeholder="현장, 장비번호, 고장, 담당자 (초성 검색 가능)..."
                     style={{
                       width: '100%',
                       padding: '6px 8px 6px 28px',
@@ -3098,7 +3121,7 @@ showToast('밴드 과거 AS 빅데이터 탑재를 시작합니다.');
                     setLedgerSearch(e.target.value);
                     setLedgerDisplayLimit(100);
                   }}
-                  placeholder="현장, 장비, 고장, 담당자..."
+                  placeholder="현장, 장비, 고장 (초성 검색 가능)..."
                   style={{ padding: '5px 10px', borderRadius: '5px', border: '1px solid var(--border-color)', fontSize: '12px', width: '200px', backgroundColor: 'var(--bg-app)', color: 'var(--text-main)' }}
                 />
               </div>

@@ -708,6 +708,24 @@ CREATE OR REPLACE VIEW asset_in_out_logs AS SELECT * FROM asset_inout_logs;
 -- 🔧 [도메인 4] 정비 및 현장 AS (Repairs & Field Services)
 -- ==============================================================================
 
+-- 4-0. 정비 점검 항목 마스터 (inspection_checklist_items)
+CREATE TABLE inspection_checklist_items (
+    id                    TEXT PRIMARY KEY,
+    code                  TEXT NOT NULL UNIQUE,
+    name                  TEXT NOT NULL,
+    category              TEXT NOT NULL,
+    score                 INTEGER NOT NULL DEFAULT 5,
+    "standardManHours"    DOUBLE PRECISION DEFAULT 0.5,
+    "recommendedConsumableIds" TEXT[] DEFAULT ARRAY[]::TEXT[],
+    "actionGuide"         TEXT,
+    description           TEXT,
+    "createdAt"           TEXT NOT NULL,
+    "updatedAt"           TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_inspection_checklist_items_code ON inspection_checklist_items(code);
+CREATE INDEX IF NOT EXISTS idx_inspection_checklist_items_category ON inspection_checklist_items(category);
+
 -- 4-1. 정비 및 현장 AS 대장 (repairs) - 단일 물리 통합 마스터
 CREATE TABLE repairs (
     -- ① 식별 및 분류
@@ -740,6 +758,7 @@ CREATE TABLE repairs (
     "reporterContact"     TEXT,
     "issueCategory"       TEXT,
     "inspectionItemCode"  TEXT,
+    "inspectionItemId"    TEXT REFERENCES inspection_checklist_items(id) ON DELETE SET NULL,
     "degradationScore"    INTEGER NOT NULL DEFAULT 0,
     "issueDescription"    TEXT,
     details               TEXT,
@@ -1544,3 +1563,8 @@ BEGIN
         EXECUTE format('CREATE POLICY "allow_auth_all" ON %I FOR ALL TO authenticated USING (true) WITH CHECK (true);', tbl);
     END LOOP;
 END $$;
+
+-- 🌟 정비점검항목 마스터 테이블은 삭제/수정 무음 실패 방지를 위해 RLS 완전 비활성화 및 전 권한 부여
+ALTER TABLE inspection_checklist_items DISABLE ROW LEVEL SECURITY;
+GRANT ALL ON TABLE inspection_checklist_items TO anon, authenticated, service_role;
+

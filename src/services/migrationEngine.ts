@@ -1,5 +1,4 @@
-// @ts-nocheck
-import { supabase, db, calculateAssetDepreciation, normalizeCustomerName, findCustomerByNormalizedName, STANDARD_SPECS } from './db';
+import { supabase, db, calculateAssetDepreciation, normalizeCustomerName, findCustomerByNormalizedName, STANDARD_SPECS, InspectionChecklistItem, Repair, AssetInOutLog, ContractHistory } from './db';
 import * as XLSX from 'xlsx';
 import { PRESET_PRODUCT_SPECS, ProductPresetSpec } from '../data/presetProductSpecs';
 
@@ -1096,7 +1095,7 @@ export function parseInitialExcelWorkbook(
           cumRepairCost: 0,
           vendorId: null,           // 아래 leaseVendor 처리 후 주입
           renter: leaseVendorName || '미지정',
-          rentStart: (leaseReturnDate && sanitizeExcelDate(r[4]) && leaseReturnDate < sanitizeExcelDate(r[4]))
+          rentStart: (leaseReturnDate && sanitizeExcelDate(r[4]) && leaseReturnDate < (sanitizeExcelDate(r[4]) as string))
             ? leaseReturnDate
             : (sanitizeExcelDate(r[4]) || '2026-08-01'),
           rentEnd: leaseReturnDate,
@@ -1426,7 +1425,7 @@ export function parseInitialExcelWorkbook(
       updatedAt: nowIso
     });
 
-    group.details.forEach(d => {
+    group.details.forEach((d: any) => {
       billingDetails.push({
         id: `BD-${String(bdSeq++).padStart(7, '0')}`,
         billingId: billingId,
@@ -1458,7 +1457,7 @@ export function parseInitialExcelWorkbook(
       updatedAt: nowIso
     });
 
-    pGroup.details.forEach(d => {
+    pGroup.details.forEach((d: any) => {
       purchaseBillingDetails.push({
         id: `PBD-${String(pbdSeq++).padStart(7, '0')}`,
         purchaseBillId: pbId,
@@ -2653,7 +2652,7 @@ export async function generateAndIngestHistoricalBillingsDirect(
         await batchUpsertChunked('assets', changedAssets, 100, msg => onProgress?.(5, 5, msg));
         // 로컬 DB 동기화
         changedAssets.forEach(ca => {
-          db.updateRow('assets', ca.id, { cumRentalFee: ca.cumRentalFee });
+          db.updateRow<any>('assets', ca.id, { cumRentalFee: ca.cumRentalFee });
         });
         updatedAssetCount = changedAssets.length;
       }
@@ -3350,7 +3349,7 @@ export async function ingestCustomerDefaultsFromDispatchHistory(
         const existingContacts = db.customerContacts || [];
         const existingCt = existingContacts.find(c => c.customerId === item.customerId && c.contact === ct.contact);
         if (!existingCt) {
-          db.insertRow('customer_contacts', {
+          db.insertRow<any>('customer_contacts', {
             id: `CC-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
             customerId: item.customerId,
             name: ct.name,
@@ -3412,6 +3411,7 @@ export interface ParsedBandAsRecord {
   actionTaken: string;
   isSingleAssetGuessed: boolean;
   isAssetBacktracked?: boolean; // 🌟 자산 마스터 기준 현장/고객사 역추적 성공 여부
+  inspectionItemId?: string;
   inspectionItemCode?: string;
   degradationScore?: number;
 }
@@ -3426,6 +3426,7 @@ export interface BandAsAnalysisResult {
   revisitCount: number;
   guidedCount: number;
   records: ParsedBandAsRecord[];
+  generatedChecklistItems?: InspectionChecklistItem[];
 }
 
 function extractKeywordSection(text: string, startKeys: string[], endKeys: string[]): string {
@@ -3446,7 +3447,7 @@ function extractKeywordSection(text: string, startKeys: string[], endKeys: strin
   return '';
 }
 
-export function parseBandAsHistoryText(rawText: string): { author: string; date: string; site: string; customer: string; location: string; assetNo: string; issue: string; contact: string; raw: string }[] {
+export function parseBandAsHistoryText(rawText: string): { author: string; date: string; site: string; customer: string; location: string; assetNo: string; issue: string; contact: string; raw: string; address?: string }[] {
   const lines = rawText.split(/\r?\n/);
   const records: any[] = [];
   let i = 0;
@@ -3592,6 +3593,350 @@ export function parseBandAsHistoryText(rawText: string): { author: string; date:
   }
 
   return records;
+}
+
+// ──────────────────────────────────────────────
+// 🛠️ AS 유사어 클러스터링 및 정비항목 마스터 자동 추출 엔진
+// ──────────────────────────────────────────────
+export interface AsClusterRule {
+  clusterId: string;
+  category: '외관/바디' | '유압/동력' | '전기/배터리' | '주행/타이어' | '기타/검수';
+  keywords: string[];
+  consumableKeyword?: string | null;
+  score: number;
+  manHours: number;
+  actionGuide: string;
+}
+
+export const AS_CLUSTER_RULES: AsClusterRule[] = [
+  {
+    clusterId: 'BONG_WIRE',
+    category: '전기/배터리',
+    keywords: ['방지봉 단선', '방지봉단선', '감지봉 단선', '감지봉단선', '협착방지봉 단선', '방지봉 선 빠짐', '방지봉선빠짐', '감지봉 배선', '방지봉 배선', '감지봉 단선수리', '방지봉 배선 단선', '감지봉 선 빠짐', '협착단선', '협착 단선'],
+    consumableKeyword: null,
+    score: 10,
+    manHours: 0.5,
+    actionGuide: '협착 감지 센서 와이어링 단선 부위 점검 및 슬리브 결선/방수 수축튜브 마감'
+  },
+  {
+    clusterId: 'BONG_DAMAGE',
+    category: '외관/바디',
+    keywords: ['방지봉 불량', '방지봉 파손', '감지봉 파손', '협착 훼손', '협착훼손', '협착휨', '협착파이프 휨', '협착 파이프 휨', '감지봉 휨', '방지봉 휨', '방지봉 파이프 휨', '방지봉 브라켓 파손', '협착리미트 파손', '감지봉 불량', '협착 훼손 원판', '원판 훼손'],
+    consumableKeyword: null,
+    score: 15,
+    manHours: 1.0,
+    actionGuide: '상단 안전 난간 및 협착방지봉 브라켓 휨 교정 또는 파손봉 신품 교체 볼팅'
+  },
+  {
+    clusterId: 'CHARGER_WIRE',
+    category: '전기/배터리',
+    keywords: ['충전선 단선', '충전선단선', '충전선 파손', '충전케이블 단선', '충전선 끊어짐', '충전선 교체', '플러그 파손', '충전 플러그'],
+    consumableKeyword: null,
+    score: 10,
+    manHours: 0.5,
+    actionGuide: 'AC 220V 인입 충전 플러그 및 배선 교체/절연 테이핑 및 방수 몰딩'
+  },
+  {
+    clusterId: 'CHARGING_ISSUE',
+    category: '전기/배터리',
+    keywords: ['충전안됨', '충전 안됨', '충전불량', '충전 불량', '충전 안 됨', '충전기 안됨', '충전기 불량', '충전 불가'],
+    consumableKeyword: '충전기',
+    score: 15,
+    manHours: 1.0,
+    actionGuide: '내장 충전기 전원 입력 220V 및 DC 24V 출력 전압 측정, 불량 시 충전기 교체'
+  },
+  {
+    clusterId: 'OIL_LEAK',
+    category: '유압/동력',
+    keywords: ['오일누유', '누유', '오일 누유', '작동유 누유', '유압유 누유', '실린더 누유', '호스 누유', '하부 누유', '앞쪽 오일 누유', '유압 누유'],
+    consumableKeyword: '유압유',
+    score: 15,
+    manHours: 1.0,
+    actionGuide: '유압 호스 피팅 및 리프트 실린더 패킹 누유 부위 확인, 호스 체결 및 작동유 보충'
+  },
+  {
+    clusterId: 'LIFT_UP_FAIL',
+    category: '유압/동력',
+    keywords: ['상승안됨', '상승 안됨', '상승 불량', '상승불가', '상승불량', '상승중 멈춤', '상승 멈춤', '상승안 됨', '상승 정지', '상승 렉'],
+    consumableKeyword: '상승밸브',
+    score: 15,
+    manHours: 1.0,
+    actionGuide: '상승 솔레노이드 밸브 코일 전원 인가 확인 및 스풀 청소/교체, 유압 릴리프 압력 측정'
+  },
+  {
+    clusterId: 'LIFT_DOWN_FAIL',
+    category: '유압/동력',
+    keywords: ['비상하강 안됨', '하강안됨', '하강 안됨', '하강 불량', '하강불가', '비상하강 불량', '하강 멈춤'],
+    consumableKeyword: '하강밸브',
+    score: 15,
+    manHours: 1.0,
+    actionGuide: '하강 솔레노이드 밸브 및 수동 비상하강 밸브 케이블 작동 상태 점검 및 코일 교체'
+  },
+  {
+    clusterId: 'DRIVE_FAIL',
+    category: '주행/타이어',
+    keywords: ['주행안됨', '주행 안됨', '주행불가', '주행 불량', '전후진 안됨', '전진 안됨', '후진 안됨', '가다서다 함', '주행중 멈춤', '주행불량'],
+    consumableKeyword: '주행모터',
+    score: 20,
+    manHours: 1.5,
+    actionGuide: '주행 밸브 매니폴드 및 유압/전동 휠모터 배선 점검, 브레이크 해제 압력 측정'
+  },
+  {
+    clusterId: 'STEER_FAIL',
+    category: '주행/타이어',
+    keywords: ['조향안됨', '조향 안됨', '조향불가', '조향 불량', '핸들 안됨', '좌우 조향 안됨', '우측조향 안됨', '좌측 조향 안됨', '조향 느림'],
+    consumableKeyword: '조향실린더',
+    score: 15,
+    manHours: 1.0,
+    actionGuide: '조향 실린더 킹핀 엔드볼 유격 확인 및 조향 솔레노이드 밸브 입출력 점검'
+  },
+  {
+    clusterId: 'TIRE_DAMAGE',
+    category: '주행/타이어',
+    keywords: ['타이어 파손', '타이어 찢어짐', '타이어 마모', '통타이어 교체', '타이어 펑크', '바퀴 파손'],
+    consumableKeyword: '타이어',
+    score: 15,
+    manHours: 1.0,
+    actionGuide: '주행 휠 너트 규격 토크 체결 및 비표시(Non-marking) 솔리드 타이어 마모도 교체'
+  },
+  {
+    clusterId: 'JOYSTICK_FAIL',
+    category: '전기/배터리',
+    keywords: ['조이스틱 파손', '조이스틱 불량', '조이스틱 교체', '조이스틱 돌아감', '레버 불량', '컨트롤러 불량'],
+    consumableKeyword: '조이스틱',
+    score: 15,
+    manHours: 1.0,
+    actionGuide: '상부 조작함 조이스틱 포텐셔미터 전압 및 인에이블 스위치 접점 검사 후 어셈블리 교체'
+  },
+  {
+    clusterId: 'KEYBOX_FAIL',
+    category: '전기/배터리',
+    keywords: ['키박스 파손', '키박스 불량', '키박스훼손', '키스위치 불량', '키 안돌아감', '키 파손', '키 분실'],
+    consumableKeyword: null,
+    score: 10,
+    manHours: 0.5,
+    actionGuide: '하부 제어반 키 선택 스위치 접점 단자 점검 및 키 실린더 교체'
+  },
+  {
+    clusterId: 'POWER_FAIL',
+    category: '전기/배터리',
+    keywords: ['전원 안켜짐', '전원 안 들어옴', '전원 안 켜짐', '전원안켜짐', '전원안들어옴', '전원 안들어옴', '상부전원 안켜짐', '메인전원 불량'],
+    consumableKeyword: null,
+    score: 10,
+    manHours: 0.8,
+    actionGuide: '비상정지 버튼 락 해제 상태 확인, 메인 퓨즈/차단기 단선 여부 및 배터리 전압 체크'
+  },
+  {
+    clusterId: 'BATTERY_LOW',
+    category: '전기/배터리',
+    keywords: ['사용시간 짧음', '배터리 소모', '배터리 방전', '배터리 수명', '방전 빨리됨', '증류수 부족'],
+    consumableKeyword: '배터리',
+    score: 15,
+    manHours: 1.0,
+    actionGuide: '배터리 각 셀 전압 및 비중 측정, 터미널 부식 청소 및 증류수 보충/배터리 교체'
+  },
+  {
+    clusterId: 'ERROR_LD',
+    category: '전기/배터리',
+    keywords: ['LD', 'LD에러', 'LD 에러'],
+    consumableKeyword: '리미트',
+    score: 10,
+    manHours: 0.5,
+    actionGuide: '포트홀(Pothole) 보호장치 전개 상태 및 리미트 스위치 감지 접점/배선 점검'
+  },
+  {
+    clusterId: 'ERROR_CL',
+    category: '전기/배터리',
+    keywords: ['CL', 'CL에러', 'CL 에러'],
+    consumableKeyword: null,
+    score: 5,
+    manHours: 0.3,
+    actionGuide: '충전 케이블 분리 확인 및 충전 인터록 릴레이 접점 차단 해제 안내'
+  },
+  {
+    clusterId: 'ERROR_OVERLOAD',
+    category: '전기/배터리',
+    keywords: ['OL에러', 'LO에러', 'OL 에러', 'LO 에러', 'OL', 'LO', '오버로드', '오버로드 해제 요청', '과적재'],
+    consumableKeyword: null,
+    score: 10,
+    manHours: 0.5,
+    actionGuide: '작업대 탑재 하중 초과 여부 확인, 로드셀 압력 센서 영점 캘리브레이션 재설정'
+  },
+  {
+    clusterId: 'ERROR_TILT_81',
+    category: '전기/배터리',
+    keywords: ['81', '81에러', '81 에러', '틸트 에러', '수평센서 에러'],
+    consumableKeyword: '틸트',
+    score: 15,
+    manHours: 0.8,
+    actionGuide: '기울기 경보 센서(Tilt Sensor) 수평 영점 캘리브레이션 및 수평면 레벨링 점검'
+  },
+  {
+    clusterId: 'ERROR_MOTOR_F129',
+    category: '전기/배터리',
+    keywords: ['F129', 'F129 에러', 'F129에러', 'C021', 'U039', 'U036', 'u034', '에러코드'],
+    consumableKeyword: '모터컨트롤러',
+    score: 20,
+    manHours: 1.5,
+    actionGuide: '모터 컨트롤러(MCU) CAN 통신 배선 및 전원단자 체결 상태 진단기 점검'
+  },
+  {
+    clusterId: 'NOISE_MECHANICAL',
+    category: '외관/바디',
+    keywords: ['시저소음', '시저 소음', '리프트 소음', '하강 소음', '소음 발생'],
+    consumableKeyword: null,
+    score: 10,
+    manHours: 0.8,
+    actionGuide: '시저 암 부싱 마모 및 핀 유격 점검, 그리스(윤활유) 주입 및 와셔 교체'
+  },
+  {
+    clusterId: 'FOOT_SWITCH',
+    category: '전기/배터리',
+    keywords: ['풋스위치', '풋스위치 불량', '발판스위치', '발판 스위치'],
+    consumableKeyword: null,
+    score: 10,
+    manHours: 0.5,
+    actionGuide: '작업대 발판 풋스위치 마이크로 리미트 접점 이물질 제거 및 스위치 교체'
+  },
+  {
+    clusterId: 'OPERATION_FAIL_GENERAL',
+    category: '전기/배터리',
+    keywords: ['작동안됨', '작동 안됨', '작동불량', '작동 불량', '에러뜨고 작동안됨', '동작안됨', '전체 작동안됨'],
+    consumableKeyword: null,
+    score: 10,
+    manHours: 0.8,
+    actionGuide: '비상정지 스위치, 풋스위치, 상하부 절환 스위치 전원 루프 점검 및 에러코드 진단'
+  },
+  {
+    clusterId: 'PERIODIC_INSPECTION',
+    category: '기타/검수',
+    keywords: ['점검 및 정비 요청', '점검요청', '정기점검', '종합점검', '안전점검', '점검'],
+    consumableKeyword: null,
+    score: 5,
+    manHours: 0.5,
+    actionGuide: '장비 전반 외관, 유압 누유, 배터리 비중, 안전장치 작동 상태 종합 점검'
+  }
+];
+
+export function buildInspectionMasterFromAsRecords(
+  records: ParsedBandAsRecord[],
+  consumablesList: any[]
+): {
+  checklistItems: InspectionChecklistItem[];
+  updatedRecords: ParsedBandAsRecord[];
+} {
+  const clusterData = new Map<string, {
+    rule: AsClusterRule;
+    phraseFreq: Map<string, number>;
+    totalCount: number;
+    matchingRecords: ParsedBandAsRecord[];
+  }>();
+
+  AS_CLUSTER_RULES.forEach(rule => {
+    clusterData.set(rule.clusterId, {
+      rule,
+      phraseFreq: new Map(),
+      totalCount: 0,
+      matchingRecords: []
+    });
+  });
+
+  const unclassifiedRecords: ParsedBandAsRecord[] = [];
+
+  records.forEach(r => {
+    const raw = (r.issue || '').trim();
+    if (!raw) {
+      unclassifiedRecords.push(r);
+      return;
+    }
+
+    let matchedClusterId: string | null = null;
+    for (const rule of AS_CLUSTER_RULES) {
+      if (rule.keywords.some(kw => raw.includes(kw) || kw.includes(raw))) {
+        matchedClusterId = rule.clusterId;
+        break;
+      }
+    }
+
+    if (matchedClusterId) {
+      const c = clusterData.get(matchedClusterId)!;
+      c.totalCount++;
+      c.phraseFreq.set(raw, (c.phraseFreq.get(raw) || 0) + 1);
+      c.matchingRecords.push(r);
+    } else {
+      unclassifiedRecords.push(r);
+    }
+  });
+
+  // 빈도수 내림차순 정렬
+  const activeClusters = Array.from(clusterData.values())
+    .filter(c => c.totalCount > 0)
+    .sort((a, b) => b.totalCount - a.totalCount);
+
+  const checklistItems: InspectionChecklistItem[] = [];
+
+  activeClusters.forEach((c, idx) => {
+    // 🌟 핵심 원칙: 유사 표현 중 빈도수가 가장 높은 쪽으로 공식 명칭 정의!
+    const sortedPhrases = Array.from(c.phraseFreq.entries()).sort((a, b) => b[1] - a[1]);
+    const representativeName = sortedPhrases[0][0];
+
+    const code = `CHK-${String(idx + 1).padStart(7, '0')}`;
+    const id = `chk-band-${String(idx + 1).padStart(7, '0')}`;
+
+    // 소모품 매핑: 참고할만한 이력이 있는 경우에만 등록
+    const matchedConsumableIds: string[] = [];
+    if (c.rule.consumableKeyword) {
+      const targetKw = c.rule.consumableKeyword;
+      const targetClean = targetKw.replace(/\s+/g, '').toLowerCase();
+      const found = (consumablesList || []).find((part: any) => {
+        const pName = ((part.modelName || '') + ' ' + (part.name || '')).replace(/\s+/g, '').toLowerCase();
+        if (pName.includes(targetClean)) return true;
+        if (targetClean.length >= 4) {
+          const w1 = targetClean.slice(0, 2);
+          const w2 = targetClean.slice(2);
+          if (pName.includes(w1) && pName.includes(w2)) return true;
+        }
+        return false;
+      });
+      if (found) {
+        matchedConsumableIds.push(found.id);
+      }
+    }
+
+    const item: InspectionChecklistItem = {
+      id,
+      category: c.rule.category,
+      code,
+      name: representativeName,
+      score: c.rule.score,
+      standardManHours: c.rule.manHours,
+      recommendedConsumableIds: matchedConsumableIds,
+      actionGuide: c.rule.actionGuide,
+      description: `[밴드 AS 분석 자동 생성] 유사 표현 ${sortedPhrases.length}종 집계 (최빈도: "${representativeName}" ${c.totalCount}건)`,
+      createdAt: new Date().toISOString()
+    };
+
+    checklistItems.push(item);
+
+    // 각 매칭된 레코드에 코드와 ID 매핑
+    c.matchingRecords.forEach(r => {
+      r.inspectionItemCode = code;
+      r.inspectionItemId = id;
+      r.degradationScore = c.rule.score;
+    });
+  });
+
+  // 미분류 건들은 기본 5점 처리
+  unclassifiedRecords.forEach(r => {
+    r.inspectionItemCode = 'CHK-UNCLASSIFIED';
+    r.inspectionItemId = undefined;
+    r.degradationScore = 5;
+  });
+
+  return {
+    checklistItems,
+    updatedRecords: records
+  };
 }
 
 export function analyzeBandAsHistory(
@@ -3762,24 +4107,6 @@ export function analyzeBandAsHistory(
       uniqueAssetSet.add(finalAssetNo);
     }
 
-    let inspectionItemCode = 'CHK-000005'; // 기본값: 기타/접수
-    let degradationScore = 5;
-    
-    const lowerIssue = post.issue.toLowerCase();
-    if (lowerIssue.includes('타이어') || lowerIssue.includes('바퀴') || lowerIssue.includes('주행') || lowerIssue.includes('궤도')) {
-      inspectionItemCode = 'CHK-000004'; // 주행/타이어
-      degradationScore = 20;
-    } else if (lowerIssue.includes('배터리') || lowerIssue.includes('충전') || lowerIssue.includes('전기') || lowerIssue.includes('차단기')) {
-      inspectionItemCode = 'CHK-000003'; // 전기/배터리
-      degradationScore = 15;
-    } else if (lowerIssue.includes('유압') || lowerIssue.includes('실린더') || lowerIssue.includes('모터') || lowerIssue.includes('동력') || lowerIssue.includes('누유')) {
-      inspectionItemCode = 'CHK-000002'; // 유압/동력
-      degradationScore = 10;
-    } else if (lowerIssue.includes('외관') || lowerIssue.includes('파손') || lowerIssue.includes('안전바') || lowerIssue.includes('찌그러짐') || lowerIssue.includes('데칼')) {
-      inspectionItemCode = 'CHK-000001'; // 외관/바디
-      degradationScore = 5;
-    }
-
     parsedRecords.push({
       idx: idx + 1,
       author: authorName,
@@ -3808,14 +4135,15 @@ export function analyzeBandAsHistory(
       resolutionType,
       actionTaken: actionText,
       isSingleAssetGuessed: isSingleGuessed,
-      isAssetBacktracked,
-      inspectionItemCode,
-      degradationScore
+      isAssetBacktracked
     });
   });
 
+  // 🌟 [핵심] AS 빅데이터 유사어 클러스터링 및 정비항목 마스터 자동 형성 (최빈도 대표 표기어 채택)
+  const { checklistItems, updatedRecords } = buildInspectionMasterFromAsRecords(parsedRecords, db.consumables || []);
+
   return {
-    totalCount: parsedRecords.length,
+    totalCount: updatedRecords.length,
     uniqueAssetsCount: uniqueAssetSet.size,
     matchedContractCount,
     singleAssetGuessedCount,
@@ -3823,7 +4151,8 @@ export function analyzeBandAsHistory(
     completedCount,
     revisitCount,
     guidedCount,
-    records: parsedRecords
+    records: updatedRecords,
+    generatedChecklistItems: checklistItems
   };
 }
 
@@ -3845,6 +4174,13 @@ export async function ingestBandAsHistoryDirect(
   const existingRawSet = new Set(
     existingList.map(t => `${t.siteName}_${t.assetNo}_${t.requestDate}_${(t.issueDescription || t.details || '').slice(0, 20)}`)
   );
+
+  // 🌟 [핵심] 정비항목 마스터가 생성되었으면 Supabase 및 메모리 DB에 먼저 무누락 일괄 적재
+  if (analysis.generatedChecklistItems && analysis.generatedChecklistItems.length > 0) {
+    onProgress?.(0, total, `정비항목 마스터 (${analysis.generatedChecklistItems.length}개 항목) DB 등록 중...`);
+    await batchUpsertChunked('inspection_checklist_items', analysis.generatedChecklistItems, 50);
+    db.inspectionChecklistItems = [...analysis.generatedChecklistItems, ...(db.inspectionChecklistItems || [])];
+  }
 
   const newRepairs: Repair[] = [];
   const newAssetLogs: AssetInOutLog[] = [];
@@ -3882,7 +4218,8 @@ export async function ingestBandAsHistoryDirect(
       reporterContact: r.contact || '',
       issueCategory: r.issue.includes('방지봉') ? '방지봉/협착' : r.issue.includes('상승') || r.issue.includes('하강') ? '상하강불량' : r.issue.includes('배터리') ? '충전/전원' : '점검요청',
       inspectionItemCode: r.inspectionItemCode,
-      degradationScore: r.degradationScore,
+      inspectionItemId: r.inspectionItemId,
+      degradationScore: r.degradationScore || 5,
       issueDescription: r.issue,
       details: r.issue,
       status: r.status,
@@ -3927,8 +4264,7 @@ export async function ingestBandAsHistoryDirect(
           siteName: repairRow.siteName,
           repairId: repairRow.id,
           memo: `[현장AS] ${r.issue} ➔ ${r.actionTaken} (정비사: ${r.mechanicName})`,
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString()
+          createdAt: new Date().toISOString()
         });
       }
     }
@@ -3941,8 +4277,7 @@ export async function ingestBandAsHistoryDirect(
         changeType: 'AS_SERVICE',
         changeDate: r.date,
         description: `[과거 현장 AS] ${r.issue} ➔ ${r.actionTaken} (${r.matchedAssetNo || '현장장비'}, 정비사: ${r.mechanicName})`,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString()
+        createdAt: new Date().toISOString()
       });
     }
 
@@ -4044,6 +4379,13 @@ export async function rollbackBandAsHistory(
           await supabase.from('contract_history').delete().in('id', chunk);
         }
       }
+
+      // 4. inspection_checklist_items 테이블에서 id LIKE 'chk-band-%' 대상 완전 삭제
+      const { error: chkErr } = await supabase
+        .from('inspection_checklist_items')
+        .delete()
+        .like('id', 'chk-band-%');
+      if (chkErr) console.warn('inspection_checklist_items rollback warning:', chkErr);
     }
 
     // 로컬 메모리 DB에서도 삭제
@@ -4057,10 +4399,13 @@ export async function rollbackBandAsHistory(
     if (dbAny.contractHistories) {
       dbAny.contractHistories = dbAny.contractHistories.filter((h: any) => !h.id?.startsWith('ch-as-band-'));
     }
+    if (dbAny.inspectionChecklistItems) {
+      dbAny.inspectionChecklistItems = dbAny.inspectionChecklistItems.filter((i: any) => !i.id?.startsWith('chk-band-'));
+    }
 
     return {
       success: true,
-      message: `밴드 AS 이력 데이터 총 ${deletedRepairsCount.toLocaleString()}건 및 연관 이력 정리(롤백) 완료`,
+      message: `밴드 AS 이력 데이터 총 ${deletedRepairsCount.toLocaleString()}건 및 연관 정비항목/이력 정리(롤백) 완료`,
       deletedCount: deletedRepairsCount
     };
   } catch (e: any) {
@@ -4232,6 +4577,128 @@ export async function reconcileUnassignedBandRepairsWithAssets(
     };
   }
 }
+
+/** 🌟 기존 DB의 밴드 AS(또는 전체 정비) 이력을 분석하여 정비항목 마스터 형성 및 매핑 동기화 */
+export async function syncInspectionChecklistFromBandRepairs(
+  onProgress?: (step: number, total: number, msg: string) => void
+): Promise<{ success: boolean; message: string; itemCount: number; updatedRepairsCount: number }> {
+  try {
+    onProgress?.(1, 4, 'DB 정비 이력(repairs) 조회 중...');
+    let repRows: any[] = [];
+    if (supabase) {
+      let page = 0;
+      const pageSize = 1000;
+      while (true) {
+        const { data, error } = await supabase
+          .from('repairs')
+          .select('*')
+          .range(page * pageSize, (page + 1) * pageSize - 1);
+        if (error) throw error;
+        if (!data || data.length === 0) break;
+        repRows.push(...data);
+        if (data.length < pageSize) break;
+        page++;
+      }
+    } else {
+      repRows = [...(db.repairs || [])];
+    }
+
+    if (repRows.length === 0) {
+      return { success: false, message: '동기화할 정비 이력 데이터가 없습니다.', itemCount: 0, updatedRepairsCount: 0 };
+    }
+
+    onProgress?.(2, 4, `총 ${repRows.length.toLocaleString()}건 AS 이력 유사어 클러스터링 및 정비항목 마스터 빌드 중...`);
+
+    const pseudoRecords: ParsedBandAsRecord[] = repRows.map((r, idx) => ({
+      idx: idx + 1,
+      author: r.mechanicName || '',
+      date: r.requestDate || '',
+      site: r.siteName || '',
+      customer: r.customerName || '',
+      location: r.locationDetail || '',
+      assetNo: r.assetNo || '',
+      issue: r.issueDescription || r.details || '',
+      contact: r.reporterContact || '',
+      raw: r.details || r.issueDescription || '',
+      status: r.status || 'COMPLETED',
+      resolutionType: 'REPAIR_DONE',
+      actionTaken: r.actionTaken || '',
+      isSingleAssetGuessed: false,
+      isAssetBacktracked: false
+    }));
+
+    // 소모품 목록 가져오기
+    let consumablesList: any[] = [];
+    if (supabase) {
+      const { data: cData } = await supabase.from('consumables').select('*');
+      consumablesList = cData || [];
+    } else {
+      consumablesList = db.consumables || [];
+    }
+
+    const { checklistItems, updatedRecords } = buildInspectionMasterFromAsRecords(pseudoRecords, consumablesList);
+
+    onProgress?.(3, 4, `정비항목 마스터 ${checklistItems.length}개 Supabase DB 등록 및 repairs 매핑 업데이트 중...`);
+
+    if (supabase && checklistItems.length > 0) {
+      // 1. inspection_checklist_items 업서트
+      await supabase.from('inspection_checklist_items').upsert(checklistItems, { onConflict: 'id' });
+
+      // 2. repairs 테이블에 inspectionItemCode, inspectionItemId, degradationScore 업데이트
+      const repUpdates: any[] = [];
+      for (let i = 0; i < repRows.length; i++) {
+        const orig = repRows[i];
+        const up = updatedRecords[i];
+        if (up && (orig.inspectionItemCode !== up.inspectionItemCode || orig.inspectionItemId !== up.inspectionItemId)) {
+          repUpdates.push({
+            ...orig,
+            inspectionItemCode: up.inspectionItemCode,
+            inspectionItemId: up.inspectionItemId,
+            degradationScore: up.degradationScore || 5,
+            updatedAt: new Date().toISOString()
+          });
+        }
+      }
+
+      for (let i = 0; i < repUpdates.length; i += 100) {
+        const chunk = repUpdates.slice(i, i + 100);
+        await supabase.from('repairs').upsert(chunk, { onConflict: 'id' });
+        onProgress?.(3, 4, `repairs 매핑 업데이트 중 (${Math.min(i + 100, repUpdates.length)}/${repUpdates.length})...`);
+      }
+    }
+
+    // 로컬 메모리 DB 동기화
+    db.inspectionChecklistItems = checklistItems;
+    const upMap = new Map<string, ParsedBandAsRecord>(updatedRecords.map((r, i) => [repRows[i]?.id, r]));
+    if (db.repairs) {
+      db.repairs.forEach((r: any) => {
+        const up = upMap.get(r.id);
+        if (up) {
+          r.inspectionItemCode = up.inspectionItemCode;
+          r.inspectionItemId = up.inspectionItemId;
+          r.degradationScore = up.degradationScore;
+        }
+      });
+    }
+
+    onProgress?.(4, 4, '동기화 완료');
+
+    return {
+      success: true,
+      message: `정비항목 마스터 ${checklistItems.length}개 항목 자동 생성 및 정비 이력 ${repRows.length.toLocaleString()}건 매핑 완료`,
+      itemCount: checklistItems.length,
+      updatedRepairsCount: repRows.length
+    };
+  } catch (e: any) {
+    return {
+      success: false,
+      message: `정비항목 동기화 실패: ${e.message}`,
+      itemCount: 0,
+      updatedRepairsCount: 0
+    };
+  }
+}
+
 
 
 

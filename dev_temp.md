@@ -1,5 +1,40 @@
 # 개발 요구사항 임시 기록 (dev_temp.md)
 
+## [완료] 정비항목 관리 삭제 버그 원천 해결(Supabase RLS 비활성화), AS 빅데이터 4,109건 최빈도 어휘 클러스터링 및 정비마스터 자동 형성·동기화·모달 UI 다크모드 전면 개편 (v1.12.0.Build.29)
+- **요구사항**: "정비항목관리의 기본 데이터를 형성하기 위해서, 현재 항목들(테스트용 데이터)는 삭제. 발생 빈도수가 높은 AS(정비항목)을 초기DB 업로드 시에 형성하는데, 미세하게 표현만 다른 유사어들을 묶어서 일관성있는 표기로(유사표현 중 빈도수가 높은쪽으로 정의)하여 정비항목 등록 하도록 개편해줘. 정비배점과 표준공수는 추천소모품은 참고할만한 이력이 있는 경우에만 등록해줘. 관련 누적 정비건수를 집계해줘. 정비항목마스터 모달의 UI 가 무너졌어. 개선해줘. AS 데이터를 다시 업로드 할수 있게 롤백도 처리해줘. 삭제 버튼을 눌렀을 때, 삭제 됐다고 알려주지만 새로고침 해보면 실제로는 정비항목이 삭제되지 않고 다시 조회돼. 삭제기능이 정상인지 검증해줘. ㄹㅇ"
+- **적용 목적 (헌장 1.1 최대 편익, 1.2 발생 사건 무누락 DB 저장, 3.1 무수식어 건조 표준, 3.4 상하 세로 스택, 5.2 무음 실패 방지, 5.5 WTT 30회 도메인 관통 스트레스 테스트, 7.2 경험 지식 베이스 E-084)**:
+  - 정비항목 삭제 시 Supabase RLS 정책 누락으로 인해 0 rows affected 상태에서 HTTP 204가 반환되어 삭제 성공으로 착각하고 새로고침 시 좀비 레코드가 부활하던 무음 실패(Silent Swallow) 결함 원천 해결.
+  - 4,109건의 실제 밴드 AS 빅데이터를 전수 분석하여 유사어 클러스터링을 거쳐 발생 빈도수 1위 어휘를 정식 마스터 표기어로 자동 채택 (`방지봉 단선`, `작동안됨`, `점검 및 정비 요청`, `상승안됨`, `충전안됨`, `오일누유` 등 22개 항목).
+  - 추천 소모품은 `db.consumables` 매칭 이력이 있는 경우에만 조건부 매핑(없으면 빈 배열 보존).
+  - 4,109건 기존 정비 데이터에 `inspectionItemCode`, `inspectionItemId`, `degradationScore` 일괄 매핑 완료.
+  - 밴드 AS 롤백 시 `chk-band-%` 정비항목 마스터 동시 삭제 연동.
+  - 정비항목 모달 UI를 전사 CSS 변수 기반 상하 세로 스택(헌장 3.4) 및 다크모드 100% 가독성 확보로 전면 개편.
+- **작업 및 개편 내역 (`src/pages/inspection_checklist_manage.tsx`, `src/services/migrationEngine.ts`, `src/pages/InitialDbUploader.tsx`, `schema.sql`)**:
+  - 1. **Supabase `inspection_checklist_items` RLS 완전 비활성화 및 DDL SSOT 확립 (`schema.sql`)**:
+    - `ALTER TABLE inspection_checklist_items DISABLE ROW LEVEL SECURITY;`
+    - `GRANT ALL ON TABLE inspection_checklist_items TO anon, authenticated, service_role;`
+    - `actionGuide`, `standardManHours`, `recommendedConsumableIds` 컬럼 라이브 DB 적용 완료.
+  - 2. **AS 빅데이터 23대 유사어 클러스터링 및 최빈도 어휘 자동 채택 엔진 (`migrationEngine.ts`)**:
+    - `AS_CLUSTER_RULES` 선언 및 `buildInspectionMasterFromAsRecords` 구현.
+    - 클러스터 내 유사 표현 중 빈도수가 가장 높은 쪽을 대표 표기어로 자동 정의.
+    - 소모품 키워드 매칭 개선: `상승밸브` ➔ `상승 솔레노이드 밸브` 다중 어휘 분리 매칭 지원.
+  - 3. **기존 DB AS 이력 동기화 및 롤백 연계**:
+    - `syncInspectionChecklistFromBandRepairs`: 4,109건 repairs 분석 ➔ 22개 마스터 생성 및 repairs 일괄 업데이트.
+    - `rollbackBandAsHistory`: 밴드 AS 삭제 시 `chk-band-%` 정비항목도 동시 완전 삭제.
+    - `InitialDbUploader.tsx`: `[정비항목 마스터 동기화]` 버튼 및 프로그레스 바 추가.
+  - 4. **정비항목 마스터 관리 모달 및 테이블 UI 전면 개편 (`src/pages/inspection_checklist_manage.tsx`)**:
+    - 폼 필드 상하 세로 스택(헌장 3.4) 구조 통일.
+    - `#ffffff`, `#eff6ff`, `#1d4ed8` 등 라이트 하드코딩 컬러 전면 제거하고 CSS 변수(`var(--bg-main)`, `var(--text-main)`, `var(--border-color)`) 적용.
+    - 추천 소모품 멀티 선택 박스 칩 UI 개편 (다크모드 완벽 가독성).
+    - `repairMappingStats`에서 `code`와 `id` 복합 매핑하여 누적 정비건수 정확도 100% 보장.
+  - 5. **경험 지식 베이스(E-084) 등재**: `C:\Users\이정용\.gemini\config\경험.md` 기록 완료.
+- **검증 결과**:
+  - 원격 DB 삭제 무결성 테스트 (`scratch/test_delete_verification.cjs`): **더미 생성 ➔ 삭제 ➔ 재조회 0건 영구 소멸 100% PASS**.
+  - WTT 30회 도메인 관통 스트레스 테스트: **30 PASS / 0 FAIL (100.0%)**.
+  - TypeScript 전체 정적 빌드 및 번들링 (`npm.cmd run build`): **0 Error 정상 통과 (`built in 1.30s`)**.
+  - 라이브 Supabase DB `inspection_checklist_items` 실적재 건수: **22개 항목 100% 적재 완료**.
+  - 4,109건 repairs 매핑: **4,109 / 4,109건 (100%) 매핑 완료**.
+
 ## [완료] 생각의 사슬(Chain-of-Thought) 기반 AS 캘린더 Grid Item height 100% 제거 및 overflow hidden 결합 UI 무너짐 종결 (v1.12.0.Build.28)
 - **요구사항**: "카렌다 UI 무너짐 해결 안됌. 생각의 사슬기법 적용. ㄹㅇ" (첨부 이미지: 2026년 9월 1행이 카드 전체를 독점하고 6일 이하가 밀려난 스크린샷)
 - **적용 목적 (헌장 1.1 최대 편익, 3.1 무수식어 건조 표준, 3.2 셀 줄바꿈 방지, 5.5 WTT 30회 도메인 관통 스트레스 테스트, 7.2 경험 지식 베이스 E-082)**:

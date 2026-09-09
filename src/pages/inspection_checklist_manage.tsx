@@ -104,17 +104,18 @@ export const InspectionChecklistManage: React.FC = () => {
   const repairMappingStats = useMemo(() => {
     const stats: Record<string, { count: number; lastOccurred?: string }> = {};
     (repairs || []).forEach(r => {
-      if (r.inspectionItemCode) {
-        const code = r.inspectionItemCode;
-        if (!stats[code]) stats[code] = { count: 0 };
-        const stat = stats[code]!;
+      const keys = [r.inspectionItemCode, r.inspectionItemId].filter(Boolean) as string[];
+      keys.forEach(k => {
+        if (!stats[k]) stats[k] = { count: 0 };
+        const stat = stats[k]!;
         stat.count += 1;
-        if (r.requestDate) {
-          if (!stat.lastOccurred || r.requestDate > stat.lastOccurred) {
-            stat.lastOccurred = r.requestDate;
+        const rDate = r.requestDate || r.repairDate || r.completedDate;
+        if (rDate) {
+          if (!stat.lastOccurred || rDate > stat.lastOccurred) {
+            stat.lastOccurred = rDate;
           }
         }
-      }
+      });
     });
     return stats;
   }, [repairs]);
@@ -1156,7 +1157,7 @@ export const InspectionChecklistManage: React.FC = () => {
                     </tr>
                   ) : (
                     filteredMasterItems.map((item, idx) => {
-                      const stat = repairMappingStats[item.code] || { count: 0 };
+                      const stat = repairMappingStats[item.code] || repairMappingStats[item.id] || { count: 0 };
                       const recommendedParts = (item.recommendedConsumableIds || []).map(cid => consumableMap.get(cid)).filter(Boolean);
 
                       return (
@@ -1192,9 +1193,9 @@ export const InspectionChecklistManage: React.FC = () => {
                                       fontSize: '11px',
                                       padding: '2px 6px',
                                       borderRadius: '4px',
-                                      backgroundColor: '#eff6ff',
-                                      color: '#1d4ed8',
-                                      border: '1px solid #bfdbfe',
+                                      backgroundColor: 'rgba(59, 130, 246, 0.12)',
+                                      color: '#3b82f6',
+                                      border: '1px solid rgba(59, 130, 246, 0.25)',
                                       whiteSpace: 'nowrap'
                                     }}
                                     title={`단가: ₩${(part!.unitPrice || 0).toLocaleString()} | 현재재고: ${part!.stockQty}개`}
@@ -2414,15 +2415,22 @@ export const InspectionChecklistManage: React.FC = () => {
               </button>
             </div>
 
-            <form onSubmit={handleItemSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+            <form onSubmit={handleItemSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                 {/* 카테고리 */}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                  <label style={{ fontSize: '12px', fontWeight: 'bold' }}>카테고리 분류 *</label>
+                  <label style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)' }}>카테고리 분류 *</label>
                   <select
                     value={formCategory}
                     onChange={e => setFormCategory(e.target.value)}
-                    style={{ padding: '7px', fontSize: '12.5px' }}
+                    style={{
+                      padding: '8px 10px',
+                      fontSize: '12.5px',
+                      borderRadius: '6px',
+                      border: '1px solid var(--border-color)',
+                      backgroundColor: 'var(--bg-main)',
+                      color: 'var(--text-main)'
+                    }}
                   >
                     <option value="외관/바디">외관/바디 (도장, 섀시, 커버)</option>
                     <option value="유압/동력">유압/동력 (실린더, 유압유, 호스)</option>
@@ -2434,33 +2442,47 @@ export const InspectionChecklistManage: React.FC = () => {
 
                 {/* 항목 코드 */}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                  <label style={{ fontSize: '12px', fontWeight: 'bold' }}>항목 코드 (자동채번)</label>
+                  <label style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)' }}>항목 코드 (자동채번)</label>
                   <input
                     type="text"
                     value={formCode}
                     readOnly
-                    style={{ padding: '7px', fontSize: '12.5px', backgroundColor: 'var(--bg-main)', color: 'var(--text-muted)' }}
+                    style={{
+                      padding: '8px 10px',
+                      fontSize: '12.5px',
+                      borderRadius: '6px',
+                      border: '1px solid var(--border-color)',
+                      backgroundColor: 'var(--bg-main)',
+                      color: 'var(--text-muted)'
+                    }}
                   />
                 </div>
               </div>
 
               {/* 항목명 */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                <label style={{ fontSize: '12px', fontWeight: 'bold' }}>정비 항목명 *</label>
+                <label style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)' }}>정비 항목명 *</label>
                 <input
                   type="text"
                   placeholder="예: 실린더 유압유 누유 (패킹 마모)"
                   value={formName}
                   onChange={e => setFormName(e.target.value)}
                   required
-                  style={{ padding: '8px', fontSize: '13px' }}
+                  style={{
+                    padding: '8px 10px',
+                    fontSize: '13px',
+                    borderRadius: '6px',
+                    border: '1px solid var(--border-color)',
+                    backgroundColor: 'var(--bg-main)',
+                    color: 'var(--text-main)'
+                  }}
                 />
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                 {/* 연동 정비 배점 */}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                  <label style={{ fontSize: '12px', fontWeight: 'bold' }}>연동 정비 배점 (벌점) *</label>
+                  <label style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)' }}>연동 정비 배점 (벌점) *</label>
                   <input
                     type="number"
                     min={1}
@@ -2468,13 +2490,20 @@ export const InspectionChecklistManage: React.FC = () => {
                     value={formScore}
                     onChange={e => setFormScore(Number(e.target.value))}
                     required
-                    style={{ padding: '7px', fontSize: '12.5px' }}
+                    style={{
+                      padding: '8px 10px',
+                      fontSize: '12.5px',
+                      borderRadius: '6px',
+                      border: '1px solid var(--border-color)',
+                      backgroundColor: 'var(--bg-main)',
+                      color: 'var(--text-main)'
+                    }}
                   />
                 </div>
 
                 {/* 표준 작업 공수 */}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                  <label style={{ fontSize: '12px', fontWeight: 'bold' }}>표준 작업 공수 (M/H) *</label>
+                  <label style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)' }}>표준 작업 공수 (M/H) *</label>
                   <input
                     type="number"
                     step="0.1"
@@ -2483,17 +2512,31 @@ export const InspectionChecklistManage: React.FC = () => {
                     value={formManHours}
                     onChange={e => setFormManHours(Number(e.target.value))}
                     required
-                    style={{ padding: '7px', fontSize: '12.5px' }}
+                    style={{
+                      padding: '8px 10px',
+                      fontSize: '12.5px',
+                      borderRadius: '6px',
+                      border: '1px solid var(--border-color)',
+                      backgroundColor: 'var(--bg-main)',
+                      color: 'var(--text-main)'
+                    }}
                   />
                 </div>
               </div>
 
               {/* 추천 소모품 / 부품 연계 멀티 선택 */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                <label style={{ fontSize: '12px', fontWeight: 'bold' }}>추천 소모품 / 필요 부품 연계 (다중 선택)</label>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <label style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)' }}>추천 소모품 / 필요 부품 연계</label>
+                  {formRecommendedConsumables.length > 0 && (
+                    <span style={{ fontSize: '11px', color: 'var(--primary)', fontWeight: 600 }}>
+                      {formRecommendedConsumables.length}개 부품 선택됨
+                    </span>
+                  )}
+                </div>
                 <div
                   style={{
-                    maxHeight: '110px',
+                    maxHeight: '130px',
                     overflowY: 'auto',
                     border: '1px solid var(--border-color)',
                     borderRadius: '6px',
@@ -2518,20 +2561,27 @@ export const InspectionChecklistManage: React.FC = () => {
                           }
                         }}
                         style={{
-                          padding: '3px 8px',
-                          borderRadius: '4px',
-                          border: isSelected ? '1px solid #2563eb' : '1px solid var(--border-color)',
-                          backgroundColor: isSelected ? '#eff6ff' : '#ffffff',
-                          color: isSelected ? '#1d4ed8' : 'var(--text-main)',
+                          padding: '4px 9px',
+                          borderRadius: '6px',
+                          border: isSelected ? '1px solid #3b82f6' : '1px solid var(--border-color)',
+                          backgroundColor: isSelected ? 'rgba(59, 130, 246, 0.15)' : 'var(--bg-card)',
+                          color: isSelected ? '#3b82f6' : 'var(--text-main)',
                           fontSize: '11.5px',
+                          fontWeight: isSelected ? 600 : 400,
                           cursor: 'pointer',
                           display: 'flex',
                           alignItems: 'center',
-                          gap: '4px'
+                          gap: '5px',
+                          whiteSpace: 'nowrap',
+                          flexShrink: 0
                         }}
                       >
-                        {isSelected && <CheckCircle2 size={12} />}
-                        {part.modelName} (₩{(part.unitPrice || 0).toLocaleString()})
+                        {isSelected ? (
+                          <CheckCircle2 size={13} style={{ color: '#3b82f6' }} />
+                        ) : (
+                          <span style={{ width: '10px', height: '10px', borderRadius: '50%', border: '1px solid var(--text-muted)', display: 'inline-block' }} />
+                        )}
+                        <span>{part.modelName} {part.unitPrice ? `(₩${part.unitPrice.toLocaleString()})` : ''}</span>
                       </button>
                     );
                   })}
@@ -2540,25 +2590,41 @@ export const InspectionChecklistManage: React.FC = () => {
 
               {/* 표준 조치 절차 (SOP) */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                <label style={{ fontSize: '12px', fontWeight: 'bold' }}>표준 조치 절차 (SOP)</label>
+                <label style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)' }}>표준 조치 절차 (SOP)</label>
                 <textarea
                   rows={2}
                   placeholder="정비사 조치 시 핵심 확인 절차 (예: 메인 밸브 차단 후 오링 교체, 유압유 레벨 점검)..."
                   value={formActionGuide}
                   onChange={e => setFormActionGuide(e.target.value)}
-                  style={{ padding: '7px', fontSize: '12px' }}
+                  style={{
+                    padding: '8px 10px',
+                    fontSize: '12px',
+                    borderRadius: '6px',
+                    border: '1px solid var(--border-color)',
+                    backgroundColor: 'var(--bg-main)',
+                    color: 'var(--text-main)',
+                    resize: 'vertical'
+                  }}
                 />
               </div>
 
               {/* 상세 설명 및 판단 가이드 */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                <label style={{ fontSize: '12px', fontWeight: 'bold' }}>상세 설명 및 입고검수 판단 기준</label>
+                <label style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)' }}>상세 설명 및 입고검수 판단 기준</label>
                 <textarea
                   rows={2}
                   placeholder="현장 검수자가 이 항목을 판단할 때 참고할 기준 가이드..."
                   value={formDescription}
                   onChange={e => setFormDescription(e.target.value)}
-                  style={{ padding: '7px', fontSize: '12px' }}
+                  style={{
+                    padding: '8px 10px',
+                    fontSize: '12px',
+                    borderRadius: '6px',
+                    border: '1px solid var(--border-color)',
+                    backgroundColor: 'var(--bg-main)',
+                    color: 'var(--text-main)',
+                    resize: 'vertical'
+                  }}
                 />
               </div>
 

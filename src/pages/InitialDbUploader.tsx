@@ -23,6 +23,7 @@ import {
   rollbackDispatchData,
   rollbackBandAsHistory,
   reconcileUnassignedBandRepairsWithAssets,
+  syncInspectionChecklistFromBandRepairs,
   BandAsAnalysisResult,
   ParsedBandAsRecord
 } from '../services/migrationEngine';
@@ -125,6 +126,8 @@ export const InitialDbUploader: React.FC = () => {
   const [isBandRollingBack, setIsBandRollingBack] = useState(false);
   const [isReconcilingAs, setIsReconcilingAs] = useState(false);
   const [reconcileAsProgressMsg, setReconcileAsProgressMsg] = useState('');
+  const [isSyncingInspectionItems, setIsSyncingInspectionItems] = useState(false);
+  const [syncInspectionProgressMsg, setSyncInspectionProgressMsg] = useState('');
   const [bandProgressMsg, setBandProgressMsg] = useState('');
   const [selectedAsRecord, setSelectedAsRecord] = useState<ParsedBandAsRecord | null>(null);
 
@@ -806,6 +809,31 @@ export const InitialDbUploader: React.FC = () => {
     } finally {
       setIsReconcilingAs(false);
       setReconcileAsProgressMsg('');
+    }
+  };
+
+  // ── 🌟 정비항목 마스터 동기화 (AS 빅데이터 클러스터링 기반) ──
+  const handleSyncInspectionChecklist = async () => {
+    if (!window.confirm('기존 DB의 AS 정비 이력을 유사어 클러스터링 분석하여 정비항목 마스터를 형성하고 repairs 매핑을 갱신하시겠습니까?')) {
+      return;
+    }
+    setIsSyncingInspectionItems(true);
+    setSyncInspectionProgressMsg('정비항목 마스터 빌드 및 동기화 시작...');
+    try {
+      const res = await syncInspectionChecklistFromBandRepairs((step, total, msg) => {
+        setSyncInspectionProgressMsg(msg);
+      });
+      if (res.success) {
+        showSuccessToast?.(res.message);
+        await fullRefreshFromServer();
+      } else {
+        showErrorModal?.(res.message);
+      }
+    } catch (err: any) {
+      showErrorModal?.(`정비항목 동기화 오류: ${err.message || err}`);
+    } finally {
+      setIsSyncingInspectionItems(false);
+      setSyncInspectionProgressMsg('');
     }
   };
 
@@ -1573,16 +1601,36 @@ export const InitialDbUploader: React.FC = () => {
                 {uploadedBandAsCount > 0 && (
                   <button
                     type="button"
+                    onClick={handleSyncInspectionChecklist}
+                    disabled={isSyncingInspectionItems || isBandRollingBack || isBandIngesting || isReconcilingAs}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: '6px',
+                      padding: '6px 12px', borderRadius: '6px',
+                      border: '1px solid #3b82f6', backgroundColor: isSyncingInspectionItems ? '#dbeafe' : '#eff6ff',
+                      color: '#1d4ed8', fontSize: '12px', fontWeight: 600,
+                      cursor: (isSyncingInspectionItems || isBandRollingBack || isBandIngesting || isReconcilingAs) ? 'not-allowed' : 'pointer',
+                      whiteSpace: 'nowrap',
+                      opacity: (isSyncingInspectionItems || isBandRollingBack || isBandIngesting || isReconcilingAs) ? 0.6 : 1
+                    }}
+                  >
+                    {isSyncingInspectionItems ? <RefreshCw size={13} className="animate-spin" /> : <Layers size={13} />}
+                    정비항목 마스터 동기화
+                  </button>
+                )}
+
+                {uploadedBandAsCount > 0 && (
+                  <button
+                    type="button"
                     onClick={handleBandRollback}
-                    disabled={isBandRollingBack || isBandIngesting || isReconcilingAs}
+                    disabled={isBandRollingBack || isBandIngesting || isReconcilingAs || isSyncingInspectionItems}
                     style={{
                       display: 'flex', alignItems: 'center', gap: '6px',
                       padding: '6px 12px', borderRadius: '6px',
                       border: '1px solid #fca5a5', backgroundColor: isBandRollingBack ? '#fee2e2' : '#fef2f2',
                       color: '#dc2626', fontSize: '12px', fontWeight: 600,
-                      cursor: (isBandRollingBack || isBandIngesting || isReconcilingAs) ? 'not-allowed' : 'pointer',
+                      cursor: (isBandRollingBack || isBandIngesting || isReconcilingAs || isSyncingInspectionItems) ? 'not-allowed' : 'pointer',
                       whiteSpace: 'nowrap',
-                      opacity: (isBandRollingBack || isBandIngesting || isReconcilingAs) ? 0.6 : 1
+                      opacity: (isBandRollingBack || isBandIngesting || isReconcilingAs || isSyncingInspectionItems) ? 0.6 : 1
                     }}
                   >
                     {isBandRollingBack ? <RefreshCw size={13} className="animate-spin" /> : <Trash2 size={13} />}
@@ -1591,6 +1639,14 @@ export const InitialDbUploader: React.FC = () => {
                 )}
               </div>
             </div>
+
+            {/* 정비항목 마스터 동기화 진행 상태 바 */}
+            {syncInspectionProgressMsg && (
+              <div style={{ marginBottom: '12px', fontSize: '13px', color: '#1d4ed8', display: 'flex', alignItems: 'center', gap: '8px', backgroundColor: '#eff6ff', padding: '10px 14px', borderRadius: '6px', border: '1px solid #bfdbfe' }}>
+                <RefreshCw size={14} className="animate-spin" />
+                <span>{syncInspectionProgressMsg}</span>
+              </div>
+            )}
 
             {/* 미지정현장 복원 진행 상태 바 */}
             {reconcileAsProgressMsg && (

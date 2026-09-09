@@ -135,9 +135,12 @@ export const OutboundInspections: React.FC = () => {
     setTimeout(() => setToastMessage(null), 3500);
   };
 
-  // 📅 상차일자 기간 필터 state
-  const [startDate, setStartDate] = useState<string>('');
-  const [endDate, setEndDate] = useState<string>('');
+  // 📅 상차일자 기간 필터 state — 기본값: 오늘-3일(지연 건 캡처) ~ 오늘+14일(2주 앞 업무 전망)
+  const _today = new Date();
+  const _start = new Date(_today); _start.setDate(_today.getDate() - 3);
+  const _end = new Date(_today); _end.setDate(_today.getDate() + 14);
+  const [startDate, setStartDate] = useState<string>(_start.toISOString().split('T')[0]);
+  const [endDate, setEndDate] = useState<string>(_end.toISOString().split('T')[0]);
 
   // 💡 [사장님 지시] Quick 날짜 선택 헬퍼 - 오늘 이후 미래 기준 조회 (1주일: 오늘~+7일, 1개월: 오늘~+30일)
   const handleSetDateRange = (type: 'TODAY' | 'WEEK' | 'MONTH' | 'ALL') => {
@@ -889,6 +892,17 @@ export const OutboundInspections: React.FC = () => {
             ) : (
               filteredGroups.map(group => {
                 const isSelected = selectedGroupId === group.groupId;
+                // D-day 계산
+                const todayStr = new Date().toISOString().split('T')[0];
+                const diffDays = Math.ceil((new Date(group.loadingDate).getTime() - new Date(todayStr).getTime()) / 86400000);
+                const isOverdue = diffDays < 0 && group.status === 'PENDING';
+                const getDdayBadge = () => {
+                  if (diffDays < 0) return <span style={{ padding: '2px 7px', borderRadius: '10px', fontSize: '10.5px', fontWeight: 800, backgroundColor: 'rgba(239,68,68,0.15)', color: '#dc2626', border: '1px solid rgba(239,68,68,0.4)', whiteSpace: 'nowrap' }}>D+{Math.abs(diffDays)} 지연</span>;
+                  if (diffDays === 0) return <span style={{ padding: '2px 7px', borderRadius: '10px', fontSize: '10.5px', fontWeight: 800, backgroundColor: 'rgba(239,68,68,0.15)', color: '#dc2626', border: '1px solid rgba(239,68,68,0.4)', whiteSpace: 'nowrap' }}>D-DAY</span>;
+                  if (diffDays <= 2) return <span style={{ padding: '2px 7px', borderRadius: '10px', fontSize: '10.5px', fontWeight: 800, backgroundColor: 'rgba(245,158,11,0.15)', color: '#d97706', border: '1px solid rgba(245,158,11,0.4)', whiteSpace: 'nowrap' }}>D-{diffDays}</span>;
+                  if (diffDays <= 7) return <span style={{ padding: '2px 7px', borderRadius: '10px', fontSize: '10.5px', fontWeight: 700, backgroundColor: 'rgba(234,179,8,0.12)', color: '#ca8a04', border: '1px solid rgba(234,179,8,0.3)', whiteSpace: 'nowrap' }}>D-{diffDays}</span>;
+                  return <span style={{ padding: '2px 7px', borderRadius: '10px', fontSize: '10.5px', fontWeight: 600, backgroundColor: 'rgba(59,130,246,0.08)', color: '#2563eb', border: '1px solid rgba(59,130,246,0.2)', whiteSpace: 'nowrap' }}>D-{diffDays}</span>;
+                };
                 return (
                   <div
                     key={group.groupId}
@@ -896,22 +910,24 @@ export const OutboundInspections: React.FC = () => {
                     style={{
                       padding: '14px',
                       borderRadius: '10px',
-                      border: isSelected ? '2px solid var(--primary)' : '1px solid var(--border-color)',
-                      backgroundColor: isSelected ? 'rgba(59,130,246,0.05)' : 'var(--bg-body)',
+                      border: isSelected ? '2px solid var(--primary)' : isOverdue ? '1.5px solid rgba(239,68,68,0.5)' : '1px solid var(--border-color)',
+                      backgroundColor: isSelected ? 'rgba(59,130,246,0.05)' : isOverdue ? 'rgba(239,68,68,0.04)' : 'var(--bg-body)',
                       cursor: 'pointer',
                       transition: 'all 0.15s ease',
                       boxShadow: isSelected ? '0 4px 12px rgba(59,130,246,0.12)' : 'none'
                     }}
                   >
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-                      <span style={{ fontSize: '11.5px', fontWeight: 800, color: 'var(--primary)' }}>
-                        🚛 상차일: {group.loadingDate} <span style={{ fontSize: '10.5px', color: 'var(--text-muted)', fontWeight: 500 }}>(신청: {group.requestDate})</span>
+                      <span style={{ fontSize: '11.5px', fontWeight: 800, color: 'var(--primary)', display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                        상차일: {group.loadingDate}
+                        {getDdayBadge()}
+                        <span style={{ fontSize: '10.5px', color: 'var(--text-muted)', fontWeight: 500 }}>(신청: {group.requestDate})</span>
                       </span>
                       {getStatusBadge(group.status)}
                     </div>
 
                     <div style={{ fontSize: '14px', fontWeight: 800, color: 'var(--text-primary)', marginBottom: '4px' }}>
-                      🏢 {group.customerName}
+                      {group.customerName}
                     </div>
                     <div style={{ fontSize: '12.5px', color: 'var(--text-secondary)', marginBottom: '8px' }}>
                       📍 {group.siteName}

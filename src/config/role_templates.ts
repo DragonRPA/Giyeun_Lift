@@ -62,6 +62,7 @@ export const SALES_TEMPLATE: PermissionRuleMap = {
   smart_return: { canView: true, canSave: true },
   smart_as_request: { canView: true, canSave: true },
   receivable: { canView: true, canSave: true }, // 외상미수금 확인 및 독촉
+  delinquency: { canView: true, canSave: true }, // 미수 채권 연체 관리
   // 열람만 허용
   billing: { canView: true, canSave: false },
   product: { canView: true, canSave: false },

@@ -29,7 +29,8 @@ export const SYSTEM_MENU_CONFIG: MenuGroupConfig[] = [
       { id: 'receivable', name: '외상미수금 대장' },
       { id: 'smart_dispatch4', name: '출고 요청' },
       { id: 'smart_return', name: '회수 요청' },
-      { id: 'smart_as_request', name: 'AS 요청' }
+      { id: 'smart_as_request', name: 'AS 요청' },
+      { id: 'delinquency', name: '미수 채권 연체 관리' }
     ]
   },
   {
@@ -84,7 +85,6 @@ export const SYSTEM_MENU_CONFIG: MenuGroupConfig[] = [
       { id: 'bank_matching', name: '은행 입출금 대장' },
       { id: 'corporate_card', name: '법인카드 매입정산' },
       { id: 'cash_flow', name: '자금 흐름 분석' },
-      { id: 'delinquency', name: '미수 채권 연체 관리' },
       { id: 'depreciation_execution', name: '감가상각 마감 실행' },
       { id: 'regular_reports', name: '정기보고서 생성' },
       { id: 'agent_badge', name: '계약 패키지 발행 관리' }

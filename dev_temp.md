@@ -1,5 +1,21 @@
 # 개발 요구사항 임시 기록 (dev_temp.md)
 
+## [완료] 미수채권연체관리 메뉴 영업관리 그룹 최하단 이동 및 "ㄹㅇ" 배포 (v1.12.0.Build.55)
+- **요구사항**: "미수채권연체관리 메뉴는 영업관리 그룹의 마지막 메뉴 위치로 이동. ㄹㅇ"
+- **적용 목적 (헌장 1.1 최대 편익, 2.1 직무 및 권한별 R&R, 3.1 무수식어 건조 표준, 5.3 SSOT 정합성, 6.1 버전 관리, 6.2 'ㄹㅇ' 배포)**:
+  1. **메뉴 위치 재배치 (`App.tsx`, `menu_config.ts`, `menuConfig.ts`)**:
+     - 기존 `경영관리`(`grp_management`)에 위치하던 `'미수 채권 연체 관리'`(`delinquency`) 메뉴를 `영업관리`(`grp_sales`) 그룹의 맨 마지막(`smart_as_request` 다음) 항목으로 이동.
+     - 전사 SSOT 메뉴 정의 파일인 `menu_config.ts` 및 `menuConfig.ts`에도 동일하게 영업관리 마지막 메뉴로 동기화.
+  2. **영업부 권한 템플릿 연동 (`role_templates.ts`)**:
+     - 영업부(`SALES_TEMPLATE`)에서 `delinquency: { canView: true, canSave: true }`를 부여하여 영업 담당자가 영업관리 메뉴에서 미수 채권 연체 현황을 즉시 확인하고 독촉 관리할 수 있도록 업무 동선 최적화.
+- **주요 변경 파일**:
+  - `src/App.tsx` [MODIFY]: 메뉴 그룹 내 미수 채권 연체 관리 위치 이동.
+  - `src/config/menu_config.ts` [MODIFY]: SSOT 메뉴 정의 내 영업관리 그룹 최하단 이동.
+  - `src/config/menuConfig.ts` [MODIFY]: 레거시 설정 동기화.
+  - `src/config/role_templates.ts` [MODIFY]: 영업부 템플릿에 delinquency 권한 추가.
+- **검증 결과**:
+  - `cmd /c npm run build`: **TypeScript 0 Error, 번들링 빌드 100% 정상 통과 (`built in 1.16s`)**.
+
 ## [완료] 연차신청관리 일반 임직원 본인 신청/조회 강제 고정 및 타인 신청/전체 조회 원천 차단 개편 (v1.12.0.Build.54)
 - **요구사항**: "연차신청관리는 admin 을 제외하면 로그인된 본인이 기본값이고 다른 임직원으로 변경할수 없도록 고정. 전체 임직원내역도 조회 불가. "내 신청내역"만 볼수 있도록. ㄹㅇ"
 - **적용 목적 (헌장 1.1 최대 편익, 2.1 부서 및 직무별 R&R, 3.1 무수식어 건조 표준, 6.1 버전 관리, 6.2 'ㄹㅇ' 배포)**:

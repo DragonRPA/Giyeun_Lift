@@ -23,18 +23,36 @@ export const LeaveApplicationPage: React.FC = () => {
     setTimeout(() => setToastMessage(null), 3500);
   };
 
-  const isAdmin = currentUser?.role === 'ADMIN' || currentUser?.role === 'MANAGER';
+  // admin 판별 (헌장 2.1 R&R: admin 계정만 타 임직원 대리신청 및 전체조회 허용)
+  const isSystemAdmin = currentUser?.role === 'ADMIN' || currentUser?.loginId === 'admin' || currentUser?.id === 'sys-admin';
 
-  // 신청 폼 상태
+  // 신청 대상 임직원 성명 정규화 헬퍼 (헌장 3.1)
+  const getApplicantDisplayName = (u?: UserType | null) => {
+    if (!u) return '임직원';
+    if (u.loginId === 'admin' || u.name === '최고관리자') return '개발자';
+    return u.name || '임직원';
+  };
+
+  // 신청 폼 상태 (admin 외에는 로그인된 본인 ID 고정)
   const [targetUserId, setTargetUserId] = useState(currentUser?.id || '');
   const [leaveType, setLeaveType] = useState<'ANNUAL' | 'HALF_AM' | 'HALF_PM'>('ANNUAL');
   const [leaveStartDate, setLeaveStartDate] = useState(new Date().toISOString().substring(0, 10));
   const [leaveEndDate, setLeaveEndDate] = useState(new Date().toISOString().substring(0, 10));
   const [leaveReason, setLeaveReason] = useState('');
 
-  // 이력 대장 필터
+  // 이력 대장 필터 (admin 외에는 'MY' 고정)
   const [historyTypeFilter, setHistoryTypeFilter] = useState<'ALL' | 'ANNUAL' | 'HALF_AM' | 'HALF_PM'>('ALL');
   const [viewScope, setViewScope] = useState<'MY' | 'ALL'>('MY');
+
+  // admin 외 일반 임직원은 본인 ID 및 'MY' 스코프로 강제 동기화 (전체조회 및 타인신청 원천 차단)
+  React.useEffect(() => {
+    if (!isSystemAdmin && currentUser?.id) {
+      setTargetUserId(currentUser.id);
+      setViewScope('MY');
+    } else if (isSystemAdmin && !targetUserId && currentUser?.id) {
+      setTargetUserId(currentUser.id);
+    }
+  }, [currentUser, isSystemAdmin, targetUserId]);
 
   // 1. 임직원 입사일 기준 갱신 주기 계산 헬퍼
   const calculatePeriod = (joinDateStr?: string) => {
@@ -95,7 +113,9 @@ export const LeaveApplicationPage: React.FC = () => {
     };
   };
 
-  const activeApplicantUser = users.find(u => u.id === targetUserId) || currentUser;
+  // 유효 대상 사용자 ID (admin 외에는 로그인된 본인 ID 강제 고정)
+  const effectiveUserId = isSystemAdmin ? (targetUserId || currentUser?.id || '') : (currentUser?.id || '');
+  const activeApplicantUser = users.find(u => u.id === effectiveUserId) || (effectiveUserId === currentUser?.id ? currentUser : null);
   const mySummary = activeApplicantUser ? getUserLeaveSummary(activeApplicantUser) : {
     periodStart: '-',
     periodEnd: '-',
@@ -120,12 +140,13 @@ export const LeaveApplicationPage: React.FC = () => {
   // 3. 연차/반차 신청 제출 (가드 로직 적용)
   const handleLeaveUsageSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!targetUserId || !leaveReason.trim()) {
+    const submitUserId = isSystemAdmin ? effectiveUserId : (currentUser?.id || '');
+    if (!submitUserId || !leaveReason.trim()) {
       showErrorModal('신청 대상 임직원과 연차/반차 사유를 입력해 주십시오.');
       return;
     }
 
-    const targetUser = users.find(u => u.id === targetUserId);
+    const targetUser = users.find(u => u.id === submitUserId) || (submitUserId === currentUser?.id ? currentUser : null);
     if (!targetUser) {
       showErrorModal('선택된 임직원 정보를 찾을 수 없습니다.');
       return;
@@ -149,7 +170,7 @@ export const LeaveApplicationPage: React.FC = () => {
 
     const actualEndDate = leaveType === 'ANNUAL' ? leaveEndDate : leaveStartDate;
     const hasOverlap = leaveUsages.some(l => 
-      l.userId === targetUserId && 
+      l.userId === submitUserId && 
       l.status !== 'REJECTED' &&
       ((leaveStartDate >= l.startDate && leaveStartDate <= l.endDate) ||
        (actualEndDate >= l.startDate && actualEndDate <= l.endDate) ||
@@ -163,7 +184,7 @@ export const LeaveApplicationPage: React.FC = () => {
 
     try {
       await addLeaveUsage({
-        userId: targetUserId,
+        userId: submitUserId,
         leaveType,
         usedDays,
         startDate: leaveStartDate,
@@ -189,17 +210,21 @@ export const LeaveApplicationPage: React.FC = () => {
     }
   };
 
-  // 5. 엑셀 다운로드
+  // 유효 조회 스코프 (admin 외에는 무조건 'MY' 고정)
+  const effectiveScope = isSystemAdmin ? viewScope : 'MY';
+
+  // 5. 엑셀 다운로드 (admin 외에는 본인 내역만 다운로드)
   const handleExportExcel = () => {
     const ymd = new Date().toISOString().substring(0, 10).replace(/-/g, '');
     const filtered = leaveUsages.filter(l => {
-      if (viewScope === 'MY' && l.userId !== currentUser?.id) return false;
+      if (effectiveScope === 'MY' && l.userId !== currentUser?.id) return false;
       if (historyTypeFilter !== 'ALL' && l.leaveType !== historyTypeFilter) return false;
       return true;
     });
 
     const data = filtered.map((l, idx) => {
-      const uName = users.find(u => u.id === l.userId)?.name || '알 수 없음';
+      const uObj = users.find(u => u.id === l.userId) || (l.userId === currentUser?.id ? currentUser : null);
+      const uName = getApplicantDisplayName(uObj);
       const typeLabel = l.leaveType === 'ANNUAL' ? '연차' : l.leaveType === 'HALF_AM' ? '오전반차' : '오후반차';
 
       return {
@@ -220,9 +245,9 @@ export const LeaveApplicationPage: React.FC = () => {
     XLSX.writeFile(wb, `연차_신청_내역_${ymd}.xlsx`);
   };
 
-  // 표시할 이력 필터링
+  // 표시할 이력 필터링 (admin 외에는 무조건 본인 내역만 필터링)
   const displayedUsages = leaveUsages.filter(l => {
-    if (viewScope === 'MY' && l.userId !== currentUser?.id) return false;
+    if (effectiveScope === 'MY' && l.userId !== currentUser?.id) return false;
     if (historyTypeFilter !== 'ALL' && l.leaveType !== historyTypeFilter) return false;
     return true;
   });
@@ -262,7 +287,7 @@ export const LeaveApplicationPage: React.FC = () => {
         <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
           <span style={{ fontSize: '11.5px', color: 'var(--text-muted)', fontWeight: 600 }}>신청 대상 임직원</span>
           <strong style={{ fontSize: '15px', color: 'var(--text-main)' }}>
-            {activeApplicantUser?.name} ({activeApplicantUser?.department || '미지정'})
+            {getApplicantDisplayName(activeApplicantUser)} ({activeApplicantUser?.department || '미지정'})
           </strong>
         </div>
 
@@ -315,22 +340,28 @@ export const LeaveApplicationPage: React.FC = () => {
 
           <form onSubmit={handleLeaveUsageSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
             
-            {/* 임직원 선택 (관리자/매니저는 대리신청 가능, 일반 직원은 본인 고정) */}
+            {/* 임직원 선택 (admin만 타 임직원 대리신청 가능, 일반 임직원은 본인 고정 및 변경 불가) */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
               <label style={{ fontSize: '12px', fontWeight: 'bold', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
                 신청 임직원:
               </label>
-              {isAdmin ? (
+              {isSystemAdmin ? (
                 <select
                   required
-                  value={targetUserId}
+                  value={effectiveUserId}
                   onChange={(e) => setTargetUserId(e.target.value)}
                   className="form-control"
                   style={{ fontSize: '13px' }}
                 >
+                  {/* 로그인된 관리자 본인이 users 목록에 없더라도 드롭다운 최상단에 본인 옵션 기본 노출 */}
+                  {currentUser && !users.some(u => u.id === currentUser.id) && (
+                    <option value={currentUser.id}>
+                      {getApplicantDisplayName(currentUser)} ({currentUser.department || '시스템'} / {currentUser.role}) - 본인
+                    </option>
+                  )}
                   {users.map(u => (
                     <option key={u.id} value={u.id}>
-                      {u.name} ({u.department || '미지정'} / {u.position || '직원'})
+                      {getApplicantDisplayName(u)} ({u.department || '미지정'} / {u.position || '직원'}){u.id === currentUser?.id ? ' - 본인' : ''}
                     </option>
                   ))}
                 </select>
@@ -344,7 +375,7 @@ export const LeaveApplicationPage: React.FC = () => {
                   fontWeight: 600,
                   color: 'var(--text-main)'
                 }}>
-                  {currentUser?.name} ({currentUser?.department || '미지정'} / {currentUser?.position || '직원'})
+                  {getApplicantDisplayName(currentUser)} ({currentUser?.department || '미지정'} / {currentUser?.position || '직원'})
                 </div>
               )}
             </div>
@@ -464,7 +495,7 @@ export const LeaveApplicationPage: React.FC = () => {
               ))}
             </div>
 
-            {isAdmin && (
+            {isSystemAdmin && (
               <div style={{ display: 'flex', gap: '4px' }}>
                 <button
                   onClick={() => setViewScope('MY')}
@@ -507,9 +538,12 @@ export const LeaveApplicationPage: React.FC = () => {
                   </tr>
                 ) : (
                   displayedUsages.map((l) => {
-                    const uName = users.find(u => u.id === l.userId)?.name || '알 수 없음';
+                    const rawUser = users.find(u => u.id === l.userId);
+                    const uName = l.userId === currentUser?.id 
+                      ? getApplicantDisplayName(currentUser) 
+                      : (rawUser ? getApplicantDisplayName(rawUser) : (l.userId === 'sys-admin' ? '개발자' : '알 수 없음'));
                     const typeLabel = l.leaveType === 'ANNUAL' ? '연차' : l.leaveType === 'HALF_AM' ? '오전반차' : '오후반차';
-                    const canDelete = l.userId === currentUser?.id || isAdmin;
+                    const canDelete = l.userId === currentUser?.id || isSystemAdmin;
 
                     return (
                       <tr key={l.id} style={{ borderBottom: '1px solid var(--border-color)' }}>

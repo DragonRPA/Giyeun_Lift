@@ -1,4 +1,36 @@
+## [v1.11.4.Build.8] - 2026-09-09 12:58
+
+### 🛡️ [고아 레코드 2차 심층 전수 조사 및 7대 영구 차단·자가 치유(Self-Healing) 시스템 구축]
+
+**질의 배경**: "고아 데이터는 더이상 안생기나?"에 대한 전사 데이터 무결성 심층 감사 결과, DB 연동/메뉴 로딩/할당 해제/삭제 전반에서 7가지 추가 취약점 발견 및 전량 영구 조치 완료.
+
+**패치 상세**:
+
+1. **`MENU_TABLE_MAP` 테이블 동기화 누락 해소** (`AppContext.tsx` L728~730):
+   - `outbound_inspections` 진입 시 `sites`(현장), `deliveries`(배차) 테이블 미수신으로 인해, 정상 계약임에도 불구하고 화면에 `현장 미지정`으로 잘못 표기되던 가짜 고아 현상 완벽 해결.
+   - `dispatch_assign`에 `customers`, `contractHistory` 테이블 추가 매핑.
+
+2. **자동 자가 치유(Self-Healing) 고아 검수의뢰 소탕기 탑재** (`AppContext.tsx` L638~650):
+   - `refreshAllData()` 실행 시, 유효한 계약(`db.contracts`) 및 배차(`db.deliveries`)가 존재하지 않는 과거 유령 검수의뢰건을 자동 감지하여 로컬 및 Supabase 원격 DB에서 즉시 영구 삭제(`deleteRow`).
+   - 사용자가 수동 SQL을 실행할 필요 없이 시스템 진입 즉시 과거의 모든 고아 검수의뢰 자동 정화.
+
+3. **현장(`deleteSite`) 및 담당자(`deleteContact`) 삭제 방어 가드 구축** (`AppContext.tsx` L1116~1165):
+   - 계약 또는 투입 장비가 연결된 현장 삭제 시도 시 안내 팝업과 함께 즉시 차단 (Dangling Site ID 원천 방지).
+   - 계약에 지정된 담당자 삭제 시도 시 즉시 차단 (Dangling Contact ID 방지).
+
+4. **장비 할당 취소 시 중복 검수의뢰 전량 일괄 삭제** (`AppContext.tsx` L4770, L4838):
+   - 기존 `find()` 단건 삭제 방식에서 `filter().forEach()`로 변경하여, 슬롯에 재할당 등으로 잔류하던 모든 대기 검수의뢰 완전 동시 소탕.
+
+5. **대체 장비 교체(`swapContractAsset`) 시 검수 의뢰 누락 방지** (`AppContext.tsx` L4975):
+   - 기존 검수의뢰가 없던 슬롯에서 교체 발생 시, 대체 장비에 대한 `outboundInspections` 신규 자동 생성.
+
+6. **PC 및 모바일 출고검수 큐 유령 레코드 2중 방어 필터** (`outbound_inspections.tsx` L208, `MobileInspectionList.tsx` L81):
+   - 계약 대장이 로드된 상태에서 계약 ID가 부재하거나 계약 대장에 없는 고아 데이터는 그룹핑 큐에서 선제적으로 제외하여 "고객 미지정 / 현장 미지정" 노출 원천 봉쇄.
+
+---
+
 ## [v1.11.4.Build.7] - 2026-09-09 12:31
+
 
 ### ⚙️ [출고검수 기본 조회 기간 조정 — 시작일 과거 3개월, 종료일 무한]
 

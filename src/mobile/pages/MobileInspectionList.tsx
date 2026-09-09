@@ -79,11 +79,15 @@ export const MobileInspectionList: React.FC = () => {
   const pendingInspections = useMemo(() => outboundInspections.filter((ins) => ins.status === 'PENDING'), [outboundInspections]);
   
   const groups = useMemo(() => pendingInspections.reduce((acc, ins) => {
+    // 💡 고아 레코드 가드: 유효한 계약이 없는 유령 검수의뢰 제외
+    if (contracts.length > 0 && (!ins.contractId || !contracts.some(c => c.id === ins.contractId))) {
+      return acc;
+    }
     const key = ins.deliveryId || `no-delivery-${ins.contractId || 'unknown'}`;
     if (!acc[key]) acc[key] = [];
     acc[key].push(ins);
     return acc;
-  }, {} as Record<string, OutboundInspection[]>), [pendingInspections]);
+  }, {} as Record<string, OutboundInspection[]>), [pendingInspections, contracts]);
 
   const activeGroup = groups[selectedGroupId] || [];
 

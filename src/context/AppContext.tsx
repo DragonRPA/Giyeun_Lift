@@ -635,6 +635,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       db.awaitPendingWrites().catch(err => console.error("BillingDetails cleanup error:", err));
     }
 
+    // 💡 헌장 1.2 & 5.2 준수: 계약/배차가 존재하지 않는 고아 출고검수의뢰(outboundInspections) 자동 소탕 & DB 동기 삭제
+    if (db.contracts.length > 0) {
+      const validContractIds = new Set(db.contracts.map(c => c.id));
+      const validDeliveryIds = new Set(db.deliveries.map(d => d.id));
+      const orphanInspections = db.outboundInspections.filter(
+        i => (!i.contractId || !validContractIds.has(i.contractId)) &&
+             (!i.deliveryId || !validDeliveryIds.has(i.deliveryId))
+      );
+      if (orphanInspections.length > 0) {
+        orphanInspections.forEach(i => db.deleteRow('outboundInspections', i.id));
+        db.awaitPendingWrites().catch(err => console.error("Orphan inspections cleanup error:", err));
+      }
+    }
+
     setTenants([...db.tenants]);
     setUsers([...db.users]);
     setPermissions([...db.permissions]);
@@ -726,8 +740,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     'smart_dispatch4':      ['customers', 'sites', 'contacts', 'contracts', 'deliveries', 'assets'],
     'smart_return':         ['deliveries', 'contracts', 'assets', 'transportCompanies', 'transportDrivers', 'printStations', 'printQueue'],
     'asset_inout_history':  ['assetInOutLogs', 'assets', 'customers'],
-    'dispatch_assign':      ['contracts', 'contractAssets', 'assets', 'outboundInspections'],
-    'outbound_inspections': ['outboundInspections', 'contracts', 'contractAssets', 'assets', 'customers'],
+    'dispatch_assign':      ['contracts', 'contractAssets', 'assets', 'outboundInspections', 'customers', 'contractHistory'],
+    'outbound_inspections': ['outboundInspections', 'contracts', 'contractAssets', 'assets', 'customers', 'sites', 'deliveries'],
     'bank_matching':        ['bankTransactions', 'bankMatchingRules', 'billings', 'customers'],
     'vendors':              ['vendors'],
     'organization':         ['users', 'departments'],
@@ -1102,6 +1116,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const deleteContact = async (id: string) => {
+    // ✅ 고아 레코드 방지: 계약에 등록된 담당자 삭제 차단
+    const linkedContracts = db.contracts.filter(c => c.contactId === id);
+    if (linkedContracts.length > 0) {
+      showErrorModal(
+        `⚠️ 해당 담당자를 삭제할 수 없습니다.\n\n연결된 계약이 ${linkedContracts.length}건 존재합니다.\n계약에서 담당자를 먼저 변경/해제하십시오.`,
+        '담당자 삭제 불가'
+      );
+      return;
+    }
     db.deleteRow('contacts', id);
     if (db.isSupabaseConnected() && db.pendingWrites.length > 0) {
       try {
@@ -1138,6 +1161,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const deleteSite = async (id: string) => {
+    // ✅ 고아 레코드 방지: 연결된 계약 또는 투입 중인 장비가 있으면 삭제 차단
+    const linkedContracts = db.contracts.filter(c => c.siteId === id);
+    const linkedAssets = db.assets.filter(a => a.currentSiteId === id);
+    if (linkedContracts.length > 0 || linkedAssets.length > 0) {
+      showErrorModal(
+        `⚠️ 해당 현장을 삭제할 수 없습니다.\n\n` +
+        (linkedContracts.length > 0 ? `■ 연결된 계약: ${linkedContracts.length}건\n` : '') +
+        (linkedAssets.length > 0 ? `■ 투입 중인 장비: ${linkedAssets.length}대\n` : '') +
+        `\n계약 또는 장비에서 현장 연결을 먼저 해제하십시오.`,
+        '현장 삭제 불가'
+      );
+      return;
+    }
     db.deleteRow('sites', id);
     if (db.isSupabaseConnected() && db.pendingWrites.length > 0) {
       try {
@@ -4754,13 +4790,11 @@ ${currentTenant?.corporateName || tenantCorp} 배상
         });
       }
 
-      // 3. 아직 대기 중(PENDING)인 출고 검수 의뢰건 삭제
-      const pendingInsp = db.outboundInspections.find(
+      // 3. 아직 대기 중(PENDING)인 출고 검수 의뢰건 전체 삭제
+      const pendingInsps = db.outboundInspections.filter(
         i => (i.contractAssetId === contractAssetId || (i.contractId === origCa.contractId && i.assetId === origAssetId)) && i.status === 'PENDING'
       );
-      if (pendingInsp) {
-        db.deleteRow('outboundInspections', pendingInsp.id);
-      }
+      pendingInsps.forEach(i => db.deleteRow('outboundInspections', i.id));
 
       // 4. DB 완결 동기 대기 & 전역 리렌더링
       await db.awaitPendingWrites();
@@ -4769,11 +4803,13 @@ ${currentTenant?.corporateName || tenantCorp} 배상
     } catch (err: any) {
       console.error('unassignAssetFromContract error & Rollback:', err);
       // 롤백
-      if (caSnapshot) db.updateRow<ContractAsset>('contractAssets', contractAssetId, caSnapshot);
-      if (assetSnapshot && origAssetId) db.updateRow<Asset>('assets', origAssetId, assetSnapshot);
+      db.updateRow<ContractAsset>('contractAssets', contractAssetId, caSnapshot);
+      if (assetSnapshot && origAssetId) {
+        db.updateRow<Asset>('assets', origAssetId, assetSnapshot);
+      }
       refreshAllData();
 
-      showErrorModal(`⚠️ 장비 할당 취소 중 오류가 발생했습니다:\n\n${err?.message || err}`, '할당 취소 실패');
+      showErrorModal(`⚠️ 장비 할당 취소 중 오류가 발생하여 원복되었습니다:\n${err?.message || err}`, '할당 취소 실패');
       throw err;
     }
   };
@@ -4823,12 +4859,13 @@ ${currentTenant?.corporateName || tenantCorp} 배상
             contractEnd: null as any,
             updatedAt: nowIso
           });
-          const pendingInsp = db.outboundInspections.find(
+          const pendingInsps = db.outboundInspections.filter(
             i => (i.contractAssetId === caId || (i.contractId === origCa.contractId && i.assetId === origAssetId)) && i.status === 'PENDING'
           );
-          if (pendingInsp) {
-            db.deleteRow('outboundInspections', pendingInsp.id);
-          }
+          pendingInsps.forEach(i => {
+            deletedInspectionIds.push({ id: i.id, row: { ...i } });
+            db.deleteRow('outboundInspections', i.id);
+          });
         }
       }
 
@@ -4935,11 +4972,22 @@ ${currentTenant?.corporateName || tenantCorp} 배상
         expectedModel: newAssetOrig.modelName
       });
 
-      // 4. 출고 검수 의뢰건(outboundInspections) assetId 교체
+      // 4. 출고 검수 의뢰건(outboundInspections) assetId 교체 (없으면 신규 생성하여 검수 누락 방지)
       if (inspOrig) {
         db.updateRow<OutboundInspection>('outboundInspections', inspOrig.id, {
           assetId: newAssetId,
           note: `[장비교체] 기존(${oldAssetOrig.assetNo}) ➔ 대체(${newAssetOrig.assetNo}) | 사유: ${reason}`,
+          updatedAt: nowIso
+        });
+      } else {
+        db.insertRow<OutboundInspection>('outboundInspections', {
+          id: `insp-${contractAssetId}-${Date.now()}`,
+          contractId: caOrig.contractId,
+          contractAssetId,
+          assetId: newAssetId,
+          status: 'PENDING',
+          note: `[장비교체] 대체(${newAssetOrig.assetNo}) 신규 검수의뢰 | 사유: ${reason}`,
+          createdAt: nowIso,
           updatedAt: nowIso
         });
       }

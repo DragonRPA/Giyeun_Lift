@@ -206,6 +206,10 @@ export const OutboundInspections: React.FC = () => {
     const groupMap = new Map<string, OutboundInspection[]>();
 
     outboundInspections.forEach(item => {
+      // 💡 고아 레코드 가드: 계약 대장이 로드된 상태에서 계약 연결이 없는 고아 검수의뢰는 대기열에서 제외
+      if (contracts.length > 0 && (!item.contractId || !contracts.some(c => c.id === item.contractId))) {
+        return;
+      }
       const key = `${item.contractId || 'NOCONTR'}_${item.createdAt ? item.createdAt.substring(0, 10) : 'NODATE'}`;
       if (!groupMap.has(key)) {
         groupMap.set(key, []);

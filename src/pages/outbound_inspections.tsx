@@ -135,12 +135,11 @@ export const OutboundInspections: React.FC = () => {
     setTimeout(() => setToastMessage(null), 3500);
   };
 
-  // 📅 상차일자 기간 필터 state — 기본값: 오늘-3일(지연 건 캡처) ~ 오늘+14일(2주 앞 업무 전망)
+  // 📅 상차일자 기간 필터 state — 기본값: 오늘 기준 과거 3개월 ~ 무한(종료일 미설정)
   const _today = new Date();
-  const _start = new Date(_today); _start.setDate(_today.getDate() - 3);
-  const _end = new Date(_today); _end.setDate(_today.getDate() + 14);
+  const _start = new Date(_today); _start.setMonth(_today.getMonth() - 3);
   const [startDate, setStartDate] = useState<string>(_start.toISOString().split('T')[0]);
-  const [endDate, setEndDate] = useState<string>(_end.toISOString().split('T')[0]);
+  const [endDate, setEndDate] = useState<string>('');
 
   // 💡 [사장님 지시] Quick 날짜 선택 헬퍼 - 오늘 이후 미래 기준 조회 (1주일: 오늘~+7일, 1개월: 오늘~+30일)
   const handleSetDateRange = (type: 'TODAY' | 'WEEK' | 'MONTH' | 'ALL') => {

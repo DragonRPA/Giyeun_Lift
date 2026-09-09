@@ -479,7 +479,7 @@ export const ConsumableStockPage: React.FC = () => {
       </div>
 
       {/* ──────────────────────────────────────────────────────────────────────── */}
-      {/* [TAB 1] 주기장 재고 (본사 중앙 창고) */}
+      {/* [TAB 1] 주기장 재고 */}
       {/* ──────────────────────────────────────────────────────────────────────── */}
       {activeTab === 'STOCK' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
@@ -1089,7 +1089,7 @@ export const ConsumableStockPage: React.FC = () => {
                           </span>
                         </div>
                         <div style={{ fontSize: '12px', fontWeight: 600, marginTop: '4px' }}>
-                          {a.targetType === 'HQ' ? '주기장 본사창고' : `차량: ${a.mechanicName || '정비사'}`}
+                          {a.targetType === 'HQ' ? '주기장 재고' : `차량: ${a.mechanicName || '정비사'}`}
                         </div>
                         <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '2px' }}>
                           {a.auditDate} | {stocktakingAuditItems.filter(i => i.auditId === a.id).length}개 품목
@@ -1680,7 +1680,7 @@ export const ConsumableStockPage: React.FC = () => {
                   onChange={e => setNewAuditTargetType(e.target.value as any)}
                   style={{ padding: '8px', fontSize: '13px' }}
                 >
-                  <option value="HQ">주기장 본사 중앙창고</option>
+                  <option value="HQ">주기장 재고</option>
                   <option value="VEHICLE">AS 기사 정비차량</option>
                 </select>
               </div>

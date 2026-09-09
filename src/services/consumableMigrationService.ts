@@ -203,7 +203,7 @@ export async function ingestConsumablesToDatabase(
           supplier: targetConsumable.supplier,
           userId: actionUserId,
           fromLocation: '초기 소모품 재고 실사 업로드',
-          toLocation: '본사 중앙 창고',
+          toLocation: '주기장 재고',
           actionDate: todayYmd,
           description: `초기 재고 업로드 조정 (기존: ${existing.stockQty}개 ➔ 반영: ${newStockQty}개${item.note ? `, 비고: ${item.note}` : ''})`,
           createdAt: nowIso
@@ -237,7 +237,7 @@ export async function ingestConsumablesToDatabase(
         supplier: targetConsumable.supplier,
         userId: actionUserId,
         fromLocation: '초기 소모품 재고 등록 (밴드 실사)',
-        toLocation: '본사 중앙 창고',
+        toLocation: '주기장 재고',
         actionDate: todayYmd,
         description: `초기 관리 소모품 최초 적재 (수량: ${targetConsumable.stockQty}개${item.note ? `, 비고: ${item.note}` : ''})`,
         createdAt: nowIso

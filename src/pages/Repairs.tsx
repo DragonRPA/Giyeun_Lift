@@ -1142,7 +1142,7 @@ export const Repairs: React.FC = () => {
                         onChange={e => setTempConsumableId(e.target.value)}
                         style={{ padding: '6px', fontSize: '12px' }}
                       >
-                        <option value="">중앙창고 소모품 선택...</option>
+                        <option value="">주기장 재고 소모품 선택...</option>
                         {consumables.map(c => (
                           <option key={c.id} value={c.id}>
                             {c.modelName} (재고: {c.stockQty || 0} {c.unit} | ₩{c.unitPrice.toLocaleString()})

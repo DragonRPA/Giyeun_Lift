@@ -552,7 +552,7 @@ export function calculateAssetDepreciation(asset: Asset, asOfDate: Date = new Da
 export interface Consumable {
   id: string;
   modelName: string;
-  stockQty: number; // 본사 중앙 창고 재고
+  stockQty: number; // 주기장 재고
   unit: string; // '개' | '박스' 등
   unitPrice: number;
   supplier: string;
@@ -580,8 +580,8 @@ export interface ConsumableLog {
   supplier?: string;
   userId?: string;
   mechanicId?: string; // 차량 재고 이동 정비사
-  fromLocation?: string; // 출처 (예: '본사 중앙창고', '김정비 차량')
-  toLocation?: string; // 이동처 (예: '김정비 차량', '본사 중앙창고', '현장장비')
+  fromLocation?: string; // 출처 (예: '주기장 재고', '김정비 차량')
+  toLocation?: string; // 이동처 (예: '김정비 차량', '주기장 재고', '현장장비')
   targetAssetId?: string;
   actionDate: string;
   description: string;
@@ -613,7 +613,7 @@ export interface ConsumablePurchaseRequest {
 export interface StocktakingAudit {
   id: string;
   auditNo: string; // STK-YYYYMMDD-XXXX
-  targetType: 'HQ' | 'VEHICLE'; // 실사 대상 (HQ: 본사 중앙창고, VEHICLE: 정비사 차량)
+  targetType: 'HQ' | 'VEHICLE'; // 실사 대상 (HQ: 주기장 재고, VEHICLE: 정비사 차량)
   mechanicId?: string; // VEHICLE인 경우 정비사 ID
   mechanicName?: string;
   vehicleNo?: string;

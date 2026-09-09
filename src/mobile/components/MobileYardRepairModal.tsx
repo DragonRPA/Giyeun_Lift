@@ -429,12 +429,12 @@ export const MobileYardRepairModal: React.FC<MobileYardRepairModalProps> = ({
             />
           </div>
 
-          {/* 4. 본사 중앙창고 소모품 투입 차감 그리드 */}
+          {/* 4. 주기장 재고 소모품 투입 차감 그리드 */}
           <div className="p-3 rounded-2xl bg-slate-950/70 border border-slate-800 flex flex-col gap-2">
             <div className="flex items-center justify-between">
               <span className="font-bold text-slate-200 flex items-center gap-1.5">
                 <Package className="w-3.5 h-3.5 text-blue-400" />
-                본사 중앙창고 소모품 투입
+                주기장 재고 소모품 투입
               </span>
               <span className="text-[11px] font-bold text-blue-400 font-mono">
                 소모품 합계: {totalConsumablesCost.toLocaleString()}원
@@ -448,7 +448,7 @@ export const MobileYardRepairModal: React.FC<MobileYardRepairModalProps> = ({
                 onChange={e => setSelectedConsumableId(e.target.value)}
                 className="flex-1 rounded-xl bg-slate-900 border border-slate-700 py-2 px-2 text-white text-[11px] focus:outline-none"
               >
-                <option value="">중앙창고 소모품 선택...</option>
+                <option value="">주기장 재고 소모품 선택...</option>
                 {consumables.map(c => (
                   <option key={c.id} value={c.id}>
                     {c.modelName} (재고: {c.stockQty || 0} | ₩{c.unitPrice.toLocaleString()})

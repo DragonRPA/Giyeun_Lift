@@ -248,7 +248,7 @@ export const ConsumableInOutPage: React.FC = () => {
         '수량': l.quantity,
         '단가': `${(l.unitPrice || 0).toLocaleString()}원`,
         '총금액': `${((l.quantity || 0) * (l.unitPrice || 0)).toLocaleString()}원`,
-        '출처': l.fromLocation || (l.type === 'INBOUND' ? (l.supplier || '매입처') : '본사 중앙창고'),
+        '출처': l.fromLocation || (l.type === 'INBOUND' ? (l.supplier || '매입처') : '주기장 재고'),
         '이동처/적용': l.toLocation || (l.targetAssetId ? `자산(${getAssetNo(l.targetAssetId)})` : '-'),
         '담당자': getUserName(l.userId || l.mechanicId),
         '일자': l.actionDate,
@@ -835,7 +835,7 @@ export const ConsumableInOutPage: React.FC = () => {
                           <td style={{ textAlign: 'center', fontWeight: 700 }}>{l.quantity}</td>
                           <td style={{ fontSize: '12px' }}>{(l.unitPrice || 0).toLocaleString()}원</td>
                           <td style={{ fontWeight: 600 }}>{amount.toLocaleString()}원</td>
-                          <td style={{ fontSize: '12px' }}>{l.fromLocation || (l.type === 'INBOUND' ? (l.supplier || '매입처') : '본사 중앙창고')}</td>
+                          <td style={{ fontSize: '12px' }}>{l.fromLocation || (l.type === 'INBOUND' ? (l.supplier || '매입처') : '주기장 재고')}</td>
                           <td style={{ fontSize: '12px' }}>{l.toLocation || (l.targetAssetId ? `자산: ${getAssetNo(l.targetAssetId)}` : '-')}</td>
                           <td style={{ fontSize: '12px' }}>{getUserName(l.userId || l.mechanicId)}</td>
                           <td style={{ fontSize: '12px', whiteSpace: 'nowrap' }}>{l.actionDate}</td>

@@ -2880,10 +2880,10 @@ ${currentTenant?.corporateName || tenantCorp} 배상
         unitPrice: consumable.unitPrice,
         userId: currentUser?.id,
         mechanicId,
-        fromLocation: '본사 중앙창고',
+        fromLocation: '주기장 재고',
         toLocation: `${mechanicName} 차량`,
         actionDate: new Date().toISOString().split('T')[0],
-        description: memo || `[차량 불출] 본사창고 ➔ ${mechanicName} 차량 이동 (${quantity}개)`,
+        description: memo || `[차량 불출] 주기장 ➔ ${mechanicName} 차량 이동 (${quantity}개)`,
         createdAt: new Date().toISOString()
       });
 
@@ -2927,7 +2927,7 @@ ${currentTenant?.corporateName || tenantCorp} 배상
 
       // 2. 신품 정상 반납 vs 고품 격리 처리
       if (!isDefective) {
-        // 정상 신품 반납: 본사 중앙창고 가용 재고 증가
+        // 정상 신품 반납: 주기장 가용 재고 증가
         if (consumable) {
           db.updateRow<Consumable>('consumables', consumableId, {
             stockQty: consumable.stockQty + quantity,
@@ -2935,7 +2935,7 @@ ${currentTenant?.corporateName || tenantCorp} 배상
           });
         }
       } else {
-        // 고품(불량품) 반납: 본사 신품 가용재고 가산 차단 및 고품 관리 대장(collectedParts) 격리 적재
+        // 고품(불량품) 반납: 주기장 신품 가용재고 가산 차단 및 고품 관리 대장(collectedParts) 격리 적재
         const todayStr = new Date().toISOString().split('T')[0].replace(/-/g, '');
         const newPartNo = `COL-${todayStr}-${Math.floor(1000 + Math.random() * 9000)}`;
         db.insertRow<CollectedPart>('collectedParts', {
@@ -2963,10 +2963,10 @@ ${currentTenant?.corporateName || tenantCorp} 배상
         userId: currentUser?.id,
         mechanicId,
         fromLocation: `${mechanicName} 차량`,
-        toLocation: !isDefective ? '본사 중앙창고' : `고품 격리실 (${disposition})`,
+        toLocation: !isDefective ? '주기장 재고' : `고품 격리실 (${disposition})`,
         actionDate: new Date().toISOString().split('T')[0],
         description: memo || (!isDefective 
-          ? `[본사 반납] ${mechanicName} 차량 ➔ 본사창고 회수 (${quantity}개)`
+          ? `[주기장 반납] ${mechanicName} 차량 ➔ 주기장 재고 회수 (${quantity}개)`
           : `[고품 반납] ${mechanicName} 차량 ➔ 고품 격리 (${disposition}, ${quantity}개)`),
         createdAt: new Date().toISOString()
       });
@@ -3084,7 +3084,7 @@ ${currentTenant?.corporateName || tenantCorp} 배상
       let totalSystemAmount = 0;
 
       if (targetType === 'HQ') {
-        // 본사 중앙창고: 전체 consumable 목록 스냅샷
+        // 주기장 재고: 전체 consumable 목록 스냅샷
         db.consumables.forEach(c => {
           const sysQty = c.stockQty || 0;
           const uPrice = c.unitPrice || 0;
@@ -3225,7 +3225,7 @@ ${currentTenant?.corporateName || tenantCorp} 배상
       if (audit.status === 'CONFIRMED') throw new Error('이미 확정 완료된 실사 전표입니다.');
 
       const items = db.stocktakingAuditItems.filter(i => i.auditId === auditId);
-      const targetLocation = audit.targetType === 'HQ' ? '본사 중앙창고' : `${audit.mechanicName || '정비사'} 차량`;
+      const targetLocation = audit.targetType === 'HQ' ? '주기장 재고' : `${audit.mechanicName || '정비사'} 차량`;
 
       // 1. 차이가 있는 품목들에 대해 전산 재고 강제 보정 & ADJUST 수불 로그 발행
       items.forEach(item => {
@@ -7118,7 +7118,7 @@ ${currentTenant?.corporateName || tenantCorp} 배상
       });
     }
 
-    // 소모품 재고 차감: 주기장 정비(YARD)이거나 stockSource가 CENTRAL_HQ인 경우 본사 중앙창고에서 우선 차감
+    // 소모품 재고 차감: 주기장 정비(YARD)이거나 stockSource가 CENTRAL_HQ인 경우 주기장 재고에서 우선 차감
     const isYardDepotRepair = repairData.workLocation === 'YARD' || repairData.stockSource === 'CENTRAL_HQ' || maintenanceType === 'INHOUSE_REPAIR';
     const effectiveMechanicId = repairData.mechanicId || currentUser?.id;
     const mechanic = db.users.find(u => u.id === effectiveMechanicId);
@@ -7154,7 +7154,7 @@ ${currentTenant?.corporateName || tenantCorp} 배상
           createdAt: new Date().toISOString()
         });
       } else {
-        // 2. 본사 중앙창고 재고에서 차감 (주기장 정비 또는 본사 불출)
+        // 2. 주기장 재고에서 차감 (주기장 정비 또는 본사 불출)
         const nextQty = Math.max(0, (consumable.stockQty || 0) - uc.quantity);
         db.updateRow<Consumable>('consumables', consumable.id, {
           stockQty: nextQty,
@@ -7168,10 +7168,10 @@ ${currentTenant?.corporateName || tenantCorp} 배상
           unitPrice: consumable.unitPrice,
           targetAssetId: repairData.assetId,
           userId: currentUser?.id,
-          fromLocation: '본사 중앙창고',
+          fromLocation: '주기장 재고',
           toLocation: `주기장 장비(${targetAsset?.assetNo || 'N/A'})`,
           actionDate: repairData.repairDate || new Date().toISOString().split('T')[0],
-          description: `[본사직접 투입] 정비(${repairId}) 주기장 수리 부품 투입`,
+          description: `[주기장 재고 투입] 정비(${repairId}) 주기장 수리 부품 투입`,
           createdAt: new Date().toISOString()
         });
       }

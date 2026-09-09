@@ -213,7 +213,7 @@ export const MobileVehicleStock: React.FC = () => {
       if (processType === 'RESTOCK') {
         // [유형 1: 본사창고 보충 수령]
         if (hqQty < processQty) {
-          throw new Error(`본사 중앙창고 잔여 수량(${hqQty}개)이 부족합니다.`);
+          throw new Error(`주기장 잔여 재고 수량(${hqQty}개)이 부족합니다.`);
         }
         await transferConsumableToMechanic(
           effectiveMechanicId, 

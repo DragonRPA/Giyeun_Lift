@@ -1,3 +1,48 @@
+## [v1.12.0.Build.49] - 2026-09-10 04:05
+
+### 🚀 [매출 청구 미청구 정산 귀속월 동적 연동 결함 개편, WTT 10회 관통 스트레스 테스트 통과 및 "출고 요청" 전사 표준화]
+
+**배경**:
+1. 사장님 지시사항:
+   - "8월의 모든 청구가 존재하는데 이 메뉴에서 왜 일괄 청구 생성이 47건이 가능한걸까? 원인 파악하고 오류이면 수정해. 이 메뉴에서 WTT 10회 수행해보고 개편. ㄹㅇ"
+   - "전사 공통 옵션품목 마스터를 저장하면, 고객사 업션 등록할 때 사용할 수 있는거지? 여기에 저장하고, 고객의 현장으로 이 정보를 전파하면, 출고의뢰에 따라서 나오게 되는거고?"
+   - "버튼 색이 너무 어두워서 잘 안보임. 시인성이 낮음"
+   - "메뉴명 '출고의뢰' 를 '출고 요청' 으로 변경"
+   - "이 메뉴에서 '출고 의뢰' 와 '출고 요청' 이 혼용되고 있어. '출고 의뢰' 를 모두 '출고 요청' 으로 변환해줘"
+2. 시스템 헌장 카테고리 I (최대 편익, 발생사건 무누락 DB 보존), 카테고리 III (3.1 무수식어 건조 표준, 3.2 줄바꿈 방지), 카테고리 IV (4.1 정밀 일할 집계), 카테고리 V (5.5 WTT 도메인 관통 스트레스 테스트 표준), 카테고리 VI (6.1 및 6.2 "ㄹㅇ" 배포) 준수.
+
+**개편 내역**:
+1. **8월 모든 청구 존재 시 47건 미청구 노출 결함 원인 규명 및 개편 (`Billings.tsx`)**:
+   - **결함 원인**: 마감일 기준 검색 기간에서 [전월] 또는 8월(`2026-08-01 ~ 2026-08-31`)을 조회했음에도, `activeContractsForWizard`가 조회 기간의 대상 귀속월(`targetYm = '2026-08'`)이 아닌 **하드코딩된 시스템 현재월(`currentYm = '2026-09'`)의 청구서 유무만 검사**하고 있었음 (`b.billingYm === currentYm`).
+   - 8월 청구가 47건 모두 완료되어 있어도 9월 청구가 없다는 이유로 `hasBillingThisMonth`가 `false`가 되어 47건 계약이 미청구 정산 목록에 그대로 노출되고, 일괄청구생성 카운트도 47건으로 잘못 잡히며 일괄 생성 시 9월 청구서가 발행되려 하던 치명적 로직 결함을 완전 해결.
+   - **개편 내역**:
+     - `targetYm`: 검색 기간 기반 동적 귀속월 산출 연동 (`(wizardSearchEndDate || wizardSearchStartDate || todayStr).substring(0, 7)`).
+     - 계약 유효 기간 검증: `c.startDate <= wizardSearchEndDate && normalEnd >= wizardSearchStartDate` 기간 겹침 조건 엄격 적용.
+     - 이미 해당 월에 유효 청구서(`b.billingYm === targetYm && b.status !== 'REJECTED'`)가 있거나, 직전 마감일이 검색 종료일 이상(`c.lastBilledPeriodEnd >= wizardSearchEndDate`)인 계약은 미청구 대상에서 즉시 제외.
+     - `handleBulkGenerateWizard` 및 `handleSelectContractForWizard`에서 `targetYm`과 해당 월 마감일(`targetBillingDate`)을 전달하여 과거 월 정산 시에도 정확한 귀속월/일자로 청구서가 발행되도록 교정.
+     - 검색 인풋 엔터키(`onKeyDown Enter`) 핸들러 탑재 및 UI 레이블 헌장 3.1 건조 표준화(이모지/불필요 부연설명 제거).
+2. **WTT 10회 도메인 관통 스트레스 테스트 완벽 통과 (`src/tests/wtt_billings_unbilled.test.ts`)**:
+   - [WTT-BILL-01] 시간(2026-08) x 수량(47건): 8월 전원 마감 계약 47건 조회 시 미청구 0건 완결 검증 (스크린샷 버그 원천 차단) ✅ PASS
+   - [WTT-BILL-02] 수량(46건 완료 + 1건 잔여): 47건 중 1건 미청구 잔여 분기 검증 (정확한 1건 타겟팅) ✅ PASS
+   - [WTT-BILL-03] 시간(중도 종료 8/20) x 물리(조기 반납): 8/20 종료 계약 정상 포착 및 20일 일할 산정 ✅ PASS
+   - [WTT-BILL-04] 비용(파손 수리비 미수금) x 거버넌스(안전 분리): 외상미수금 보유 계약 일괄생성 자동 분리 가드 ✅ PASS
+   - [WTT-BILL-05] 상태(REJECTED) x 회계(재정산 사이클): 청구서 취소/반려 시 미청구 목록 복귀 멱등성 검증 ✅ PASS
+   - [WTT-BILL-06] 물리(장비 교환) x 날짜·수지 보존: 대차 교체(EXCHANGE) 시 전자산 ➔ 후장비 일할 기여액 및 31일 일수 보존 ✅ PASS
+   - [WTT-BILL-07] 시간(부분 기간 1~10일): 마감일 미도래 계약(25일) 조기 청구 방어 vs 마감 도래 계약(10일) 즉시 포착 ✅ PASS
+   - [WTT-BILL-08] 비용(선수금 차감) x 수지 보존: 선수금 차감 반영 및 종단 수지 대차대조 무결성 (차액 ₩0) ✅ PASS
+   - [WTT-BILL-09] 공간/계약(RENTAL vs SALE): SALE(매각) 계약 원천 배제 및 RENTAL(임대) 계약만 정산 분리 거버넌스 ✅ PASS
+   - [WTT-BILL-10] 종단 보존: 일괄 청구 생성 실행 ➔ 멱등성 및 미청구 목록 0건 즉시 소멸 ✅ PASS
+3. **"출고의뢰" ➔ "출고 요청" 전사 명칭 단일 표준화**:
+   - `App.tsx`, `menuConfig.ts`, `menu_config.ts`, `smart_dispatch4.tsx`, `MobileHome.tsx`, `outbound_inspections.tsx`, `MobileDispatchOrderCreate.tsx`, `CallAudioUploadModal.tsx` 전면 교체.
+4. **고객사 옵션 품목 마스터 버튼 다크모드 시인성 개선 (`Customers.tsx`)**:
+   - 어둡던 `#0070C0` 인라인 스타일을 선명한 스카이블루 `#0284c7` 및 화이트 텍스트로 보정.
+
+**검증 결과**:
+- **WTT 10회 스트레스 테스트**: `cmd /c npx tsx src/tests/wtt_billings_unbilled.test.ts` **10회 전 항목 100% PASS (0 결함)**.
+- **TypeScript 빌드 및 번들링**: `cmd /c npm run build` **0 Error 정상 통과 (`built in 1.34s`)**.
+
+---
+
 ## [v1.12.0.Build.48] - 2026-09-10 03:45
 
 ### 🚀 [출고의뢰 전 모델 가용재고 수량 상시 표시 및 선택 장비 실시간 가용/임차 판별 배지 고도화]

@@ -1,6 +1,6 @@
 // src/pages/smart_dispatch4.tsx
 // ┌─────────────────────────────────────────────────────────────────────────┐
-// │ 출고의뢰 (통합) — smart_dispatch4  (v1.9.2.Build.216)                   │
+// │ 출고 요청 (통합) — smart_dispatch4  (v1.9.2.Build.216)                  │
 // │                                                                         │
 // │ [WTT 100회 스트레스 테스트 7대 결함 전수 해결]                           │
 // │  1. DB 무누락 영구 저장 (F5 시 증발 방지, 헌장 1.2, 5.2 준수)           │
@@ -1393,7 +1393,7 @@ export const SmartDispatch4: React.FC = () => {
   const executeSaveDraft = async (saveToSite: boolean) => {
     setOptionConfirmModalOpen(false);
     if (!canSave) {
-      showToast('출고의뢰 및 배차 등록 권한이 없습니다.', 'error');
+      showToast('출고 요청 및 배차 등록 권한이 없습니다.', 'error');
       return;
     }
     if (isSubmittingDispatch) return;
@@ -1509,7 +1509,7 @@ export const SmartDispatch4: React.FC = () => {
           qty: Math.max(1, Math.floor(Number(eq.qty) || 1))
         })),
         note: fullNote,
-        rawText: `[출고의뢰통합 발행] ${selectedContext || 'OUTBOUND'}`,
+        rawText: `[출고 요청 통합 발행] ${selectedContext || 'OUTBOUND'}`,
         vehicleType: vehicleType || '5T',
         paidBy: paidBy || undefined,
         billableToCustomer: false,
@@ -1547,14 +1547,14 @@ export const SmartDispatch4: React.FC = () => {
           console.error('출고 후 자동 인쇄 오류:', printErr);
         }
 
-        showToast(`출고의뢰가 정식 등록되었습니다! (계약 #${res.contractNo || ''}, 고객사·현장·배차·장비할당 생성 완료)`, 'success');
+        showToast(`출고 요청이 정식 등록되었습니다! (계약 #${res.contractNo || ''}, 고객사·현장·배차·장비할당 생성 완료)`, 'success');
         resetForm();
         setEditingDraftId(null);
       } else {
-        showToast(res?.errorMessage || '출고의뢰 등록 실패', 'error');
+        showToast(res?.errorMessage || '출고 요청 등록 실패', 'error');
       }
     } catch (e: any) {
-      showToast(`출고의뢰 발행 오류: ${e?.message}`, 'error');
+      showToast(`출고 요청 발행 오류: ${e?.message}`, 'error');
     } finally {
       setIsSubmittingDispatch(false);
     }
@@ -1738,7 +1738,7 @@ export const SmartDispatch4: React.FC = () => {
 
     setActiveTab('NEW');
     setOpenBlock('EQUIPMENT');
-    showToast(`'${draft.customerName.value || '선택 의뢰'}' 데이터를 새 의뢰 작성으로 가져왔습니다.`, 'info');
+    showToast(`'${draft.customerName.value || '선택 요청'}' 데이터를 새 요청 작성으로 가져왔습니다.`, 'info');
   };
 
   // ── 병합 ─────────────────────────────────────────────────────────────────
@@ -1749,7 +1749,7 @@ export const SmartDispatch4: React.FC = () => {
     // 🛡️ [고객사 일치 검증 가드]
     const firstCustomer = selected[0].customerName.value;
     if (selected.some(d => d.customerName.value !== firstCustomer)) {
-      showToast('서로 다른 거래처(고객사)의 의뢰 초안은 하나로 병합할 수 없습니다.', 'error');
+      showToast('서로 다른 거래처(고객사)의 요청 초안은 하나로 병합할 수 없습니다.', 'error');
       return;
     }
 
@@ -1773,7 +1773,7 @@ export const SmartDispatch4: React.FC = () => {
       });
       await loadDrafts();
       setSelectedQueueIds(new Set());
-      showToast('병합 완료 — 동일 모델 수량 합산 및 단일 의뢰로 통합 저장되었습니다.');
+      showToast('병합 완료 — 동일 모델 수량 합산 및 단일 요청으로 통합 저장되었습니다.');
     } catch (e: any) {
       showToast(`병합 실패: ${e?.message}`, 'error');
     }
@@ -1787,7 +1787,7 @@ export const SmartDispatch4: React.FC = () => {
     }
 
     if (!canSave) {
-      showToast('출고의뢰 및 배차 등록 권한이 없습니다.', 'error');
+      showToast('출고 요청 및 배차 등록 권한이 없습니다.', 'error');
       return;
     }
 
@@ -1797,13 +1797,13 @@ export const SmartDispatch4: React.FC = () => {
     const resolvedAddress = (draft.siteAddress || siteObj?.address || '').trim();
 
     if (!resolvedAddress) {
-      showToast('현장 상세주소가 누락되었습니다. [새의뢰 작성으로 가져오기]를 눌러 주소를 보완해주세요.', 'error');
+      showToast('현장 상세주소가 누락되었습니다. [새 요청 작성으로 가져오기]를 눌러 주소를 보완해주세요.', 'error');
       return;
     }
 
     const contactPhoneVal = typeof draft.contactPhone === 'string' ? draft.contactPhone : (draft.contactPhone as any)?.value || '';
     if (!contactPhoneVal) {
-      showToast('현장 담당자 연락처가 누락되었습니다. [새의뢰 작성으로 가져오기]를 눌러 연락처를 보완해주세요.', 'error');
+      showToast('현장 담당자 연락처가 누락되었습니다. [새 요청 작성으로 가져오기]를 눌러 연락처를 보완해주세요.', 'error');
       return;
     }
 
@@ -1830,7 +1830,7 @@ export const SmartDispatch4: React.FC = () => {
         unloadingTime: unloadingStr,
         equipments: draft.equipments,
         note: draft.note,
-        rawText: `[출고의뢰통합 확정] ${draft.context.join(', ')}`,
+        rawText: `[출고 요청 통합 확정] ${draft.context.join(', ')}`,
         vehicleType: draft.vehicleType || '5T',
         paidBy: draft.paidBy || undefined,
         billableToCustomer: false,
@@ -1873,7 +1873,7 @@ export const SmartDispatch4: React.FC = () => {
       setIsConvertingId(uploadId);
       const newDraft = await convertUploadToDraft(uploadId);
       await Promise.all([loadDrafts(), loadUploadsAndLogs()]);
-      showToast(`출고의뢰 초안이 생성되었습니다. (ID: ${newDraft.id.slice(0, 8)}...)`, 'success');
+      showToast(`출고 요청 초안이 생성되었습니다. (ID: ${newDraft.id.slice(0, 8)}...)`, 'success');
     } catch (err: any) {
       showToast(`초안 생성 실패: ${err?.message}`, 'error');
     } finally {
@@ -1916,7 +1916,7 @@ export const SmartDispatch4: React.FC = () => {
     // 4. 탭 전환
     setActiveTab('NEW');
     setOpenBlock('CUSTOMER');
-    showToast(`통화 파일(${upload.fileName}) 데이터를 새 의뢰 폼으로 로드했습니다.`, 'info');
+    showToast(`통화 파일(${upload.fileName}) 데이터를 새 요청 폼으로 로드했습니다.`, 'info');
   };
 
   // ── 통화 파일 업로드 항목 삭제 ─────────────────────────────
@@ -1972,7 +1972,7 @@ export const SmartDispatch4: React.FC = () => {
     let orderRetrievalAssetIds: string[] = [];
     let orderVehicleType = '5T';
     let orderPaidBy: PaidBy | null | undefined = null;
-    let contextLabel = '출고의뢰';
+    let contextLabel = '출고 요청';
     let orderClosingDay = 30;
     let orderStatementClosingDay = 25;
     let orderPaymentDueDay = 15;
@@ -2021,7 +2021,7 @@ export const SmartDispatch4: React.FC = () => {
       orderRetrievalAssetIds = retrievalAssetIds;
       orderVehicleType = vehicleType;
       orderPaidBy = paidBy;
-      contextLabel = CONTEXT_OPTIONS.find(o => o.id === selectedContext)?.label || '출고의뢰';
+      contextLabel = CONTEXT_OPTIONS.find(o => o.id === selectedContext)?.label || '출고 요청';
       orderClosingDay = closingDay;
       orderStatementClosingDay = statementClosingDay;
       orderPaymentDueDay = paymentDueDay;
@@ -2097,7 +2097,7 @@ export const SmartDispatch4: React.FC = () => {
       <div style="display: flex; flex-direction: row; align-items: center; border-bottom: 2px solid #1e1b4b; padding-bottom: 8px; margin-bottom: 12px; gap: 8px;">
         <div style="flex-shrink: 0; display: flex; flex-direction: column; gap: 2px;">
           <div style="font-size: 11px; font-weight: 800; color: #312e81; white-space: nowrap;">
-            의뢰유형: <span style="color: #0f172a;">${contextLabel}</span>
+            요청유형: <span style="color: #0f172a;">${contextLabel}</span>
           </div>
           <div style="font-size: 10px; color: #64748b; white-space: nowrap;">
             출력일시: ${printTimeStr}
@@ -2334,7 +2334,7 @@ export const SmartDispatch4: React.FC = () => {
       } else if (queue.length > 0) {
         draftToPrint = queue[0];
       } else {
-        showToast('인쇄할 출고의뢰 초안이 없습니다.', 'error');
+        showToast('인쇄할 출고 요청 초안이 없습니다.', 'error');
         return;
       }
     }
@@ -2342,7 +2342,7 @@ export const SmartDispatch4: React.FC = () => {
     if (!draftToPrint && activeTab === 'NEW') {
       const cust = isNewCustomerMode ? newCustomerName : selectedCustomer?.name;
       if (!cust && equipments.length === 0) {
-        showToast('인쇄할 출고의뢰 정보를 먼저 입력해주세요.', 'error');
+        showToast('인쇄할 출고 요청 정보를 먼저 입력해주세요.', 'error');
         return;
       }
     }
@@ -2384,7 +2384,7 @@ export const SmartDispatch4: React.FC = () => {
           {/* 블록 제어 바 */}
           <div className="flex items-center justify-between px-1 py-0.5 text-xs text-slate-400">
             <span className="text-[11px] font-semibold text-slate-400">
-              5단계 의뢰 서식 ({openBlocks.size}/5 블록 열림)
+              5단계 요청 서식 ({openBlocks.size}/5 블록 열림)
             </span>
             <button
               type="button"
@@ -2412,7 +2412,7 @@ export const SmartDispatch4: React.FC = () => {
                 <textarea
                   value={pasteText}
                   onChange={e => setPasteText(e.target.value)}
-                  placeholder="카톡, 문자, 이메일 의뢰 원문을 붙여넣거나 [파일 불러오기]를 실행한 뒤 [폼 데이터 변환 (추출)]을 누르세요."
+                  placeholder="카톡, 문자, 이메일 요청 원문을 붙여넣거나 [파일 불러오기]를 실행한 뒤 [폼 데이터 변환 (추출)]을 누르세요."
                   rows={5}
                   className="w-full bg-slate-950 border border-slate-700 rounded-lg p-3 text-xs font-mono text-slate-200 placeholder-slate-500 focus:outline-none focus:border-blue-500 resize-y"
                 />
@@ -2492,7 +2492,7 @@ export const SmartDispatch4: React.FC = () => {
               <Info className="w-4 h-4 text-purple-400 flex-shrink-0 mt-0.5" />
               <div>
                 <strong className="text-purple-300 font-bold block mb-0.5">신규 고객 2단계 승인 프로세스</strong>
-                영업사원은 기본 정보를 입력해 의뢰를 발행할 수 있으며, 관리부의 사업자등록 검증 완료 전까지 배차가 자동 차단됩니다.
+                영업사원은 기본 정보를 입력해 출고 요청을 발행할 수 있으며, 관리부의 사업자등록 검증 완료 전까지 배차가 자동 차단됩니다.
               </div>
             </div>
           )}
@@ -3148,7 +3148,7 @@ export const SmartDispatch4: React.FC = () => {
                       {activeFt} {modelSearchQuery ? `(검색결과 ${displayedModels.length}건)` : `(${displayedModels.length}개 모델)`}
                     </span>
                     <span className="text-[10px] text-slate-400 font-medium">
-                      * 가용 0대 모델도 출고 의뢰 가능 (출고/자산 부서에서 외부 임차 장비 매핑 지원)
+                      * 가용 0대 모델도 출고 요청 가능 (출고/자산 부서에서 외부 임차 장비 매핑 지원)
                     </span>
                   </div>
                 </div>
@@ -3850,7 +3850,7 @@ export const SmartDispatch4: React.FC = () => {
                     {new Date().toLocaleDateString('ko-KR')}
                   </span>
                   <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-blue-950 text-blue-300 border border-blue-800">
-                    {CONTEXT_OPTIONS.find(o => o.id === selectedContext)?.label || '의뢰목적 미선택'}
+                    {CONTEXT_OPTIONS.find(o => o.id === selectedContext)?.label || '요청목적 미선택'}
                   </span>
                 </div>
               </div>
@@ -4056,17 +4056,17 @@ export const SmartDispatch4: React.FC = () => {
               {isSubmittingDispatch ? (
                 <>
                   <RefreshCw className="w-4 h-4 animate-spin" />
-                  <span>출고의뢰 등록 및 배차 생성 중...</span>
+                  <span>출고 요청 등록 및 배차 생성 중...</span>
                 </>
               ) : isFormValid ? (
                 <>
-                  <span>출고의뢰 발행 (검증 완료 9/9)</span>
+                  <span>출고 요청 발행 (검증 완료 9/9)</span>
                   <ArrowRight className="w-4 h-4" />
                 </>
               ) : (
                 <>
                   <AlertTriangle className="w-4 h-4 text-red-400" />
-                  <span>출고의뢰 (미충족 {invalidRules.length}건 방어차단)</span>
+                  <span>출고 요청 (미충족 {invalidRules.length}건 방어차단)</span>
                 </>
               )}
             </button>
@@ -4074,7 +4074,7 @@ export const SmartDispatch4: React.FC = () => {
           <p className="text-[10px] text-slate-400 text-center m-0">
             {isFormValid
               ? '확인 완료 시 고객사·현장·배차 대장 및 장비 할당이 즉시 생성되며, 지정된 프린터로 출고요청서가 자동 출력됩니다.'
-              : '누락된 항목이 있으면 출고의뢰 발행이 자동으로 방어 차단됩니다.'}
+              : '누락된 항목이 있으면 출고 요청 발행이 자동으로 방어 차단됩니다.'}
           </p>
         </div>
 
@@ -4372,7 +4372,7 @@ export const SmartDispatch4: React.FC = () => {
                         onClick={() => handleLoadUploadToForm(selectedUpload)}
                         className="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 text-[11px] font-bold border border-slate-700 transition"
                       >
-                        새의뢰 폼으로 복사
+                        새 요청 폼으로 복사
                       </button>
                       <button
                         type="button"
@@ -4409,7 +4409,7 @@ export const SmartDispatch4: React.FC = () => {
               <div className="dispatch4-section-header">
                 <div className="flex items-center gap-2">
                   <Package className="w-3.5 h-3.5 text-emerald-400" />
-                  <span className="text-white font-bold">출고의뢰 초안 대장</span>
+                  <span className="text-white font-bold">출고 요청 초안 대장</span>
                   <span className="px-1.5 py-0.2 rounded bg-emerald-950 text-emerald-300 font-mono text-[10px] font-bold">
                     {activeQueue.length}건
                   </span>
@@ -4439,7 +4439,7 @@ export const SmartDispatch4: React.FC = () => {
                     {activeQueue.length === 0 ? (
                       <tr>
                         <td colSpan={10} className="text-center py-8 text-slate-500">
-                          대기 중인 출고의뢰 초안이 없습니다.
+                          대기 중인 출고 요청 초안이 없습니다.
                         </td>
                       </tr>
                     ) : (
@@ -4501,9 +4501,9 @@ export const SmartDispatch4: React.FC = () => {
                                 type="button"
                                 onClick={() => handleLoadDraftToForm(draft)}
                                 className="px-2 py-0.5 rounded bg-blue-600 hover:bg-blue-500 text-white font-bold text-[10.5px] transition shadow-sm"
-                                title="출고의뢰 작성 폼으로 초안 데이터 로드"
+                                title="출고 요청 작성 폼으로 초안 데이터 로드"
                               >
-                                {draft.context.includes('ADDITIONAL') ? '추가출고 작성 ➔' : draft.context.includes('EXCHANGE') ? '대차의뢰 작성 ➔' : '출고의뢰 작성 ➔'}
+                                {draft.context.includes('ADDITIONAL') ? '추가출고 작성 ➔' : draft.context.includes('EXCHANGE') ? '대차 요청 작성 ➔' : '출고 요청 작성 ➔'}
                               </button>
                             </td>
                             <td style={{ textAlign: 'center' }} onClick={e => e.stopPropagation()}>
@@ -4633,7 +4633,7 @@ export const SmartDispatch4: React.FC = () => {
                         className="px-3.5 py-1 rounded bg-blue-600 hover:bg-blue-500 text-white text-[11px] font-black transition flex items-center gap-1 shadow-sm whitespace-nowrap cursor-pointer"
                       >
                         <ArrowRight className="w-3.5 h-3.5" />
-                        <span>{selectedDraft.context.includes('ADDITIONAL') ? '추가출고 작성 ➔' : selectedDraft.context.includes('EXCHANGE') ? '대차의뢰 작성 ➔' : '출고의뢰 작성 ➔'}</span>
+                        <span>{selectedDraft.context.includes('ADDITIONAL') ? '추가출고 작성 ➔' : selectedDraft.context.includes('EXCHANGE') ? '대차 요청 작성 ➔' : '출고 요청 작성 ➔'}</span>
                       </button>
                       <button
                         type="button"
@@ -4683,14 +4683,14 @@ export const SmartDispatch4: React.FC = () => {
       {/* 최상단 컴팩트 툴바 (타이틀 + 탭 + 녹음 업로드 1줄 인라인) */}
       <div className="dispatch4-toolbar">
         <div className="dispatch4-toolbar-left">
-          <h2 className="dispatch4-title">출고의뢰</h2>
+          <h2 className="dispatch4-title">출고 요청</h2>
           <div className="dispatch4-tab-group">
             <button
               type="button"
               onClick={() => setActiveTab('NEW')}
               className={`dispatch4-tab-btn ${activeTab === 'NEW' ? 'active' : ''}`}
             >
-              새 의뢰 작성
+              새 요청 작성
             </button>
             <button
               type="button"

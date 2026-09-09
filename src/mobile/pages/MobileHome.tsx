@@ -208,7 +208,7 @@ export const MobileHome: React.FC<MobileHomeProps> = ({
             <div className="w-9 h-9 rounded-xl bg-white/20 flex items-center justify-center">
               <Send className="w-5 h-5 stroke-[2.5]" />
             </div>
-            <span>모바일 출고 의뢰 작성</span>
+            <span>모바일 출고 요청 작성</span>
           </div>
           <ArrowRight className="w-5 h-5" />
         </button>
@@ -423,7 +423,7 @@ export const MobileHome: React.FC<MobileHomeProps> = ({
               <Send className="w-5 h-5" />
             </div>
             <div>
-              <div className="text-sm font-bold text-white">출고 의뢰 접수 현황</div>
+              <div className="text-sm font-bold text-white">출고 요청 접수 현황</div>
               <div className="text-xs text-slate-400">영업부 출고요청 파이프라인</div>
             </div>
           </div>

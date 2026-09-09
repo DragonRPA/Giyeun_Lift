@@ -1325,14 +1325,40 @@ ${currentTenant?.tradeName || currentTenant?.corporateName || '임대인'} 올�
   const todayStr = getTodayStr();
   const currentYm = getCurrentYm();
   
-  const activeContractsForWizard = contracts.filter(c => {
-    const isNotExpired = normalizeEndDate(c.endDate) >= todayStr;
-    if (!isNotExpired) return false;
+  // 💡 사용자가 선택한 마감일 검색 기간 기준 대상 귀속월 (예: 전월 선택 시 2026-08)
+  const targetYm = useMemo(() => {
+    return (wizardSearchEndDate || wizardSearchStartDate || getTodayStr()).substring(0, 7);
+  }, [wizardSearchStartDate, wizardSearchEndDate]);
 
-    // 취소(REJECTED)된 청구서는 제외하고, 현재 유효한 청구서가 없는 계약만 마법사 정산 대상에 노출
-    const hasBillingThisMonth = billings.some(b => b.contractId === c.id && b.billingYm === currentYm && b.status !== 'REJECTED');
-    return !hasBillingThisMonth;
-  });
+  const activeContractsForWizard = useMemo(() => {
+    return contracts.filter(c => {
+      // 1. 계약 유형: 정기 렌탈(RENTAL) 계약만 청구 대상 (자산 매각 SALE 등 제외)
+      if ((c.contractType || 'RENTAL') !== 'RENTAL') return false;
+
+      // 2. 계약 유효 기간 검증: 검색 기간 내에 계약이 유효한 상태였는지 (기간 겹침)
+      const normalEnd = normalizeEndDate(c.endDate);
+      const isOverlapping = c.startDate <= (wizardSearchEndDate || todayStr) && normalEnd >= (wizardSearchStartDate || '2000-01-01');
+      if (!isOverlapping) return false;
+
+      // 3. 해당 대상 귀속월(targetYm)에 유효한 청구서가 이미 존재하는지 검사 (취소 REJECTED 제외)
+      const hasBillingForTargetMonth = billings.some(
+        b => b.contractId === c.id && b.billingYm === targetYm && b.status !== 'REJECTED'
+      );
+      if (hasBillingForTargetMonth) return false;
+
+      // 4. 계약의 직전 청구 마감일이 이미 검색 기간 종료일 이상인지 검사 (이미 해당 기간까지 정산 마감 완료)
+      if (c.lastBilledPeriodEnd && wizardSearchEndDate && c.lastBilledPeriodEnd >= wizardSearchEndDate) {
+        return false;
+      }
+
+      // 5. 계약이 이미 종료되었고, 직전 청구 마감일이 계약 종료일 이상으로 전액 정산 완료된 경우 제외
+      if (c.lastBilledPeriodEnd && c.lastBilledPeriodEnd >= normalEnd) {
+        return false;
+      }
+
+      return true;
+    });
+  }, [contracts, billings, targetYm, wizardSearchStartDate, wizardSearchEndDate, todayStr]);
 
   const isDuePeriod = (c: any) => {
     if (!wizardSearchStartDate || !wizardSearchEndDate) return true;
@@ -1364,6 +1390,12 @@ ${currentTenant?.tradeName || currentTenant?.corporateName || '임대인'} 올�
       return false;
     }
 
+    // 만약 계약 종료일이 검색 기간 내에 있다면 (예: 8/20 반납), 마감일과 상관없이 정산 대상!
+    const normalEnd = normalizeEndDate(c.endDate);
+    if (normalEnd >= wizardSearchStartDate && normalEnd <= wizardSearchEndDate) {
+      return true;
+    }
+
     const isDayInRange = (day: number | undefined) => {
       if (!day) return false;
       if (startDay <= endDay) {
@@ -1373,8 +1405,12 @@ ${currentTenant?.tradeName || currentTenant?.corporateName || '임대인'} 올�
       }
     };
     
-    const billingDayMatch = isDayInRange(effectiveBillingDay);
-    const statementDayMatch = isDayInRange(effectiveStatementDay);
+    const defaultDay = new Date(startDateObj.getFullYear(), startDateObj.getMonth() + 1, 0).getDate();
+    const bDay = effectiveBillingDay !== undefined ? effectiveBillingDay : defaultDay;
+    const sDay = effectiveStatementDay;
+    
+    const billingDayMatch = isDayInRange(bDay);
+    const statementDayMatch = sDay !== undefined ? isDayInRange(sDay) : false;
     
     return billingDayMatch || statementDayMatch;
   };
@@ -1428,6 +1464,7 @@ ${currentTenant?.tradeName || currentTenant?.corporateName || '임대인'} 올�
       return;
     }
 
+    const targetBillingDate = wizardSearchEndDate <= todayStr ? wizardSearchEndDate : todayStr;
     const hasExcluded = contractsWithReceivables.length > 0;
     const confirmMessage = hasExcluded
       ? `현재 조회된 정산 대상 계약 총 ${filteredWizardContracts.length}건 중,\n\n` +
@@ -1436,8 +1473,8 @@ ${currentTenant?.tradeName || currentTenant?.corporateName || '임대인'} 올�
         `외상미수금이 없는 ${contractsWithoutReceivables.length}건에 대해 청구서를 일괄 생성하시겠습니까?\n` +
         `(제외된 ${contractsWithReceivables.length}건은 담당자가 직접 카드를 클릭하여 외상미수금을 선택 후 생성하실 수 있습니다.)`
       : `현재 조회된 정산 대상 계약 총 ${contractsWithoutReceivables.length}건에 대해 청구서를 일괄 생성하시겠습니까?\n\n` +
-        `- 청구일자: ${todayStr}\n` +
-        `- 청구귀속월: ${currentYm}\n\n` +
+        `- 청구일자: ${targetBillingDate}\n` +
+        `- 청구귀속월: ${targetYm}\n\n` +
         `생성된 청구서는 [청구 및 수납내역] 탭에서 확인 및 출력하실 수 있습니다.`;
 
     if (!window.confirm(confirmMessage)) return;
@@ -1450,7 +1487,7 @@ ${currentTenant?.tradeName || currentTenant?.corporateName || '임대인'} 올�
     try {
       for (const c of contractsWithoutReceivables) {
         try {
-          await generateBillingForSingleContract(c.id, currentYm, todayStr);
+          await generateBillingForSingleContract(c.id, targetYm, targetBillingDate);
           successCount++;
         } catch (err: any) {
           failCount++;
@@ -1489,15 +1526,13 @@ ${currentTenant?.tradeName || currentTenant?.corporateName || '임대인'} 올�
     setExtraCharges([]);
     setSelectedRepairIdsForWizard([]);
     setSelectedDeliveryIdsForWizard([]);
-    setWizardBillingYm(getCurrentYm());
-    setWizardBillingDate(getTodayStr());
+    setWizardBillingYm(targetYm);
+    const targetBillingDate = wizardSearchEndDate <= todayStr ? wizardSearchEndDate : todayStr;
+    setWizardBillingDate(targetBillingDate);
     
-    const today = new Date();
-    const year = today.getFullYear();
-    const month = today.getMonth();
-    
-    const firstOfM = new Date(year, month, 1);
-    const lastOfM = new Date(year, month + 1, 0);
+    const [targetY, targetM] = targetYm.split('-').map(Number);
+    const firstOfM = new Date(targetY, targetM - 1, 1);
+    const lastOfM = new Date(targetY, targetM, 0);
     
     const startStr = firstOfM.toISOString().split('T')[0];
     const endStr = lastOfM.toISOString().split('T')[0];
@@ -2905,6 +2940,7 @@ ${currentTenant?.tradeName || currentTenant?.corporateName || '임대인'} 올�
                     type="text"
                     value={wizardTempCustomerFilter}
                     onChange={e => setWizardTempCustomerFilter(e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Enter') handleWizardSearchClick(); }}
                     placeholder="고객사명..."
                     style={{ width: '100%', padding: '5px 8px', fontSize: '12px', borderRadius: '5px', border: '1px solid var(--border-color)' }}
                   />
@@ -2916,6 +2952,7 @@ ${currentTenant?.tradeName || currentTenant?.corporateName || '임대인'} 올�
                     type="text"
                     value={wizardTempContractNoFilter}
                     onChange={e => setWizardTempContractNoFilter(e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Enter') handleWizardSearchClick(); }}
                     placeholder="계약번호..."
                     style={{ width: '100%', padding: '5px 8px', fontSize: '12px', borderRadius: '5px', border: '1px solid var(--border-color)' }}
                   />
@@ -2927,6 +2964,7 @@ ${currentTenant?.tradeName || currentTenant?.corporateName || '임대인'} 올�
                     type="text"
                     value={wizardTempSiteFilter}
                     onChange={e => setWizardTempSiteFilter(e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Enter') handleWizardSearchClick(); }}
                     placeholder="현장명..."
                     style={{ width: '100%', padding: '5px 8px', fontSize: '12px', borderRadius: '5px', border: '1px solid var(--border-color)' }}
                   />
@@ -3166,11 +3204,11 @@ ${currentTenant?.tradeName || currentTenant?.corporateName || '임대인'} 올�
                     </div>
                   </div>
 
-                  {/* 💡 청구귀속월 & 청구 발행일자 지정 컨트롤 (담당자 휴가/고객 요청 시 월 변경 가능) */}
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', padding: '12px', backgroundColor: 'var(--bg-app)', borderRadius: '8px', border: '1px solid var(--primary-light, #bfdbfe)' }}>
+                  {/* 청구귀속월 & 청구 발행일자 */}
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', padding: '12px', backgroundColor: 'var(--bg-app)', borderRadius: '8px', border: '1px solid var(--border-color)' }}>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                      <label style={{ fontSize: '12px', fontWeight: 700, color: 'var(--primary)' }}>
-                        🗓️ 청구귀속월 (변경 가능)
+                      <label style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)' }}>
+                        청구 귀속월
                       </label>
                       <input
                         type="month"
@@ -3178,13 +3216,10 @@ ${currentTenant?.tradeName || currentTenant?.corporateName || '임대인'} 올�
                         onChange={e => setWizardBillingYm(e.target.value)}
                         style={{ width: '100%', padding: '7px 10px', fontSize: '13px', fontWeight: 700, backgroundColor: 'var(--bg-card)', border: '1px solid var(--border-color)', borderRadius: '6px' }}
                       />
-                      <span style={{ fontSize: '10.5px', color: 'var(--text-muted)' }}>
-                        ※ 기본값: 당월 ({currentYm}) / 담당자 휴가·고객 요청 시 수정
-                      </span>
                     </div>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                      <label style={{ fontSize: '12px', fontWeight: 700, color: 'var(--primary)' }}>
-                        📅 청구 발행 일자
+                      <label style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)' }}>
+                        청구 발행 일자
                       </label>
                       <input
                         type="date"
@@ -3192,9 +3227,6 @@ ${currentTenant?.tradeName || currentTenant?.corporateName || '임대인'} 올�
                         onChange={e => setWizardBillingDate(e.target.value)}
                         style={{ width: '100%', padding: '7px 10px', fontSize: '13px', backgroundColor: 'var(--bg-card)', border: '1px solid var(--border-color)', borderRadius: '6px' }}
                       />
-                      <span style={{ fontSize: '10.5px', color: 'var(--text-muted)' }}>
-                        ※ 기본값: 오늘 ({todayStr})
-                      </span>
                     </div>
                   </div>
 

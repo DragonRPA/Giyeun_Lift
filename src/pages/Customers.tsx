@@ -661,12 +661,25 @@ export const Customers: React.FC = () => {
           {canSave && (
             <button
               type="button"
-              className="btn-secondary"
               onClick={() => { setShowOptionMasterModal(true); setEditingOption(null); }}
-              style={{ padding: '5px 10px', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '5px', whiteSpace: 'nowrap', border: '1px solid #0070C0', color: '#0070C0' }}
+              style={{
+                padding: '5px 12px',
+                fontSize: '12px',
+                fontWeight: 600,
+                display: 'flex',
+                alignItems: 'center',
+                gap: '5px',
+                whiteSpace: 'nowrap',
+                backgroundColor: '#0284c7',
+                color: '#ffffff',
+                border: '1px solid #0369a1',
+                borderRadius: '4px',
+                cursor: 'pointer',
+                boxShadow: '0 1px 2px rgba(0, 0, 0, 0.15)'
+              }}
               title="전사 유상옵션 및 보양작업 표준 품목/단가 관리"
             >
-              <Sliders size={13} /> 옵션 품목 마스터
+              <Sliders size={13} color="#ffffff" /> 옵션 품목 마스터
             </button>
           )}
           {canSave && (
@@ -999,12 +1012,12 @@ export const Customers: React.FC = () => {
                         type="button"
                         onClick={() => handleOpenCustOptionModal(activeCustomer)}
                         style={{
-                          padding: '2px 8px',
+                          padding: '3px 9px',
                           fontSize: '11px',
                           borderRadius: '4px',
-                          border: '1px solid #0070C0',
-                          backgroundColor: '#f0f9ff',
-                          color: '#0070C0',
+                          border: '1px solid #0284c7',
+                          backgroundColor: 'rgba(2, 132, 199, 0.15)',
+                          color: '#38bdf8',
                           fontWeight: 600,
                           cursor: 'pointer',
                           display: 'flex',
@@ -1013,7 +1026,7 @@ export const Customers: React.FC = () => {
                         }}
                         title="고객사 기본 유상옵션 및 보양작업 설정"
                       >
-                        <Sliders size={12} /> 기본 옵션 설정
+                        <Sliders size={12} color="#38bdf8" /> 기본 옵션 설정
                       </button>
                       <button
                         type="button"
@@ -2225,9 +2238,9 @@ export const Customers: React.FC = () => {
                     padding: '3px 8px',
                     fontSize: '11px',
                     borderRadius: '4px',
-                    border: '1px solid #0070C0',
-                    backgroundColor: '#f0f9ff',
-                    color: '#0070C0',
+                    border: '1px solid #0284c7',
+                    backgroundColor: 'rgba(2, 132, 199, 0.15)',
+                    color: '#38bdf8',
                     fontWeight: 600,
                     cursor: 'pointer',
                     display: 'flex',
@@ -2339,7 +2352,7 @@ export const Customers: React.FC = () => {
           <div className="card" style={{ width: '100%', maxWidth: '780px', maxHeight: '90vh', overflowY: 'auto', backgroundColor: 'var(--bg-card)' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', borderBottom: '1px solid var(--border-color)', paddingBottom: '10px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <Sliders size={18} color="#0070C0" />
+                <Sliders size={18} color="#0284c7" />
                 <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 'bold' }}>
                   전사 표준 옵션 마스터 관리
                 </h3>
@@ -2359,7 +2372,7 @@ export const Customers: React.FC = () => {
                       padding: '4px 10px',
                       fontSize: '11.5px',
                       borderRadius: '4px',
-                      border: optionCategoryFilter === cat ? '1px solid #0070C0' : '1px solid var(--border-color)',
+                      border: optionCategoryFilter === cat ? '1px solid #0284c7' : '1px solid var(--border-color)',
                       backgroundColor: optionCategoryFilter === cat ? 'var(--primary-light)' : 'var(--bg-app)',
                       color: optionCategoryFilter === cat ? 'var(--primary)' : 'var(--text-secondary)',
                       fontWeight: optionCategoryFilter === cat ? 700 : 400,

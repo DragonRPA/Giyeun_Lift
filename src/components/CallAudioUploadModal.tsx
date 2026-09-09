@@ -155,7 +155,7 @@ export const CallAudioUploadModal: React.FC<CallAudioUploadModalProps> = ({
             </div>
             <div>
               <div style={{ fontWeight: 700, fontSize: 14, color: '#fff', lineHeight: 1.3 }}>통화 녹음 파일 직접 업로드</div>
-              <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 2 }}>AI 출고의뢰 초안 자동 생성</div>
+              <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 2 }}>AI 출고 요청 초안 자동 생성</div>
             </div>
           </div>
           <button

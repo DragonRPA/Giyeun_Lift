@@ -857,11 +857,11 @@ export const MobileDispatchOrderCreate: React.FC<MobileDispatchOrderCreateProps>
           totalCount: totalEquipCount
         });
       } else {
-        showToast(res?.errorMessage || '출고 의뢰 접수에 실패했습니다.', 'error');
+        showToast(res?.errorMessage || '출고 요청 접수에 실패했습니다.', 'error');
       }
     } catch (err: any) {
       console.error('Submit error:', err);
-      showToast('의뢰 처리 중 오류가 발생했습니다: ' + (err.message || ''), 'error');
+      showToast('요청 처리 중 오류가 발생했습니다: ' + (err.message || ''), 'error');
     } finally {
       setIsSubmitting(false);
     }
@@ -889,7 +889,7 @@ export const MobileDispatchOrderCreate: React.FC<MobileDispatchOrderCreateProps>
               </div>
               <div>
                 <h3 className="text-base font-bold text-white">
-                  {createdResult.isReturn ? '회수의뢰 접수 완료' : '출고의뢰 접수 완료'}
+                  {createdResult.isReturn ? '회수 요청 접수 완료' : '출고 요청 접수 완료'}
                 </h3>
                 <p className="text-xs text-slate-400">
                   {createdResult.isReturn ? '배차 대기 목록(입고)에 등록되었습니다.' : '배차 및 출고 검수 대기로 인계되었습니다.'}
@@ -940,12 +940,12 @@ export const MobileDispatchOrderCreate: React.FC<MobileDispatchOrderCreateProps>
           <span>취소</span>
         </button>
         <h2 className="text-base font-bold text-white">
-          {dispatchMode === 'EXCHANGE' ? '대차 교체 의뢰' : dispatchMode === 'RETURN' ? '장비 회수 의뢰' : '출고 의뢰'}
+          {dispatchMode === 'EXCHANGE' ? '대차 교체 요청' : dispatchMode === 'RETURN' ? '장비 회수 요청' : '출고 요청'}
         </h2>
         <div className="w-10" />
       </div>
 
-      {/* 🔄 모드 선택 탭 (출고 의뢰 vs 회수 의뢰 vs 대차 교체 - 헌장 2.3) */}
+      {/* 🔄 모드 선택 탭 (출고 요청 vs 회수 요청 vs 대차 교체 - 헌장 2.3) */}
       <div className="grid grid-cols-3 gap-1.5 bg-slate-900/90 p-1 rounded-xl border border-slate-800">
         <button
           type="button"
@@ -957,7 +957,7 @@ export const MobileDispatchOrderCreate: React.FC<MobileDispatchOrderCreateProps>
           }`}
         >
           <ArrowUpRight className="w-3.5 h-3.5" />
-          <span>출고 의뢰</span>
+          <span>출고 요청</span>
         </button>
         <button
           type="button"
@@ -1372,7 +1372,7 @@ export const MobileDispatchOrderCreate: React.FC<MobileDispatchOrderCreateProps>
             {/* 선택된 규격 목록 헤더 */}
             <div className="flex items-center justify-between pt-1">
               <span className="text-xs font-bold text-slate-300">
-                {dispatchMode === 'EXCHANGE' ? '대차 투입 장비 목록' : '출고 의뢰 장비 목록'}
+                {dispatchMode === 'EXCHANGE' ? '대차 투입 장비 목록' : '출고 요청 장비 목록'}
               </span>
               <span className="text-[11px] text-slate-400">
                 {orders.length}개 모델 ({orders.reduce((sum, o) => sum + o.count, 0)}대)
@@ -1798,12 +1798,12 @@ export const MobileDispatchOrderCreate: React.FC<MobileDispatchOrderCreateProps>
           ) : dispatchMode === 'RETURN' ? (
             <>
               <ArrowDownLeft className="w-4 h-4" />
-              <span>회수의뢰 접수 완료 ({selectedReturnAssetIds.length}대)</span>
+              <span>회수 요청 접수 완료 ({selectedReturnAssetIds.length}대)</span>
             </>
           ) : (
             <>
               <Send className="w-4 h-4" />
-              <span>출고의뢰 접수 및 발송 ({orders.reduce((sum, o) => sum + o.count, 0)}대)</span>
+              <span>출고 요청 접수 및 발송 ({orders.reduce((sum, o) => sum + o.count, 0)}대)</span>
             </>
           )}
         </button>
@@ -1835,7 +1835,7 @@ export const MobileDispatchOrderCreate: React.FC<MobileDispatchOrderCreateProps>
           if (data.isPartialHandOff) {
             showToast('입력 중이던 내용이 일반 서식에 반영되었습니다. 나머지 항목을 확인 후 접수해주세요.');
           } else {
-            showToast('대화형 음성으로 출고의뢰 전체 서식이 완성되었습니다.');
+            showToast('대화형 음성으로 출고 요청 전체 서식이 완성되었습니다.');
           }
         }}
       />

@@ -259,7 +259,7 @@ export const OutboundInspections: React.FC = () => {
       groups.push({
         groupId: key,
         contractId: firstItem.contractId || '',
-        contractNo: contract?.contractNo || '출고의뢰건',
+        contractNo: contract?.contractNo || '출고 요청 건',
         customerName: customer?.name || '고객 미지정',
         siteName: site?.name || '현장 미지정',
         requestDate: firstItem.createdAt ? firstItem.createdAt.substring(0, 10) : new Date().toISOString().split('T')[0],
@@ -652,7 +652,7 @@ export const OutboundInspections: React.FC = () => {
       await db.awaitPendingWrites();
       refreshAllData();
       const statusText = rejectToRepairing ? '[수리정비중]으로 전환되고 긴급 수리 티켓이 정비대장에 등록되었습니다.' : '[임대가능] 재고로 복원되었습니다.';
-      showToast(`출고 의뢰가 반려되었습니다. 장비 상태가 ${statusText}`);
+      showToast(`출고 요청이 반려되었습니다. 장비 상태가 ${statusText}`);
       setShowRejectModal(false);
       setRejectReason('');
       setSelectedGroupId(null);
@@ -995,7 +995,7 @@ export const OutboundInspections: React.FC = () => {
           <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '10px', paddingRight: '4px' }}>
             {filteredGroups.length === 0 ? (
               <div style={{ textAlign: 'center', padding: '40px 10px', color: 'var(--text-muted)', fontSize: '13px' }}>
-                조건에 해당하는 출고 의뢰건이 없습니다.
+                조건에 해당하는 출고 요청 건이 없습니다.
               </div>
             ) : (
               filteredGroups.map(group => {
@@ -1111,7 +1111,7 @@ export const OutboundInspections: React.FC = () => {
           {!selectedGroup ? (
             <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)' }}>
               <PackageCheck size={48} style={{ opacity: 0.3, marginBottom: '12px' }} />
-              <p style={{ fontSize: '14px', fontWeight: 600 }}>좌측에서 검수할 출고 의뢰건을 선택해 주세요.</p>
+              <p style={{ fontSize: '14px', fontWeight: 600 }}>좌측에서 검수할 출고 요청 건을 선택해 주세요.</p>
             </div>
           ) : (
             <div>
@@ -1120,7 +1120,7 @@ export const OutboundInspections: React.FC = () => {
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '10px' }}>
                   <div>
                     <span style={{ fontSize: '12px', fontWeight: 700, color: 'var(--primary)', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                      <FileText size={14} /> 출고 의뢰건 상세정보 (계약: {selectedGroup.contractNo})
+                      <FileText size={14} /> 출고 요청 건 상세정보 (계약: {selectedGroup.contractNo})
                     </span>
                     <h2 style={{ fontSize: '18px', fontWeight: 800, margin: '4px 0 0 0' }}>
                       🏢 {selectedGroup.customerName} — {selectedGroup.siteName}
@@ -1290,7 +1290,7 @@ export const OutboundInspections: React.FC = () => {
               {/* ────────────────────────────────────────────────────────────────── */}
               <div style={{ marginBottom: '20px', padding: '14px 16px', backgroundColor: 'rgba(59,130,246,0.06)', border: '1.5px solid rgba(59,130,246,0.25)', borderRadius: '10px' }}>
                 <div style={{ fontSize: '13px', fontWeight: 800, color: 'var(--primary)', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <MessageSquare size={16} /> 출고 의뢰 원문
+                  <MessageSquare size={16} /> 출고 요청 원문
                 </div>
                 <div style={{ fontSize: '12.5px', color: 'var(--text-primary)', whiteSpace: 'pre-wrap', lineHeight: '1.6', fontFamily: 'Consolas, Monaco, monospace', backgroundColor: 'var(--bg-card)', padding: '10px 12px', borderRadius: '6px', border: '1px solid var(--border-color)' }}>
                   {selectedGroup.rawText || '요청된 자연어 원문이 없습니다.'}
@@ -1336,7 +1336,7 @@ export const OutboundInspections: React.FC = () => {
                         gap: '6px'
                       }}
                     >
-                      <XCircle size={16} /> 🚫 의뢰 반려 (수리정비중 전환)
+                      <XCircle size={16} /> 🚫 요청 반려 (수리정비중 전환)
                     </button>
                   )}
                 </div>
@@ -1395,10 +1395,10 @@ export const OutboundInspections: React.FC = () => {
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 99999, padding: '20px' }}>
           <div style={{ backgroundColor: 'var(--bg-card)', border: '1px solid var(--border-color)', borderRadius: '14px', padding: '24px', width: '100%', maxWidth: '480px' }}>
             <h3 style={{ fontSize: '18px', fontWeight: 800, color: '#dc2626', margin: '0 0 12px 0', display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <ShieldAlert size={20} /> 출고 의뢰 반려 사유 작성
+              <ShieldAlert size={20} /> 출고 요청 반려 사유 작성
             </h3>
             <p style={{ fontSize: '13px', color: 'var(--text-muted)', marginBottom: '16px' }}>
-              의뢰를 반려하면 대상 장비의 자산 상태 변경 여부를 직접 지정할 수 있습니다.
+              출고 요청을 반려하면 대상 장비의 자산 상태 변경 여부를 직접 지정할 수 있습니다.
             </p>
 
             {/* 수리정비중 전환 선택 토글 */}
@@ -1439,7 +1439,7 @@ export const OutboundInspections: React.FC = () => {
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 99999, padding: '20px' }}>
           <div style={{ backgroundColor: 'var(--bg-card)', border: '1px solid var(--border-color)', borderRadius: '14px', padding: '24px', width: '100%', maxWidth: '640px', maxHeight: '90vh', overflowY: 'auto' }}>
             <h3 style={{ fontSize: '18px', fontWeight: 800, margin: '0 0 8px 0', display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <ArrowRightLeft size={20} color="var(--primary)" /> 출고 의뢰 장비 교체
+              <ArrowRightLeft size={20} color="var(--primary)" /> 출고 요청 장비 교체
             </h3>
             <p style={{ fontSize: '13px', color: 'var(--text-muted)', marginBottom: '16px' }}>
               기존 장비 <strong style={{ color: 'var(--primary)' }}>{exchangeModalAsset.assetNo} ({exchangeModalAsset.modelName})</strong>를 대체 가능한 동급 장비로 교체합니다.

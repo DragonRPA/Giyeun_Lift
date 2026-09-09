@@ -805,7 +805,12 @@ export const MobileInspectionList: React.FC = () => {
         /* ───────────────────────────────────────────────────────────────────────
            레이어 2: 출고검수 스튜디오 (선택된 의뢰 상세)
            ─────────────────────────────────────────────────────────────────────── */
-        <div className="flex flex-col gap-3">
+        <div 
+          className="flex flex-col gap-3"
+          style={{
+            paddingBottom: activeTab === 'PENDING' && activeGroup.length > 1 ? '96px' : '32px'
+          }}
+        >
           {/* 상단 네비게이션 헤더 */}
           <div className="flex items-center justify-between bg-slate-900 p-3 rounded-2xl border border-slate-800 shadow">
             <div className="flex items-center gap-2.5 min-w-0">
@@ -1087,22 +1092,38 @@ export const MobileInspectionList: React.FC = () => {
                         />
                       </div>
 
-                      {/* 단일 장비 완료 버튼 (대기 탭일 때) */}
+                      {/* 단일/개별 장비 완료 버튼 (대기 탭일 때) */}
                       {activeTab === 'PENDING' && (
                         <div className="pt-2">
-                          <button
-                            type="button"
-                            disabled={isSubmitting || (checkpoints.length > 0 && checkedCount === 0) || (() => {
-                              const c = contracts.find(x => x.id === oin.contractId);
-                              const customer = c ? customers.find(x => x.id === c.customerId) : undefined;
-                              return (customer as any)?.transactionStatus === 'BLOCKED';
-                            })()}
-                            onClick={() => handleApproveSingle(oin)}
-                            className="w-full py-3 rounded-xl bg-slate-800 hover:bg-slate-700 disabled:opacity-40 text-white font-bold text-xs flex items-center justify-center gap-1.5 whitespace-nowrap active:scale-[0.99] transition-all"
-                          >
-                            <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-                            이 장비 검수 완료 (출고 승인)
-                          </button>
+                          {activeGroup.length === 1 ? (
+                            <button
+                              type="button"
+                              disabled={isSubmitting || (checkpoints.length > 0 && checkedCount === 0) || (() => {
+                                const c = contracts.find(x => x.id === oin.contractId);
+                                const customer = c ? customers.find(x => x.id === c.customerId) : undefined;
+                                return (customer as any)?.transactionStatus === 'BLOCKED';
+                              })()}
+                              onClick={() => handleApproveSingle(oin)}
+                              className="w-full py-3.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-white font-black text-sm shadow-lg shadow-emerald-600/30 flex items-center justify-center gap-2 whitespace-nowrap active:scale-[0.99] transition-all"
+                            >
+                              <ShieldCheck className="w-5 h-5 text-white shrink-0" />
+                              {isSubmitting ? '승인 처리 중...' : '출고 검수 승인 완료'}
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              disabled={isSubmitting || (checkpoints.length > 0 && checkedCount === 0) || (() => {
+                                const c = contracts.find(x => x.id === oin.contractId);
+                                const customer = c ? customers.find(x => x.id === c.customerId) : undefined;
+                                return (customer as any)?.transactionStatus === 'BLOCKED';
+                              })()}
+                              onClick={() => handleApproveSingle(oin)}
+                              className="w-full py-3 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 disabled:opacity-40 text-slate-200 font-bold text-xs flex items-center justify-center gap-1.5 whitespace-nowrap active:scale-[0.99] transition-all"
+                            >
+                              <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                              이 장비 개별 승인
+                            </button>
+                          )}
                         </div>
                       )}
                     </div>
@@ -1112,9 +1133,22 @@ export const MobileInspectionList: React.FC = () => {
             })}
           </div>
 
-          {/* 하단 고정 터미널 완결 바 (대기 탭 전용) */}
-          {activeTab === 'PENDING' && (
-            <div className="fixed bottom-20 left-0 right-0 z-20 p-3.5 bg-slate-900/95 backdrop-blur border-t border-slate-800 shadow-2xl">
+          {/* 하단 고정 터미널 완결 바 (2대 이상 다수 장비 대기 탭 전용) */}
+          {activeTab === 'PENDING' && activeGroup.length > 1 && (
+            <div 
+              style={{
+                position: 'fixed',
+                bottom: 'calc(58px + env(safe-area-inset-bottom, 0px))',
+                left: 0,
+                right: 0,
+                zIndex: 40,
+                backgroundColor: 'rgba(15, 23, 42, 0.96)',
+                backdropFilter: 'blur(16px)',
+                borderTop: '1px solid #334155',
+                padding: '12px 16px',
+                boxShadow: '0 -8px 24px rgba(0, 0, 0, 0.5)'
+              }}
+            >
               <div className="max-w-md mx-auto flex items-center gap-3">
                 <div className="flex flex-col shrink-0">
                   <span className="text-[10px] text-slate-400 font-bold whitespace-nowrap">확인 진행률</span>

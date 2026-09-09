@@ -237,7 +237,7 @@ const App: React.FC = () => {
       name: '입출고관리',
       icon: <ArrowLeftRight size={17} />,
       items: [
-        { id: 'asset_inout_history', name: '자산 입출고 / 정비 이력', icon: <Clock size={16} />, component: <AssetHistory /> },
+        { id: 'asset_inout_history', name: '자산 입출고', icon: <Clock size={16} />, component: <AssetHistory /> },
         { id: 'dispatch_assign', name: '장비 할당 / 매핑', icon: <Layers size={16} />, component: <AssetAssignment /> },
         { id: 'outbound_inspections', name: '출고 검수 관리', icon: <CheckSquare size={16} />, component: <OutboundInspections /> },
         { id: 'print_queue_monitor', name: '프린트 큐 모니터', icon: <Printer size={16} />, component: <PrintQueueManager /> },

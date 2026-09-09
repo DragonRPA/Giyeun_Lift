@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useApp } from '../context/AppContext';
 import { db, Receivable } from '../services/db';
-import { Plus, Search, DollarSign, Calendar, FileText, CheckCircle, AlertTriangle, RotateCcw, Download } from 'lucide-react';
+import { Plus, Search, DollarSign, Calendar, FileText, CheckCircle, AlertTriangle, RotateCcw, Download, X } from 'lucide-react';
 import { exportToExcel } from '../services/excel';
+import { matchHangul } from '../utils/hangulSearch';
 
 export const Receivables: React.FC = () => {
   const {
@@ -50,8 +51,87 @@ export const Receivables: React.FC = () => {
   const [formDisplayName, setFormDisplayName] = useState('');
   const [formOccurredDate, setFormOccurredDate] = useState(new Date().toISOString().split('T')[0]);
 
+  // 🔍 모달 빠른 검색어 기반 실시간 필터링된 고객사 목록 (초성 검색 지원)
+  const modalFilteredCustomers = useMemo(() => {
+    if (!modalSearchTerm.trim()) return customers;
+    const q = modalSearchTerm.trim().toLowerCase();
+
+    const matched = customers.filter(cu => {
+      // 1. 고객사명 직접 매칭 또는 한글 초성 매칭
+      if (matchHangul(cu.name, q) || cu.name.toLowerCase().includes(q)) return true;
+      // 2. 사업자등록번호 매칭
+      if (cu.bizRegNo && cu.bizRegNo.includes(q)) return true;
+      // 3. 해당 고객사의 현장명 매칭 (초성 포함)
+      const hasMatchingSite = sites.some(s => s.customerId === cu.id && (matchHangul(s.name, q) || s.name.toLowerCase().includes(q)));
+      if (hasMatchingSite) return true;
+      // 4. 해당 고객사의 계약번호 매칭
+      const hasMatchingContract = contracts.some(c => c.customerId === cu.id && c.contractNo.toLowerCase().includes(q));
+      if (hasMatchingContract) return true;
+      return false;
+    });
+
+    // 이미 선택된 고객사가 있다면 검색 필터와 무관하게 목록 최상단에 보존
+    if (modalSelectedCustId && !matched.some(cu => cu.id === modalSelectedCustId)) {
+      const selectedCust = customers.find(cu => cu.id === modalSelectedCustId);
+      if (selectedCust) return [selectedCust, ...matched];
+    }
+    return matched;
+  }, [customers, sites, contracts, modalSearchTerm, modalSelectedCustId]);
+
+  // 🔍 모달 빠른 검색어 기반 실시간 필터링된 현장 목록
+  const modalFilteredSites = useMemo(() => {
+    let baseSites = sites;
+    if (modalSelectedCustId) {
+      baseSites = sites.filter(s => {
+        const hasCustContract = contracts.some(c => c.customerId === modalSelectedCustId && c.siteId === s.id);
+        const isDirectCustSite = s.customerId === modalSelectedCustId;
+        return hasCustContract || isDirectCustSite;
+      });
+    }
+
+    if (!modalSearchTerm.trim()) return baseSites;
+    const q = modalSearchTerm.trim().toLowerCase();
+
+    const matched = baseSites.filter(s => {
+      if (matchHangul(s.name, q) || s.name.toLowerCase().includes(q)) return true;
+      if (s.address && (matchHangul(s.address, q) || s.address.toLowerCase().includes(q))) return true;
+      const cu = customers.find(c => c.id === s.customerId);
+      if (cu && (matchHangul(cu.name, q) || cu.name.toLowerCase().includes(q))) return true;
+      return false;
+    });
+
+    if (modalSelectedSiteId && !matched.some(s => s.id === modalSelectedSiteId)) {
+      const selectedSite = sites.find(s => s.id === modalSelectedSiteId);
+      if (selectedSite) return [selectedSite, ...matched];
+    }
+    return matched;
+  }, [sites, customers, contracts, modalSelectedCustId, modalSearchTerm, modalSelectedSiteId]);
+
+  // 🔍 모달 빠른 검색어 기반 실시간 필터링된 계약 목록
+  const modalFilteredContracts = useMemo(() => {
+    const q = modalSearchTerm.trim().toLowerCase();
+
+    return contracts
+      .filter(c => c.status !== 'COMPLETED')
+      .filter(c => {
+        if (modalSelectedCustId && c.customerId !== modalSelectedCustId) return false;
+        if (modalSelectedSiteId && c.siteId !== modalSelectedSiteId) return false;
+        if (q) {
+          const cu = customers.find(x => x.id === c.customerId);
+          const s = sites.find(x => x.id === c.siteId);
+          const matches = (
+            c.contractNo.toLowerCase().includes(q) ||
+            (cu?.name && (matchHangul(cu.name, q) || cu.name.toLowerCase().includes(q))) ||
+            (s?.name && (matchHangul(s.name, q) || s.name.toLowerCase().includes(q)))
+          );
+          if (!matches) return false;
+        }
+        return true;
+      });
+  }, [contracts, customers, sites, modalSelectedCustId, modalSelectedSiteId, modalSearchTerm]);
+
   // ── 양방향 계약/고객/현장 자동 확정 핸들러 ──
-  // 1. 빠른 검색창 입력 핸들러 (계약번호/고객사명/현장명)
+  // 1. 빠른 검색창 입력 핸들러 (계약번호/고객사명/현장명/초성)
   const handleModalSearchChange = (val: string) => {
     setModalSearchTerm(val);
     const term = val.trim().toLowerCase();
@@ -68,6 +148,22 @@ export const Receivables: React.FC = () => {
       return;
     }
 
+    // 고객사 검색 결과가 단 1개사로 특정되는 경우 고객사 자동 선택
+    const matchedCusts = customers.filter(cu =>
+      matchHangul(cu.name, term) ||
+      cu.name.toLowerCase().includes(term) ||
+      (cu.bizRegNo && cu.bizRegNo.includes(term))
+    );
+    if (matchedCusts.length === 1 && !modalSelectedCustId) {
+      setModalSelectedCustId(matchedCusts[0].id);
+      const custContracts = contracts.filter(c => c.customerId === matchedCusts[0].id && c.status !== 'COMPLETED');
+      if (custContracts.length === 1) {
+        setFormContractId(custContracts[0].id);
+        setModalSelectedSiteId(custContracts[0].siteId || '');
+      }
+      return;
+    }
+
     // 부분 일치 진행 계약이 1건으로 특정되는 경우
     const matchedContracts = contracts.filter(c => {
       if (c.status === 'COMPLETED') return false;
@@ -75,8 +171,8 @@ export const Receivables: React.FC = () => {
       const s = sites.find(x => x.id === c.siteId);
       return (
         c.contractNo.toLowerCase().includes(term) ||
-        (cu?.name || '').toLowerCase().includes(term) ||
-        (s?.name || '').toLowerCase().includes(term)
+        (cu?.name && (matchHangul(cu.name, term) || cu.name.toLowerCase().includes(term))) ||
+        (s?.name && (matchHangul(s.name, term) || s.name.toLowerCase().includes(term)))
       );
     });
 
@@ -774,16 +870,46 @@ export const Receivables: React.FC = () => {
 
                 {/* 빠른 검색창 */}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                  <label style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: 600 }}>계약 / 고객사 / 현장 빠른 검색</label>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <label style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: 600 }}>계약 / 고객사 / 현장 빠른 검색</label>
+                    {modalSearchTerm.trim() && (
+                      <span style={{ fontSize: '10.5px', color: 'var(--primary)', fontWeight: 700 }}>
+                        검색 결과: 고객사 {modalFilteredCustomers.length}건 | 현장 {modalFilteredSites.length}건 | 계약 {modalFilteredContracts.length}건
+                      </span>
+                    )}
+                  </div>
                   <div style={{ position: 'relative' }}>
-                    <Search size={14} style={{ position: 'absolute', left: '8px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+                    <Search size={14} style={{ position: 'absolute', left: '8px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', pointerEvents: 'none' }} />
                     <input
                       type="text"
-                      placeholder="계약번호(예: C202603-0005), 고객사명, 현장명 검색..."
+                      placeholder="계약번호(예: C202603-0005), 고객사명, 초성(예: ㅅㅂ), 현장명 검색..."
                       value={modalSearchTerm}
                       onChange={e => handleModalSearchChange(e.target.value)}
-                      style={{ width: '100%', padding: '6px 8px 6px 28px', fontSize: '12px' }}
+                      style={{ width: '100%', padding: '6px 28px 6px 28px', fontSize: '12px', boxSizing: 'border-box' }}
+                      autoFocus
                     />
+                    {modalSearchTerm && (
+                      <button
+                        type="button"
+                        onClick={() => setModalSearchTerm('')}
+                        style={{
+                          position: 'absolute',
+                          right: '8px',
+                          top: '50%',
+                          transform: 'translateY(-50%)',
+                          border: 'none',
+                          background: 'none',
+                          color: 'var(--text-muted)',
+                          cursor: 'pointer',
+                          fontSize: '12px',
+                          padding: 0,
+                          lineHeight: 1
+                        }}
+                        title="검색어 초기화"
+                      >
+                        ✕
+                      </button>
+                    )}
                   </div>
                 </div>
 
@@ -798,8 +924,12 @@ export const Receivables: React.FC = () => {
                       onChange={e => handleCustomerSelect(e.target.value)}
                       style={{ padding: '6px 8px', fontSize: '12px', width: '100%' }}
                     >
-                      <option value="">전체 고객사</option>
-                      {customers.map(cu => {
+                      <option value="">
+                        {modalSearchTerm.trim()
+                          ? (modalFilteredCustomers.length === 0 ? '-- 일치하는 고객사 없음 --' : `-- 일치 고객사 (${modalFilteredCustomers.length}개사) --`)
+                          : '전체 고객사'}
+                      </option>
+                      {modalFilteredCustomers.map(cu => {
                         const activeCount = contracts.filter(c => c.customerId === cu.id && c.status !== 'COMPLETED').length;
                         return (
                           <option key={cu.id} value={cu.id}>
@@ -818,22 +948,16 @@ export const Receivables: React.FC = () => {
                       onChange={e => handleSiteSelect(e.target.value)}
                       style={{ padding: '6px 8px', fontSize: '12px', width: '100%' }}
                     >
-                      <option value="">현장 선택</option>
-                      {sites
-                        .filter(s => {
-                          if (modalSelectedCustId) {
-                            // 해당 고객사의 계약에 포함된 현장인지 확인
-                            const hasCustContract = contracts.some(c => c.customerId === modalSelectedCustId && c.siteId === s.id);
-                            const isDirectCustSite = s.customerId === modalSelectedCustId;
-                            return hasCustContract || isDirectCustSite;
-                          }
-                          return true;
-                        })
-                        .map(s => (
-                          <option key={s.id} value={s.id}>
-                            {s.name}
-                          </option>
-                        ))}
+                      <option value="">
+                        {modalSearchTerm.trim() && !modalSelectedCustId
+                          ? (modalFilteredSites.length === 0 ? '-- 일치하는 현장 없음 --' : `-- 일치 현장 (${modalFilteredSites.length}개) --`)
+                          : '현장 선택'}
+                      </option>
+                      {modalFilteredSites.map(s => (
+                        <option key={s.id} value={s.id}>
+                          {s.name}
+                        </option>
+                      ))}
                     </select>
                   </div>
 
@@ -845,34 +969,20 @@ export const Receivables: React.FC = () => {
                       onChange={e => handleContractSelect(e.target.value)}
                       style={{ padding: '6px 8px', fontSize: '12px', width: '100%' }}
                     >
-                      <option value="">계약 미지정 (고객사 공통)</option>
-                      {contracts
-                        .filter(c => c.status !== 'COMPLETED')
-                        .filter(c => {
-                          if (modalSelectedCustId && c.customerId !== modalSelectedCustId) return false;
-                          if (modalSelectedSiteId && c.siteId !== modalSelectedSiteId) return false;
-                          if (modalSearchTerm) {
-                            const cu = customers.find(x => x.id === c.customerId);
-                            const s = sites.find(x => x.id === c.siteId);
-                            const term = modalSearchTerm.toLowerCase();
-                            const matches = (
-                              c.contractNo.toLowerCase().includes(term) ||
-                              (cu?.name || '').toLowerCase().includes(term) ||
-                              (s?.name || '').toLowerCase().includes(term)
-                            );
-                            if (!matches) return false;
-                          }
-                          return true;
-                        })
-                        .map(c => {
-                          const cu = customers.find(x => x.id === c.customerId);
-                          const s = sites.find(x => x.id === c.siteId);
-                          return (
-                            <option key={c.id} value={c.id}>
-                              {c.contractNo} {cu?.name || '고객사'} - {s?.name || '현장미지정'}
-                            </option>
-                          );
-                        })}
+                      <option value="">
+                        {modalSearchTerm.trim() && !formContractId
+                          ? (modalFilteredContracts.length === 0 ? '-- 일치 계약 없음 (고객사 공통) --' : `-- 일치 계약 (${modalFilteredContracts.length}건) --`)
+                          : '계약 미지정 (고객사 공통)'}
+                      </option>
+                      {modalFilteredContracts.map(c => {
+                        const cu = customers.find(x => x.id === c.customerId);
+                        const s = sites.find(x => x.id === c.siteId);
+                        return (
+                          <option key={c.id} value={c.id}>
+                            {c.contractNo} ({cu?.name || '고객사'} - {s?.name || '현장미지정'})
+                          </option>
+                        );
+                      })}
                     </select>
                   </div>
                 </div>

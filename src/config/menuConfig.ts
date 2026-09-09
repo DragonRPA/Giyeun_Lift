@@ -55,7 +55,7 @@ export const SYSTEM_MENU_CONFIG: MenuGroupConfig[] = [
     id: 'grp_inout',
     name: '입출고관리',
     items: [
-      { id: 'asset_inout_history', name: '자산 입출고/정비 이력' },
+      { id: 'asset_inout_history', name: '자산 입출고' },
       { id: 'dispatch_assign', name: '장비 할당 (매핑)' },
       { id: 'outbound_inspections', name: '출고 검수 관리' }
     ]

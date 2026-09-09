@@ -127,6 +127,7 @@ export const Contracts: React.FC = () => {
 
   // 3) 계약 승계 모달
   const [showTransferModal, setShowTransferModal] = useState(false);
+  const [succCustSearch, setSuccCustSearch] = useState(''); // 🔍 양수 고객사 초성/검색어
   const [succCustId, setSuccCustId] = useState('');
   const [succContactId, setSuccContactId] = useState('');
   const [succSiteId, setSuccSiteId] = useState('');
@@ -212,6 +213,24 @@ export const Contracts: React.FC = () => {
   const activeContract = contracts.find(c => c.id === selectedContractId);
   const activeContractHistory = contractHistory.filter(h => h.contractId === selectedContractId);
   const activeContractAssets = contractAssets.filter(ca => ca.contractId === selectedContractId);
+
+  // 🔍 양수 고객사 초성 검색 필터링 목록
+  const filteredSuccCustomers = useMemo(() => {
+    const currentCustId = activeContract?.customerId;
+    const candidates = customers.filter(c => c.id !== currentCustId);
+    if (!succCustSearch.trim()) return candidates;
+    const q = succCustSearch.trim();
+    const matched = candidates.filter(c =>
+      matchHangul(c.name, q) ||
+      (c.bizRegNo && c.bizRegNo.includes(q))
+    );
+    // 선택된 고객사가 있으면 검색 필터에 관계없이 옵션 보존
+    if (succCustId && !matched.some(c => c.id === succCustId)) {
+      const sel = candidates.find(c => c.id === succCustId);
+      if (sel) return [sel, ...matched];
+    }
+    return matched;
+  }, [customers, activeContract, succCustSearch, succCustId]);
 
   // 📜 계약 변경 및 이력 타임라인
   const activeTimeline = useMemo(() => {
@@ -415,6 +434,7 @@ export const Contracts: React.FC = () => {
 
   const handleOpenTransferModal = () => {
     if (!activeContract) return;
+    setSuccCustSearch('');
     setSuccCustId('');
     setSuccContactId('');
     setSuccSiteId('');
@@ -1992,12 +2012,96 @@ export const Contracts: React.FC = () => {
           <form onSubmit={handleSaveTransfer} className="card" style={{ width: '100%', maxWidth: '420px', backgroundColor: 'var(--bg-card)' }}>
             <h3 className="card-title" style={{ marginBottom: '14px' }}>계약 승계 처리</h3>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginBottom: '16px' }}>
-              <div>
-                <label>양수 고객사 선택 *</label>
-                <select value={succCustId} onChange={e => setSuccCustId(e.target.value)} required style={{ width: '100%', padding: '8px' }}>
-                  <option value="">-- 양수 고객사 선택 --</option>
-                  {customers.filter(c => c.id !== activeContract?.customerId).map(c => (
-                    <option key={c.id} value={c.id}>{c.name} ({c.bizRegNo})</option>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <label style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-secondary)' }}>양수 고객사 선택 *</label>
+                  {succCustSearch.trim() && (
+                    <span style={{ fontSize: '11px', color: 'var(--primary)', fontWeight: 600 }}>
+                      검색 {filteredSuccCustomers.length}건
+                    </span>
+                  )}
+                </div>
+
+                {/* 🔍 가장 상단 조회필터 (초성검색) */}
+                <div style={{ position: 'relative' }}>
+                  <Search size={14} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', pointerEvents: 'none' }} />
+                  <input
+                    type="text"
+                    placeholder="고객사명 초성 또는 상호 검색 (예: ㅅㅂ, 세보)"
+                    value={succCustSearch}
+                    onChange={e => {
+                      const val = e.target.value;
+                      setSuccCustSearch(val);
+                      if (val.trim()) {
+                        const q = val.trim();
+                        const currentCustId = activeContract?.customerId;
+                        const m = customers.filter(c => c.id !== currentCustId && (matchHangul(c.name, q) || (c.bizRegNo && c.bizRegNo.includes(q))));
+                        if (m.length === 1) {
+                          setSuccCustId(m[0].id);
+                        }
+                      }
+                    }}
+                    style={{
+                      width: '100%',
+                      padding: '8px 28px 8px 30px',
+                      fontSize: '12px',
+                      borderRadius: '6px',
+                      border: '1px solid var(--border-color)',
+                      backgroundColor: 'var(--bg-input, var(--bg-card))',
+                      color: 'var(--text-primary)',
+                      boxSizing: 'border-box'
+                    }}
+                    autoFocus
+                  />
+                  {succCustSearch && (
+                    <button
+                      type="button"
+                      onClick={() => setSuccCustSearch('')}
+                      style={{
+                        position: 'absolute',
+                        right: '8px',
+                        top: '50%',
+                        transform: 'translateY(-50%)',
+                        border: 'none',
+                        background: 'none',
+                        color: 'var(--text-muted)',
+                        cursor: 'pointer',
+                        padding: 0,
+                        fontSize: '12px',
+                        lineHeight: 1
+                      }}
+                      title="검색어 초기화"
+                    >
+                      ✕
+                    </button>
+                  )}
+                </div>
+
+                {/* 양수 고객사 선택 셀렉트 */}
+                <select
+                  value={succCustId}
+                  onChange={e => setSuccCustId(e.target.value)}
+                  required
+                  style={{
+                    width: '100%',
+                    padding: '8px',
+                    fontSize: '12.5px',
+                    borderRadius: '6px',
+                    border: '1px solid var(--border-color)',
+                    backgroundColor: 'var(--bg-input, var(--bg-card))',
+                    color: 'var(--text-primary)',
+                    boxSizing: 'border-box'
+                  }}
+                >
+                  <option value="">
+                    {filteredSuccCustomers.length === 0
+                      ? '-- 일치하는 고객사 없음 --'
+                      : `-- 양수 고객사 선택 (${filteredSuccCustomers.length}개사) --`}
+                  </option>
+                  {filteredSuccCustomers.map(c => (
+                    <option key={c.id} value={c.id}>
+                      {c.name} ({c.bizRegNo || '사업자번호 미상'})
+                    </option>
                   ))}
                 </select>
               </div>

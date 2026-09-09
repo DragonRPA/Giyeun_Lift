@@ -2,65 +2,17 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useApp } from '../context/AppContext';
 import { 
-  Search, Download, Calendar, Layers, Wrench, ArrowUpRight, ArrowDownLeft, 
-  CheckCircle2, RotateCcw, AlertTriangle, ShieldCheck, Camera, FileText, 
-  X, ChevronRight, User, DollarSign, Package, ExternalLink, MapPin, Building2, 
-  Check, Clock, Eye
+  Search, Download, Layers, ArrowUpRight, ArrowDownLeft, 
+  CheckCircle2, RotateCcw, AlertTriangle, ShieldCheck, Camera
 } from 'lucide-react';
 import { exportToExcel } from '../services/excel';
-import { InboundDefectDetail, formatContractEndDate, Repair } from '../services/db';
+import { InboundDefectDetail, formatContractEndDate } from '../services/db';
 import { compressImageFile } from '../utils/imageCompressor';
-import { uploadToSupabaseStorage } from '../services/supabaseStorage';
-import { resolveSiteDetailedAddress } from '../utils/nativeLauncher';
-
-// 🌟 [통합 정비 이력 레코드 인터페이스]
-export interface UnifiedRepairRecord {
-  id: string;                      // 고유 ID
-  sourceTable: 'REPAIRS' | 'ASSET_LOGS';
-  ticketNo?: string;               // 티켓/접수번호 (예: AS-260902-001, REP-260902-001, BAND-0042)
-  eventDate: string;               // 정비일자 (YYYY-MM-DD)
-  assetId: string;
-  assetNo: string;
-  modelName: string;               // 정밀 보정된 세부 기종 모델명 (GS-1930, SJ-3219 등)
-  workCategory: 'FIELD_AS' | 'YARD_INTERNAL' | 'PREVENTIVE' | 'EXTERNAL_VENDOR';
-  categoryLabel: string;           // '외근 현장AS' | '내근 주기장정비' | '외주 위탁정비' | '정기 예방점검'
-  status: string;                  // 'COMPLETED' | 'IN_PROGRESS' | 'REQUESTED' | 'REVISIT' | 'GUIDED' | 'CANCELED'
-  statusLabel: string;             // '완료' | '진행중' | '접수' | '재방문요구' | '안내종결' | '취소'
-  customerId?: string;
-  customerName: string;            // 거래처(고객사)명
-  siteId?: string;
-  siteName: string;                // 현장명
-  siteAddress: string;             // 도로명 상세 주소
-  locationDetail?: string;         // 현장 상세 위치
-  isYardInternal: boolean;         // 자사 주기장 자체 정비 여부
-  issueCategory?: string;          // 고장 카테고리
-  issueDescription?: string;       // 고장 증상 원문
-  actionTaken?: string;            // 조치 사항
-  summaryAction: string;           // 고장 및 조치 요약
-  memo?: string;                   // 비고 / 메모
-  mechanicName: string;            // 담당 정비사 또는 외주업체명
-  billableType: 'FREE' | 'BILLABLE';
-  billableAmount: number;          // 유상 청구액
-  totalCost: number;               // 외주 또는 자체 소요 비용
-  isWaived?: boolean;              // 영업 면제 여부
-  waivedAmount?: number;           // 면제 금액
-  waivedReason?: string;           // 면제 사유
-  partsUsed: { modelName: string; quantity: number; unitPrice?: number; totalPrice?: number }[];
-  partsTotalCost: number;          // 투입 부품 총액
-  collectedParts?: { partName: string; quantity: number; status: string }[];
-  degradationScore?: number;       // 정비점수
-  evidenceImages?: string[];       // 첨부 증빙 사진들
-  beforeImage?: string;            // 정비 전 사진
-  afterImage?: string;             // 정비 후 사진
-  customerSignature?: string;      // 고객 확인 서명 이미지
-  customerConfirmName?: string;    // 확인자 성명
-  rawRepair?: Repair;              // 원본 repair 레코드
-}
 
 export const AssetHistory: React.FC = () => {
   const { 
-    assetInOutLogs, assets, customers, sites, contractAssets, contracts, repairs, repairConsumables, consumables, 
-    users, vendors, navigationPayload, setNavigationPayload,
+    assetInOutLogs, assets, customers, sites, contractAssets, contracts, 
+    navigationPayload, setNavigationPayload,
     inspectionChecklistItems, registerInboundAsset, cancelInboundAsset, fullRefreshFromServer, googleConfigs, showErrorModal
   } = useApp();
 
@@ -71,8 +23,8 @@ export const AssetHistory: React.FC = () => {
     setTimeout(() => setToastMessage(null), 3500);
   };
 
-  // 1. 탭 상태: 'INBOUND_REGISTER' | 'INBOUND' | 'OUTBOUND' | 'REPAIR'
-  const [activeTab, setActiveTab] = useState<'INBOUND_REGISTER' | 'INBOUND' | 'OUTBOUND' | 'REPAIR'>('INBOUND_REGISTER');
+  // 1. 탭 상태: 'INBOUND_REGISTER' | 'INBOUND' | 'OUTBOUND'
+  const [activeTab, setActiveTab] = useState<'INBOUND_REGISTER' | 'INBOUND' | 'OUTBOUND'>('INBOUND_REGISTER');
 
   const getTodayStr = () => new Date().toISOString().split('T')[0];
   const todayStr = getTodayStr();
@@ -90,14 +42,6 @@ export const AssetHistory: React.FC = () => {
     searchTerm: ''
   });
 
-  // 4. 정비 이력 서브 필터 (정비 구분, 처리 상태, 청구 구분)
-  const [repairCategoryFilter, setRepairCategoryFilter] = useState<'ALL' | 'FIELD_AS' | 'YARD_INTERNAL' | 'EXTERNAL_VENDOR' | 'PREVENTIVE'>('ALL');
-  const [repairStatusFilter, setRepairStatusFilter] = useState<'ALL' | 'COMPLETED' | 'IN_PROGRESS' | 'REVISIT'>('ALL');
-  const [repairBillableFilter, setRepairBillableFilter] = useState<'ALL' | 'BILLABLE' | 'FREE' | 'EXTERNAL_COST'>('ALL');
-
-  // 5. 360도 정비 상세 Dossier 모달 상태
-  const [selectedDetailRecord, setSelectedDetailRecord] = useState<UnifiedRepairRecord | null>(null);
-  const [zoomImageUrl, setZoomImageUrl] = useState<string | null>(null);
 
   // 💡 [입고 등록 폼 상태] (수동 점수 입력 제거 ➔ 정비 필요 항목 체크박스 선택 연동 + 사진 첨부)
   const [inboundAssetNoInput, setInboundAssetNoInput] = useState('');
@@ -112,6 +56,24 @@ export const AssetHistory: React.FC = () => {
   const selectedChecklistObjects = inspectionChecklistItems.filter(item => selectedChecklistIds.includes(item.id));
   const calculatedInboundScore = selectedChecklistObjects.reduce((sum, item) => sum + item.score, 0);
   const selectedChecklistSummary = selectedChecklistObjects.map(item => `${item.name}(+${item.score}점)`).join(', ');
+
+  // 💡 정비 점검 항목 퀵버튼 원클릭 토글
+  const toggleChecklistItem = (itemId: string) => {
+    let newIds: string[];
+    if (selectedChecklistIds.includes(itemId)) {
+      newIds = selectedChecklistIds.filter(id => id !== itemId);
+      setDefectPhotos(prev => {
+        const next = { ...prev };
+        delete next[itemId];
+        try { sessionStorage.setItem('inbound_draft_photos', JSON.stringify(next)); } catch (err) {}
+        return next;
+      });
+    } else {
+      newIds = [...selectedChecklistIds, itemId];
+    }
+    setSelectedChecklistIds(newIds);
+    try { sessionStorage.setItem('inbound_draft_checklist', JSON.stringify(newIds)); } catch (err) {}
+  };
   // 💡 [입고 취소 롤백] 전용 모달 상태 (window.prompt 퇴출)
   const [cancelModal, setCancelModal] = useState<{ isOpen: boolean; log: any; reason: string } | null>(null);
 
@@ -224,354 +186,8 @@ export const AssetHistory: React.FC = () => {
     return matchedAsset?.modelName || 'GS-1930';
   };
 
-  // =========================================================================
-  // 🌟 [핵심 엔진 2: 고객사 / 현장명 / 상세 주소 100% 역추적 엔진]
-  // =========================================================================
-  const resolveRepairCustomerAndSite = (params: {
-    assetId?: string;
-    assetNo?: string;
-    customerId?: string;
-    customerName?: string;
-    siteId?: string;
-    siteName?: string;
-    siteAddress?: string;
-    locationDetail?: string;
-    contractId?: string;
-    workCategory?: string;
-    workLocation?: string;
-  }): { customerName: string; siteName: string; siteAddress: string; isYardInternal: boolean } => {
-    let custName = params.customerName?.trim() || '';
-    let stName = params.siteName?.trim() || '';
-    let stAddress = params.siteAddress?.trim() || '';
-
-    const isInvalidSite = !stName || stName === '미지정현장' || stName === '미지정' || stName === '-' || stName === '현장확인';
-    const isInvalidCust = !custName || custName === '고객사' || custName === '-' || custName === '현장 협력업체' || custName === '미지정';
-
-    // 1. siteId 마스터 매핑
-    if (params.siteId) {
-      const siteObj = sites.find(s => s.id === params.siteId);
-      if (siteObj) {
-        if (isInvalidSite) stName = siteObj.name;
-        if (!stAddress) stAddress = siteObj.address || '';
-        if (isInvalidCust && siteObj.customerId) {
-          const custObj = customers.find(c => c.id === siteObj.customerId);
-          if (custObj) custName = custObj.name;
-        }
-      }
-    }
-
-    // 2. customerId 마스터 매핑
-    if (params.customerId && isInvalidCust) {
-      const custObj = customers.find(c => c.id === params.customerId);
-      if (custObj) custName = custObj.name;
-    }
-
-    // 3. 자산 식별자(assetId/assetNo) 기준 대여 계약 역추적
-    if ((isInvalidSite || isInvalidCust) && (params.assetId || params.assetNo)) {
-      const targetAsset = assets.find(a => 
-        (params.assetId && a.id === params.assetId) || 
-        (params.assetNo && a.assetNo && a.assetNo.trim().toLowerCase() === params.assetNo.trim().toLowerCase())
-      );
-      if (targetAsset) {
-        const relatedCAs = contractAssets.filter(ca => ca.assetId === targetAsset.id);
-        if (relatedCAs.length > 0) {
-          let ca = relatedCAs.find(c => c.status === 'RENTED');
-          if (!ca) ca = relatedCAs[relatedCAs.length - 1]; // 최신 계약
-          if (ca) {
-            const cont = contracts.find(c => c.id === ca.contractId);
-            if (cont) {
-              if (isInvalidCust && cont.customerId) {
-                const cust = customers.find(c => c.id === cont.customerId);
-                if (cust) custName = cust.name;
-              }
-              if (isInvalidSite && cont.siteId) {
-                const s = sites.find(item => item.id === cont.siteId);
-                if (s) {
-                  stName = s.name;
-                  if (!stAddress) stAddress = s.address || '';
-                }
-              }
-            }
-          }
-        }
-      }
-    }
-
-    // 4. resolveSiteDetailedAddress 다단계 주소 역추적
-    if (!stAddress) {
-      stAddress = resolveSiteDetailedAddress({
-        siteAddress: params.siteAddress,
-        siteId: params.siteId,
-        siteName: !isInvalidSite ? stName : undefined,
-        contractId: params.contractId,
-        assetNo: params.assetNo,
-        assetId: params.assetId,
-        customerName: !isInvalidCust ? custName : undefined,
-        locationDetail: params.locationDetail,
-        customerSites: sites,
-        contracts,
-        contractAssets,
-        customers
-      });
-    }
-
-    // 5. 내근 주기장 정비 판정
-    const isYard = params.workLocation === 'YARD' || 
-                   params.workCategory === 'YARD_INTERNAL' || 
-                   (isInvalidCust && isInvalidSite);
-
-    if (isYard) {
-      if (isInvalidCust) custName = '기연리프트 본사';
-      if (isInvalidSite) stName = '자사 주기장 (입고/사내정비)';
-      if (!stAddress || stAddress === '현장') stAddress = '경기도 화성시 / 용인 본사 주기장';
-    } else {
-      if (isInvalidCust) custName = '현장 거래처 (계약참조)';
-      if (isInvalidSite) stName = '공사현장 (주소확인)';
-    }
-
-    return { customerName: custName, siteName: stName, siteAddress: stAddress, isYardInternal: isYard };
-  };
-
-  // =========================================================================
-  // 🌟 [핵심 엔진 3: 다채널 정비 데이터 통합 파이프라인 (Unified Repair Pipeline)]
-  // =========================================================================
-  const unifiedRepairRecords = useMemo<UnifiedRepairRecord[]>(() => {
-    const list: UnifiedRepairRecord[] = [];
-    const seenRepairIds = new Set<string>();
-
-    // 1차 원천: repairs 테이블 (현장AS + 주기장정비 + 외주정비 + 예방정비)
-    repairs.forEach(rep => {
-      seenRepairIds.add(rep.id);
-
-      // 모델명 정밀 보정
-      const precisionModel = resolvePrecisionModelName(rep.assetId, rep.assetNo, rep.modelName);
-
-      // 고객사 및 현장명 정밀 보정
-      const { customerName, siteName, siteAddress, isYardInternal } = resolveRepairCustomerAndSite({
-        assetId: rep.assetId,
-        assetNo: rep.assetNo,
-        customerId: rep.customerId,
-        customerName: rep.customerName,
-        siteId: rep.siteId,
-        siteName: rep.siteName,
-        siteAddress: rep.siteAddress,
-        locationDetail: rep.locationDetail,
-        contractId: rep.contractId,
-        workCategory: rep.workCategory,
-        workLocation: rep.workLocation
-      });
-
-      // 업무 카테고리 정규화
-      let workCat: 'FIELD_AS' | 'YARD_INTERNAL' | 'PREVENTIVE' | 'EXTERNAL_VENDOR' = 'FIELD_AS';
-      let catLabel = '외근 현장AS';
-      if (rep.repairType === 'EXTERNAL' || rep.workCategory === 'EXTERNAL_VENDOR' || rep.vendorId) {
-        workCat = 'EXTERNAL_VENDOR';
-        catLabel = '외주 위탁정비';
-      } else if (rep.workCategory === 'PREVENTIVE' || rep.maintenanceType === 'PREVENTIVE') {
-        workCat = 'PREVENTIVE';
-        catLabel = '정기 예방점검';
-      } else if (rep.workCategory === 'YARD_INTERNAL' || rep.maintenanceType === 'INHOUSE_REPAIR' || rep.workLocation === 'YARD') {
-        workCat = 'YARD_INTERNAL';
-        catLabel = '내근 주기장정비';
-      }
-
-      // 상태 라벨
-      let stLabel = '진행중';
-      if (rep.status === 'COMPLETED') stLabel = '완료';
-      else if (rep.status === 'REQUESTED') stLabel = '접수';
-      else if (rep.status === 'REVISIT') stLabel = '재방문요구';
-      else if (rep.status === 'GUIDED') stLabel = '안내종결';
-      else if (rep.status === 'CANCELED') stLabel = '취소';
-
-      // 정비자 성명
-      let mechName = rep.mechanicName || '';
-      if (!mechName && rep.mechanicId) {
-        mechName = users.find(u => u.id === rep.mechanicId)?.name || '';
-      }
-      if (!mechName && rep.vendorId) {
-        mechName = vendors.find(v => v.id === rep.vendorId)?.name || '외주정비업체';
-      }
-      if (!mechName) mechName = isYardInternal ? '본사 정비팀' : '현장 정비사';
-
-      // 투입 소모품 집계
-      const parts: { modelName: string; quantity: number; unitPrice?: number; totalPrice?: number }[] = [];
-      let partsTotal = 0;
-
-      // 1) repairConsumables 매핑
-      const rcItems = repairConsumables.filter(rc => rc.repairId === rep.id);
-      rcItems.forEach(rc => {
-        const cItem = consumables.find(c => c.id === rc.consumableId);
-        const name = cItem?.modelName || '소모품';
-        const total = rc.cost || (rc.quantity * (rc.unitPrice || 0));
-        parts.push({ modelName: name, quantity: rc.quantity, unitPrice: rc.unitPrice, totalPrice: total });
-        partsTotal += total;
-      });
-
-      // 2) rep.partsUsed 매핑 (rcItems 없을 때)
-      if (parts.length === 0 && rep.partsUsed && rep.partsUsed.length > 0) {
-        rep.partsUsed.forEach(p => {
-          const total = (p.quantity || 1) * (p.unitPrice || 0);
-          parts.push({ modelName: p.modelName, quantity: p.quantity || 1, unitPrice: p.unitPrice, totalPrice: total });
-          partsTotal += total;
-        });
-      }
-
-      // 고장 증상 및 조치 요약
-      const issue = rep.issueDescription || rep.details || '';
-      const action = rep.actionTaken || '';
-      let summary = '';
-      if (issue && action) summary = `[증상] ${issue.slice(0, 30)} ➔ [조치] ${action.slice(0, 35)}`;
-      else if (action) summary = action;
-      else if (issue) summary = issue;
-      else summary = rep.memo || '정비 작업 완료';
-
-      const dateStr = rep.repairDate || rep.visitDate || rep.requestDate || rep.createdAt.split('T')[0];
-
-      list.push({
-        id: rep.id,
-        sourceTable: 'REPAIRS',
-        ticketNo: rep.ticketNo || `REP-${rep.id.slice(0, 8)}`,
-        eventDate: dateStr,
-        assetId: rep.assetId || '',
-        assetNo: rep.assetNo || '관리번호확인',
-        modelName: precisionModel,
-        workCategory: workCat,
-        categoryLabel: catLabel,
-        status: rep.status,
-        statusLabel: stLabel,
-        customerId: rep.customerId,
-        customerName,
-        siteId: rep.siteId,
-        siteName,
-        siteAddress,
-        locationDetail: rep.locationDetail,
-        isYardInternal,
-        issueCategory: rep.issueCategory,
-        issueDescription: issue,
-        actionTaken: action,
-        summaryAction: summary,
-        memo: rep.memo,
-        mechanicName: mechName,
-        billableType: rep.billableType || (rep.billableAmount && rep.billableAmount > 0 ? 'BILLABLE' : 'FREE'),
-        billableAmount: rep.billableAmount || 0,
-        totalCost: rep.totalCost || 0,
-        isWaived: rep.isWaived,
-        waivedAmount: rep.waivedAmount,
-        waivedReason: rep.waivedReason,
-        partsUsed: parts,
-        partsTotalCost: partsTotal,
-        collectedParts: rep.collectedParts,
-        degradationScore: rep.degradationScore,
-        evidenceImages: rep.evidenceImages,
-        beforeImage: rep.beforeImage,
-        afterImage: rep.afterImage,
-        customerSignature: rep.customerSignature,
-        customerConfirmName: rep.customerConfirmName,
-        rawRepair: rep
-      });
-    });
-
-    // 2차 원천: assetInOutLogs 중 type === 'REPAIR' (과거 밴드 임포트 및 독립 레코드 보완)
-    assetInOutLogs.filter(l => l.type === 'REPAIR').forEach(log => {
-      if (log.repairId && seenRepairIds.has(log.repairId)) return;
-      if (seenRepairIds.has(log.id)) return;
-
-      const precisionModel = resolvePrecisionModelName(log.assetId, log.assetNo, log.modelName);
-      const { customerName, siteName, siteAddress, isYardInternal } = resolveRepairCustomerAndSite({
-        assetId: log.assetId,
-        assetNo: log.assetNo,
-        customerId: log.customerId,
-        customerName: log.customerName,
-        siteId: log.siteId,
-        siteName: log.siteName,
-        workCategory: log.memo?.includes('현장AS') ? 'FIELD_AS' : 'YARD_INTERNAL'
-      });
-
-      const isFieldAs = log.memo?.includes('현장AS') || (!isYardInternal && customerName !== '기연리프트 본사');
-      const workCat = isFieldAs ? 'FIELD_AS' : 'YARD_INTERNAL';
-      const catLabel = isFieldAs ? '외근 현장AS' : '내근 주기장정비';
-
-      list.push({
-        id: log.id,
-        sourceTable: 'ASSET_LOGS',
-        ticketNo: log.inboundNo || `LOG-${log.id.slice(0, 8)}`,
-        eventDate: log.eventDate,
-        assetId: log.assetId,
-        assetNo: log.assetNo,
-        modelName: precisionModel,
-        workCategory: workCat,
-        categoryLabel: catLabel,
-        status: 'COMPLETED',
-        statusLabel: '완료',
-        customerId: log.customerId,
-        customerName,
-        siteId: log.siteId,
-        siteName,
-        siteAddress,
-        isYardInternal,
-        summaryAction: log.memo || '과거 정비 이력 로그',
-        memo: log.memo,
-        mechanicName: isFieldAs ? '현장 정비사' : '본사 정비팀',
-        billableType: 'FREE',
-        billableAmount: 0,
-        totalCost: 0,
-        partsUsed: [],
-        partsTotalCost: 0,
-        degradationScore: log.maintenanceScore
-      });
-    });
-
-    // 정비일자 내림차순 정렬 (최신순)
-    return list.sort((a, b) => new Date(b.eventDate).getTime() - new Date(a.eventDate).getTime());
-  }, [repairs, assetInOutLogs, assets, customers, sites, contractAssets, contracts, repairConsumables, consumables, users, vendors]);
-
-  // 💡 정비 이력 필터링 결과
-  const filteredRepairRecords = useMemo(() => {
-    return unifiedRepairRecords.filter(item => {
-      if (item.eventDate > todayStr) return false;
-      if (selectedAssetId && item.assetId !== selectedAssetId) return false;
-      if (activeSearchParams.startDate && item.eventDate < activeSearchParams.startDate) return false;
-      if (activeSearchParams.endDate && item.eventDate > activeSearchParams.endDate) return false;
-
-      if (repairCategoryFilter !== 'ALL' && item.workCategory !== repairCategoryFilter) return false;
-
-      if (repairStatusFilter !== 'ALL') {
-        if (repairStatusFilter === 'COMPLETED' && item.status !== 'COMPLETED') return false;
-        if (repairStatusFilter === 'IN_PROGRESS' && item.status !== 'IN_PROGRESS' && item.status !== 'REQUESTED') return false;
-        if (repairStatusFilter === 'REVISIT' && item.status !== 'REVISIT') return false;
-      }
-
-      if (repairBillableFilter !== 'ALL') {
-        if (repairBillableFilter === 'BILLABLE' && (item.billableType !== 'BILLABLE' || item.billableAmount <= 0)) return false;
-        if (repairBillableFilter === 'FREE' && item.billableType === 'BILLABLE' && item.billableAmount > 0) return false;
-        if (repairBillableFilter === 'EXTERNAL_COST' && item.totalCost <= 0) return false;
-      }
-
-      if (activeSearchParams.searchTerm.trim()) {
-        const rawTerm = activeSearchParams.searchTerm.toLowerCase();
-        const cleanTerm = rawTerm.replace(/[\s\-_/]/g, '');
-
-        const mAssetNo = item.assetNo.toLowerCase().includes(rawTerm) || (cleanTerm && item.assetNo.toLowerCase().replace(/[\s\-_/]/g, '').includes(cleanTerm));
-        const mModel = item.modelName.toLowerCase().includes(rawTerm) || (cleanTerm && item.modelName.toLowerCase().replace(/[\s\-_/]/g, '').includes(cleanTerm));
-        const mCust = item.customerName.toLowerCase().includes(rawTerm) || (cleanTerm && item.customerName.toLowerCase().replace(/[\s\-_/]/g, '').includes(cleanTerm));
-        const mSite = item.siteName.toLowerCase().includes(rawTerm) || (cleanTerm && item.siteName.toLowerCase().replace(/[\s\-_/]/g, '').includes(cleanTerm));
-        const mAddr = item.siteAddress.toLowerCase().includes(rawTerm) || (cleanTerm && item.siteAddress.toLowerCase().replace(/[\s\-_/]/g, '').includes(cleanTerm));
-        const mAction = item.summaryAction.toLowerCase().includes(rawTerm) || (cleanTerm && item.summaryAction.toLowerCase().replace(/[\s\-_/]/g, '').includes(cleanTerm));
-        const mMech = item.mechanicName.toLowerCase().includes(rawTerm) || (cleanTerm && item.mechanicName.toLowerCase().replace(/[\s\-_/]/g, '').includes(cleanTerm));
-        const mTicket = (item.ticketNo || '').toLowerCase().includes(rawTerm) || (cleanTerm && (item.ticketNo || '').toLowerCase().replace(/[\s\-_/]/g, '').includes(cleanTerm));
-
-        if (!mAssetNo && !mModel && !mCust && !mSite && !mAddr && !mAction && !mMech && !mTicket) {
-          return false;
-        }
-      }
-
-      return true;
-    });
-  }, [unifiedRepairRecords, selectedAssetId, activeSearchParams, repairCategoryFilter, repairStatusFilter, repairBillableFilter, todayStr]);
-
-  // 💡 입출고 탭용 로그 필터링 (기존 INBOUND, OUTBOUND 호환)
+  // 💡 입출고 탭용 로그 필터링 (INBOUND, OUTBOUND)
   const filteredTabLogs = useMemo(() => {
-    if (activeTab === 'REPAIR') return [];
     return assetInOutLogs.filter(log => {
       if (log.type !== activeTab) return false;
       if (log.eventDate > todayStr) return false;
@@ -729,32 +345,6 @@ export const AssetHistory: React.FC = () => {
 
   // 6. 엑셀 다운로드 (정밀 모델명, 현장명, 상세 정비 정보 반영)
   const handleExport = () => {
-    if (activeTab === 'REPAIR') {
-      const excelData = filteredRepairRecords.map((item, idx) => ({
-        'No': idx + 1,
-        '정비일자': item.eventDate,
-        '접수/티켓번호': item.ticketNo || '-',
-        '관리번호': item.assetNo,
-        '세부기종(모델명)': item.modelName,
-        '정비구분': item.categoryLabel,
-        '처리상태': item.statusLabel,
-        '고객사(거래처)': item.customerName,
-        '현장명': item.siteName,
-        '도로명주소': item.siteAddress,
-        '고장증상': item.issueDescription || '-',
-        '조치내역': item.actionTaken || item.summaryAction,
-        '투입소모품': item.partsUsed.length > 0 ? item.partsUsed.map(p => `${p.modelName} ${p.quantity}개`).join(', ') : '무투입',
-        '소모품비용': item.partsTotalCost,
-        '유무상구분': item.billableType === 'BILLABLE' ? '유상청구' : '무상',
-        '유상청구액': item.billableAmount,
-        '외주/소요비용': item.totalCost,
-        '담당정비자': item.mechanicName,
-        '비고': item.memo || '-'
-      }));
-      exportToExcel(excelData, `정비이력조회_${new Date().toISOString().split('T')[0]}`, '정비이력대장');
-      return;
-    }
-
     const tabName = activeTab === 'OUTBOUND' ? '출고이력' : '입고이력';
     const excelData = filteredTabLogs.map((log, idx) => ({
       'No': idx + 1,
@@ -776,9 +366,9 @@ export const AssetHistory: React.FC = () => {
       {/* 1. 페이지 헤더 (헌장 3.1: 무수식어 건조 표준) */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <div>
-          <h2 style={{ fontWeight: '700', marginBottom: '4px' }}>자산 입출고 및 정비 이력</h2>
+          <h2 style={{ fontWeight: '700', marginBottom: '4px' }}>자산 입출고</h2>
           <p style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>
-            장비의 출하, 반납 입고 및 검수, 주기장 정비 및 현장 AS 처리 결과를 조회 추적합니다.
+            장비의 출하, 반납 입고 및 검수 결과를 조회 추적합니다.
           </p>
         </div>
         <button className="btn-secondary" onClick={handleExport} style={{ display: 'flex', alignItems: 'center', gap: '6px', whiteSpace: 'nowrap', flexShrink: 0 }}>
@@ -790,10 +380,9 @@ export const AssetHistory: React.FC = () => {
       {(() => {
         const inboundCount = assetInOutLogs.filter(l => l.type === 'INBOUND').length;
         const outboundCount = assetInOutLogs.filter(l => l.type === 'OUTBOUND').length;
-        const repairCount = unifiedRepairRecords.length;
 
         return (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '10px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '10px' }}>
             <div style={{ padding: '10px 14px', backgroundColor: 'var(--bg-card)', borderRadius: '6px', border: '1px solid var(--border-color)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <span style={{ fontSize: '11.5px', color: 'var(--text-secondary)', fontWeight: 600, whiteSpace: 'nowrap' }}>총 입고(반납) 이력</span>
               <strong style={{ fontSize: '15px', color: '#16a34a' }}>{inboundCount}건</strong>
@@ -802,15 +391,11 @@ export const AssetHistory: React.FC = () => {
               <span style={{ fontSize: '11.5px', color: 'var(--text-secondary)', fontWeight: 600, whiteSpace: 'nowrap' }}>총 출고(출하) 이력</span>
               <strong style={{ fontSize: '15px', color: 'var(--primary)' }}>{outboundCount}건</strong>
             </div>
-            <div style={{ padding: '10px 14px', backgroundColor: 'var(--bg-card)', borderRadius: '6px', border: '1px solid var(--border-color)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span style={{ fontSize: '11.5px', color: 'var(--text-secondary)', fontWeight: 600, whiteSpace: 'nowrap' }}>총 정비/AS 이력</span>
-              <strong style={{ fontSize: '15px', color: '#d97706' }}>{repairCount}건</strong>
-            </div>
           </div>
         );
       })()}
 
-      {/* 2. 4대 탭 메뉴 (입고등록, 입고조회, 출고조회, 정비이력조회) */}
+      {/* 2. 3대 탭 메뉴 (입고등록, 입고조회, 출고조회) */}
       <div style={{ display: 'flex', gap: '10px', borderBottom: '2px solid var(--border-color)', paddingBottom: '10px' }}>
         <button
           type="button"
@@ -837,15 +422,6 @@ export const AssetHistory: React.FC = () => {
           style={{ padding: '8px 18px', fontSize: '13.5px', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '6px', whiteSpace: 'nowrap', flexShrink: 0 }}
         >
           <ArrowUpRight size={16} /> 출고 조회
-        </button>
-
-        <button
-          type="button"
-          onClick={() => setActiveTab('REPAIR')}
-          className={activeTab === 'REPAIR' ? 'btn-primary' : 'btn-secondary'}
-          style={{ padding: '8px 18px', fontSize: '13.5px', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '6px', whiteSpace: 'nowrap', flexShrink: 0 }}
-        >
-          <Wrench size={16} /> 정비 이력 조회
         </button>
       </div>
 
@@ -901,56 +477,60 @@ export const AssetHistory: React.FC = () => {
                   </span>
                 </div>
 
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '8px', marginTop: '4px' }}>
+                <div style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(auto-fill, minmax(170px, 1fr))',
+                  gap: '6px',
+                  marginTop: '4px',
+                  maxHeight: '400px',
+                  overflowY: 'auto',
+                  paddingRight: '2px'
+                }}>
                   {inspectionChecklistItems.map(item => {
                     const isChecked = selectedChecklistIds.includes(item.id);
                     const photo = defectPhotos[item.id];
                     return (
                       <div
                         key={item.id}
+                        onClick={() => toggleChecklistItem(item.id)}
                         style={{
                           display: 'flex',
                           flexDirection: 'column',
-                          gap: '6px',
-                          padding: '10px 12px',
+                          gap: '4px',
+                          padding: '6px 8px',
                           borderRadius: '6px',
                           backgroundColor: isChecked ? 'var(--primary-light)' : 'var(--bg-card)',
                           border: `1px solid ${isChecked ? 'var(--primary)' : 'var(--border-color)'}`,
+                          cursor: 'pointer',
+                          userSelect: 'none',
                           transition: 'all 0.15s ease'
                         }}
                       >
-                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                          <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '13px', margin: 0 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '4px' }}>
+                          <label
+                            style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '12px', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                            onClick={e => e.stopPropagation()}
+                          >
                             <input
                               type="checkbox"
                               checked={isChecked}
-                              onChange={e => {
-                                let newIds: string[];
-                                if (e.target.checked) {
-                                  newIds = [...selectedChecklistIds, item.id];
-                                } else {
-                                  newIds = selectedChecklistIds.filter(id => id !== item.id);
-                                  setDefectPhotos(prev => {
-                                    const next = { ...prev };
-                                    delete next[item.id];
-                                    try { sessionStorage.setItem('inbound_draft_photos', JSON.stringify(next)); } catch (err) {}
-                                    return next;
-                                  });
-                                }
-                                setSelectedChecklistIds(newIds);
-                                try { sessionStorage.setItem('inbound_draft_checklist', JSON.stringify(newIds)); } catch (err) {}
-                              }}
-                              style={{ width: '16px', height: '16px', accentColor: 'var(--primary)', cursor: 'pointer' }}
+                              onChange={() => toggleChecklistItem(item.id)}
+                              style={{ width: '14px', height: '14px', accentColor: 'var(--primary)', cursor: 'pointer', flexShrink: 0 }}
                             />
-                            <span style={{ fontWeight: isChecked ? 'bold' : 'normal' }}>{item.name}</span>
+                            <span style={{ fontWeight: isChecked ? 'bold' : 'normal', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              {item.name}
+                            </span>
                           </label>
-                          <span style={{ fontSize: '12px', color: isChecked ? 'var(--primary)' : 'var(--warning)', fontWeight: 'bold' }}>
+                          <span style={{ fontSize: '11px', color: isChecked ? 'var(--primary)' : 'var(--warning)', fontWeight: 'bold', whiteSpace: 'nowrap', flexShrink: 0 }}>
                             +{item.score}점
                           </span>
                         </div>
 
                         {isChecked && (
-                          <div style={{ marginTop: '4px', paddingTop: '6px', borderTop: '1px dashed var(--border-color)', display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                          <div
+                            onClick={e => e.stopPropagation()}
+                            style={{ marginTop: '2px', paddingTop: '4px', borderTop: '1px dashed var(--border-color)', display: 'flex', alignItems: 'center', gap: '4px', flexWrap: 'wrap' }}
+                          >
                             <button
                               type="button"
                               className="btn-secondary"
@@ -960,9 +540,9 @@ export const AssetHistory: React.FC = () => {
                                 const fileInput = document.getElementById(`defect-camera-input-${item.id}`);
                                 if (fileInput) fileInput.click();
                               }}
-                              style={{ padding: '4px 8px', fontSize: '11px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px', margin: 0 }}
+                              style={{ padding: '2px 5px', fontSize: '10.5px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '3px', margin: 0, whiteSpace: 'nowrap', flexShrink: 0 }}
                             >
-                              <Camera size={13} /> 📸 촬영
+                              <Camera size={11} /> 📸 촬영
                             </button>
                             <input
                               id={`defect-camera-input-${item.id}`}
@@ -982,7 +562,7 @@ export const AssetHistory: React.FC = () => {
                                 const fileInput = document.getElementById(`defect-gallery-input-${item.id}`);
                                 if (fileInput) fileInput.click();
                               }}
-                              style={{ padding: '4px 8px', fontSize: '11px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px', margin: 0 }}
+                              style={{ padding: '2px 5px', fontSize: '10.5px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '3px', margin: 0, whiteSpace: 'nowrap', flexShrink: 0 }}
                             >
                               🖼 갤러리
                             </button>
@@ -995,24 +575,27 @@ export const AssetHistory: React.FC = () => {
                             />
 
                             {photo ? (
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                <img src={photo} alt="파손 사진" style={{ width: '36px', height: '36px', objectFit: 'cover', borderRadius: '4px', border: '1px solid var(--border-color)' }} />
-                                <span style={{ fontSize: '11px', color: 'var(--success)', fontWeight: 'bold' }}>✅ 사진 첨부됨</span>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginTop: '2px' }}>
+                                <img src={photo} alt="파손 사진" style={{ width: '26px', height: '26px', objectFit: 'cover', borderRadius: '3px', border: '1px solid var(--border-color)' }} />
+                                <span style={{ fontSize: '10px', color: 'var(--success)', fontWeight: 'bold' }}>✅ 첨부됨</span>
                                 <button
                                   type="button"
-                                  onClick={() => setDefectPhotos(prev => {
-                                    const next = { ...prev };
-                                    delete next[item.id];
-                                    try { sessionStorage.setItem('inbound_draft_photos', JSON.stringify(next)); } catch (err) {}
-                                    return next;
-                                  })}
-                                  style={{ border: 'none', background: 'none', color: 'var(--danger)', fontSize: '11px', cursor: 'pointer', textDecoration: 'underline' }}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setDefectPhotos(prev => {
+                                      const next = { ...prev };
+                                      delete next[item.id];
+                                      try { sessionStorage.setItem('inbound_draft_photos', JSON.stringify(next)); } catch (err) {}
+                                      return next;
+                                    });
+                                  }}
+                                  style={{ border: 'none', background: 'none', color: 'var(--danger)', fontSize: '10px', cursor: 'pointer', textDecoration: 'underline', padding: 0 }}
                                 >
                                   삭제
                                 </button>
                               </div>
                             ) : (
-                              <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>(사진 선택 시 자동 저장)</span>
+                              <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>(사진 선택)</span>
                             )}
                           </div>
                         )}
@@ -1223,79 +806,6 @@ export const AssetHistory: React.FC = () => {
 
           </div>
 
-          {/* 🌟 정비 이력 탭 전용 서브 필터 바 (헌장 3.1) */}
-          {activeTab === 'REPAIR' && (
-            <div style={{ marginTop: '14px', paddingTop: '12px', borderTop: '1px solid var(--border-color)', display: 'flex', gap: '14px', flexWrap: 'wrap', alignItems: 'center' }}>
-              
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <span style={{ fontSize: '11.5px', fontWeight: 'bold', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>정비 구분:</span>
-                <div style={{ display: 'flex', gap: '4px' }}>
-                  {[
-                    { id: 'ALL', label: '전체' },
-                    { id: 'FIELD_AS', label: '외근 현장AS' },
-                    { id: 'YARD_INTERNAL', label: '내근 주기장' },
-                    { id: 'EXTERNAL_VENDOR', label: '외주 위탁' },
-                    { id: 'PREVENTIVE', label: '예방 점검' }
-                  ].map(tab => (
-                    <button
-                      key={tab.id}
-                      type="button"
-                      onClick={() => setRepairCategoryFilter(tab.id as any)}
-                      className={repairCategoryFilter === tab.id ? 'btn-primary' : 'btn-secondary'}
-                      style={{ padding: '3px 8px', fontSize: '11.5px', whiteSpace: 'nowrap', flexShrink: 0 }}
-                    >
-                      {tab.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <span style={{ fontSize: '11.5px', fontWeight: 'bold', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>처리 상태:</span>
-                <div style={{ display: 'flex', gap: '4px' }}>
-                  {[
-                    { id: 'ALL', label: '전체' },
-                    { id: 'COMPLETED', label: '완료' },
-                    { id: 'IN_PROGRESS', label: '진행중' },
-                    { id: 'REVISIT', label: '재방문요구' }
-                  ].map(tab => (
-                    <button
-                      key={tab.id}
-                      type="button"
-                      onClick={() => setRepairStatusFilter(tab.id as any)}
-                      className={repairStatusFilter === tab.id ? 'btn-primary' : 'btn-secondary'}
-                      style={{ padding: '3px 8px', fontSize: '11.5px', whiteSpace: 'nowrap', flexShrink: 0 }}
-                    >
-                      {tab.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <span style={{ fontSize: '11.5px', fontWeight: 'bold', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>청구/비용:</span>
-                <div style={{ display: 'flex', gap: '4px' }}>
-                  {[
-                    { id: 'ALL', label: '전체' },
-                    { id: 'BILLABLE', label: '유상 청구' },
-                    { id: 'FREE', label: '무상 정비' },
-                    { id: 'EXTERNAL_COST', label: '외주 소요' }
-                  ].map(tab => (
-                    <button
-                      key={tab.id}
-                      type="button"
-                      onClick={() => setRepairBillableFilter(tab.id as any)}
-                      className={repairBillableFilter === tab.id ? 'btn-primary' : 'btn-secondary'}
-                      style={{ padding: '3px 8px', fontSize: '11.5px', whiteSpace: 'nowrap', flexShrink: 0 }}
-                    >
-                      {tab.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-            </div>
-          )}
         </div>
       )}
 
@@ -1387,31 +897,10 @@ export const AssetHistory: React.FC = () => {
             <div style={{ fontSize: '14px', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '8px' }}>
               {activeTab === 'OUTBOUND' && <span>📤 출고 이력 목록</span>}
               {activeTab === 'INBOUND' && <span>📥 입고 이력 목록</span>}
-              {activeTab === 'REPAIR' && (
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-                  <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <Wrench size={16} className="text-primary" /> 정비 및 AS 통합 이력 대장
-                  </span>
-                  <span className="badge badge-secondary" style={{ fontSize: '11px', fontWeight: 600 }}>
-                    현장AS: {unifiedRepairRecords.filter(r => r.workCategory === 'FIELD_AS').length}건
-                  </span>
-                  <span className="badge badge-secondary" style={{ fontSize: '11px', fontWeight: 600 }}>
-                    주기장: {unifiedRepairRecords.filter(r => r.workCategory === 'YARD_INTERNAL').length}건
-                  </span>
-                  <span className="badge badge-secondary" style={{ fontSize: '11px', fontWeight: 600 }}>
-                    외주: {unifiedRepairRecords.filter(r => r.workCategory === 'EXTERNAL_VENDOR').length}건
-                  </span>
-                  <span className="badge badge-success" style={{ fontSize: '11px', fontWeight: 600 }}>
-                    유상청구: {unifiedRepairRecords.filter(r => r.billableAmount > 0).reduce((s, r) => s + r.billableAmount, 0).toLocaleString()}원
-                  </span>
-                </div>
-              )}
             </div>
 
             <div style={{ fontSize: '13px', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>
-              총 <strong style={{ color: 'var(--primary)', fontSize: '15px' }}>
-                {activeTab === 'REPAIR' ? filteredRepairRecords.length : filteredTabLogs.length}
-              </strong>건 조회됨
+              총 <strong style={{ color: 'var(--primary)', fontSize: '15px' }}>{filteredTabLogs.length}</strong>건 조회됨
             </div>
           </div>
 
@@ -1444,171 +933,15 @@ export const AssetHistory: React.FC = () => {
                     <th style={{ whiteSpace: 'nowrap' }}>작업</th>
                   </tr>
                 )}
-                {activeTab === 'REPAIR' && (
-                  <tr>
-                    <th style={{ whiteSpace: 'nowrap', width: '50px' }}>번호</th>
-                    <th style={{ whiteSpace: 'nowrap', width: '60px' }}>상세</th>
-                    <th style={{ whiteSpace: 'nowrap' }}>정비일자</th>
-                    <th style={{ whiteSpace: 'nowrap' }}>관리번호</th>
-                    <th style={{ whiteSpace: 'nowrap' }}>세부기종 (모델명)</th>
-                    <th style={{ whiteSpace: 'nowrap' }}>정비 구분</th>
-                    <th style={{ whiteSpace: 'nowrap' }}>처리 상태</th>
-                    <th style={{ whiteSpace: 'nowrap' }}>고객사 / 현장 (도로명주소)</th>
-                    <th style={{ whiteSpace: 'nowrap' }}>고장 증상 및 정비 조치 내역</th>
-                    <th style={{ whiteSpace: 'nowrap' }}>투입 소모품 (부품)</th>
-                    <th style={{ whiteSpace: 'nowrap' }}>유/무상 (청구/비용)</th>
-                    <th style={{ whiteSpace: 'nowrap' }}>담당자</th>
-                  </tr>
-                )}
               </thead>
               <tbody>
-                {activeTab === 'REPAIR' ? (
-                  filteredRepairRecords.length === 0 ? (
-                    <tr>
-                      <td colSpan={12} style={{ textAlign: 'center', padding: '40px 0', color: 'var(--text-muted)' }}>
-                        조회 조건에 부합하는 정비 및 AS 이력 데이터가 존재하지 않습니다.
-                      </td>
-                    </tr>
-                  ) : (
-                    filteredRepairRecords.map((item, idx) => (
-                      <tr
-                        key={item.id}
-                        style={{ cursor: 'pointer', transition: 'background-color 0.15s ease' }}
-                        onClick={() => setSelectedDetailRecord(item)}
-                        title="클릭 시 360도 정비 상세 정보(투입부품, 사진, 서명 등)를 확인합니다."
-                      >
-                        <td style={{ whiteSpace: 'nowrap', textAlign: 'center', color: 'var(--text-muted)', fontSize: '12px' }}>
-                          {idx + 1}
-                        </td>
-
-                        <td style={{ whiteSpace: 'nowrap', textAlign: 'center' }} onClick={e => { e.stopPropagation(); setSelectedDetailRecord(item); }}>
-                          <button
-                            type="button"
-                            className="btn-secondary"
-                            style={{ padding: '3px 6px', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '3px', whiteSpace: 'nowrap' }}
-                            title="정비 상세 Dossier 열기"
-                          >
-                            <Eye size={12} /> 상세
-                          </button>
-                        </td>
-
-                        <td style={{ whiteSpace: 'nowrap', fontSize: '12.5px', fontWeight: 600 }}>
-                          {item.eventDate}
-                        </td>
-
-                        <td style={{ whiteSpace: 'nowrap' }}>
-                          <strong style={{ color: 'var(--primary)', fontSize: '13px' }}>{item.assetNo}</strong>
-                        </td>
-
-                        {/* 🌟 100% 정밀 보정된 세부 모델명 */}
-                        <td style={{ whiteSpace: 'nowrap' }}>
-                          <span style={{ fontWeight: 700, color: '#1e293b', backgroundColor: '#f1f5f9', padding: '2px 7px', borderRadius: '4px', fontSize: '12px', border: '1px solid #cbd5e1' }}>
-                            {item.modelName}
-                          </span>
-                        </td>
-
-                        <td style={{ whiteSpace: 'nowrap' }}>
-                          <span className={`badge ${
-                            item.workCategory === 'FIELD_AS' ? 'badge-primary' :
-                            item.workCategory === 'EXTERNAL_VENDOR' ? 'badge-warning' :
-                            item.workCategory === 'PREVENTIVE' ? 'badge-success' : 'badge-info'
-                          }`} style={{ fontSize: '11px', padding: '3px 7px' }}>
-                            {item.categoryLabel}
-                          </span>
-                        </td>
-
-                        <td style={{ whiteSpace: 'nowrap' }}>
-                          <span className={`badge ${
-                            item.status === 'COMPLETED' ? 'badge-success' :
-                            item.status === 'REVISIT' ? 'badge-danger' :
-                            item.status === 'IN_PROGRESS' ? 'badge-warning' : 'badge-secondary'
-                          }`} style={{ fontSize: '11px' }}>
-                            {item.statusLabel}
-                          </span>
-                        </td>
-
-                        {/* 🌟 100% 역추적 보정된 고객사 및 현장명 */}
-                        <td style={{ whiteSpace: 'nowrap', maxWidth: '280px', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                            <div>
-                              <strong style={{ color: item.isYardInternal ? 'var(--primary)' : 'var(--text-primary)', fontSize: '12.5px' }}>
-                                {item.customerName}
-                              </strong>
-                              <span style={{ color: 'var(--text-muted)', fontSize: '12px' }}> / {item.siteName}</span>
-                            </div>
-                            <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
-                              📍 {item.siteAddress}
-                            </div>
-                          </div>
-                        </td>
-
-                        <td style={{ maxWidth: '320px', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', fontSize: '12px' }}>
-                            {item.issueCategory && (
-                              <span className="badge badge-secondary" style={{ width: 'fit-content', fontSize: '10px', padding: '1px 5px' }}>
-                                {item.issueCategory}
-                              </span>
-                            )}
-                            <span style={{ color: 'var(--text-primary)', lineHeight: 1.3 }}>
-                              {item.summaryAction}
-                            </span>
-                          </div>
-                        </td>
-
-                        <td style={{ whiteSpace: 'nowrap', fontSize: '12px' }}>
-                          {item.partsUsed.length > 0 ? (
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                              <span style={{ fontWeight: 600, color: 'var(--primary)' }}>
-                                {item.partsUsed[0].modelName} {item.partsUsed[0].quantity}개
-                                {item.partsUsed.length > 1 && ` 외 ${item.partsUsed.length - 1}건`}
-                              </span>
-                              <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
-                                소모품 합계: {item.partsTotalCost.toLocaleString()}원
-                              </span>
-                            </div>
-                          ) : (
-                            <span style={{ color: 'var(--text-muted)' }}>무투입</span>
-                          )}
-                        </td>
-
-                        <td style={{ whiteSpace: 'nowrap', fontSize: '12px' }}>
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                            {item.billableType === 'BILLABLE' && item.billableAmount > 0 ? (
-                              <span style={{ color: '#dc2626', fontWeight: 700 }}>
-                                유상청구: {item.billableAmount.toLocaleString()}원
-                              </span>
-                            ) : item.isWaived ? (
-                              <span style={{ color: '#ea580c', fontWeight: 600 }}>
-                                영업면제: {(item.waivedAmount || 0).toLocaleString()}원
-                              </span>
-                            ) : item.totalCost > 0 ? (
-                              <span style={{ color: '#d97706', fontWeight: 600 }}>
-                                외주비용: {item.totalCost.toLocaleString()}원
-                              </span>
-                            ) : (
-                              <span style={{ color: '#16a34a', fontWeight: 600 }}>
-                                무상정비
-                              </span>
-                            )}
-                          </div>
-                        </td>
-
-                        <td style={{ whiteSpace: 'nowrap', fontSize: '12px' }}>
-                          {item.mechanicName}
-                        </td>
-
-                      </tr>
-                    ))
-                  )
+                {filteredTabLogs.length === 0 ? (
+                  <tr>
+                    <td colSpan={activeTab === 'INBOUND' ? 10 : 7} style={{ textAlign: 'center', padding: '36px 0', color: 'var(--text-muted)' }}>
+                      선택한 탭 및 검색 조건에 부합하는 자산 이력 데이터가 존재하지 않습니다.
+                    </td>
+                  </tr>
                 ) : (
-                  /* 출고 및 입고 탭 테이블 */
-                  filteredTabLogs.length === 0 ? (
-                    <tr>
-                      <td colSpan={10} style={{ textAlign: 'center', padding: '36px 0', color: 'var(--text-muted)' }}>
-                        선택한 탭 및 검색 조건에 부합하는 자산 이력 데이터가 존재하지 않습니다.
-                      </td>
-                    </tr>
-                  ) : (
                     filteredTabLogs.map((log, idx) => {
                       const parsedDefects: InboundDefectDetail[] = log.defectsJson ? JSON.parse(log.defectsJson) : [];
                       const precisionModel = resolvePrecisionModelName(log.assetId, log.assetNo, log.modelName);
@@ -1683,350 +1016,9 @@ export const AssetHistory: React.FC = () => {
                         </tr>
                       );
                     })
-                  )
                 )}
               </tbody>
             </table>
-          </div>
-        </div>
-      )}
-
-      {/* ========================================================================= */}
-      {/* 🌟 [신설: 360도 정비 상세 Dossier 모달 (헌장 3.1 & 3.4 & 3.6 유형 A 준수)] */}
-      {/* ========================================================================= */}
-      {selectedDetailRecord && (
-        <div style={{
-          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-          backgroundColor: 'rgba(0, 0, 0, 0.6)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          zIndex: 12000, padding: '20px'
-        }}>
-          <div style={{
-            backgroundColor: 'var(--bg-card)',
-            borderRadius: '12px',
-            border: '1px solid var(--border-color)',
-            boxShadow: '0 12px 36px rgba(0, 0, 0, 0.35)',
-            maxWidth: '900px',
-            width: '100%',
-            maxHeight: '90vh',
-            display: 'flex',
-            flexDirection: 'column',
-            overflow: 'hidden'
-          }}>
-            
-            {/* 모달 헤더 */}
-            <div style={{
-              padding: '16px 20px',
-              borderBottom: '1px solid var(--border-color)',
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              backgroundColor: 'var(--bg-app)'
-            }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                <Wrench size={20} className="text-primary" />
-                <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 700 }}>
-                  정비 이력 상세 정보 {selectedDetailRecord.assetNo}
-                </h3>
-                <span className={`badge ${
-                  selectedDetailRecord.workCategory === 'FIELD_AS' ? 'badge-primary' :
-                  selectedDetailRecord.workCategory === 'EXTERNAL_VENDOR' ? 'badge-warning' : 'badge-info'
-                }`} style={{ fontSize: '11.5px', padding: '3px 8px' }}>
-                  {selectedDetailRecord.categoryLabel}
-                </span>
-                <span className={`badge ${
-                  selectedDetailRecord.status === 'COMPLETED' ? 'badge-success' : 'badge-secondary'
-                }`} style={{ fontSize: '11.5px', padding: '3px 8px' }}>
-                  {selectedDetailRecord.statusLabel}
-                </span>
-              </div>
-              <button
-                type="button"
-                onClick={() => setSelectedDetailRecord(null)}
-                style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', display: 'flex', alignItems: 'center' }}
-              >
-                <X size={20} />
-              </button>
-            </div>
-
-            {/* 모달 본문 (스크롤) */}
-            <div style={{ padding: '20px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '16px' }}>
-              
-              {/* 1. 기본 장비 및 일정 정보 (헌장 3.4: 상하 세로 스택) */}
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '12px', padding: '14px', backgroundColor: 'var(--bg-app)', borderRadius: '8px', border: '1px solid var(--border-color)' }}>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
-                  <span style={{ fontSize: '11px', color: 'var(--text-secondary)', fontWeight: 600 }}>장비 관리번호</span>
-                  <strong style={{ fontSize: '14px', color: 'var(--primary)' }}>{selectedDetailRecord.assetNo}</strong>
-                </div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
-                  <span style={{ fontSize: '11px', color: 'var(--text-secondary)', fontWeight: 600 }}>정밀 기종 (모델명)</span>
-                  <strong style={{ fontSize: '14px' }}>{selectedDetailRecord.modelName}</strong>
-                </div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
-                  <span style={{ fontSize: '11px', color: 'var(--text-secondary)', fontWeight: 600 }}>정비 완료 일자</span>
-                  <span style={{ fontSize: '13px', fontWeight: 600 }}>{selectedDetailRecord.eventDate}</span>
-                </div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
-                  <span style={{ fontSize: '11px', color: 'var(--text-secondary)', fontWeight: 600 }}>접수/티켓번호</span>
-                  <span style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>{selectedDetailRecord.ticketNo || '-'}</span>
-                </div>
-              </div>
-
-              {/* 2. 고객사 및 현장 위치 정보 */}
-              <div style={{ padding: '14px', backgroundColor: 'var(--bg-card)', borderRadius: '8px', border: '1px solid var(--border-color)', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                <h4 style={{ margin: 0, fontSize: '13.5px', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <Building2 size={16} className="text-primary" /> 현장 및 거래처 정보
-                </h4>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', fontSize: '12.5px' }}>
-                  <div>
-                    <span style={{ color: 'var(--text-secondary)' }}>거래처 (고객사): </span>
-                    <strong>{selectedDetailRecord.customerName}</strong>
-                  </div>
-                  <div>
-                    <span style={{ color: 'var(--text-secondary)' }}>현장명: </span>
-                    <strong>{selectedDetailRecord.siteName}</strong>
-                  </div>
-                  <div style={{ gridColumn: 'span 2' }}>
-                    <span style={{ color: 'var(--text-secondary)' }}>📍 도로명 상세주소: </span>
-                    <span>{selectedDetailRecord.siteAddress}</span>
-                    {selectedDetailRecord.locationDetail && (
-                      <span style={{ color: 'var(--primary)', marginLeft: '8px', fontWeight: 600 }}>
-                        (상세: {selectedDetailRecord.locationDetail})
-                      </span>
-                    )}
-                  </div>
-                </div>
-              </div>
-
-              {/* 3. 고장 증상 및 실제 조치 사항 */}
-              <div style={{ padding: '14px', backgroundColor: 'var(--bg-card)', borderRadius: '8px', border: '1px solid var(--border-color)', display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                <h4 style={{ margin: 0, fontSize: '13.5px', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <Wrench size={16} className="text-primary" /> 고장 증상 및 정비 조치 사항
-                </h4>
-                
-                {selectedDetailRecord.issueCategory && (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <span style={{ fontSize: '12px', color: 'var(--text-secondary)', fontWeight: 600 }}>고장 분류:</span>
-                    <span className="badge badge-warning" style={{ fontSize: '11px' }}>{selectedDetailRecord.issueCategory}</span>
-                  </div>
-                )}
-
-                {selectedDetailRecord.issueDescription && (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                    <span style={{ fontSize: '11.5px', color: 'var(--text-secondary)', fontWeight: 600 }}>접수된 고장 증상</span>
-                    <div style={{ padding: '10px', backgroundColor: 'var(--bg-app)', borderRadius: '6px', fontSize: '12.5px', border: '1px solid var(--border-color)' }}>
-                      {selectedDetailRecord.issueDescription}
-                    </div>
-                  </div>
-                )}
-
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                  <span style={{ fontSize: '11.5px', color: 'var(--text-secondary)', fontWeight: 600 }}>실제 수행된 정비 조치 사항</span>
-                  <div style={{ padding: '10px', backgroundColor: 'rgba(59, 130, 246, 0.05)', borderRadius: '6px', fontSize: '12.5px', border: '1px solid rgba(59, 130, 246, 0.2)', fontWeight: 600, color: '#1e40af' }}>
-                    {selectedDetailRecord.actionTaken || selectedDetailRecord.summaryAction}
-                  </div>
-                </div>
-
-                {selectedDetailRecord.memo && selectedDetailRecord.memo !== selectedDetailRecord.actionTaken && (
-                  <div style={{ fontSize: '11.5px', color: 'var(--text-muted)', paddingTop: '4px' }}>
-                    참고 비고: {selectedDetailRecord.memo}
-                  </div>
-                )}
-              </div>
-
-              {/* 4. 투입 소모품 및 부품 명세 */}
-              <div style={{ padding: '14px', backgroundColor: 'var(--bg-card)', borderRadius: '8px', border: '1px solid var(--border-color)', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <h4 style={{ margin: 0, fontSize: '13.5px', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <Package size={16} className="text-primary" /> 투입 소모품 및 부품 명세 ({selectedDetailRecord.partsUsed.length}건)
-                  </h4>
-                  <strong style={{ fontSize: '13px', color: 'var(--primary)' }}>
-                    총 소모품 투입액: {selectedDetailRecord.partsTotalCost.toLocaleString()}원
-                  </strong>
-                </div>
-
-                {selectedDetailRecord.partsUsed.length === 0 ? (
-                  <div style={{ padding: '12px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '12px', backgroundColor: 'var(--bg-app)', borderRadius: '6px' }}>
-                    별도 부품 투입 없이 무투입으로 조치 완료되었습니다.
-                  </div>
-                ) : (
-                  <div style={{ overflowX: 'auto' }}>
-                    <table style={{ width: '100%', fontSize: '12px' }}>
-                      <thead>
-                        <tr style={{ backgroundColor: 'var(--bg-app)' }}>
-                          <th style={{ padding: '6px 10px', textAlign: 'left', whiteSpace: 'nowrap' }}>품목명</th>
-                          <th style={{ padding: '6px 10px', textAlign: 'center', whiteSpace: 'nowrap' }}>수량</th>
-                          <th style={{ padding: '6px 10px', textAlign: 'right', whiteSpace: 'nowrap' }}>단가</th>
-                          <th style={{ padding: '6px 10px', textAlign: 'right', whiteSpace: 'nowrap' }}>금액</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {selectedDetailRecord.partsUsed.map((p, pIdx) => (
-                          <tr key={pIdx} style={{ borderBottom: '1px solid var(--border-color)' }}>
-                            <td style={{ padding: '6px 10px', fontWeight: 600 }}>{p.modelName}</td>
-                            <td style={{ padding: '6px 10px', textAlign: 'center' }}>{p.quantity}개</td>
-                            <td style={{ padding: '6px 10px', textAlign: 'right' }}>{(p.unitPrice || 0).toLocaleString()}원</td>
-                            <td style={{ padding: '6px 10px', textAlign: 'right', fontWeight: 700 }}>
-                              {((p.totalPrice !== undefined ? p.totalPrice : (p.quantity * (p.unitPrice || 0)))).toLocaleString()}원
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-              </div>
-
-              {/* 5. 회계 정산 및 비용 귀속 */}
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px', padding: '14px', backgroundColor: 'var(--bg-app)', borderRadius: '8px', border: '1px solid var(--border-color)' }}>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
-                  <span style={{ fontSize: '11px', color: 'var(--text-secondary)', fontWeight: 600 }}>유/무상 구분</span>
-                  <strong style={{ fontSize: '14px', color: selectedDetailRecord.billableType === 'BILLABLE' ? '#dc2626' : '#16a34a' }}>
-                    {selectedDetailRecord.billableType === 'BILLABLE' ? '유상 청구' : '무상 정비'}
-                  </strong>
-                </div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
-                  <span style={{ fontSize: '11px', color: 'var(--text-secondary)', fontWeight: 600 }}>고객 청구 확정액</span>
-                  <strong style={{ fontSize: '14px', color: '#dc2626' }}>
-                    {selectedDetailRecord.billableAmount.toLocaleString()}원
-                  </strong>
-                </div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
-                  <span style={{ fontSize: '11px', color: 'var(--text-secondary)', fontWeight: 600 }}>외주/자체 소요 비용</span>
-                  <strong style={{ fontSize: '14px', color: '#d97706' }}>
-                    {selectedDetailRecord.totalCost.toLocaleString()}원
-                  </strong>
-                </div>
-                {selectedDetailRecord.isWaived && (
-                  <div style={{ gridColumn: 'span 3', padding: '8px 10px', backgroundColor: 'rgba(234, 88, 12, 0.1)', borderRadius: '6px', fontSize: '12px', color: '#ea580c' }}>
-                    ✓ 영업 면제 처리됨: 면제액 {(selectedDetailRecord.waivedAmount || 0).toLocaleString()}원 (사유: {selectedDetailRecord.waivedReason || '영업 판단'})
-                  </div>
-                )}
-              </div>
-
-              {/* 6. 정비 담당자 및 증빙 사진 */}
-              <div style={{ padding: '14px', backgroundColor: 'var(--bg-card)', borderRadius: '8px', border: '1px solid var(--border-color)', display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <h4 style={{ margin: 0, fontSize: '13.5px', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <User size={16} className="text-primary" /> 정비 담당자 및 현장 증빙
-                  </h4>
-                  <span style={{ fontSize: '12.5px', fontWeight: 600 }}>
-                    담당자: {selectedDetailRecord.mechanicName}
-                  </span>
-                </div>
-
-                <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', marginTop: '6px' }}>
-                  {selectedDetailRecord.beforeImage && (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', alignItems: 'center' }}>
-                      <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>정비 전 (클릭 확대)</span>
-                      <img 
-                        src={selectedDetailRecord.beforeImage} 
-                        alt="정비 전" 
-                        onClick={() => setZoomImageUrl(selectedDetailRecord.beforeImage || null)}
-                        style={{ width: '90px', height: '90px', objectFit: 'cover', borderRadius: '6px', border: '1px solid var(--border-color)', cursor: 'zoom-in' }} 
-                      />
-                    </div>
-                  )}
-
-                  {selectedDetailRecord.afterImage && (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', alignItems: 'center' }}>
-                      <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>정비 후 (클릭 확대)</span>
-                      <img 
-                        src={selectedDetailRecord.afterImage} 
-                        alt="정비 후" 
-                        onClick={() => setZoomImageUrl(selectedDetailRecord.afterImage || null)}
-                        style={{ width: '90px', height: '90px', objectFit: 'cover', borderRadius: '6px', border: '1px solid var(--border-color)', cursor: 'zoom-in' }} 
-                      />
-                    </div>
-                  )}
-
-                  {selectedDetailRecord.evidenceImages && selectedDetailRecord.evidenceImages.map((img, i) => (
-                    <div key={i} style={{ display: 'flex', flexDirection: 'column', gap: '4px', alignItems: 'center' }}>
-                      <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>증빙 #{i + 1} (클릭 확대)</span>
-                      <img 
-                        src={img} 
-                        alt={`증빙 #${i + 1}`} 
-                        onClick={() => setZoomImageUrl(img)}
-                        style={{ width: '90px', height: '90px', objectFit: 'cover', borderRadius: '6px', border: '1px solid var(--border-color)', cursor: 'zoom-in' }} 
-                      />
-                    </div>
-                  ))}
-
-                  {selectedDetailRecord.customerSignature && (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', alignItems: 'center' }}>
-                      <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>고객 확인 서명 ({selectedDetailRecord.customerConfirmName || '담당자'})</span>
-                      <img 
-                        src={selectedDetailRecord.customerSignature} 
-                        alt="서명" 
-                        onClick={() => setZoomImageUrl(selectedDetailRecord.customerSignature || null)}
-                        style={{ width: '120px', height: '70px', objectFit: 'contain', borderRadius: '6px', border: '1px solid var(--border-color)', backgroundColor: '#fff', cursor: 'zoom-in' }} 
-                      />
-                    </div>
-                  )}
-
-                  {!selectedDetailRecord.beforeImage && !selectedDetailRecord.afterImage && (!selectedDetailRecord.evidenceImages || selectedDetailRecord.evidenceImages.length === 0) && !selectedDetailRecord.customerSignature && (
-                    <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
-                      첨부된 사진 증빙이 없습니다.
-                    </div>
-                  )}
-                </div>
-              </div>
-
-            </div>
-
-            {/* 모달 하단 닫기 바 */}
-            <div style={{
-              padding: '12px 20px',
-              borderTop: '1px solid var(--border-color)',
-              display: 'flex',
-              justifyContent: 'flex-end',
-              gap: '8px',
-              backgroundColor: 'var(--bg-app)'
-            }}>
-              <button
-                type="button"
-                className="btn-secondary"
-                onClick={() => setSelectedDetailRecord(null)}
-                style={{ padding: '7px 16px', fontSize: '13px' }}
-              >
-                닫기
-              </button>
-            </div>
-
-          </div>
-        </div>
-      )}
-
-      {/* 📸 사진 원본 확대 라이트박스 모달 */}
-      {zoomImageUrl && (
-        <div 
-          style={{
-            position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-            backgroundColor: 'rgba(0, 0, 0, 0.85)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            zIndex: 13000, padding: '20px'
-          }}
-          onClick={() => setZoomImageUrl(null)}
-        >
-          <div style={{ position: 'relative', maxWidth: '90vw', maxHeight: '90vh', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-            <button
-              type="button"
-              onClick={() => setZoomImageUrl(null)}
-              style={{
-                position: 'absolute', top: '-40px', right: '0',
-                backgroundColor: 'rgba(255, 255, 255, 0.2)', border: 'none',
-                color: '#fff', padding: '6px 12px', borderRadius: '4px', cursor: 'pointer',
-                fontSize: '13px', fontWeight: 'bold'
-              }}
-            >
-              닫기 ✕
-            </button>
-            <img 
-              src={zoomImageUrl} 
-              alt="확대 사진" 
-              style={{ maxWidth: '100%', maxHeight: '85vh', objectFit: 'contain', borderRadius: '8px', boxShadow: '0 8px 32px rgba(0,0,0,0.5)' }} 
-              onClick={e => e.stopPropagation()}
-            />
           </div>
         </div>
       )}

@@ -191,6 +191,8 @@ export interface OvertimeRecord {
   hours: number;         // 몇 시간 OT 하였는지 (예: 2.5)
   workDetail: string;    // 연장근무 내용
   status: 'APPROVED' | 'PENDING' | 'REJECTED';
+  mealYn?: 'Y' | 'N';    // 식사여부 ('Y' | 'N')
+  hasMeal?: boolean;     // 식사여부 불리언 호환
   createdAt: string;
 }
 

@@ -31,6 +31,7 @@ const getYesterdayYmd = () => {
 };
 
 const OT_REASON_PRESETS = [
+  '특근',
   '야간 출고·상하차',
   '긴급 현장 AS',
   '주말 장비정비',
@@ -250,6 +251,7 @@ export const OtManagementPage: React.FC = () => {
   const [otStartTime, setOtStartTime] = useState('17:00');
   const [otHours, setOtHours] = useState<number>(1.0);
   const [otWorkDetail, setOtWorkDetail] = useState('');
+  const [otMealYn, setOtMealYn] = useState<'Y' | 'N'>('N');
 
   // 로그인 사용자 또는 1순위 임직원으로 초기 선택 안전 보장
   useEffect(() => {
@@ -320,11 +322,11 @@ export const OtManagementPage: React.FC = () => {
     setOtStartTime(`${nh}:${nm}`);
   };
 
-  // 3. 근로시간 30분(0.5h) 단위 가감 (-0.5h / +0.5h)
+  // 3. 근로시간 30분(0.5h) 단위 가감 (-0.5h / +0.5h, 최소 1.0시간 강제)
   const handleHoursShift = (deltaHours: number) => {
     setOtHours(prev => {
       const next = Math.round((prev + deltaHours) * 10) / 10;
-      return Math.max(0.5, Math.min(24, next));
+      return Math.max(1.0, Math.min(24, next));
     });
   };
 
@@ -352,8 +354,8 @@ export const OtManagementPage: React.FC = () => {
       return;
     }
 
-    if (otHours <= 0) {
-      showErrorModal('OT 연장근무 시간은 0시간보다 커야 합니다.');
+    if (otHours < 1.0) {
+      showErrorModal('OT 시간은 최소 1.0시간 이상이어야 합니다. (30분은 인정되지 않습니다)');
       return;
     }
 
@@ -371,6 +373,8 @@ export const OtManagementPage: React.FC = () => {
           startDateTime,
           hours: otHours,
           workDetail: otWorkDetail.trim(),
+          mealYn: otMealYn,
+          hasMeal: otMealYn === 'Y',
           status: 'APPROVED'
         });
       }
@@ -383,7 +387,8 @@ export const OtManagementPage: React.FC = () => {
       setOtWorkDetail('');
       setOtHours(1.0);
       setOtStartTime('17:00');
-      showToast(`총 ${otUserIds.length}명 (${selectedNames})의 OT(${otHours}시간) 내역이 일괄 등록되었습니다.`);
+      setOtMealYn('N');
+      showToast(`총 ${otUserIds.length}명 (${selectedNames})의 OT(${otHours}시간, 식사: ${otMealYn}) 내역이 일괄 등록되었습니다.`);
     } catch (err: any) {
       showErrorModal(err?.message || 'OT 연장근무 등록 중 오류가 발생했습니다.');
     }
@@ -414,6 +419,7 @@ export const OtManagementPage: React.FC = () => {
         '부서': uDept,
         '시작 일시': ot.startDateTime,
         'OT 연장근무 시간 (h)': ot.hours,
+        '식사여부': (ot.mealYn === 'Y' || ot.hasMeal) ? 'Y' : 'N',
         '근무 상세 내용': ot.workDetail,
         '등록 일시': ot.createdAt?.substring(0, 10)
       };
@@ -887,7 +893,7 @@ export const OtManagementPage: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => handleHoursShift(-0.5)}
-                  disabled={otHours <= 0.5}
+                  disabled={otHours <= 1.0}
                   className="btn btn-secondary"
                   style={{
                     padding: '8px 12px',
@@ -896,10 +902,10 @@ export const OtManagementPage: React.FC = () => {
                     justifyContent: 'center',
                     backgroundColor: 'var(--bg-main)',
                     border: '1px solid var(--border-color)',
-                    opacity: otHours <= 0.5 ? 0.35 : 1,
-                    cursor: otHours <= 0.5 ? 'not-allowed' : 'pointer'
+                    opacity: otHours <= 1.0 ? 0.35 : 1,
+                    cursor: otHours <= 1.0 ? 'not-allowed' : 'pointer'
                   }}
-                  title="0.5시간 빼기 (-30m)"
+                  title="최소 1.0시간 (30분 감산 불가)"
                 >
                   <ChevronLeft size={16} />
                 </button>
@@ -1017,7 +1023,73 @@ export const OtManagementPage: React.FC = () => {
               />
             </div>
 
-            {/* 6. 저장 */}
+            {/* 6. 식사여부 (Y / N 선택) */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <label style={{ fontSize: '12px', fontWeight: 'bold', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
+                  6. 식사여부
+                </label>
+                <span style={{ fontSize: '11px', color: otMealYn === 'Y' ? '#10b981' : 'var(--text-muted)', fontWeight: 700 }}>
+                  {otMealYn === 'Y' ? '식사 제공 (Y)' : '식사 없음 (N)'}
+                </span>
+              </div>
+              <div style={{
+                display: 'grid',
+                gridTemplateColumns: '1fr 1fr',
+                gap: '6px',
+                backgroundColor: 'var(--bg-main)',
+                padding: '4px',
+                borderRadius: '6px',
+                border: '1px solid var(--border-color)'
+              }}>
+                <button
+                  type="button"
+                  onClick={() => setOtMealYn('Y')}
+                  style={{
+                    padding: '8px 0',
+                    fontSize: '13px',
+                    fontWeight: otMealYn === 'Y' ? 800 : 600,
+                    borderRadius: '5px',
+                    border: otMealYn === 'Y' ? '1.5px solid #10b981' : '1px solid transparent',
+                    backgroundColor: otMealYn === 'Y' ? 'rgba(16, 185, 129, 0.18)' : 'transparent',
+                    color: otMealYn === 'Y' ? '#10b981' : 'var(--text-secondary)',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '5px',
+                    transition: 'all 0.15s ease'
+                  }}
+                >
+                  {otMealYn === 'Y' && <span>✓</span>}
+                  <span>Y</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setOtMealYn('N')}
+                  style={{
+                    padding: '8px 0',
+                    fontSize: '13px',
+                    fontWeight: otMealYn === 'N' ? 800 : 600,
+                    borderRadius: '5px',
+                    border: otMealYn === 'N' ? '1.5px solid var(--text-muted)' : '1px solid transparent',
+                    backgroundColor: otMealYn === 'N' ? 'rgba(148, 163, 184, 0.18)' : 'transparent',
+                    color: otMealYn === 'N' ? 'var(--text-main)' : 'var(--text-secondary)',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '5px',
+                    transition: 'all 0.15s ease'
+                  }}
+                >
+                  {otMealYn === 'N' && <span>✓</span>}
+                  <span>N</span>
+                </button>
+              </div>
+            </div>
+
+            {/* 7. 저장 */}
             <button
               type="submit"
               className="btn btn-primary"
@@ -1033,7 +1105,7 @@ export const OtManagementPage: React.FC = () => {
               }}
               disabled={!canSave}
             >
-              OT 등록 ({otUserIds.length}명, 각 {otHours.toFixed(1)}시간)
+              OT 등록 ({otUserIds.length}명, 각 {otHours.toFixed(1)}시간, 식사: {otMealYn})
             </button>
           </form>
         </div>
@@ -1169,6 +1241,7 @@ export const OtManagementPage: React.FC = () => {
                     <th style={{ padding: '10px 14px', whiteSpace: 'nowrap' }}>부서</th>
                     <th style={{ padding: '10px 14px', whiteSpace: 'nowrap' }}>시작 일시</th>
                     <th style={{ padding: '10px 14px', whiteSpace: 'nowrap', textAlign: 'center' }}>OT 시간</th>
+                    <th style={{ padding: '10px 14px', whiteSpace: 'nowrap', textAlign: 'center', width: '60px' }}>식사</th>
                     <th style={{ padding: '10px 14px', whiteSpace: 'nowrap' }}>근무 상세 내용</th>
                     <th style={{ padding: '10px 14px', whiteSpace: 'nowrap' }}>등록일시</th>
                   </tr>
@@ -1176,7 +1249,7 @@ export const OtManagementPage: React.FC = () => {
                 <tbody>
                   {filteredRecords.length === 0 ? (
                     <tr>
-                      <td colSpan={7} style={{ padding: '32px', textAlign: 'center', color: 'var(--text-muted)' }}>
+                      <td colSpan={8} style={{ padding: '32px', textAlign: 'center', color: 'var(--text-muted)' }}>
                         조회된 OT 연장근무 내역이 없습니다.
                       </td>
                     </tr>
@@ -1212,6 +1285,18 @@ export const OtManagementPage: React.FC = () => {
                           </td>
                           <td style={{ padding: '10px 14px', whiteSpace: 'nowrap', textAlign: 'center', fontWeight: 'bold', color: 'var(--primary)' }}>
                             +{ot.hours} 시간
+                          </td>
+                          <td style={{ padding: '10px 14px', whiteSpace: 'nowrap', textAlign: 'center' }}>
+                            <span style={{
+                              fontSize: '11px',
+                              fontWeight: 700,
+                              padding: '2px 7px',
+                              borderRadius: '4px',
+                              backgroundColor: (ot.mealYn === 'Y' || ot.hasMeal) ? 'rgba(16, 185, 129, 0.12)' : 'rgba(148, 163, 184, 0.12)',
+                              color: (ot.mealYn === 'Y' || ot.hasMeal) ? '#10b981' : 'var(--text-muted)'
+                            }}>
+                              {(ot.mealYn === 'Y' || ot.hasMeal) ? 'Y' : 'N'}
+                            </span>
                           </td>
                           <td style={{ padding: '10px 14px', whiteSpace: 'nowrap', color: 'var(--text-muted)' }}>
                             {ot.workDetail}
@@ -1569,6 +1654,16 @@ export const OtManagementPage: React.FC = () => {
                                 <strong style={{ fontSize: '13px', color: 'var(--text-main)' }}>{uName}</strong>
                                 <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>({uDept})</span>
                                 <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--primary)' }}>+{ot.hours}시간</span>
+                                <span style={{
+                                  fontSize: '10px',
+                                  fontWeight: 700,
+                                  padding: '1px 5px',
+                                  borderRadius: '4px',
+                                  backgroundColor: (ot.mealYn === 'Y' || ot.hasMeal) ? 'rgba(16, 185, 129, 0.12)' : 'rgba(148, 163, 184, 0.12)',
+                                  color: (ot.mealYn === 'Y' || ot.hasMeal) ? '#10b981' : 'var(--text-muted)'
+                                }}>
+                                  식사 {(ot.mealYn === 'Y' || ot.hasMeal) ? 'Y' : 'N'}
+                                </span>
                               </div>
                               <div style={{ fontSize: '11.5px', color: 'var(--text-secondary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                                 {ot.workDetail} ({ot.startDateTime?.split(' ')[1] || '17:00'} 시작)
@@ -1782,6 +1877,7 @@ export const OtManagementPage: React.FC = () => {
                         <th style={{ padding: '8px 12px', whiteSpace: 'nowrap' }}>부서</th>
                         <th style={{ padding: '8px 12px', whiteSpace: 'nowrap' }}>시작 일시</th>
                         <th style={{ padding: '8px 12px', whiteSpace: 'nowrap', textAlign: 'center' }}>OT 시간</th>
+                        <th style={{ padding: '8px 12px', whiteSpace: 'nowrap', textAlign: 'center', width: '50px' }}>식사</th>
                         <th style={{ padding: '8px 12px', whiteSpace: 'nowrap' }}>근무 상세 내용</th>
                         <th style={{ padding: '8px 12px', whiteSpace: 'nowrap' }}>등록일시</th>
                       </tr>
@@ -1819,6 +1915,18 @@ export const OtManagementPage: React.FC = () => {
                             </td>
                             <td style={{ padding: '8px 12px', whiteSpace: 'nowrap', textAlign: 'center', fontWeight: 'bold', color: 'var(--primary)' }}>
                               +{ot.hours} 시간
+                            </td>
+                            <td style={{ padding: '8px 12px', whiteSpace: 'nowrap', textAlign: 'center' }}>
+                              <span style={{
+                                fontSize: '10.5px',
+                                fontWeight: 700,
+                                padding: '1px 6px',
+                                borderRadius: '4px',
+                                backgroundColor: (ot.mealYn === 'Y' || ot.hasMeal) ? 'rgba(16, 185, 129, 0.12)' : 'rgba(148, 163, 184, 0.12)',
+                                color: (ot.mealYn === 'Y' || ot.hasMeal) ? '#10b981' : 'var(--text-muted)'
+                              }}>
+                                {(ot.mealYn === 'Y' || ot.hasMeal) ? 'Y' : 'N'}
+                              </span>
                             </td>
                             <td style={{ padding: '8px 12px', whiteSpace: 'nowrap', color: 'var(--text-main)' }}>
                               {ot.workDetail}

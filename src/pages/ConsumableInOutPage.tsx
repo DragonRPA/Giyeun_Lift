@@ -9,6 +9,7 @@ import { exportToExcel } from '../services/excel';
 import { db } from '../services/db';
 import { compressFileIfNeeded } from '../utils/imageCompressor';
 import { uploadToSupabaseStorage } from '../services/supabaseStorage';
+import { matchHangul } from '../utils/hangulSearch';
 
 export const ConsumableInOutPage: React.FC = () => {
   const {
@@ -51,6 +52,8 @@ export const ConsumableInOutPage: React.FC = () => {
   const [useAssetId, setUseAssetId] = useState('');
   const [useMechanicId, setUseMechanicId] = useState(currentUser?.id || '');
   const [useDesc, setUseDesc] = useState('');
+  const [consumableSearchQuery, setConsumableSearchQuery] = useState('');
+  const [assetSearchQuery, setAssetSearchQuery] = useState('');
 
   // --- [3] 입출고 이력(Logs) 필터 상태 ---
   const thisMonthStart = (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-01`; })();
@@ -79,6 +82,26 @@ export const ConsumableInOutPage: React.FC = () => {
   const targetConsumable = useMemo(() => {
     return consumables.find(c => c.id === useConsumableId);
   }, [consumables, useConsumableId]);
+
+  // 출고 품목 초성/일반 검색 필터링 목록
+  const filteredConsumables = useMemo(() => {
+    if (!consumableSearchQuery.trim()) return consumables;
+    return consumables.filter(c =>
+      matchHangul(c.modelName, consumableSearchQuery) ||
+      matchHangul(c.category, consumableSearchQuery) ||
+      matchHangul(c.supplier, consumableSearchQuery) ||
+      matchHangul(c.note, consumableSearchQuery)
+    );
+  }, [consumables, consumableSearchQuery]);
+
+  // 투입 대상 자산 초성/번호 검색 필터링 목록
+  const filteredAssets = useMemo(() => {
+    if (!assetSearchQuery.trim()) return assets;
+    return assets.filter(a =>
+      matchHangul(a.assetNo, assetSearchQuery) ||
+      matchHangul(a.modelName, assetSearchQuery)
+    );
+  }, [assets, assetSearchQuery]);
 
   // 입고 대기 목록
   const pendingInbounds = useMemo(() => {
@@ -228,6 +251,8 @@ export const ConsumableInOutPage: React.FC = () => {
       setUseQty(1);
       setUseAssetId('');
       setUseDesc('');
+      setConsumableSearchQuery('');
+      setAssetSearchQuery('');
       setActiveTab('LOGS');
     } catch (err: any) {
       showErrorModal(`⚠️ 소모품 출고 실패:\n${err?.message || err}`);
@@ -533,24 +558,91 @@ export const ConsumableInOutPage: React.FC = () => {
             <div className="card-header">
               <h3 className="card-title" style={{ fontSize: '15px', fontWeight: 700, margin: 0 }}>소모품 정비 투입 및 현장 출고</h3>
               <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
-                유령 출고 원천 차단: 투입 자산 또는 담당 정비사 1:1 필수 귀속
+                투입 자산 또는 담당 정비사 1:1 귀속
               </span>
             </div>
 
             <form onSubmit={handleUseSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '14px', padding: '16px' }}>
-              {/* 품목 선택 */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                <label style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-primary)', whiteSpace: 'nowrap' }}>
-                  출고 품목 *
-                </label>
+              {/* 품목 선택 (초성 검색 지원) */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <label style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-primary)', whiteSpace: 'nowrap' }}>
+                    출고 품목 *
+                  </label>
+                  {consumableSearchQuery.trim() && (
+                    <span style={{ fontSize: '11px', color: 'var(--primary)', fontWeight: 600 }}>
+                      검색 결과 {filteredConsumables.length}개
+                    </span>
+                  )}
+                </div>
+
+                {/* 셀렉터 바로 위 초성 검색창 */}
+                <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                  <Search size={14} style={{ position: 'absolute', left: '10px', color: 'var(--text-muted)', pointerEvents: 'none' }} />
+                  <input
+                    type="text"
+                    value={consumableSearchQuery}
+                    onChange={e => setConsumableSearchQuery(e.target.value)}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        if (filteredConsumables.length > 0) {
+                          setUseConsumableId(filteredConsumables[0].id);
+                        }
+                      }
+                    }}
+                    placeholder="품목명 또는 초성 검색 (예: ㅇㅈ, ㅇㅇ, ㅂㅌ, 패드)..."
+                    style={{
+                      width: '100%',
+                      padding: '7px 28px 7px 30px',
+                      fontSize: '12.5px',
+                      borderRadius: '6px',
+                      border: '1px solid var(--border-color)',
+                      backgroundColor: 'var(--bg-app)',
+                      color: 'var(--text-primary)'
+                    }}
+                  />
+                  {consumableSearchQuery && (
+                    <button
+                      type="button"
+                      onClick={() => setConsumableSearchQuery('')}
+                      style={{
+                        position: 'absolute',
+                        right: '8px',
+                        background: 'none',
+                        border: 'none',
+                        padding: '2px',
+                        cursor: 'pointer',
+                        color: 'var(--text-muted)',
+                        display: 'flex',
+                        alignItems: 'center'
+                      }}
+                      title="검색어 초기화"
+                    >
+                      <X size={13} />
+                    </button>
+                  )}
+                </div>
+
                 <select
                   value={useConsumableId}
                   onChange={e => setUseConsumableId(e.target.value)}
                   required
                   style={{ padding: '8px', fontSize: '13px', borderRadius: '6px', border: '1px solid var(--border-color)' }}
                 >
-                  <option value="">-- 출고할 품목을 선택하세요 --</option>
-                  {consumables.map(c => (
+                  <option value="">
+                    {consumableSearchQuery.trim()
+                      ? (filteredConsumables.length > 0
+                          ? `-- 검색 결과 ${filteredConsumables.length}개 중 선택 --`
+                          : '-- 일치하는 소모품이 없습니다 --')
+                      : '-- 출고할 품목을 선택하세요 --'}
+                  </option>
+                  {targetConsumable && !filteredConsumables.some(c => c.id === targetConsumable.id) && (
+                    <option key={targetConsumable.id} value={targetConsumable.id}>
+                      [현재선택] {targetConsumable.modelName} (주기장 가용재고: {targetConsumable.stockQty}개)
+                    </option>
+                  )}
+                  {filteredConsumables.map(c => (
                     <option key={c.id} value={c.id}>
                       {c.modelName} (주기장 가용재고: {c.stockQty}개 | 단가: {c.unitPrice.toLocaleString()}원)
                     </option>
@@ -583,16 +675,81 @@ export const ConsumableInOutPage: React.FC = () => {
               {/* 횡령 방지 귀속 필드: 자산번호 or 담당 정비사 */}
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', padding: '12px', backgroundColor: 'var(--bg-app)', borderRadius: '8px' }}>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                  <label style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-primary)', whiteSpace: 'nowrap' }}>
-                    투입 대상 자산 (장비)
-                  </label>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <label style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-primary)', whiteSpace: 'nowrap' }}>
+                      투입 대상 자산 (장비)
+                    </label>
+                    {assetSearchQuery.trim() && (
+                      <span style={{ fontSize: '10.5px', color: 'var(--primary)', fontWeight: 600 }}>
+                        {filteredAssets.length}대
+                      </span>
+                    )}
+                  </div>
+                  {/* 자산 초성/번호 검색창 */}
+                  <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                    <Search size={12} style={{ position: 'absolute', left: '7px', color: 'var(--text-muted)', pointerEvents: 'none' }} />
+                    <input
+                      type="text"
+                      value={assetSearchQuery}
+                      onChange={e => setAssetSearchQuery(e.target.value)}
+                      onKeyDown={e => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          if (filteredAssets.length > 0) {
+                            setUseAssetId(filteredAssets[0].id);
+                          }
+                        }
+                      }}
+                      placeholder="자산번호 또는 초성 (예: 1008, ㅅㅈ)..."
+                      style={{
+                        width: '100%',
+                        padding: '4px 22px 4px 22px',
+                        fontSize: '11.5px',
+                        borderRadius: '4px',
+                        border: '1px solid var(--border-color)',
+                        backgroundColor: 'var(--bg-main)',
+                        color: 'var(--text-primary)'
+                      }}
+                    />
+                    {assetSearchQuery && (
+                      <button
+                        type="button"
+                        onClick={() => setAssetSearchQuery('')}
+                        style={{
+                          position: 'absolute',
+                          right: '5px',
+                          background: 'none',
+                          border: 'none',
+                          padding: '1px',
+                          cursor: 'pointer',
+                          color: 'var(--text-muted)',
+                          display: 'flex',
+                          alignItems: 'center'
+                        }}
+                        title="자산 검색어 초기화"
+                      >
+                        <X size={11} />
+                      </button>
+                    )}
+                  </div>
                   <select
                     value={useAssetId}
                     onChange={e => setUseAssetId(e.target.value)}
                     style={{ padding: '7px', fontSize: '12px', borderRadius: '4px', border: '1px solid var(--border-color)' }}
                   >
-                    <option value="">-- 자산 선택 (자산 정비 시) --</option>
-                    {assets.map(a => (
+                    <option value="">
+                      {assetSearchQuery.trim()
+                        ? (filteredAssets.length > 0
+                            ? `-- 검색된 자산 ${filteredAssets.length}대 중 선택 --`
+                            : '-- 일치하는 자산이 없습니다 --')
+                        : '-- 자산 선택 (자산 정비 시) --'}
+                    </option>
+                    {useAssetId && !filteredAssets.some(a => a.id === useAssetId) && (
+                      <option value={useAssetId}>
+                        [현재선택] {getAssetNo(useAssetId)}
+                      </option>
+                    )}
+                    {filteredAssets.map(a => (
                       <option key={a.id} value={a.id}>
                         {a.assetNo} ({a.modelName})
                       </option>
@@ -607,7 +764,7 @@ export const ConsumableInOutPage: React.FC = () => {
                   <select
                     value={useMechanicId}
                     onChange={e => setUseMechanicId(e.target.value)}
-                    style={{ padding: '7px', fontSize: '12px', borderRadius: '4px', border: '1px solid var(--border-color)' }}
+                    style={{ padding: '7px', fontSize: '12px', borderRadius: '4px', border: '1px solid var(--border-color)', marginTop: '22px' }}
                   >
                     <option value="">-- 정비사 선택 --</option>
                     {mechanics.map(m => (

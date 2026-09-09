@@ -1,3 +1,20 @@
+## [v1.11.3.Build.5] - 2026-09-09 10:46
+
+### 🔴 [헌장 1.3 위반 치명 결함 수정 — TruckDispatch INBOUND 배차 완료 시 자산 상태 불변 원칙 복원]
+
+**결함 요지**: 야간 작업(v1.11.3 야간 refactor)에서 `handleCompleteDeliveryStatus`가 INBOUND 반납 배차 완료 시 `completeInboundDelivery(deliveryId)`를 단일 인수로 호출함. 함수 시그니처는 `(deliveryId, actualReturnDate, reviews[])` 3개 필수 인수 요구 → 런타임 오류 또는 자산 상태 전환 전체 스킵 발생.
+
+**헌장 1.3 원칙**: 배차 단계에서 자산 상태를 조작하지 않는다. 자산 상태(RENTED → AVAILABLE)는 입고검수 화면에서만 전환한다.
+
+**수정 내용** (`src/pages/TruckDispatch.tsx` L2204):
+- **INBOUND 반납 배차 완료**: `completeInboundDelivery()` 호출 **제거** → `db.updateRow<Delivery>` 로 배차 `status: 'DELIVERED'`만 기록. 자산 상태 일체 미변경.
+- **OUTBOUND 출고 배차 완료**: `completeDelivery()` 유지 (출고 이력 추가 + 계약 `ACTIVE` 전환). 자산 상태 변경 없음 확인 (헌장 1.3 준수).
+- 각 분기에 헌장 근거 주석(`[헌장 1.3]`) 명시.
+
+**검증**: TypeScript 전체 빌드 0 Error (`built in 1.14s`)
+
+---
+
 ## [v1.11.3.Build.4] - 2026-09-09 00:45
 
 ### 🔒 [계약서 패키지 생성 기능에 agent_badge 권한 연계]

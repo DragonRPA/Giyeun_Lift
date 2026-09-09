@@ -2213,12 +2213,25 @@ export const TruckDispatch: React.FC = () => {
     }
 
     try {
-      if (targetDelivery?.type === 'INBOUND' || targetDelivery?.dispatchCategory === '입고' || targetDelivery?.dispatchCategory === '반납') {
-        await completeInboundDelivery(deliveryId);
+      const isInbound = targetDelivery?.type === 'INBOUND'
+        || targetDelivery?.dispatchCategory === '입고'
+        || targetDelivery?.dispatchCategory === '반납';
+
+      if (isInbound) {
+        // [헌장 1.3] INBOUND 배차 완료 = 배차 상태만 DELIVERED로 기록.
+        // 자산 상태(RENTED → AVAILABLE) 전환은 입고검수 화면에서만 수행한다.
+        // completeInboundDelivery를 여기서 호출하지 않는다.
+        db.updateRow<Delivery>('deliveries', deliveryId, {
+          status: 'DELIVERED',
+          updatedAt: new Date().toISOString()
+        });
+        await db.awaitPendingWrites();
       } else {
+        // OUTBOUND / EXCHANGE: completeDelivery — 출고 이력 추가 + 계약 ACTIVE 전환.
+        // 자산 상태는 변경하지 않음 (출고 검수 승인 시점에 RENTED 전환 — 헌장 1.3).
         await completeDelivery(deliveryId);
+        await db.awaitPendingWrites();
       }
-      await db.awaitPendingWrites();
 
       // [업무 인계 파이프라인] 운송 관련 ToDo 상계
       await clearHandoverTasks({

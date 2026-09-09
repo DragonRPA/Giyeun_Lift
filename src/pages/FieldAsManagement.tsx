@@ -2552,8 +2552,8 @@ showToast('밴드 과거 AS 빅데이터 탑재를 시작합니다.');
 
         return (
           <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 380px', gap: '16px', height: 'calc(100vh - 170px)', minHeight: '620px' }}>
-            {/* 좌측: 월간 달력 그리드 (크기 고정 및 6등분 균등 분배) */}
-            <div className="card" style={{ padding: '16px', display: 'flex', flexDirection: 'column', height: '100%', boxSizing: 'border-box', minHeight: 0 }}>
+            {/* 좌측: 월간 달력 그리드 (크기 고정 및 N주 균등 분배) */}
+            <div className="card" style={{ padding: '16px', display: 'flex', flexDirection: 'column', height: '100%', maxHeight: '100%', boxSizing: 'border-box', minHeight: 0, overflow: 'hidden', marginBottom: 0 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', flexWrap: 'wrap', gap: '8px', flexShrink: 0 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                   <h3 style={{ margin: 0, fontSize: '15px', fontWeight: 800, color: 'var(--text-primary)', whiteSpace: 'nowrap' }}>
@@ -2605,7 +2605,7 @@ showToast('밴드 과거 AS 빅데이터 탑재를 시작합니다.');
               </div>
 
               {/* 요일 헤더 */}
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '6px', textAlign: 'center', fontWeight: 700, fontSize: '12px', color: 'var(--text-secondary)', paddingBottom: '8px', borderBottom: '1px solid var(--border-color)', flexShrink: 0 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, minmax(0, 1fr))', gap: '6px', textAlign: 'center', fontWeight: 700, fontSize: '12px', color: 'var(--text-secondary)', paddingBottom: '8px', borderBottom: '1px solid var(--border-color)', flexShrink: 0 }}>
                 <div style={{ color: '#ef4444' }}>일</div>
                 <div>월</div>
                 <div>화</div>
@@ -2615,14 +2615,17 @@ showToast('밴드 과거 AS 빅데이터 탑재를 시작합니다.');
                 <div style={{ color: '#3b82f6' }}>토</div>
               </div>
 
-              {/* 날짜 그리드 (totalWeeks repeat(minmax(0, 1fr)) 고정 격자 분배로 클릭/선택 시에도 1px의 크기 변동 없이 철통 고정) */}
+              {/* 날짜 그리드 (totalWeeks 기반 완벽 균등 분배 & overflow hidden으로 1px 변동 원천 차단) */}
               <div style={{
                 display: 'grid',
-                gridTemplateColumns: 'repeat(7, 1fr)',
+                gridTemplateColumns: 'repeat(7, minmax(0, 1fr))',
                 gridTemplateRows: `repeat(${totalWeeks}, minmax(0, 1fr))`,
                 gap: '6px',
                 flex: 1,
                 minHeight: 0,
+                height: '100%',
+                maxHeight: '100%',
+                overflow: 'hidden',
                 marginTop: '8px'
               }}>
                 {/* 앞쪽 빈칸 */}
@@ -2636,7 +2639,7 @@ showToast('밴드 과거 AS 빅데이터 탑재를 시작합니다.');
                       border: '1px dashed var(--border-color)',
                       boxSizing: 'border-box',
                       minHeight: 0,
-                      height: '100%'
+                      overflow: 'hidden'
                     }}
                   />
                 ))}
@@ -2663,7 +2666,6 @@ showToast('밴드 과거 AS 빅데이터 탑재를 시작합니다.');
                         display: 'flex',
                         flexDirection: 'column',
                         minHeight: 0,
-                        height: '100%',
                         boxSizing: 'border-box',
                         overflow: 'hidden',
                         transition: 'border-color 0.15s, background-color 0.15s'
@@ -2727,7 +2729,7 @@ showToast('밴드 과거 AS 빅데이터 탑재를 시작합니다.');
                       border: '1px dashed var(--border-color)',
                       boxSizing: 'border-box',
                       minHeight: 0,
-                      height: '100%'
+                      overflow: 'hidden'
                     }}
                   />
                 ))}
@@ -2735,7 +2737,7 @@ showToast('밴드 과거 AS 빅데이터 탑재를 시작합니다.');
             </div>
 
             {/* 우측: 선택 일자 상세 티켓 리스트 */}
-            <div className="card" style={{ padding: '16px', display: 'flex', flexDirection: 'column', height: '100%', boxSizing: 'border-box' }}>
+            <div className="card" style={{ padding: '16px', display: 'flex', flexDirection: 'column', height: '100%', maxHeight: '100%', boxSizing: 'border-box', minHeight: 0, overflow: 'hidden', marginBottom: 0 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', paddingBottom: '8px', borderBottom: '1px solid var(--border-color)', gap: '6px' }}>
                 <h4 style={{ margin: 0, fontSize: '13.5px', fontWeight: 800, whiteSpace: 'nowrap' }}>
                   📋 {selectedCalDate} 방문 건 ({selectedDateTickets.length}건)
@@ -2756,7 +2758,7 @@ showToast('밴드 과거 AS 빅데이터 탑재를 시작합니다.');
                 )}
               </div>
 
-              <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '8px' }}>
                 {selectedDateTickets.length === 0 ? (
                   <div style={{ textAlign: 'center', padding: '40px 10px', color: 'var(--text-muted)', fontSize: '13px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px' }}>
                     <span>해당 일자에 배정된 AS 방문 일정이 없습니다.</span>

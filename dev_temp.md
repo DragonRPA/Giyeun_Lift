@@ -1,6 +1,25 @@
 # 개발 요구사항 임시 기록 (dev_temp.md)
 
-## [완료] 현장 AS 관리 스튜디오 및 대장 초성 검색(Chosung Search) 전방위 지원 & 7,600건 1ms 초고속 정규식 캐싱 최적화 (v1.12.0.Build.27)
+## [완료] 생각의 사슬(Chain-of-Thought) 기반 AS 캘린더 Grid Item height 100% 제거 및 overflow hidden 결합 UI 무너짐 종결 (v1.12.0.Build.28)
+- **요구사항**: "카렌다 UI 무너짐 해결 안됌. 생각의 사슬기법 적용. ㄹㅇ" (첨부 이미지: 2026년 9월 1행이 카드 전체를 독점하고 6일 이하가 밀려난 스크린샷)
+- **적용 목적 (헌장 1.1 최대 편익, 3.1 무수식어 건조 표준, 3.2 셀 줄바꿈 방지, 5.5 WTT 30회 도메인 관통 스트레스 테스트, 7.2 경험 지식 베이스 E-082)**:
+  - 2026년 9월 등 캘린더 조회 시 1행(1일~5일)만 화면 전체를 차지하고 6일 이하(2행~5행)가 화면 아래로 밀려나 사라지던 치명적 결함 원천 해결.
+  - 생각의 사슬(Chain of Thought) 6단계 심층 분석을 통해, Grid Item(날짜 셀 및 빈칸 셀)에 지정된 `height: '100%'`가 Chromium 렌더링 엔진에서 부모 Grid Track이 아닌 **Grid Container 전체 높이**를 참조하여 1행의 크기를 550px로 뻥튀기하던 순환 참조 버그 규명.
+  - 모든 Grid Item에서 `height: '100%'`를 완전히 제거하고 CSS Grid의 네이티브 `align-self: stretch`와 `minHeight: 0`, `overflow: 'hidden'`을 적용하여 N개 행이 1fr씩 완벽하게 균등 분배되도록 영구 고정.
+  - 좌우 카드에 `marginBottom: 0 !important` 및 `maxHeight: '100%'`, `overflow: 'hidden'`을 부여하여 전역 CSS `.card { margin-bottom: 24px; }`로 인한 하단 여백 침범 및 스크롤바 왜곡 원천 차단.
+- **작업 및 개편 내역 (`src/pages/FieldAsManagement.tsx`)**:
+  - 1. **Grid Item `height: '100%'` 전면 삭제**:
+    - 앞쪽 빈칸 셀, 실제 날짜 셀, 뒤쪽 빈칸 셀 모두에서 `height: '100%'`를 삭제하고 `minHeight: 0`, `overflow: 'hidden'` 적용.
+  - 2. **날짜 그리드 컨테이너 크기 철통 고정**:
+    - `gridTemplateColumns: 'repeat(7, minmax(0, 1fr))'`, `gridTemplateRows: repeat(totalWeeks, minmax(0, 1fr))`
+    - `height: '100%', maxHeight: '100%', minHeight: 0, overflow: 'hidden'` 부여.
+  - 3. **부모 카드 및 우측 상세 패널 크기/여백 정규화**:
+    - `marginBottom: 0`, `height: '100%', maxHeight: '100%', minHeight: 0, overflow: 'hidden'` 적용.
+    - 우측 티켓 리스트 스크롤 영역에 `minHeight: 0` 보강.
+  - 4. **경험 지식 베이스(E-082) 갱신**: `C:\Users\이정용\.gemini\config\경험.md` 기록 완료.
+- **검증 결과**:
+  - WTT 30회 도메인 관통 스트레스 테스트: **30 PASS / 0 FAIL (100.0%)**.
+  - TypeScript 전체 정적 빌드 및 번들링 (`cmd /c "npm run build"`): **0 Error 정상 통과 (`built in 1.17s`)**.
 - **요구사항**: "초성검색 지원. ㄹㅇ" (현장 AS 관리 검색창 이미지 첨부)
 - **적용 목적 (헌장 1.1 최대 편익, 3.1 무수식어 건조 표준, 3.2 셀 줄바꿈 방지, 5.5 WTT 30회 도메인 관통 스트레스 테스트, 7.2 경험 지식 베이스 E-083)**:
   - 현장 AS 관리(`FieldAsManagement.tsx`) 스튜디오 탭(PC 및 모바일)과 대장 탭의 검색창에 한글 초성 검색(Chosung Search)을 100% 무결 지원.

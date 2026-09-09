@@ -88,10 +88,13 @@ interface DraftOrder {
   staggeredMemo?: string;
   sourceCallIds?: string[];
   vehicleType?: string;
+  closingDay?: number;
+  statementClosingDay?: number;
+  paymentDueDay?: number;
 }
 
 type ActiveTab = 'NEW' | 'QUEUE';
-type BlockId = 'WHO' | 'WHERE' | 'WHAT' | 'WHEN' | 'SAFETY_COST';
+type BlockId = 'CUSTOMER' | 'SITE' | 'EQUIPMENT' | 'SCHEDULE' | 'SAFETY_COST';
 
 const CONTEXT_OPTIONS: { id: CallContext; label: string; color: string }[] = [
   { id: 'NEW_CUSTOMER',   label: '신규고객 출고',   color: '#7c3aed' },
@@ -99,19 +102,38 @@ const CONTEXT_OPTIONS: { id: CallContext; label: string; color: string }[] = [
   { id: 'EXCHANGE',       label: '교체(대차)',       color: '#0891b2' },
 ];
 
-const FT_GROUPS = ['19ft', '26ft', '32ft', '33ft', '40ft', '특수/기타'];
+const FT_GROUPS = ['19ft', '26ft', '32ft', '40ft', '46ft', '특수/기타', '전체'];
 
 export const QUICK_OPTION_SUGGESTIONS = [
   '협착방지', '상부센서', '경광등', '소화기', '논마킹', '비닐보양'
 ];
 
-const getModelsByFt = (ft: string) => {
-  return EQUIPMENT_SPEC_MATRIX.filter(m => {
-    if (ft === '특수/기타') {
-      return !['19ft', '26ft', '32ft', '33ft', '40ft'].includes(m.ft);
-    }
-    return m.ft === ft;
-  });
+export const getFtGroup = (feet?: number, modelName: string = ''): string => {
+  if (feet && feet > 0) {
+    if (feet <= 19) return '19ft';
+    if (feet <= 26) return '26ft';
+    if (feet <= 34) return '32ft';
+    if (feet <= 40) return '40ft';
+    if (feet <= 48) return '46ft';
+    return '특수/기타';
+  }
+  const spec = EQUIPMENT_SPEC_MATRIX.find(s => s.modelName === modelName);
+  if (spec?.ft) {
+    if (spec.ft === '19ft') return '19ft';
+    if (spec.ft === '26ft') return '26ft';
+    if (spec.ft === '32ft') return '32ft';
+    if (spec.ft === '40ft') return '40ft';
+    if (spec.ft === '46ft') return '46ft';
+    return '특수/기타';
+  }
+  const m = modelName.toUpperCase();
+  if (m.includes('19') || m.includes('1330') || m.includes('1432') || m.includes('1230') || m.includes('1532') || m.includes('0608') || m.includes('STAR-6')) return '19ft';
+  if (m.includes('26') || m.includes('0808') || m.includes('0812') || m.includes('0607') || m.includes('0807') || m.includes('OPTIMUM')) return '26ft';
+  if (m.includes('32') || m.includes('1008') || m.includes('1012') || m.includes('MS10')) return '32ft';
+  if (m.includes('40') || m.includes('1212') || m.includes('MS11') || m.includes('4069') || m.includes('4047')) return '40ft';
+  if (m.includes('46') || m.includes('1412') || m.includes('1413') || m.includes('1414') || m.includes('45/25') || m.includes('4655')) return '46ft';
+  if (m.includes('53') || m.includes('60') || m.includes('1614') || m.includes('1612') || m.includes('1623') || m.includes('5390') || m.includes('E600')) return '특수/기타';
+  return '특수/기타';
 };
 
 const calcUrgency = (dateStr: string): DraftOrder['urgency'] => {
@@ -135,10 +157,11 @@ export const SmartDispatch4: React.FC = () => {
   const {
     hasPermission, customers, sites, contacts, currentUser, currentTenant,
     saveSmartDispatch, assets, deliveries, standardOptions,
-    printStations, enqueuePrintJob
+    printStations, enqueuePrintJob,
+    products = []
   } = useApp();
 
-  const canSave = hasPermission('smart_dispatch', 'save') || hasPermission('delivery', 'save');
+  const canSave = hasPermission('smart_dispatch', 'save') || hasPermission('delivery', 'save') || hasPermission('smart_dispatch4', 'save');
 
   // 🖨️ 원격 분산 인쇄 큐 타겟 스테이션 설정 (1회 선택 시 영구 기억)
   const PREFERRED_DISPATCH_STATION_KEY = 'preferred_print_station_dispatch';
@@ -219,6 +242,9 @@ export const SmartDispatch4: React.FC = () => {
     const safetyOptions: string[] = [];
     let staggeredMemo = '';
     let vehicleType = '';
+    let closingDay: number | undefined = undefined;
+    let statementClosingDay: number | undefined = undefined;
+    let paymentDueDay: number | undefined = undefined;
 
     const parts = (noteText || '').split(' | ');
     parts.forEach(p => {
@@ -250,6 +276,13 @@ export const SmartDispatch4: React.FC = () => {
         vehicleType = p.replace('[차종]', '').trim();
       } else if (p.startsWith('[현장상세주소]') || p.startsWith('[현장주소]')) {
         siteAddress = p.replace(/^\[(?:현장상세주소|현장주소)\]/, '').trim();
+      } else if (p.startsWith('[정산일정]')) {
+        const cMatch = p.match(/청구:(\d+)/);
+        const sMatch = p.match(/명세서:(\d+)/);
+        const pMatch = p.match(/결제:(\d+)/);
+        if (cMatch) closingDay = parseInt(cMatch[1], 10);
+        if (sMatch) statementClosingDay = parseInt(sMatch[1], 10);
+        if (pMatch) paymentDueDay = parseInt(pMatch[1], 10);
       } else if (p.startsWith('[옵션]') || p.startsWith('[안전옵션]')) {
         const optStr = p.replace(/^\[(?:옵션|안전옵션)\]/, '').trim();
         const items = optStr.split(/[,/|]/).map(s => s.trim()).filter(Boolean);
@@ -257,7 +290,7 @@ export const SmartDispatch4: React.FC = () => {
       }
     });
 
-    return { siteAddress, unloadingDate, unloadingTimeType, unloadingTimeVal, paidBy, retrievalAssetIds, safetyOptions, staggeredMemo, vehicleType };
+    return { siteAddress, unloadingDate, unloadingTimeType, unloadingTimeVal, paidBy, retrievalAssetIds, safetyOptions, staggeredMemo, vehicleType, closingDay, statementClosingDay, paymentDueDay };
   }, []);
 
   const loadDrafts = useCallback(async () => {
@@ -291,6 +324,9 @@ export const SmartDispatch4: React.FC = () => {
           staggeredMemo:      meta.staggeredMemo,
           sourceCallIds:      d.sourceCallIds || [],
           vehicleType:        meta.vehicleType,
+          closingDay:         meta.closingDay,
+          statementClosingDay: meta.statementClosingDay,
+          paymentDueDay:      meta.paymentDueDay,
         };
       });
       setQueue(mapped);
@@ -486,16 +522,16 @@ export const SmartDispatch4: React.FC = () => {
   });
   const openSingleBlock = (id: BlockId) => setOpenBlocks(prev => new Set(prev).add(id));
   const setOpenBlock = openSingleBlock;
-  const toggleAllBlocks = () => setOpenBlocks(prev => prev.size === 5 ? new Set() : new Set<BlockId>(['WHO', 'WHERE', 'WHAT', 'WHEN', 'SAFETY_COST']));
+  const toggleAllBlocks = () => setOpenBlocks(prev => prev.size === 5 ? new Set() : new Set<BlockId>(['CUSTOMER', 'SITE', 'EQUIPMENT', 'SCHEDULE', 'SAFETY_COST']));
 
-  // ── WHO 블록 — 고객 ───────────────────────────────────────────────────────
+  // ── 1. 거래처 (고객사) ─────────────────────────────────────────────────────
   const [customerQuery, setCustomerQuery] = useState('');
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [newCustomerName, setNewCustomerName] = useState('');
   const [newCustomerPhone, setNewCustomerPhone] = useState('');
   const [newCustomerAddress, setNewCustomerAddress] = useState('');
 
-  // ── WHERE 블록 — 투입 현장 및 현장 담당자 ────────────────────────────────
+  // ── 2. 투입 현장 및 현장 담당자 ───────────────────────────────────────────
   const [siteQuery, setSiteQuery] = useState('');
   const [selectedSite, setSelectedSite] = useState<CustomerSite | null>(null);
   const [selectedSiteAddress, setSelectedSiteAddress] = useState('');
@@ -504,6 +540,12 @@ export const SmartDispatch4: React.FC = () => {
   const [newSiteAddress, setNewSiteAddress] = useState('');
   const [contactPerson, setContactPerson] = useState('');
   const [contactPhone, setContactPhone] = useState('');
+
+  // ── 정산/결제 마감 일정 (청구서 마감일, 거래명세서 마감일, 약정 결제일) ─────────────
+  const [closingDay, setClosingDay] = useState<number>(30);
+  const [statementClosingDay, setStatementClosingDay] = useState<number>(25);
+  const [paymentDueDay, setPaymentDueDay] = useState<number>(15);
+  const [showEditScheduleForExistingSite, setShowEditScheduleForExistingSite] = useState<boolean>(false);
 
   // ── 추가출고 옵션 첨삭 확인 모달 상태 ────────────────────────────────────
   const [optionConfirmModalOpen, setOptionConfirmModalOpen] = useState(false);
@@ -559,9 +601,90 @@ export const SmartDispatch4: React.FC = () => {
     return null;
   }, [selectedCustomer, selectedSite, queue, deliveries]);
 
-  // ── WHAT 블록 — 장비 ──────────────────────────────────────────────────────
+  // ── 3. 출고 장비 규격 ────────────────────────────────────────────────────
   const [equipments, setEquipments] = useState<EquipmentItem[]>([]);
   const [activeFt, setActiveFt] = useState(FT_GROUPS[0] || '19ft');
+  const [modelSearchQuery, setModelSearchQuery] = useState('');
+
+  // 🌟 전사 제품 마스터(53종), 자산 대장, 제원 매트릭스 100% 통합 풀링
+  const catalogModels = useMemo(() => {
+    const map = new Map<string, {
+      modelName: string;
+      ftGroup: string;
+      feet?: number;
+      manufacturer?: string;
+      spec?: string;
+      availableCount: number;
+    }>();
+
+    const allProds = products && products.length > 0 ? products : db.products;
+    const allAssets = assets && assets.length > 0 ? assets : db.assets;
+
+    // 1. 등록 제품 마스터 (53종) 100% 등록
+    for (const p of allProds) {
+      if (!p.modelName) continue;
+      const ftGroup = getFtGroup(p.feet, p.modelName);
+      const avail = allAssets.filter(a => a.modelName === p.modelName && a.status === 'AVAILABLE').length;
+      map.set(p.modelName, {
+        modelName: p.modelName,
+        ftGroup,
+        feet: p.feet,
+        manufacturer: p.manufacturer,
+        spec: p.spec,
+        availableCount: avail,
+      });
+    }
+
+    // 2. 제원 매트릭스 (Skyjack 등)
+    for (const s of EQUIPMENT_SPEC_MATRIX) {
+      if (!map.has(s.modelName)) {
+        const avail = allAssets.filter(a => a.modelName === s.modelName && a.status === 'AVAILABLE').length;
+        map.set(s.modelName, {
+          modelName: s.modelName,
+          ftGroup: getFtGroup(undefined, s.modelName),
+          feet: parseInt(s.ft) || undefined,
+          manufacturer: s.manufacturer,
+          spec: s.displayName,
+          availableCount: avail,
+        });
+      }
+    }
+
+    // 3. 자산 대장 등록 모델
+    for (const a of allAssets) {
+      if (a.modelName && !map.has(a.modelName)) {
+        const avail = allAssets.filter(x => x.modelName === a.modelName && x.status === 'AVAILABLE').length;
+        map.set(a.modelName, {
+          modelName: a.modelName,
+          ftGroup: getFtGroup(undefined, a.modelName),
+          availableCount: avail,
+        });
+      }
+    }
+
+    return Array.from(map.values());
+  }, [products, assets]);
+
+  const displayedModels = useMemo(() => {
+    let list = catalogModels;
+    if (activeFt !== '전체') {
+      list = list.filter(m => m.ftGroup === activeFt);
+    }
+    if (modelSearchQuery.trim()) {
+      const q = modelSearchQuery.trim().toLowerCase();
+      list = list.filter(m =>
+        m.modelName.toLowerCase().includes(q) ||
+        (m.manufacturer && m.manufacturer.toLowerCase().includes(q)) ||
+        (m.spec && m.spec.toLowerCase().includes(q))
+      );
+    }
+    return [...list].sort((a, b) => a.modelName.localeCompare(b.modelName));
+  }, [catalogModels, activeFt, modelSearchQuery]);
+
+  const getFtCount = useCallback((ft: string) => {
+    if (ft === '전체') return catalogModels.length;
+    return catalogModels.filter(m => m.ftGroup === ft).length;
+  }, [catalogModels]);
 
   const addModel = (modelName: string) => {
     setEquipments(prev => {
@@ -592,7 +715,7 @@ export const SmartDispatch4: React.FC = () => {
   };
   const totalQty = equipments.reduce((s, e) => s + e.qty, 0);
 
-  // ── WHEN 블록 — 상차 vs 하차 일정 및 시간 구분 (ASAP/오전/오후/직접지정) ───
+  // ── 4. 출고 및 하차 일정 ──────────────────────────────────────────────────
   const [loadingDate, setLoadingDate] = useState('');
   const [loadingTimeType, setLoadingTimeType] = useState<'ASAP' | 'MORNING' | 'AFTERNOON' | 'EXACT' | null>(null);
   const [loadingTimeVal, setLoadingTimeVal] = useState('');
@@ -741,15 +864,28 @@ export const SmartDispatch4: React.FC = () => {
   // ── 🌟 [다수 장비 시차 출고 메모] ───────────────────────────────────────
   const [staggeredMemo, setStaggeredMemo] = useState('');
 
-  // DB 상속 (현장/고객 변경 시 담당자 및 연락처 100% 자동 동기화)
+  // DB 상속 (현장/고객 변경 시 담당자, 연락처, 마감일정 100% 자동 동기화)
   const applyInheritance = useCallback((cust: Customer | null, site: CustomerSite | null) => {
     if (!cust) {
       setContactPerson('');
       setContactPhone('');
+      setClosingDay(30);
+      setStatementClosingDay(25);
+      setPaymentDueDay(15);
+      setShowEditScheduleForExistingSite(false);
       return;
     }
     const custContacts = contacts.filter(c => c.customerId === cust.id);
     const primary = custContacts[0];
+
+    // 마감/결제일 상속 (현장 특약 1순위 -> 고객사 기본값 2순위)
+    const bDay = site?.billingDay || cust.defaultBillingDay || 30;
+    const sDay = site?.statementClosingDay || cust.defaultStatementClosingDay || 25;
+    const pDay = site?.paymentDueDay || cust.paymentDueDay || 15;
+    setClosingDay(bDay);
+    setStatementClosingDay(sDay);
+    setPaymentDueDay(pDay);
+    setShowEditScheduleForExistingSite(false);
 
     if (site) {
       // 1순위: 현장 마스터 등록 담당자 및 연락처
@@ -780,7 +916,7 @@ export const SmartDispatch4: React.FC = () => {
     setSiteQuery('');
     applyInheritance(cust, null);
     loadSiteSafetyOptions(null, cust);
-    setOpenBlock('WHERE');
+    setOpenBlock('SITE');
   };
 
   const handleSelectSite = (site: CustomerSite) => {
@@ -792,7 +928,7 @@ export const SmartDispatch4: React.FC = () => {
 
     // 🌟 과거 기록(현장 마스터 또는 배차 대장)에서 옵션 자동 승계
     loadSiteSafetyOptions(site, selectedCustomer);
-    setOpenBlock('WHAT');
+    setOpenBlock('EQUIPMENT');
   };
 
   const handleSelectContext = (ctx: CallContext) => {
@@ -1083,7 +1219,11 @@ export const SmartDispatch4: React.FC = () => {
     setNewOptionInput('');
     setStaggeredMemo('');
     setSelectedContext(null);
-    setOpenBlock('WHO');
+    setClosingDay(30);
+    setStatementClosingDay(25);
+    setPaymentDueDay(15);
+    setShowEditScheduleForExistingSite(false);
+    setOpenBlock('CUSTOMER');
     setEditingDraftId(null);
   };
 
@@ -1130,7 +1270,7 @@ export const SmartDispatch4: React.FC = () => {
       {
         id: 'CUSTOMER',
         label: '고객사 지정',
-        targetBlock: 'WHO',
+        targetBlock: 'CUSTOMER',
         status: custName ? 'VALID' : 'INVALID',
         currentVal: custName || '(고객사 미선택)',
         hint: '기존 고객 검색 또는 신규 고객명 필수',
@@ -1138,7 +1278,7 @@ export const SmartDispatch4: React.FC = () => {
       {
         id: 'SITE',
         label: '투입 현장명',
-        targetBlock: 'WHERE',
+        targetBlock: 'SITE',
         status: siteNameVal ? 'VALID' : 'INVALID',
         currentVal: siteNameVal || '(현장명 미선택)',
         hint: '현장 검색 선택 또는 신규 현장명 입력',
@@ -1146,7 +1286,7 @@ export const SmartDispatch4: React.FC = () => {
       {
         id: 'ADDRESS',
         label: '현장 상세주소',
-        targetBlock: 'WHERE',
+        targetBlock: 'SITE',
         status: addrVal ? 'VALID' : 'WARN',
         currentVal: addrVal || '(주소 미입력 — 배차 시 확인)',
         hint: '배차 기사용 정확한 현장 주소',
@@ -1154,7 +1294,7 @@ export const SmartDispatch4: React.FC = () => {
       {
         id: 'CONTACT',
         label: '현장 인수자/연락처',
-        targetBlock: 'WHERE',
+        targetBlock: 'SITE',
         status: (hasContactPerson && hasContactPhone) ? 'VALID' : 'INVALID',
         currentVal: (hasContactPerson || hasContactPhone)
           ? `${contactPerson || '(성명누락)'} / ${contactPhone || '(전화누락)'}`
@@ -1164,7 +1304,7 @@ export const SmartDispatch4: React.FC = () => {
       {
         id: 'EQUIPMENT',
         label: '출고 신청 장비',
-        targetBlock: 'WHAT',
+        targetBlock: 'EQUIPMENT',
         status: hasEquip ? 'VALID' : 'INVALID',
         currentVal: !hasContext
           ? '(업무유형 먼저 선택)'
@@ -1176,7 +1316,7 @@ export const SmartDispatch4: React.FC = () => {
       {
         id: 'DATE',
         label: '출고(상차)일자',
-        targetBlock: 'WHEN',
+        targetBlock: 'SCHEDULE',
         status: hasDate ? 'VALID' : 'INVALID',
         currentVal: loadingDate || '(출고일자 미지정)',
         hint: '장비 출고 희망일 필수 입력',
@@ -1184,12 +1324,24 @@ export const SmartDispatch4: React.FC = () => {
       {
         id: 'TIME',
         label: '상차 지정시간',
-        targetBlock: 'WHEN',
+        targetBlock: 'SCHEDULE',
         status: hasTime ? 'VALID' : 'INVALID',
         currentVal: timeDisplay,
         hint: '상차 예정 시간 (ASAP, 오전, 오후 또는 시간지정)',
       },
     ];
+
+    // 🌟 신규현장(신규고객 또는 기존고객 신규현장) 출고 시 청구/거래명세서/결제일정 검증
+    if (isNewCustomerMode || isRegisteringNewSite) {
+      rules.push({
+        id: 'BILLING_SCHEDULE',
+        label: '청구/결제 일정',
+        targetBlock: 'SITE',
+        status: (closingDay && statementClosingDay && paymentDueDay) ? 'VALID' : 'INVALID',
+        currentVal: `청구 ${closingDay === 31 ? '말일' : `${closingDay}일`} / 명세서 ${statementClosingDay === 31 ? '말일' : `${statementClosingDay}일`} / 결제 익월 ${paymentDueDay === 31 ? '말일' : `${paymentDueDay}일`}`,
+        hint: '신규 현장 필수 정산 일정 (청구서/명세서 마감일 및 약정결제일)',
+      });
+    }
 
     // 🌟 대차(EXCHANGE) 업무일 때만 회수 전자산 검증 항목 추가 (일반 출고 시 거짓 녹색불 방지)
     if (isExchangeMode) {
@@ -1211,7 +1363,7 @@ export const SmartDispatch4: React.FC = () => {
     newSiteName, selectedSite, selectedSiteAddress, newSiteAddress, newCustomerAddress,
     selectedContext, equipments, totalQty,
     loadingDate, loadingTimeType, loadingTimeVal, contactPerson, contactPhone,
-    retrievalAssetIds, isUnknownRetrieval
+    retrievalAssetIds, isUnknownRetrieval, closingDay, statementClosingDay, paymentDueDay
   ]);
 
   const invalidRules = useMemo(() => validationRules.filter(r => r.status === 'INVALID'), [validationRules]);
@@ -1335,6 +1487,7 @@ export const SmartDispatch4: React.FC = () => {
           : '',
         effectiveAddress ? `[현장상세주소] ${effectiveAddress}` : '',
         vehicleType ? `[차종] ${vehicleType}` : '',
+        `[정산일정] 청구:${closingDay}|명세서:${statementClosingDay}|결제:${paymentDueDay}`,
       ].filter(Boolean).join(' | ');
 
       // 🚀 [실제 출고의뢰 풀 파이프라인 생성: 고객사·현장 신규생성, 계약체결, 배차대장 등록, 장비할당 가상매핑]
@@ -1362,7 +1515,11 @@ export const SmartDispatch4: React.FC = () => {
         billableToCustomer: false,
         type: isExchangeMode ? 'EXCHANGE' : 'OUTBOUND',
         retrievalAssetIds: retrievalAssetIds || [],
-        paidOptions: Array.from(selectedSafetyOptions).join(', ')
+        paidOptions: Array.from(selectedSafetyOptions).join(', '),
+        closingDay,
+        statementClosingDay,
+        paymentDay: paymentDueDay,
+        paymentDueDay,
       };
 
       const res = await saveSmartDispatch(dispatchData as any, true);
@@ -1575,8 +1732,12 @@ export const SmartDispatch4: React.FC = () => {
       }
     }
 
+    if (draft.closingDay) setClosingDay(draft.closingDay);
+    if (draft.statementClosingDay) setStatementClosingDay(draft.statementClosingDay);
+    if (draft.paymentDueDay) setPaymentDueDay(draft.paymentDueDay);
+
     setActiveTab('NEW');
-    setOpenBlock('WHAT');
+    setOpenBlock('EQUIPMENT');
     showToast(`'${draft.customerName.value || '선택 의뢰'}' 데이터를 새 의뢰 작성으로 가져왔습니다.`, 'info');
   };
 
@@ -1676,6 +1837,10 @@ export const SmartDispatch4: React.FC = () => {
         type: isExchange ? 'EXCHANGE' : 'OUTBOUND',
         retrievalAssetIds: draft.retrievalAssetIds || [],
         paidOptions: draft.safetyOptions?.join(', ') || '',
+        closingDay: draft.closingDay,
+        statementClosingDay: draft.statementClosingDay,
+        paymentDay: draft.paymentDueDay,
+        paymentDueDay: draft.paymentDueDay,
       } as any, true);
 
       if (res && res.success) {
@@ -1750,7 +1915,7 @@ export const SmartDispatch4: React.FC = () => {
 
     // 4. 탭 전환
     setActiveTab('NEW');
-    setOpenBlock('WHO');
+    setOpenBlock('CUSTOMER');
     showToast(`통화 파일(${upload.fileName}) 데이터를 새 의뢰 폼으로 로드했습니다.`, 'info');
   };
 
@@ -1808,6 +1973,9 @@ export const SmartDispatch4: React.FC = () => {
     let orderVehicleType = '5T';
     let orderPaidBy: PaidBy | null | undefined = null;
     let contextLabel = '출고의뢰';
+    let orderClosingDay = 30;
+    let orderStatementClosingDay = 25;
+    let orderPaymentDueDay = 15;
 
     if (targetDraft) {
       customerName = targetDraft.customerName?.value || '';
@@ -1829,6 +1997,9 @@ export const SmartDispatch4: React.FC = () => {
       orderPaidBy = targetDraft.paidBy;
       const ctx = targetDraft.context?.[0];
       contextLabel = ctx === 'NEW_CUSTOMER' ? '신규고객 출고' : ctx === 'EXCHANGE' ? '대차(교체)' : '기존현장 출고';
+      orderClosingDay = targetDraft.closingDay || closingDay;
+      orderStatementClosingDay = targetDraft.statementClosingDay || statementClosingDay;
+      orderPaymentDueDay = targetDraft.paymentDueDay || paymentDueDay;
     } else {
       customerName = isNewCustomerMode ? (newCustomerName || '신규고객') : (selectedCustomer?.name || '');
       siteName = isNewCustomerMode || isRegisteringNewSite ? (newSiteName || '신규현장') : (selectedSite?.name || '');
@@ -1851,6 +2022,9 @@ export const SmartDispatch4: React.FC = () => {
       orderVehicleType = vehicleType;
       orderPaidBy = paidBy;
       contextLabel = CONTEXT_OPTIONS.find(o => o.id === selectedContext)?.label || '출고의뢰';
+      orderClosingDay = closingDay;
+      orderStatementClosingDay = statementClosingDay;
+      orderPaymentDueDay = paymentDueDay;
     }
 
     const now = new Date();
@@ -1967,6 +2141,14 @@ export const SmartDispatch4: React.FC = () => {
           <tr>
             <th>상세 현장주소</th>
             <td colspan="3" style="word-break: break-all;">${siteAddress || '-'}</td>
+          </tr>
+          <tr>
+            <th>정산 및 결제일정</th>
+            <td colspan="3">
+              청구(세금계산서) 마감: <strong>${orderClosingDay === 31 ? '말일' : `${orderClosingDay}일`}</strong> &nbsp;|&nbsp;
+              거래명세서 마감: <strong>${orderStatementClosingDay === 31 ? '말일' : `${orderStatementClosingDay}일`}</strong> &nbsp;|&nbsp;
+              약정 결제일: <strong>익월 ${orderPaymentDueDay === 31 ? '말일' : `${orderPaymentDueDay}일`}</strong>
+            </td>
           </tr>
         </tbody>
       </table>
@@ -2089,7 +2271,7 @@ export const SmartDispatch4: React.FC = () => {
     contactPhone, loadingDate, loadingTimeType, loadingTimeVal, unloadingDate,
     unloadingTimeType, unloadingTimeVal, equipments, selectedSafetyOptions, note,
     staggeredMemo, retrievalAssetIds, vehicleType, paidBy, selectedContext, currentTenant,
-    currentUser, sites
+    currentUser, sites, closingDay, statementClosingDay, paymentDueDay
   ]);
 
   // 🖨️ 브라우저 직접 인쇄 모달
@@ -2315,17 +2497,17 @@ export const SmartDispatch4: React.FC = () => {
             </div>
           )}
 
-          {/* WHO 블록 — 고객사 */}
+          {/* 1. 거래처 (고객사) */}
           <div className="bg-slate-900 border border-slate-700/80 rounded-xl overflow-hidden shadow-sm">
             <div
               className={`dispatch4-block-header ${
-                openBlocks.has('WHO') ? 'bg-blue-950/40 border-b border-blue-500/30' : 'bg-slate-800/50 hover:bg-slate-800'
+                openBlocks.has('CUSTOMER') ? 'bg-blue-950/40 border-b border-blue-500/30' : 'bg-slate-800/50 hover:bg-slate-800'
               }`}
-              onClick={() => toggleBlock('WHO')}
+              onClick={() => toggleBlock('CUSTOMER')}
             >
               <div className="flex items-center gap-2 text-xs font-bold text-slate-100">
                 <Building2 className="w-4 h-4 text-blue-400" />
-                <span>1. WHO — 거래처 (고객사)</span>
+                <span>1. 거래처 (고객사)</span>
                 {!isNewCustomerMode && selectedCustomer && (
                   <span className="text-[11px] font-semibold text-emerald-400 bg-emerald-950/50 px-2 py-0.5 rounded border border-emerald-500/30">
                     ✓ {selectedCustomer.name}
@@ -2337,10 +2519,10 @@ export const SmartDispatch4: React.FC = () => {
                   </span>
                 )}
               </div>
-              {openBlocks.has('WHO') ? <ChevronUp className="w-4 h-4 text-slate-400" /> : <ChevronDown className="w-4 h-4 text-slate-400" />}
+              {openBlocks.has('CUSTOMER') ? <ChevronUp className="w-4 h-4 text-slate-400" /> : <ChevronDown className="w-4 h-4 text-slate-400" />}
             </div>
 
-            {openBlocks.has('WHO') && (
+            {openBlocks.has('CUSTOMER') && (
               <div className="dispatch4-block-body">
                 {isNewCustomerMode ? (
                   <>
@@ -2447,17 +2629,17 @@ export const SmartDispatch4: React.FC = () => {
             )}
           </div>
 
-          {/* WHERE 블록 — 투입 현장 및 현장 담당자 */}
+          {/* 2. 투입 현장 및 현장 담당자 */}
           <div className="bg-slate-900 border border-slate-700/80 rounded-xl overflow-hidden shadow-sm">
             <div
               className={`dispatch4-block-header ${
-                openBlocks.has('WHERE') ? 'bg-blue-950/40 border-b border-blue-500/30' : 'bg-slate-800/50 hover:bg-slate-800'
+                openBlocks.has('SITE') ? 'bg-blue-950/40 border-b border-blue-500/30' : 'bg-slate-800/50 hover:bg-slate-800'
               }`}
-              onClick={() => toggleBlock('WHERE')}
+              onClick={() => toggleBlock('SITE')}
             >
               <div className="flex items-center gap-2 text-xs font-bold text-slate-100">
                 <MapPin className="w-4 h-4 text-cyan-400" />
-                <span>2. WHERE — 투입 현장 및 현장 담당자</span>
+                <span>2. 투입 현장 및 현장 담당자</span>
                 {!isNewCustomerMode && isRegisteringNewSite && (
                   <span className="text-[11px] font-semibold text-purple-300 bg-purple-950/50 px-2 py-0.5 rounded border border-purple-500/30">
                     + [신규현장] {newSiteName || '현장명 입력대기'}{contactPerson ? ` (${contactPerson})` : ''}
@@ -2474,13 +2656,13 @@ export const SmartDispatch4: React.FC = () => {
                   </span>
                 )}
               </div>
-              {openBlocks.has('WHERE') ? <ChevronUp className="w-4 h-4 text-slate-400" /> : <ChevronDown className="w-4 h-4 text-slate-400" />}
+              {openBlocks.has('SITE') ? <ChevronUp className="w-4 h-4 text-slate-400" /> : <ChevronDown className="w-4 h-4 text-slate-400" />}
             </div>
 
-            {openBlocks.has('WHERE') && (
+            {openBlocks.has('SITE') && (
               <div className="dispatch4-block-body">
                 {isNewCustomerMode ? (
-                  /* 1. 신규 고객사 모드: 신규 현장명/주소/담당자 */
+                  /* 1. 신규 고객사 모드: 신규 현장명/주소/담당자/정산일정 */
                   <div className="flex flex-col gap-3">
                     <div className="flex flex-col gap-1">
                       <label className="text-xs font-semibold text-slate-300">신규 현장명 *</label>
@@ -2527,13 +2709,61 @@ export const SmartDispatch4: React.FC = () => {
                         </div>
                       </div>
                     </div>
+                    {/* 🌟 신규현장 청구 및 결제 마감 일정 (3대 필수 일정) */}
+                    <div className="pt-2 border-t border-slate-800 flex flex-col gap-2">
+                      <div className="text-xs font-bold text-amber-300 flex items-center justify-between">
+                        <span className="flex items-center gap-1.5">
+                          <Calendar className="w-3.5 h-3.5" />
+                          <span>신규현장 청구 및 결제 마감일정 *</span>
+                        </span>
+                        <span className="text-[10px] text-slate-400 font-normal">세금계산서/명세서 마감 및 입금 약정일</span>
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5 p-2.5 bg-slate-950/60 rounded-xl border border-slate-800">
+                        <div className="flex flex-col gap-1">
+                          <label className="text-xs font-semibold text-slate-300">청구서(세금계산서) 마감일 *</label>
+                          <select
+                            className="bg-slate-800 border border-slate-700 text-white rounded-lg p-2 text-xs focus:outline-none focus:border-cyan-500"
+                            value={closingDay}
+                            onChange={e => setClosingDay(Number(e.target.value))}
+                          >
+                            {Array.from({ length: 31 }, (_, i) => i + 1).map(day => (
+                              <option key={day} value={day}>{day === 31 ? '31일 (월말)' : `매월 ${day}일`}</option>
+                            ))}
+                          </select>
+                        </div>
+                        <div className="flex flex-col gap-1">
+                          <label className="text-xs font-semibold text-slate-300">거래명세서 마감일 *</label>
+                          <select
+                            className="bg-slate-800 border border-slate-700 text-white rounded-lg p-2 text-xs focus:outline-none focus:border-cyan-500"
+                            value={statementClosingDay}
+                            onChange={e => setStatementClosingDay(Number(e.target.value))}
+                          >
+                            {Array.from({ length: 31 }, (_, i) => i + 1).map(day => (
+                              <option key={day} value={day}>{day === 31 ? '31일 (월말)' : `매월 ${day}일`}</option>
+                            ))}
+                          </select>
+                        </div>
+                        <div className="flex flex-col gap-1">
+                          <label className="text-xs font-semibold text-slate-300">약정 결제일 (익월 N일) *</label>
+                          <select
+                            className="bg-slate-800 border border-slate-700 text-white rounded-lg p-2 text-xs focus:outline-none focus:border-cyan-500"
+                            value={paymentDueDay}
+                            onChange={e => setPaymentDueDay(Number(e.target.value))}
+                          >
+                            {Array.from({ length: 31 }, (_, i) => i + 1).map(day => (
+                              <option key={day} value={day}>{day === 31 ? '익월 말일' : `익월 ${day}일`}</option>
+                            ))}
+                          </select>
+                        </div>
+                      </div>
+                    </div>
                   </div>
                 ) : !selectedCustomer ? (
                   /* 2. 고객사 미선택 시 안내 */
                   <div className="p-5 bg-slate-950/60 border border-slate-800 rounded-xl text-center flex flex-col items-center justify-center gap-2 text-xs text-slate-400">
                     <MapPin className="w-5 h-5 text-slate-500" />
                     <span className="font-bold text-slate-300">고객사를 먼저 선택하십시오</span>
-                    <span className="text-[11px] text-slate-500">1. WHO 블록에서 거래처(고객사)를 지정하면 해당 고객사의 등록 현장 목록이 표시됩니다.</span>
+                    <span className="text-[11px] text-slate-500">1. 거래처 블록에서 거래처(고객사)를 지정하면 해당 고객사의 등록 현장 목록이 표시됩니다.</span>
                   </div>
                 ) : isRegisteringNewSite ? (
                   /* 3. 신규 현장 등록 모드 (퀵카드/버튼 클릭 시) */
@@ -2602,6 +2832,54 @@ export const SmartDispatch4: React.FC = () => {
                         </div>
                       </div>
                     </div>
+                    {/* 🌟 신규 현장 청구 및 결제 마감 일정 (고객사 기본값 상속 & 현장별 특약 수정) */}
+                    <div className="pt-2 border-t border-slate-800 flex flex-col gap-2">
+                      <div className="text-xs font-bold text-amber-300 flex items-center justify-between">
+                        <span className="flex items-center gap-1.5">
+                          <Calendar className="w-3.5 h-3.5" />
+                          <span>신규현장 청구 및 결제 마감일정 *</span>
+                        </span>
+                        <span className="text-[10px] text-slate-400 font-normal">고객사 기본값 상속 · 필요 시 현장 특약 수정</span>
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5 p-2.5 bg-slate-950/60 rounded-xl border border-slate-800">
+                        <div className="flex flex-col gap-1">
+                          <label className="text-xs font-semibold text-slate-300">청구서(세금계산서) 마감일 *</label>
+                          <select
+                            className="bg-slate-800 border border-slate-700 text-white rounded-lg p-2 text-xs focus:outline-none focus:border-purple-500"
+                            value={closingDay}
+                            onChange={e => setClosingDay(Number(e.target.value))}
+                          >
+                            {Array.from({ length: 31 }, (_, i) => i + 1).map(day => (
+                              <option key={day} value={day}>{day === 31 ? '31일 (월말)' : `매월 ${day}일`}</option>
+                            ))}
+                          </select>
+                        </div>
+                        <div className="flex flex-col gap-1">
+                          <label className="text-xs font-semibold text-slate-300">거래명세서 마감일 *</label>
+                          <select
+                            className="bg-slate-800 border border-slate-700 text-white rounded-lg p-2 text-xs focus:outline-none focus:border-purple-500"
+                            value={statementClosingDay}
+                            onChange={e => setStatementClosingDay(Number(e.target.value))}
+                          >
+                            {Array.from({ length: 31 }, (_, i) => i + 1).map(day => (
+                              <option key={day} value={day}>{day === 31 ? '31일 (월말)' : `매월 ${day}일`}</option>
+                            ))}
+                          </select>
+                        </div>
+                        <div className="flex flex-col gap-1">
+                          <label className="text-xs font-semibold text-slate-300">약정 결제일 (익월 N일) *</label>
+                          <select
+                            className="bg-slate-800 border border-slate-700 text-white rounded-lg p-2 text-xs focus:outline-none focus:border-purple-500"
+                            value={paymentDueDay}
+                            onChange={e => setPaymentDueDay(Number(e.target.value))}
+                          >
+                            {Array.from({ length: 31 }, (_, i) => i + 1).map(day => (
+                              <option key={day} value={day}>{day === 31 ? '익월 말일' : `익월 ${day}일`}</option>
+                            ))}
+                          </select>
+                        </div>
+                      </div>
+                    </div>
                   </div>
                 ) : selectedSite ? (
                   /* 4. 기존 현장 선택 완료 상태 (수동 입력창 완전 은폐, 주소 인라인 보정 지원) */
@@ -2623,7 +2901,7 @@ export const SmartDispatch4: React.FC = () => {
                             setSiteQuery('');
                             applyInheritance(selectedCustomer, null);
                           }}
-                          className="flex items-center gap-1 text-[11px] font-bold text-slate-400 hover:text-red-300 px-2 py-1 rounded bg-slate-850 hover:bg-slate-800 border border-slate-750 transition"
+                          className="flex items-center gap-1 text-[11px] font-bold text-slate-400 hover:text-red-300 px-2 py-1 rounded bg-slate-850 hover:bg-slate-800 border border-slate-750 transition cursor-pointer"
                         >
                           <X className="w-3.5 h-3.5" />
                           <span>현장 변경</span>
@@ -2665,6 +2943,71 @@ export const SmartDispatch4: React.FC = () => {
                             inputMode="tel"
                           />
                         </div>
+                      </div>
+
+                      {/* 🌟 기존 현장 정산/결제 마감 일정 요약 & 수정 토글 */}
+                      <div className="pt-2 border-t border-slate-800 flex flex-col gap-2">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-1.5 text-xs font-bold text-slate-300">
+                            <Calendar className="w-3.5 h-3.5 text-cyan-400" />
+                            <span>현장 정산/결제 마감일정</span>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => setShowEditScheduleForExistingSite(prev => !prev)}
+                            className="text-[11px] font-bold text-cyan-400 hover:text-cyan-300 underline cursor-pointer"
+                          >
+                            {showEditScheduleForExistingSite ? '접기' : '일정 변경'}
+                          </button>
+                        </div>
+                        {!showEditScheduleForExistingSite ? (
+                          <div className="flex items-center gap-2 text-xs text-slate-300 bg-slate-900 px-2.5 py-1.5 rounded-lg border border-slate-800">
+                            <span className="text-slate-400">청구서: <strong className="text-white">{closingDay === 31 ? '말일' : `${closingDay}일`}</strong></span>
+                            <span className="text-slate-600">|</span>
+                            <span className="text-slate-400">명세서: <strong className="text-white">{statementClosingDay === 31 ? '말일' : `${statementClosingDay}일`}</strong></span>
+                            <span className="text-slate-600">|</span>
+                            <span className="text-slate-400">결제: <strong className="text-emerald-400">{paymentDueDay === 31 ? '익월 말일' : `익월 ${paymentDueDay}일`}</strong></span>
+                          </div>
+                        ) : (
+                          <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5 p-2.5 bg-slate-950/60 rounded-xl border border-slate-800">
+                            <div className="flex flex-col gap-1">
+                              <label className="text-xs font-semibold text-slate-300">청구서(세금계산서) 마감일</label>
+                              <select
+                                className="bg-slate-800 border border-slate-700 text-white rounded-lg p-2 text-xs focus:outline-none focus:border-cyan-500"
+                                value={closingDay}
+                                onChange={e => setClosingDay(Number(e.target.value))}
+                              >
+                                {Array.from({ length: 31 }, (_, i) => i + 1).map(day => (
+                                  <option key={day} value={day}>{day === 31 ? '31일 (월말)' : `매월 ${day}일`}</option>
+                                ))}
+                              </select>
+                            </div>
+                            <div className="flex flex-col gap-1">
+                              <label className="text-xs font-semibold text-slate-300">거래명세서 마감일</label>
+                              <select
+                                className="bg-slate-800 border border-slate-700 text-white rounded-lg p-2 text-xs focus:outline-none focus:border-cyan-500"
+                                value={statementClosingDay}
+                                onChange={e => setStatementClosingDay(Number(e.target.value))}
+                              >
+                                {Array.from({ length: 31 }, (_, i) => i + 1).map(day => (
+                                  <option key={day} value={day}>{day === 31 ? '31일 (월말)' : `매월 ${day}일`}</option>
+                                ))}
+                              </select>
+                            </div>
+                            <div className="flex flex-col gap-1">
+                              <label className="text-xs font-semibold text-slate-300">약정 결제일 (익월 N일)</label>
+                              <select
+                                className="bg-slate-800 border border-slate-700 text-white rounded-lg p-2 text-xs focus:outline-none focus:border-cyan-500"
+                                value={paymentDueDay}
+                                onChange={e => setPaymentDueDay(Number(e.target.value))}
+                              >
+                                {Array.from({ length: 31 }, (_, i) => i + 1).map(day => (
+                                  <option key={day} value={day}>{day === 31 ? '익월 말일' : `익월 ${day}일`}</option>
+                                ))}
+                              </select>
+                            </div>
+                          </div>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -2730,87 +3073,191 @@ export const SmartDispatch4: React.FC = () => {
             )}
           </div>
 
-          {/* WHAT 블록 — 출고 신청 장비 */}
+          {/* 3. 출고 장비 규격 */}
           <div className="bg-slate-900 border border-slate-700/80 rounded-xl overflow-hidden shadow-sm">
             <div
               className={`dispatch4-block-header ${
-                openBlocks.has('WHAT') ? 'bg-blue-950/40 border-b border-blue-500/30' : 'bg-slate-800/50 hover:bg-slate-800'
+                openBlocks.has('EQUIPMENT') ? 'bg-blue-950/40 border-b border-blue-500/30' : 'bg-slate-800/50 hover:bg-slate-800'
               }`}
-              onClick={() => toggleBlock('WHAT')}
+              onClick={() => toggleBlock('EQUIPMENT')}
             >
               <div className="flex items-center gap-2 text-xs font-bold text-slate-100">
                 <Package className="w-4 h-4 text-emerald-400" />
-                <span>3. WHAT — 출고 장비 규격</span>
+                <span>3. 출고 장비 규격</span>
                 {totalQty > 0 && (
                   <span className="text-[11px] font-semibold text-emerald-400 bg-emerald-950/50 px-2 py-0.5 rounded border border-emerald-500/30">
                     ✓ 총 {totalQty}대 선택됨
                   </span>
                 )}
               </div>
-              {openBlocks.has('WHAT') ? <ChevronUp className="w-4 h-4 text-slate-400" /> : <ChevronDown className="w-4 h-4 text-slate-400" />}
+              {openBlocks.has('EQUIPMENT') ? <ChevronUp className="w-4 h-4 text-slate-400" /> : <ChevronDown className="w-4 h-4 text-slate-400" />}
             </div>
 
-            {openBlocks.has('WHAT') && (
+            {openBlocks.has('EQUIPMENT') && (
               <div className="dispatch4-block-body">
-                <div className="flex gap-1.5 overflow-x-auto pb-1 border-b border-slate-800">
-                  {FT_GROUPS.map(ft => (
-                    <button
-                      key={ft}
-                      onClick={() => setActiveFt(ft)}
-                      className={`px-2.5 py-1 rounded-lg text-xs font-bold transition whitespace-nowrap ${
-                        activeFt === ft
-                          ? 'bg-emerald-600 text-white'
-                          : 'bg-slate-800 text-slate-400 hover:text-white'
-                      }`}
-                    >
-                      {ft}
-                    </button>
-                  ))}
+                {/* 상단: 피트 탭 및 빠른 검색 */}
+                <div className="flex flex-col gap-2 pb-2 border-b border-slate-800">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex gap-1.5 overflow-x-auto pb-0.5 flex-1">
+                      {FT_GROUPS.map(ft => {
+                        const count = getFtCount(ft);
+                        return (
+                          <button
+                            key={ft}
+                            onClick={() => setActiveFt(ft)}
+                            className={`px-2.5 py-1 rounded-lg text-xs font-bold transition whitespace-nowrap flex items-center gap-1.5 ${
+                              activeFt === ft
+                                ? 'bg-emerald-600 text-white'
+                                : 'bg-slate-800 text-slate-400 hover:text-white'
+                            }`}
+                          >
+                            <span>{ft}</span>
+                            <span className={`text-[10px] px-1 py-0.2 rounded-full ${
+                              activeFt === ft ? 'bg-emerald-800 text-emerald-100' : 'bg-slate-700 text-slate-400'
+                            }`}>
+                              {count}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                    {/* 모델명 검색 인풋 */}
+                    <div className="relative min-w-[130px] max-w-[180px] flex-shrink-0">
+                      <input
+                        type="text"
+                        placeholder="모델 검색..."
+                        value={modelSearchQuery}
+                        onChange={e => setModelSearchQuery(e.target.value)}
+                        className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500"
+                      />
+                      {modelSearchQuery && (
+                        <button
+                          type="button"
+                          onClick={() => setModelSearchQuery('')}
+                          className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white text-xs"
+                        >
+                          ✕
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* 가용재고 안내 바 (헌장 2.1 준수) */}
+                  <div className="flex items-center justify-between text-[11px] text-slate-400 px-1">
+                    <span>
+                      {activeFt} {modelSearchQuery ? `(검색결과 ${displayedModels.length}건)` : `(${displayedModels.length}개 모델)`}
+                    </span>
+                    <span className="text-[10px] text-slate-400 font-medium">
+                      * 가용 0대 모델도 출고 의뢰 가능 (출고/자산 부서에서 외부 임차 장비 매핑 지원)
+                    </span>
+                  </div>
                 </div>
 
-                <div className="flex flex-wrap gap-1.5">
-                  {getModelsByFt(activeFt).map(m => {
+                {/* 모델 버튼 목록 */}
+                <div className="flex flex-wrap gap-1.5 max-h-[210px] overflow-y-auto pr-1">
+                  {displayedModels.map(m => {
                     const isPicked = equipments.some(e => e.modelName === m.modelName);
                     return (
                       <button
                         key={m.modelName}
                         onClick={() => addModel(m.modelName)}
-                        className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition border ${
+                        title={`${m.modelName} (${m.manufacturer || ''}) | 당사 가용재고: ${m.availableCount}대 ${m.availableCount === 0 ? '(외부 임차/전대 필요)' : '(자사 출고 가능)'}`}
+                        className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition border flex items-center gap-1.5 ${
                           isPicked
-                            ? 'bg-emerald-900/50 border-emerald-500 text-emerald-200'
-                            : 'bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-700'
+                            ? 'bg-emerald-900/50 border-emerald-500 text-emerald-200 shadow-sm'
+                            : m.availableCount > 0
+                              ? 'bg-slate-800/90 border-slate-700 text-slate-200 hover:bg-slate-750 hover:border-emerald-500/50'
+                              : 'bg-slate-850 border-amber-900/40 text-slate-300 hover:bg-slate-800 hover:border-amber-600/50'
                         }`}
                       >
-                        + {m.modelName}
+                        <span className="whitespace-nowrap">+ {m.modelName}</span>
+                        {m.availableCount > 0 ? (
+                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-950/90 text-emerald-300 border border-emerald-500/50 font-mono font-bold whitespace-nowrap flex-shrink-0">
+                            가용 {m.availableCount}대
+                          </span>
+                        ) : (
+                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-950/90 text-amber-300 border border-amber-500/60 font-mono font-bold whitespace-nowrap flex-shrink-0">
+                            가용 0대 (임차필요)
+                          </span>
+                        )}
                       </button>
                     );
                   })}
+                  {displayedModels.length === 0 && (
+                    <div className="w-full py-4 text-center text-xs text-slate-500">
+                      일치하는 모델이 없습니다.
+                    </div>
+                  )}
                 </div>
 
                 {equipments.length > 0 ? (
                   <div className="mt-1 flex flex-col gap-1.5 p-2 bg-slate-950 rounded-lg border border-slate-800">
-                    <div className="flex items-center justify-between px-1">
-                      <span className="text-[11px] font-bold text-slate-400">
-                        선택된 출고 장비 목록 ({equipments.length}종 / 총 {totalQty}대):
-                      </span>
-                    </div>
+                    {(() => {
+                      const totalAvailShortage = equipments.reduce((acc, eq) => {
+                        const spec = catalogModels.find(s => s.modelName === eq.modelName);
+                        const avail = spec?.availableCount ?? 0;
+                        return acc + Math.max(0, eq.qty - avail);
+                      }, 0);
+
+                      return (
+                        <div className="flex items-center justify-between px-1 flex-wrap gap-1">
+                          <span className="text-[11px] font-bold text-slate-300">
+                            선택된 출고 장비 목록 ({equipments.length}종 / 총 {totalQty}대):
+                          </span>
+                          {totalAvailShortage > 0 ? (
+                            <span className="text-[10.5px] font-bold px-2 py-0.5 rounded bg-amber-950/90 text-amber-300 border border-amber-500/60 flex items-center gap-1 font-mono whitespace-nowrap">
+                              <span>⚠️ 외부 임차 {totalAvailShortage}대 필요</span>
+                              <span className="text-amber-200/70 font-normal">(자사 가용재고 초과)</span>
+                            </span>
+                          ) : (
+                            <span className="text-[10.5px] font-bold px-2 py-0.5 rounded bg-emerald-950/90 text-emerald-300 border border-emerald-500/50 flex items-center gap-1 font-mono whitespace-nowrap">
+                              <span>✓ 전량 자사 가용재고 출고 가능</span>
+                            </span>
+                          )}
+                        </div>
+                      );
+                    })()}
                     {equipments.map((eq, idx) => {
-                      const spec = EQUIPMENT_SPEC_MATRIX.find(s => s.modelName === eq.modelName);
+                      const spec = catalogModels.find(s => s.modelName === eq.modelName);
+                      const ftLabel = spec?.feet ? `${spec.feet}ft` : (spec?.ftGroup && spec.ftGroup !== '전체' ? spec.ftGroup : undefined);
+                      const availCount = spec?.availableCount ?? 0;
+                      const shortage = Math.max(0, eq.qty - availCount);
+                      const isShortage = shortage > 0;
+
                       return (
                         <div
                           key={idx}
                           className="flex items-center justify-between bg-slate-900 hover:bg-slate-850 px-3 py-2 rounded-lg border border-slate-700/80 shadow-sm transition-colors gap-2"
                         >
-                          {/* 좌측: 장비 모델명, 제원 힌트 배지(ft, 협폭/광폭) */}
+                          {/* 좌측: 장비 모델명, 제원 힌트 배지(ft, 제조사), 가용/임차 실시간 배지 */}
                           <div className="flex items-center gap-2.5 min-w-0 flex-1">
                             <div className="w-6 h-6 rounded bg-emerald-950/70 border border-emerald-500/40 flex items-center justify-center flex-shrink-0">
                               <Package size={13} className="text-emerald-400" style={{ width: 13, height: 13, display: 'block' }} />
                             </div>
                             <div className="flex items-center gap-1.5 min-w-0 flex-wrap">
                               <span className="text-xs font-black text-white tracking-tight truncate">{eq.modelName}</span>
-                              {spec?.ft && (
-                                <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-slate-800 text-slate-300 border border-slate-700 flex-shrink-0">
-                                  {spec.ft}
+                              {ftLabel && (
+                                <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-slate-800 text-slate-300 border border-slate-700 flex-shrink-0 whitespace-nowrap">
+                                  {ftLabel}
+                                </span>
+                              )}
+                              {spec?.manufacturer && (
+                                <span className="text-[10px] text-slate-400 px-1 rounded bg-slate-800/60 border border-slate-700/50 flex-shrink-0 whitespace-nowrap">
+                                  {spec.manufacturer}
+                                </span>
+                              )}
+                              {/* 🌟 가용재고 vs 신청수량 대조 실시간 상태 배지 */}
+                              {isShortage ? (
+                                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-950/90 text-amber-300 border border-amber-500/60 flex items-center gap-1 font-mono whitespace-nowrap flex-shrink-0">
+                                  <span>가용 {availCount}대</span>
+                                  <span className="text-amber-200 underline underline-offset-2">
+                                    ({availCount === 0 ? '전량' : `${shortage}대`} 임차 필요)
+                                  </span>
+                                </span>
+                              ) : (
+                                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-950/90 text-emerald-300 border border-emerald-500/50 flex items-center gap-1 font-mono whitespace-nowrap flex-shrink-0">
+                                  <span>가용 {availCount}대</span>
+                                  <span className="text-emerald-400/80 font-normal">(자사 출고 가능)</span>
                                 </span>
                               )}
                             </div>
@@ -2884,27 +3331,27 @@ export const SmartDispatch4: React.FC = () => {
             )}
           </div>
 
-          {/* WHEN 블록 — 상차 vs 하차 일정 및 시간 구분 (ASAP/오전/오후/직접지정) */}
+          {/* 4. 출고 및 하차 일정 */}
           <div className="bg-slate-900 border border-slate-700/80 rounded-xl overflow-hidden shadow-sm">
             <div
               className={`dispatch4-block-header ${
-                openBlocks.has('WHEN') ? 'bg-blue-950/40 border-b border-blue-500/30' : 'bg-slate-800/50 hover:bg-slate-800'
+                openBlocks.has('SCHEDULE') ? 'bg-blue-950/40 border-b border-blue-500/30' : 'bg-slate-800/50 hover:bg-slate-800'
               }`}
-              onClick={() => toggleBlock('WHEN')}
+              onClick={() => toggleBlock('SCHEDULE')}
             >
               <div className="flex items-center gap-2 text-xs font-bold text-slate-100">
                 <Calendar className="w-4 h-4 text-amber-400" />
-                <span>4. WHEN — 출고 및 하차 일정</span>
+                <span>4. 출고 및 하차 일정</span>
                 {loadingDate && (
                   <span className="text-[11px] font-semibold text-emerald-400 bg-emerald-950/50 px-2 py-0.5 rounded border border-emerald-500/30 font-mono">
                     ✓ 상차: {loadingDate} {loadingTimeType === 'ASAP' ? '[ASAP]' : loadingTimeType === 'MORNING' ? '[오전]' : loadingTimeType === 'AFTERNOON' ? '[오후]' : loadingTimeVal || ''}
                   </span>
                 )}
               </div>
-              {openBlocks.has('WHEN') ? <ChevronUp className="w-4 h-4 text-slate-400" /> : <ChevronDown className="w-4 h-4 text-slate-400" />}
+              {openBlocks.has('SCHEDULE') ? <ChevronUp className="w-4 h-4 text-slate-400" /> : <ChevronDown className="w-4 h-4 text-slate-400" />}
             </div>
 
-            {openBlocks.has('WHEN') && (
+            {openBlocks.has('SCHEDULE') && (
               <div className="dispatch4-block-body">
                 {/* 상차 일정 */}
                 <div className="p-2.5 bg-slate-950/60 rounded-xl border border-slate-800 flex flex-col gap-2">
@@ -3435,12 +3882,20 @@ export const SmartDispatch4: React.FC = () => {
                   {addrDisplay}
                 </div>
               </div>
-              <div className="grid grid-cols-4">
+              <div className="grid grid-cols-4 border-b border-slate-800">
                 <div className="col-span-1 bg-slate-950 p-1.5 font-bold text-slate-400 border-r border-slate-800 flex items-center text-[11px]">
                   현장담당자
                 </div>
                 <div className="col-span-3 bg-slate-900/90 p-1.5 font-bold text-slate-100 text-[11px]">
                   {contactPerson ? `${contactPerson} (${contactPhone || '연락처 미등록'})` : '(담당자 미등록)'}
+                </div>
+              </div>
+              <div className="grid grid-cols-4">
+                <div className="col-span-1 bg-slate-950 p-1.5 font-bold text-slate-400 border-r border-slate-800 flex items-center text-[11px]">
+                  정산/결제일
+                </div>
+                <div className="col-span-3 bg-slate-900/90 p-1.5 font-bold text-amber-300 text-[11px]">
+                  청구 {closingDay === 31 ? '말일' : `${closingDay}일`} · 명세서 {statementClosingDay === 31 ? '말일' : `${statementClosingDay}일`} · 결제 익월 {paymentDueDay === 31 ? '말일' : `${paymentDueDay}일`}
                 </div>
               </div>
             </div>
@@ -3481,22 +3936,60 @@ export const SmartDispatch4: React.FC = () => {
 
             {/* 서식 테이블 3: 신청 장비 규격 */}
             <div>
-              <div className="text-[10.5px] font-bold text-slate-400 mb-1 flex items-center justify-between">
-                <span>신청 장비 제원</span>
-                <span className="text-blue-400 font-mono font-bold">합계: {totalQty}대</span>
-              </div>
+              {(() => {
+                const totalAvailShortage = equipments.reduce((acc, eq) => {
+                  const spec = catalogModels.find(s => s.modelName === eq.modelName);
+                  const avail = spec?.availableCount ?? 0;
+                  return acc + Math.max(0, eq.qty - avail);
+                }, 0);
+
+                return (
+                  <div className="text-[10.5px] font-bold text-slate-400 mb-1 flex items-center justify-between">
+                    <span className="flex items-center gap-1.5">
+                      <span>신청 장비 제원</span>
+                      {totalAvailShortage > 0 ? (
+                        <span className="text-[9.5px] font-bold text-amber-300 bg-amber-950/80 px-1.5 py-0.2 rounded border border-amber-500/40 font-mono">
+                          (임차 {totalAvailShortage}대 필요)
+                        </span>
+                      ) : equipments.length > 0 ? (
+                        <span className="text-[9.5px] font-bold text-emerald-300 bg-emerald-950/80 px-1.5 py-0.2 rounded border border-emerald-500/40 font-mono">
+                          (자사 가용 충족)
+                        </span>
+                      ) : null}
+                    </span>
+                    <span className="text-blue-400 font-mono font-bold">합계: {totalQty}대</span>
+                  </div>
+                );
+              })()}
               <div className="border border-slate-800 rounded-lg overflow-hidden text-xs">
                 <div className="grid grid-cols-4 bg-slate-950 border-b border-slate-800 p-1.5 font-bold text-slate-400 text-[11px]">
-                  <div className="col-span-3">모델명</div>
+                  <div className="col-span-2">모델명</div>
+                  <div className="col-span-1 text-center">가용/임차</div>
                   <div className="col-span-1 text-right font-mono">수량</div>
                 </div>
                 {equipments.length > 0 ? (
-                  equipments.map((eq, i) => (
-                    <div key={i} className="grid grid-cols-4 border-b border-slate-800/80 last:border-b-0 p-1.5 bg-slate-900/80 hover:bg-slate-850 text-[11px]">
-                      <div className="col-span-3 font-bold text-white">{eq.modelName}</div>
-                      <div className="col-span-1 text-right font-mono font-bold text-blue-400">{eq.qty}대</div>
-                    </div>
-                  ))
+                  equipments.map((eq, i) => {
+                    const spec = catalogModels.find(s => s.modelName === eq.modelName);
+                    const avail = spec?.availableCount ?? 0;
+                    const shortage = Math.max(0, eq.qty - avail);
+                    return (
+                      <div key={i} className="grid grid-cols-4 border-b border-slate-800/80 last:border-b-0 p-1.5 bg-slate-900/80 hover:bg-slate-850 text-[11px] items-center">
+                        <div className="col-span-2 font-bold text-white truncate">{eq.modelName}</div>
+                        <div className="col-span-1 text-center">
+                          {shortage > 0 ? (
+                            <span className="text-[9.5px] font-bold px-1.5 py-0.2 rounded bg-amber-950 text-amber-300 border border-amber-500/40 whitespace-nowrap">
+                              {avail === 0 ? '전량 임차' : `임차 ${shortage}대`}
+                            </span>
+                          ) : (
+                            <span className="text-[9.5px] font-bold px-1.5 py-0.2 rounded bg-emerald-950 text-emerald-300 border border-emerald-500/40 whitespace-nowrap">
+                              자사 가용
+                            </span>
+                          )}
+                        </div>
+                        <div className="col-span-1 text-right font-mono font-bold text-blue-400">{eq.qty}대</div>
+                      </div>
+                    );
+                  })
                 ) : (
                   <div className="p-2.5 text-center text-slate-500 italic bg-slate-900/60 text-[11px]">
                     선택된 장비가 없습니다.

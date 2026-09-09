@@ -743,7 +743,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     'consumable_inout':     ['consumables', 'consumableLogs', 'consumablePurchases', 'assets', 'mechanicConsumableStocks'],
     'consumable_stock':     ['consumables', 'consumableLogs', 'mechanicConsumableStocks', 'stocktakingAudits', 'stocktakingAuditItems', 'collectedParts'],
     'smart_dispatch':       ['deliveries', 'contracts', 'assets', 'transportCompanies', 'transportDrivers', 'printStations', 'printQueue'],
-    'smart_dispatch4':      ['customers', 'sites', 'contacts', 'contracts', 'deliveries', 'assets'],
+    'smart_dispatch4':      ['customers', 'sites', 'contacts', 'contracts', 'deliveries', 'assets', 'products'],
     'smart_return':         ['deliveries', 'contracts', 'assets', 'transportCompanies', 'transportDrivers', 'printStations', 'printQueue'],
     'asset_inout_history':  ['assetInOutLogs', 'assets', 'customers'],
     'dispatch_assign':      ['contracts', 'contractAssets', 'assets', 'outboundInspections', 'customers', 'contractHistory'],
@@ -1493,6 +1493,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return { success: false, requiresConfirm: true, missingFields };
     }
 
+    const rawData = data as any;
+    const parseDayNumber = (val: any, fallback: number): number => {
+      if (val === undefined || val === null || val === '') return fallback;
+      const str = String(val).trim();
+      if (str.includes('말일') || str.includes('월말')) return 31;
+      const matched = str.match(/\d+/);
+      if (matched) {
+        const n = parseInt(matched[0], 10);
+        return Math.min(31, Math.max(1, n));
+      }
+      return fallback;
+    };
+    const contractBillingDay = parseDayNumber(rawData.closingDay, customer?.defaultBillingDay || 30);
+    const contractStatementClosingDay = parseDayNumber(rawData.statementClosingDay, customer?.defaultStatementClosingDay || 25);
+    const contractPaymentDueDay = parseDayNumber(rawData.paymentDay || rawData.paymentDueDay, customer?.paymentDueDay || 15);
+
     if (!customer) {
       await notify(`🏢 [신규 고객] DB에 없는 고객사 '${data.customerName}' 자동 신규 생성 중...`, 20);
       customer = db.insertRow<Customer>('customers', {
@@ -1503,6 +1519,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         representative: '미상',
         repContact: data.siteContactPhone || '미상',
         repEmail: data.taxBillEmail || data.statementEmail || '미상',
+        defaultBillingDay: contractBillingDay,
+        defaultStatementClosingDay: contractStatementClosingDay,
+        paymentDueDay: contractPaymentDueDay,
         createdAt: new Date().toISOString()
       });
 
@@ -1596,6 +1615,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         paidOptions: data.paidOptions || undefined,
         protection: data.protection || undefined,
         checkedSpecs: data.checkedSpecs || undefined,
+        billingDay: contractBillingDay,
+        statementClosingDay: contractStatementClosingDay,
+        paymentDueDay: contractPaymentDueDay,
         createdAt: new Date().toISOString()
       });
     } else {
@@ -1612,6 +1634,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
       if (data.siteContactEmail && data.siteContactEmail !== '미상' && data.siteContactEmail !== site.email) {
         siteUpdates.email = data.siteContactEmail;
+      }
+      if (rawData.closingDay !== undefined) {
+        siteUpdates.billingDay = contractBillingDay;
+      }
+      if (rawData.statementClosingDay !== undefined) {
+        siteUpdates.statementClosingDay = contractStatementClosingDay;
+      }
+      if (rawData.paymentDay !== undefined || rawData.paymentDueDay !== undefined) {
+        siteUpdates.paymentDueDay = contractPaymentDueDay;
       }
       // 🌟 옵션 변경 시 현장 마스터 저장 여부 확인 (false인 경우 이번 출고만 1회성 적용하고 현장 마스터는 기존 옵션 원형 보존)
       if (data.saveOptionsToSite !== false) {
@@ -1684,20 +1715,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     await notify(`📄 [3/5 계약 생성] 스마트 임대차 계약서 작성 중 (${nextContractNo})...`, 55);
 
-    const rawData = data as any;
-    const parseDayNumber = (val: any, fallback: number): number => {
-      if (val === undefined || val === null || val === '') return fallback;
-      const str = String(val).trim();
-      if (str.includes('말일') || str.includes('월말')) return 30;
-      const matched = str.match(/\d+/);
-      if (matched) {
-        const n = parseInt(matched[0], 10);
-        return Math.min(31, Math.max(1, n));
-      }
-      return fallback;
-    };
-    const contractBillingDay = parseDayNumber(rawData.closingDay, finalCustomer.defaultBillingDay || 30);
-    const contractPaymentDueDay = parseDayNumber(rawData.paymentDay, finalCustomer.paymentDueDay || 25);
     const contractLateInterestRate = (rawData.lateInterestRate !== undefined && rawData.lateInterestRate !== '') ? (Number(rawData.lateInterestRate) || 0) : ((finalCustomer as any).defaultLateInterestRate || 0);
 
     const extractDate = (dateTimeStr?: string): string => {
@@ -1715,6 +1732,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       startDate: targetStartDate,
       endDate: '', 
       billingDay: contractBillingDay,
+      statementClosingDay: contractStatementClosingDay,
       lateInterestRate: contractLateInterestRate,
       paymentDueDay: contractPaymentDueDay,
       salespersonId: validSalespersonId,

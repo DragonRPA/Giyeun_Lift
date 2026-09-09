@@ -377,6 +377,9 @@ export interface CustomerSite {
   paidOptions?: string;              // 현장 전용 유상옵션
   protection?: string;               // 현장 전용 보양작업
   checkedSpecs?: Record<string, boolean>; // 현장 전용 요구 사양 체크 상태
+  billingDay?: number;               // 청구서(세금계산서) 마감일
+  statementClosingDay?: number;      // 거래명세서 마감일
+  paymentDueDay?: number;            // 약정 결제일 (익월 N일)
 
   createdAt: string;
   updatedAt?: string;

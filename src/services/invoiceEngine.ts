@@ -419,7 +419,7 @@ export async function consolidateSelectedBillings(opts: ConsolidateSelectedOptio
 export async function fetchInvoices(billingYm?: string): Promise<BillingInvoice[]> {
   let query = supabase
     .from('billing_invoices')
-    .select('*')
+    .select('*, billings(id, paidAmount, totalAmount, status)')
     .order('billingYm', { ascending: false })
     .order('customerId', { ascending: true });
 
@@ -427,7 +427,22 @@ export async function fetchInvoices(billingYm?: string): Promise<BillingInvoice[
 
   const { data, error } = await query;
   if (error) throw new Error(`청구서통합 조회 실패: ${error.message}`);
-  return data || [];
+
+  return (data || []).map((inv: any) => {
+    const childBillings = inv.billings || [];
+    const paidAmount = childBillings.reduce((sum: number, b: any) => sum + (b.paidAmount || 0), 0);
+    const totalAmount = inv.totalAmount || childBillings.reduce((sum: number, b: any) => sum + (b.totalAmount || 0), 0);
+    let status = inv.status;
+    if (inv.status !== 'CANCELLED') {
+      if (totalAmount > 0 && paidAmount >= totalAmount) status = 'PAID';
+      else if (paidAmount > 0) status = 'PARTIAL';
+    }
+    return {
+      ...inv,
+      paidAmount,
+      status
+    };
+  });
 }
 
 // ──────────────────────────────────────────────

@@ -24,6 +24,7 @@ import {
   type TransactionStatementItem
 } from '../services/excelTemplateEngine';
 import type { BillingInvoice, Billing, BillingDetail } from '../services/db';
+import { matchHangul } from '../utils/hangulSearch';
 
 // ── 상태 배지 ──
 function StatusBadge({ status }: { status: string }) {
@@ -169,24 +170,30 @@ export const BillingInvoiceTab: React.FC = () => {
     loadInvoices();
   }, [loadInvoices]);
 
-  // 고객사 목록 검색 필터링
+  // 고객사 목록 검색 필터링 (초성검색 지원)
   const filteredCustomers = useMemo(() => {
     if (!customers) return [];
     if (!customerSearchQuery.trim()) return customers;
-    const q = customerSearchQuery.trim().toLowerCase();
+    const q = customerSearchQuery.trim();
     return customers.filter(c =>
-      c.name?.toLowerCase().includes(q) ||
-      c.businessNumber?.includes(q) ||
-      c.code?.toLowerCase().includes(q)
+      matchHangul(c.name || '', q) ||
+      matchHangul(c.businessNumber || '', q) ||
+      matchHangul(c.code || '', q) ||
+      matchHangul(c.representativeName || (c as any).representative || '', q)
     );
   }, [customers, customerSearchQuery]);
 
-  // 첫 진입 시 고객사가 비어있고 고객 목록이 있으면 첫 번째 고객 자동 선택
+  // 검색 시 또는 첫 진입 시 선택된 고객사 자동 동기화
   useEffect(() => {
-    if (!selectedCustomerId && filteredCustomers.length > 0) {
-      setSelectedCustomerId(filteredCustomers[0].id);
+    if (filteredCustomers.length > 0) {
+      const exists = filteredCustomers.some(c => c.id === selectedCustomerId);
+      if (!exists) {
+        setSelectedCustomerId(filteredCustomers[0].id);
+      }
+    } else if (customerSearchQuery.trim()) {
+      setSelectedCustomerId('');
     }
-  }, [filteredCustomers, selectedCustomerId]);
+  }, [filteredCustomers, selectedCustomerId, customerSearchQuery]);
 
   // 고객사 변경 시 납기일 기본값 자동 세팅
   useEffect(() => {
@@ -622,6 +629,120 @@ export const BillingInvoiceTab: React.FC = () => {
     }
   };
 
+  // ── 발행 이력 인보이스 대상 거래명세서 데이터 생성 ──
+  const buildStatementDataForHistory = async (inv: BillingInvoice): Promise<TransactionStatementPdfData> => {
+    let detail = await fetchInvoiceDetail(inv.id);
+    const childBillings = detail?.billings || [];
+    const cust = customers?.find(c => c.id === inv.customerId);
+    const firstSite = childBillings[0]?.siteName || '';
+
+    const items: TransactionStatementItem[] = [];
+    childBillings.forEach(b => {
+      if (b.details && b.details.length > 0) {
+        b.details.forEach(d => {
+          const supply = d.amount || (d.unitPrice * d.quantity) || 0;
+          const vat = d.vatAmount != null ? d.vatAmount : Math.floor(supply * 0.1);
+          const cleanItemName = (d.itemName || d.description || '품목').replace(/\(가상\)/g, '').replace(/\s+/g, ' ').trim();
+          items.push({
+            month: parseInt((b.billingDate || '').split('-')[1] || inv.billingYm.split('-')[1] || '8', 10),
+            day: parseInt((b.billingDate || '').split('-')[2] || '1', 10),
+            itemDescription: cleanItemName,
+            quantity: d.quantity || 1,
+            unitPrice: d.unitPrice || supply,
+            supplyAmount: supply,
+            vatAmount: vat,
+            notes: d.memo || d.spec || b.contract?.contractNo || ''
+          });
+        });
+      } else {
+        const supply = b.totalAmount || 0;
+        const vat = Math.floor(supply * 0.1);
+        const name = b.category === 'REPAIR' ? '장비 파손 수리비'
+          : b.category === 'TRANSPORT' ? '장비 배차 운반비'
+          : `렌탈료 (${b.siteName || inv.billingYm})`;
+        items.push({
+          month: parseInt((b.billingDate || '').split('-')[1] || inv.billingYm.split('-')[1] || '8', 10),
+          day: parseInt((b.billingDate || '').split('-')[2] || '1', 10),
+          itemDescription: name.replace(/\(가상\)/g, '').trim(),
+          quantity: 1,
+          unitPrice: supply,
+          supplyAmount: supply,
+          vatAmount: vat,
+          notes: b.contract?.contractNo || ''
+        });
+      }
+    });
+
+    return {
+      billingDate: inv.createdAt ? inv.createdAt.slice(0, 10) : new Date().toISOString().split('T')[0],
+      billingYm: inv.billingYm,
+      contractNo: childBillings[0]?.contract?.contractNo || '',
+      lessorBizNo: '138-81-83251',
+      lessorName: '주식회사 기연리프트',
+      lessorCeo: '이수용',
+      lessorAddress: '경기도 용인시 처인구 포곡읍 곡현로 254-3',
+      salespersonName: '영업부',
+      salespersonPhone: '031-334-5296',
+      billingManagerName: '정수아',
+      billingManagerPhone: '031-334-5295',
+      lessorEmail: 'giyeonlift@naver.com',
+      customerBizNo: cust?.businessNumber || '',
+      customerName: cust?.name || '',
+      customerCeo: cust?.representativeName || '',
+      customerAddress: cust?.address || '',
+      customerBizType: cust?.bizType || '',
+      customerBizItem: cust?.bizItem || '',
+      siteName: firstSite,
+      bankAccount: '신한은행 140-010-007060 (주식회사 기연리프트)',
+      items,
+      totalSupply: inv.totalAmount,
+      totalVat: inv.vatAmount,
+      totalGrand: inv.grandTotal || (inv.totalAmount + inv.vatAmount)
+    };
+  };
+
+  const handleDownloadHistoryPdf = async (inv: BillingInvoice) => {
+    try {
+      const data = await buildStatementDataForHistory(inv);
+      const pdfBytes = await generateTransactionStatementPdf(data);
+      const blob = new Blob([pdfBytes], { type: 'application/pdf' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      const custName = customerName(inv.customerId) || '통합청구';
+      const fileName = `거래명세서_${custName}_${inv.billingYm}_${inv.id}.pdf`;
+      a.download = fileName;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      showSuccessToast?.(`통합 거래명세서 PDF가 다운로드되었습니다: ${fileName}`);
+    } catch (err: any) {
+      showErrorModal?.(`PDF 다운로드 실패: ${err.message || err}`);
+    }
+  };
+
+  const handleExportHistoryExcel = async (inv: BillingInvoice) => {
+    try {
+      const data = await buildStatementDataForHistory(inv);
+      const buffer = await generateTransactionStatementExcel(data);
+      const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      const custName = customerName(inv.customerId) || '통합청구';
+      const fileName = `거래명세서_${custName}_${inv.billingYm}_${inv.id}.xlsx`;
+      a.download = fileName;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      showSuccessToast?.(`정품 거래명세서 엑셀 파일이 다운로드되었습니다: ${fileName}`);
+    } catch (err: any) {
+      showErrorModal?.(`엑셀 다운로드 실패: ${err.message || err}`);
+    }
+  };
+
   // 고객사명 도우미
   const customerName = (id: string) => customers?.find(c => c.id === id)?.name ?? id;
 
@@ -637,8 +758,35 @@ export const BillingInvoiceTab: React.FC = () => {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', position: 'relative' }}>
 
-      {/* ── 인쇄용 글로벌 스타일 (@media print) ── */}
+      {/* ── 거래명세서 캔버스 및 인쇄 스타일 ── */}
       <style>{`
+        /* 캔버스 화면 및 인쇄 공통: 흰 배경 위 모든 텍스트 검은색 강제 (다크모드 전역 스타일 상속 완전 차단) */
+        #printable-invoice-canvas {
+          background-color: #ffffff !important;
+          color: #111827 !important;
+        }
+        #printable-invoice-canvas table {
+          background-color: #ffffff !important;
+          border-color: #9ca3af !important;
+        }
+        #printable-invoice-canvas thead th {
+          background-color: #e5e7eb !important;
+          color: #111827 !important;
+          border-color: #d1d5db !important;
+        }
+        #printable-invoice-canvas td {
+          color: #111827 !important;
+          border-color: #e5e7eb !important;
+        }
+        #printable-invoice-canvas tr:hover td {
+          background-color: transparent !important;
+        }
+        #printable-invoice-canvas tfoot tr,
+        #printable-invoice-canvas tfoot td {
+          background-color: #f3f4f6 !important;
+          color: #111827 !important;
+        }
+
         @media print {
           body * {
             visibility: hidden;
@@ -686,39 +834,44 @@ export const BillingInvoiceTab: React.FC = () => {
             />
           </div>
 
-          {/* 거래처(고객사) 선택 */}
+          {/* 1. 고객명 검색 인풋 (초성검색 지원) */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
             <span style={{ fontSize: '12px', color: 'var(--text-muted)', fontWeight: 600, whiteSpace: 'nowrap' }}>
-              고객사 선택
+              고객명 검색
             </span>
-            <div style={{ display: 'flex', gap: '6px' }}>
-              <select
-                value={selectedCustomerId}
-                onChange={e => setSelectedCustomerId(e.target.value)}
-                style={{
-                  padding: '7px 10px', borderRadius: '6px', border: '1px solid var(--border-color)',
-                  fontSize: '13px', backgroundColor: 'var(--bg-app)', color: 'var(--text-main)',
-                  minWidth: '200px', fontWeight: 600
-                }}
-              >
-                <option value="">고객사 전체 (선택 필요)</option>
-                {filteredCustomers.map(c => (
-                  <option key={c.id} value={c.id}>
-                    {c.name} {c.businessNumber ? `(${c.businessNumber})` : ''}
-                  </option>
-                ))}
-              </select>
-              <input
-                type="text"
-                placeholder="고객명 검색..."
-                value={customerSearchQuery}
-                onChange={e => setCustomerSearchQuery(e.target.value)}
-                style={{
-                  padding: '7px 10px', borderRadius: '6px', border: '1px solid var(--border-color)',
-                  fontSize: '12px', width: '120px', backgroundColor: 'var(--bg-app)', color: 'var(--text-main)'
-                }}
-              />
-            </div>
+            <input
+              type="text"
+              placeholder="고객명/초성 (예: ㄷㅇ)..."
+              value={customerSearchQuery}
+              onChange={e => setCustomerSearchQuery(e.target.value)}
+              style={{
+                padding: '7px 10px', borderRadius: '6px', border: '1px solid var(--border-color)',
+                fontSize: '13px', width: '150px', backgroundColor: 'var(--bg-app)', color: 'var(--text-main)'
+              }}
+            />
+          </div>
+
+          {/* 2. 고객사 선택 드롭다운 */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+            <span style={{ fontSize: '12px', color: 'var(--text-muted)', fontWeight: 600, whiteSpace: 'nowrap' }}>
+              고객사 선택 ({filteredCustomers.length}개사)
+            </span>
+            <select
+              value={selectedCustomerId}
+              onChange={e => setSelectedCustomerId(e.target.value)}
+              style={{
+                padding: '7px 10px', borderRadius: '6px', border: '1px solid var(--border-color)',
+                fontSize: '13px', backgroundColor: 'var(--bg-app)', color: 'var(--text-main)',
+                minWidth: '220px', fontWeight: 600
+              }}
+            >
+              <option value="">고객사 전체 (선택 필요)</option>
+              {filteredCustomers.map(c => (
+                <option key={c.id} value={c.id}>
+                  {c.name} {c.businessNumber ? `(${c.businessNumber})` : ''}
+                </option>
+              ))}
+            </select>
           </div>
 
           {/* 통합 단위 */}
@@ -1084,7 +1237,7 @@ export const BillingInvoiceTab: React.FC = () => {
                 <h2 style={{ margin: 0, fontSize: '18px', fontWeight: 800, letterSpacing: '4px', color: '#111827' }}>
                   거 래 명 세 서
                 </h2>
-                <div style={{ fontSize: '11px', color: '#6b7280', marginTop: '2px' }}>
+                <div style={{ fontSize: '11px', color: '#374151', marginTop: '2px' }}>
                   (공급받는자 보관용) | 발행일자: {new Date().toISOString().slice(0, 10)}
                 </div>
               </div>
@@ -1092,65 +1245,65 @@ export const BillingInvoiceTab: React.FC = () => {
               {/* 공급자 & 공급받는자 2열 테이블 */}
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '10px' }}>
                 {/* 공급자 (주식회사 기연리프트 SSOT) */}
-                <table style={{ width: '100%', borderCollapse: 'collapse', border: '1px solid #9ca3af', fontSize: '10px' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', border: '1px solid #9ca3af', fontSize: '10px', backgroundColor: '#ffffff' }}>
                   <tbody>
                     <tr>
-                      <td rowSpan={4} style={{ width: '20px', backgroundColor: '#f3f4f6', textAlign: 'center', fontWeight: 700, borderRight: '1px solid #9ca3af', padding: '4px' }}>
+                      <td rowSpan={4} style={{ width: '20px', backgroundColor: '#f3f4f6', color: '#111827', textAlign: 'center', fontWeight: 700, borderRight: '1px solid #9ca3af', padding: '4px' }}>
                         공<br/>급<br/>자
                       </td>
-                      <td style={{ backgroundColor: '#f9fafb', padding: '3px 4px', borderRight: '1px solid #e5e7eb', borderBottom: '1px solid #e5e7eb', width: '55px', fontWeight: 600 }}>등록번호</td>
-                      <td colSpan={3} style={{ padding: '3px 4px', borderBottom: '1px solid #e5e7eb', fontWeight: 700 }}>138-81-83251</td>
+                      <td style={{ backgroundColor: '#f9fafb', color: '#374151', padding: '3px 4px', borderRight: '1px solid #e5e7eb', borderBottom: '1px solid #e5e7eb', width: '55px', fontWeight: 600 }}>등록번호</td>
+                      <td colSpan={3} style={{ padding: '3px 4px', borderBottom: '1px solid #e5e7eb', fontWeight: 700, color: '#111827' }}>138-81-83251</td>
                     </tr>
                     <tr>
-                      <td style={{ backgroundColor: '#f9fafb', padding: '3px 4px', borderRight: '1px solid #e5e7eb', borderBottom: '1px solid #e5e7eb', fontWeight: 600 }}>상호</td>
-                      <td style={{ padding: '3px 4px', borderRight: '1px solid #e5e7eb', borderBottom: '1px solid #e5e7eb', fontWeight: 700 }}>주식회사 기연리프트</td>
-                      <td style={{ backgroundColor: '#f9fafb', padding: '3px 4px', borderRight: '1px solid #e5e7eb', borderBottom: '1px solid #e5e7eb', width: '35px', fontWeight: 600 }}>성명</td>
-                      <td style={{ padding: '3px 4px', borderBottom: '1px solid #e5e7eb' }}>이수용</td>
+                      <td style={{ backgroundColor: '#f9fafb', color: '#374151', padding: '3px 4px', borderRight: '1px solid #e5e7eb', borderBottom: '1px solid #e5e7eb', fontWeight: 600 }}>상호</td>
+                      <td style={{ padding: '3px 4px', borderRight: '1px solid #e5e7eb', borderBottom: '1px solid #e5e7eb', fontWeight: 700, color: '#111827' }}>주식회사 기연리프트</td>
+                      <td style={{ backgroundColor: '#f9fafb', color: '#374151', padding: '3px 4px', borderRight: '1px solid #e5e7eb', borderBottom: '1px solid #e5e7eb', width: '35px', fontWeight: 600 }}>성명</td>
+                      <td style={{ padding: '3px 4px', borderBottom: '1px solid #e5e7eb', color: '#111827' }}>이수용</td>
                     </tr>
                     <tr>
-                      <td style={{ backgroundColor: '#f9fafb', padding: '3px 4px', borderRight: '1px solid #e5e7eb', borderBottom: '1px solid #e5e7eb', fontWeight: 600 }}>사업장</td>
-                      <td colSpan={3} style={{ padding: '3px 4px', borderBottom: '1px solid #e5e7eb' }}>경기도 용인시 처인구 포곡읍 곡현로 254-3</td>
+                      <td style={{ backgroundColor: '#f9fafb', color: '#374151', padding: '3px 4px', borderRight: '1px solid #e5e7eb', borderBottom: '1px solid #e5e7eb', fontWeight: 600 }}>사업장</td>
+                      <td colSpan={3} style={{ padding: '3px 4px', borderBottom: '1px solid #e5e7eb', color: '#111827' }}>경기도 용인시 처인구 포곡읍 곡현로 254-3</td>
                     </tr>
                     <tr>
-                      <td style={{ backgroundColor: '#f9fafb', padding: '3px 4px', borderRight: '1px solid #e5e7eb', fontWeight: 600 }}>업태/종목</td>
-                      <td style={{ padding: '3px 4px', borderRight: '1px solid #e5e7eb' }}>임대업</td>
-                      <td colSpan={2} style={{ padding: '3px 4px' }}>건설기계임대</td>
+                      <td style={{ backgroundColor: '#f9fafb', color: '#374151', padding: '3px 4px', borderRight: '1px solid #e5e7eb', fontWeight: 600 }}>업태/종목</td>
+                      <td style={{ padding: '3px 4px', borderRight: '1px solid #e5e7eb', color: '#111827' }}>임대업</td>
+                      <td colSpan={2} style={{ padding: '3px 4px', color: '#111827' }}>건설기계임대</td>
                     </tr>
                   </tbody>
                 </table>
 
                 {/* 공급받는자 (고객사) */}
-                <table style={{ width: '100%', borderCollapse: 'collapse', border: '1px solid #9ca3af', fontSize: '10px' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', border: '1px solid #9ca3af', fontSize: '10px', backgroundColor: '#ffffff' }}>
                   <tbody>
                     <tr>
-                      <td rowSpan={4} style={{ width: '20px', backgroundColor: '#f3f4f6', textAlign: 'center', fontWeight: 700, borderRight: '1px solid #9ca3af', padding: '4px' }}>
+                      <td rowSpan={4} style={{ width: '20px', backgroundColor: '#f3f4f6', color: '#111827', textAlign: 'center', fontWeight: 700, borderRight: '1px solid #9ca3af', padding: '4px' }}>
                         공<br/>급<br/>받<br/>는<br/>자
                       </td>
-                      <td style={{ backgroundColor: '#f9fafb', padding: '3px 4px', borderRight: '1px solid #e5e7eb', borderBottom: '1px solid #e5e7eb', width: '55px', fontWeight: 600 }}>등록번호</td>
-                      <td colSpan={3} style={{ padding: '3px 4px', borderBottom: '1px solid #e5e7eb', fontWeight: 700 }}>
+                      <td style={{ backgroundColor: '#f9fafb', color: '#374151', padding: '3px 4px', borderRight: '1px solid #e5e7eb', borderBottom: '1px solid #e5e7eb', width: '55px', fontWeight: 600 }}>등록번호</td>
+                      <td colSpan={3} style={{ padding: '3px 4px', borderBottom: '1px solid #e5e7eb', fontWeight: 700, color: '#111827' }}>
                         {selectedCustomer?.businessNumber || '-'}
                       </td>
                     </tr>
                     <tr>
-                      <td style={{ backgroundColor: '#f9fafb', padding: '3px 4px', borderRight: '1px solid #e5e7eb', borderBottom: '1px solid #e5e7eb', fontWeight: 600 }}>상호</td>
-                      <td style={{ padding: '3px 4px', borderRight: '1px solid #e5e7eb', borderBottom: '1px solid #e5e7eb', fontWeight: 700 }}>
+                      <td style={{ backgroundColor: '#f9fafb', color: '#374151', padding: '3px 4px', borderRight: '1px solid #e5e7eb', borderBottom: '1px solid #e5e7eb', fontWeight: 600 }}>상호</td>
+                      <td style={{ padding: '3px 4px', borderRight: '1px solid #e5e7eb', borderBottom: '1px solid #e5e7eb', fontWeight: 700, color: '#111827' }}>
                         {selectedCustomer?.name || '고객사 미선택'}
                       </td>
-                      <td style={{ backgroundColor: '#f9fafb', padding: '3px 4px', borderRight: '1px solid #e5e7eb', borderBottom: '1px solid #e5e7eb', width: '35px', fontWeight: 600 }}>성명</td>
-                      <td style={{ padding: '3px 4px', borderBottom: '1px solid #e5e7eb' }}>
+                      <td style={{ backgroundColor: '#f9fafb', color: '#374151', padding: '3px 4px', borderRight: '1px solid #e5e7eb', borderBottom: '1px solid #e5e7eb', width: '35px', fontWeight: 600 }}>성명</td>
+                      <td style={{ padding: '3px 4px', borderBottom: '1px solid #e5e7eb', color: '#111827' }}>
                         {selectedCustomer?.representativeName || '-'}
                       </td>
                     </tr>
                     <tr>
-                      <td style={{ backgroundColor: '#f9fafb', padding: '3px 4px', borderRight: '1px solid #e5e7eb', borderBottom: '1px solid #e5e7eb', fontWeight: 600 }}>사업장</td>
-                      <td colSpan={3} style={{ padding: '3px 4px', borderBottom: '1px solid #e5e7eb', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '140px' }}>
+                      <td style={{ backgroundColor: '#f9fafb', color: '#374151', padding: '3px 4px', borderRight: '1px solid #e5e7eb', borderBottom: '1px solid #e5e7eb', fontWeight: 600 }}>사업장</td>
+                      <td colSpan={3} style={{ padding: '3px 4px', borderBottom: '1px solid #e5e7eb', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '140px', color: '#111827' }}>
                         {selectedCustomer?.address || '-'}
                       </td>
                     </tr>
                     <tr>
-                      <td style={{ backgroundColor: '#f9fafb', padding: '3px 4px', borderRight: '1px solid #e5e7eb', fontWeight: 600 }}>업태/종목</td>
-                      <td style={{ padding: '3px 4px', borderRight: '1px solid #e5e7eb' }}>{selectedCustomer?.bizType || '-'}</td>
-                      <td colSpan={2} style={{ padding: '3px 4px' }}>{selectedCustomer?.bizItem || '-'}</td>
+                      <td style={{ backgroundColor: '#f9fafb', color: '#374151', padding: '3px 4px', borderRight: '1px solid #e5e7eb', fontWeight: 600 }}>업태/종목</td>
+                      <td style={{ padding: '3px 4px', borderRight: '1px solid #e5e7eb', color: '#111827' }}>{selectedCustomer?.bizType || '-'}</td>
+                      <td colSpan={2} style={{ padding: '3px 4px', color: '#111827' }}>{selectedCustomer?.bizItem || '-'}</td>
                     </tr>
                   </tbody>
                 </table>
@@ -1160,28 +1313,28 @@ export const BillingInvoiceTab: React.FC = () => {
               <div style={{
                 display: 'flex', justifyContent: 'space-between', alignItems: 'center',
                 backgroundColor: '#f3f4f6', padding: '6px 10px', border: '1px solid #d1d5db',
-                marginBottom: '8px', fontWeight: 700
+                marginBottom: '8px', fontWeight: 700, color: '#111827'
               }}>
                 <div>
-                  합계금액: <span style={{ color: '#1d4ed8', fontSize: '13px' }}>일금 {numberToKoreanAmount(accountingSummary.grandTotal)} 원정</span>
+                  합계금액: <span style={{ color: '#1d4ed8', fontSize: '13px', fontWeight: 800 }}>일금 {numberToKoreanAmount(accountingSummary.grandTotal)} 원정</span>
                 </div>
-                <div style={{ fontSize: '13px', color: '#111827' }}>
+                <div style={{ fontSize: '13px', color: '#111827', fontWeight: 800 }}>
                   ₩{accountingSummary.grandTotal.toLocaleString()} (VAT포함)
                 </div>
               </div>
 
               {/* ── 11행 정규 규격 그리드 (table-layout fixed, no-wrap 방어) ── */}
-              <table style={{ width: '100%', tableLayout: 'fixed', borderCollapse: 'collapse', border: '1px solid #9ca3af', fontSize: '10px' }}>
+              <table style={{ width: '100%', tableLayout: 'fixed', borderCollapse: 'collapse', border: '1px solid #9ca3af', fontSize: '10px', backgroundColor: '#ffffff' }}>
                 <thead>
                   <tr style={{ backgroundColor: '#e5e7eb', borderBottom: '1px solid #9ca3af' }}>
-                    <th style={{ padding: '4px 2px', borderRight: '1px solid #d1d5db', width: '34px', textAlign: 'center', whiteSpace: 'nowrap' }}>월/일</th>
-                    <th style={{ padding: '4px 4px', borderRight: '1px solid #d1d5db', textAlign: 'left', whiteSpace: 'nowrap' }}>품목명</th>
-                    <th style={{ padding: '4px 3px', borderRight: '1px solid #d1d5db', width: '65px', textAlign: 'left', whiteSpace: 'nowrap' }}>규격/현장</th>
-                    <th style={{ padding: '4px 2px', borderRight: '1px solid #d1d5db', width: '28px', textAlign: 'center', whiteSpace: 'nowrap' }}>수량</th>
-                    <th style={{ padding: '4px 3px', borderRight: '1px solid #d1d5db', width: '56px', textAlign: 'right', whiteSpace: 'nowrap' }}>단가</th>
-                    <th style={{ padding: '4px 3px', borderRight: '1px solid #d1d5db', width: '66px', textAlign: 'right', whiteSpace: 'nowrap' }}>공급가액</th>
-                    <th style={{ padding: '4px 3px', borderRight: '1px solid #d1d5db', width: '56px', textAlign: 'right', whiteSpace: 'nowrap' }}>세액</th>
-                    <th style={{ padding: '4px 3px', width: '50px', textAlign: 'left', whiteSpace: 'nowrap' }}>비고</th>
+                    <th style={{ padding: '4px 2px', borderRight: '1px solid #d1d5db', width: '34px', textAlign: 'center', whiteSpace: 'nowrap', color: '#111827', backgroundColor: '#e5e7eb' }}>월/일</th>
+                    <th style={{ padding: '4px 4px', borderRight: '1px solid #d1d5db', textAlign: 'left', whiteSpace: 'nowrap', color: '#111827', backgroundColor: '#e5e7eb' }}>품목명</th>
+                    <th style={{ padding: '4px 3px', borderRight: '1px solid #d1d5db', width: '65px', textAlign: 'left', whiteSpace: 'nowrap', color: '#111827', backgroundColor: '#e5e7eb' }}>규격/현장</th>
+                    <th style={{ padding: '4px 2px', borderRight: '1px solid #d1d5db', width: '28px', textAlign: 'center', whiteSpace: 'nowrap', color: '#111827', backgroundColor: '#e5e7eb' }}>수량</th>
+                    <th style={{ padding: '4px 3px', borderRight: '1px solid #d1d5db', width: '56px', textAlign: 'right', whiteSpace: 'nowrap', color: '#111827', backgroundColor: '#e5e7eb' }}>단가</th>
+                    <th style={{ padding: '4px 3px', borderRight: '1px solid #d1d5db', width: '66px', textAlign: 'right', whiteSpace: 'nowrap', color: '#111827', backgroundColor: '#e5e7eb' }}>공급가액</th>
+                    <th style={{ padding: '4px 3px', borderRight: '1px solid #d1d5db', width: '56px', textAlign: 'right', whiteSpace: 'nowrap', color: '#111827', backgroundColor: '#e5e7eb' }}>세액</th>
+                    <th style={{ padding: '4px 3px', width: '50px', textAlign: 'left', whiteSpace: 'nowrap', color: '#111827', backgroundColor: '#e5e7eb' }}>비고</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1190,28 +1343,28 @@ export const BillingInvoiceTab: React.FC = () => {
                     const item = statementItems[idx];
                     return (
                       <tr key={idx} style={{ height: '22px', borderBottom: '1px solid #e5e7eb' }}>
-                        <td style={{ padding: '2px 2px', borderRight: '1px solid #e5e7eb', textAlign: 'center', color: '#6b7280', whiteSpace: 'nowrap' }}>
+                        <td style={{ padding: '2px 2px', borderRight: '1px solid #e5e7eb', textAlign: 'center', color: '#374151', whiteSpace: 'nowrap' }}>
                           {item ? item.date : ''}
                         </td>
                         <td style={{ padding: '2px 4px', borderRight: '1px solid #e5e7eb', fontWeight: item ? 600 : 400, color: '#111827', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={item?.itemName}>
                           {item ? item.itemName : ''}
                         </td>
-                        <td style={{ padding: '2px 3px', borderRight: '1px solid #e5e7eb', color: '#4b5563', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={item?.spec}>
+                        <td style={{ padding: '2px 3px', borderRight: '1px solid #e5e7eb', color: '#374151', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={item?.spec}>
                           {item ? item.spec : ''}
                         </td>
-                        <td style={{ padding: '2px 2px', borderRight: '1px solid #e5e7eb', textAlign: 'center', whiteSpace: 'nowrap' }}>
+                        <td style={{ padding: '2px 2px', borderRight: '1px solid #e5e7eb', textAlign: 'center', color: '#111827', whiteSpace: 'nowrap' }}>
                           {item ? item.qty : ''}
                         </td>
-                        <td style={{ padding: '2px 3px', borderRight: '1px solid #e5e7eb', textAlign: 'right', color: '#4b5563', whiteSpace: 'nowrap' }}>
+                        <td style={{ padding: '2px 3px', borderRight: '1px solid #e5e7eb', textAlign: 'right', color: '#374151', whiteSpace: 'nowrap' }}>
                           {item ? item.unitPrice.toLocaleString() : ''}
                         </td>
-                        <td style={{ padding: '2px 3px', borderRight: '1px solid #e5e7eb', textAlign: 'right', fontWeight: 600, whiteSpace: 'nowrap' }}>
+                        <td style={{ padding: '2px 3px', borderRight: '1px solid #e5e7eb', textAlign: 'right', fontWeight: 600, color: '#111827', whiteSpace: 'nowrap' }}>
                           {item ? item.amount.toLocaleString() : ''}
                         </td>
-                        <td style={{ padding: '2px 3px', borderRight: '1px solid #e5e7eb', textAlign: 'right', color: '#6b7280', whiteSpace: 'nowrap' }}>
+                        <td style={{ padding: '2px 3px', borderRight: '1px solid #e5e7eb', textAlign: 'right', color: '#374151', whiteSpace: 'nowrap' }}>
                           {item ? item.vat.toLocaleString() : ''}
                         </td>
-                        <td style={{ padding: '2px 3px', color: '#6b7280', fontSize: '9px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        <td style={{ padding: '2px 3px', color: '#4b5563', fontSize: '9px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                           {item ? item.memo : ''}
                         </td>
                       </tr>
@@ -1220,16 +1373,16 @@ export const BillingInvoiceTab: React.FC = () => {
                 </tbody>
                 <tfoot>
                   <tr style={{ backgroundColor: '#f3f4f6', borderTop: '2px solid #9ca3af', fontWeight: 700 }}>
-                    <td colSpan={5} style={{ padding: '4px 6px', borderRight: '1px solid #d1d5db', textAlign: 'center', whiteSpace: 'nowrap' }}>
+                    <td colSpan={5} style={{ padding: '4px 6px', borderRight: '1px solid #d1d5db', textAlign: 'center', whiteSpace: 'nowrap', color: '#111827', fontWeight: 800 }}>
                       소계 및 합계
                     </td>
-                    <td style={{ padding: '4px 3px', borderRight: '1px solid #d1d5db', textAlign: 'right', color: '#111827', whiteSpace: 'nowrap' }}>
+                    <td style={{ padding: '4px 3px', borderRight: '1px solid #d1d5db', textAlign: 'right', color: '#111827', whiteSpace: 'nowrap', fontWeight: 700 }}>
                       {accountingSummary.supplyAmount.toLocaleString()}
                     </td>
-                    <td style={{ padding: '4px 3px', borderRight: '1px solid #d1d5db', textAlign: 'right', color: '#6b7280', whiteSpace: 'nowrap' }}>
+                    <td style={{ padding: '4px 3px', borderRight: '1px solid #d1d5db', textAlign: 'right', color: '#111827', whiteSpace: 'nowrap', fontWeight: 700 }}>
                       {accountingSummary.vatAmount.toLocaleString()}
                     </td>
-                    <td style={{ padding: '4px 3px', textAlign: 'right', color: '#1d4ed8', whiteSpace: 'nowrap' }}>
+                    <td style={{ padding: '4px 3px', textAlign: 'right', color: '#111827', whiteSpace: 'nowrap', fontWeight: 800 }}>
                       {accountingSummary.grandTotal.toLocaleString()}
                     </td>
                   </tr>
@@ -1237,7 +1390,7 @@ export const BillingInvoiceTab: React.FC = () => {
               </table>
 
               {/* 하단 입금계좌 및 안내 */}
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '8px', fontSize: '10px', color: '#4b5563' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '8px', fontSize: '10px', color: '#111827' }}>
                 <div><strong>입금계좌:</strong> 신한은행 140-010-007060 (예금주: 주식회사 기연리프트)</div>
                 <div><strong>납기일:</strong> {invoiceDueDate || '협의 (당월말)'}</div>
               </div>
@@ -1457,17 +1610,41 @@ export const BillingInvoiceTab: React.FC = () => {
                           {inv.createdAt ? inv.createdAt.slice(0, 10) : '-'}
                         </td>
                         <td style={{ padding: '6px 10px', whiteSpace: 'nowrap' }}>
-                          <div style={{ display: 'flex', gap: '6px' }}>
+                          <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+                            <button
+                              type="button"
+                              onClick={() => handleDownloadHistoryPdf(inv)}
+                              style={{
+                                padding: '2px 7px', borderRadius: '4px', border: '1px solid var(--border-color)',
+                                backgroundColor: 'var(--bg-secondary)', color: 'var(--text-main)', fontSize: '11px',
+                                cursor: 'pointer', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: '3px'
+                              }}
+                              title="정품 거래명세서 PDF 다운로드"
+                            >
+                              <Download size={11} /> PDF
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleExportHistoryExcel(inv)}
+                              style={{
+                                padding: '2px 7px', borderRadius: '4px', border: '1px solid var(--border-color)',
+                                backgroundColor: 'var(--bg-secondary)', color: 'var(--text-main)', fontSize: '11px',
+                                cursor: 'pointer', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: '3px'
+                              }}
+                              title="정품 거래명세서 엑셀 다운로드"
+                            >
+                              <FileText size={11} /> 엑셀
+                            </button>
                             {inv.status !== 'CANCELLED' && (
                               <button
                                 onClick={() => handleCancelInvoice(inv.id)}
                                 style={{
-                                  padding: '3px 8px', borderRadius: '4px', border: '1px solid #fca5a5',
+                                  padding: '2px 7px', borderRadius: '4px', border: '1px solid #fca5a5',
                                   backgroundColor: 'transparent', color: '#dc2626', fontSize: '11px',
                                   cursor: 'pointer', whiteSpace: 'nowrap'
                                 }}
                               >
-                                통합취소
+                                취소
                               </button>
                             )}
                           </div>

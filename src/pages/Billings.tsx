@@ -65,6 +65,97 @@ export const Billings: React.FC = () => {
     return new Date().toISOString().split('T')[0];
   });
 
+  // ⚡ Z-구텐버그 좌상단 Scope 퀵버튼 기간 설정 핸들러 (전월/당월/익월/최근 3개월/연간)
+  const handleSetWizardPeriod = (type: 'PREV_MONTH' | 'THIS_MONTH' | 'NEXT_MONTH' | 'LAST_3_MONTHS' | 'ALL_YEAR') => {
+    const today = new Date();
+    const y = today.getFullYear();
+    const m = today.getMonth();
+
+    let sDate: string;
+    let eDate: string;
+
+    if (type === 'THIS_MONTH') {
+      const end = new Date(y, m + 1, 0);
+      sDate = `${y}-${String(m + 1).padStart(2, '0')}-01`;
+      eDate = `${y}-${String(m + 1).padStart(2, '0')}-${String(end.getDate()).padStart(2, '0')}`;
+    } else if (type === 'PREV_MONTH') {
+      const prevDate = new Date(y, m - 1, 1);
+      const prevY = prevDate.getFullYear();
+      const prevM = prevDate.getMonth();
+      const end = new Date(prevY, prevM + 1, 0);
+      sDate = `${prevY}-${String(prevM + 1).padStart(2, '0')}-01`;
+      eDate = `${prevY}-${String(prevM + 1).padStart(2, '0')}-${String(end.getDate()).padStart(2, '0')}`;
+    } else if (type === 'NEXT_MONTH') {
+      const nextDate = new Date(y, m + 1, 1);
+      const nextY = nextDate.getFullYear();
+      const nextM = nextDate.getMonth();
+      const end = new Date(nextY, nextM + 1, 0);
+      sDate = `${nextY}-${String(nextM + 1).padStart(2, '0')}-01`;
+      eDate = `${nextY}-${String(nextM + 1).padStart(2, '0')}-${String(end.getDate()).padStart(2, '0')}`;
+    } else if (type === 'LAST_3_MONTHS') {
+      const startDate = new Date(y, m - 2, 1);
+      const startY = startDate.getFullYear();
+      const startM = startDate.getMonth();
+      const end = new Date(y, m + 1, 0);
+      sDate = `${startY}-${String(startM + 1).padStart(2, '0')}-01`;
+      eDate = `${y}-${String(m + 1).padStart(2, '0')}-${String(end.getDate()).padStart(2, '0')}`;
+    } else {
+      sDate = `${y}-01-01`;
+      eDate = `${y}-12-31`;
+    }
+
+    setWizardSearchStartDate(sDate);
+    setWizardSearchEndDate(eDate);
+  };
+
+  const activeQuickPeriod = useMemo<'PREV_MONTH' | 'THIS_MONTH' | 'NEXT_MONTH' | 'LAST_3_MONTHS' | 'ALL_YEAR' | null>(() => {
+    const today = new Date();
+    const y = today.getFullYear();
+    const m = today.getMonth();
+
+    const check = (type: 'PREV_MONTH' | 'THIS_MONTH' | 'NEXT_MONTH' | 'LAST_3_MONTHS' | 'ALL_YEAR') => {
+      let s: string;
+      let e: string;
+      if (type === 'THIS_MONTH') {
+        const end = new Date(y, m + 1, 0);
+        s = `${y}-${String(m + 1).padStart(2, '0')}-01`;
+        e = `${y}-${String(m + 1).padStart(2, '0')}-${String(end.getDate()).padStart(2, '0')}`;
+      } else if (type === 'PREV_MONTH') {
+        const prevDate = new Date(y, m - 1, 1);
+        const prevY = prevDate.getFullYear();
+        const prevM = prevDate.getMonth();
+        const end = new Date(prevY, prevM + 1, 0);
+        s = `${prevY}-${String(prevM + 1).padStart(2, '0')}-01`;
+        e = `${prevY}-${String(prevM + 1).padStart(2, '0')}-${String(end.getDate()).padStart(2, '0')}`;
+      } else if (type === 'NEXT_MONTH') {
+        const nextDate = new Date(y, m + 1, 1);
+        const nextY = nextDate.getFullYear();
+        const nextM = nextDate.getMonth();
+        const end = new Date(nextY, nextM + 1, 0);
+        s = `${nextY}-${String(nextM + 1).padStart(2, '0')}-01`;
+        e = `${nextY}-${String(nextM + 1).padStart(2, '0')}-${String(end.getDate()).padStart(2, '0')}`;
+      } else if (type === 'LAST_3_MONTHS') {
+        const startDate = new Date(y, m - 2, 1);
+        const startY = startDate.getFullYear();
+        const startM = startDate.getMonth();
+        const end = new Date(y, m + 1, 0);
+        s = `${startY}-${String(startM + 1).padStart(2, '0')}-01`;
+        e = `${y}-${String(m + 1).padStart(2, '0')}-${String(end.getDate()).padStart(2, '0')}`;
+      } else {
+        s = `${y}-01-01`;
+        e = `${y}-12-31`;
+      }
+      return wizardSearchStartDate === s && wizardSearchEndDate === e;
+    };
+
+    if (check('THIS_MONTH')) return 'THIS_MONTH';
+    if (check('PREV_MONTH')) return 'PREV_MONTH';
+    if (check('NEXT_MONTH')) return 'NEXT_MONTH';
+    if (check('LAST_3_MONTHS')) return 'LAST_3_MONTHS';
+    if (check('ALL_YEAR')) return 'ALL_YEAR';
+    return null;
+  }, [wizardSearchStartDate, wizardSearchEndDate]);
+
   // 마법사 고객, 계약번호, 현장명 필터 상태
   const [wizardTempCustomerFilter, setWizardTempCustomerFilter] = useState('');
   const [wizardTempContractNoFilter, setWizardTempContractNoFilter] = useState('');
@@ -2748,22 +2839,60 @@ ${currentTenant?.tradeName || currentTenant?.corporateName || '임대인'} 올�
             <div className="card" style={{ margin: 0, marginBottom: '16px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
               <h3 className="card-title" style={{ margin: 0 }}>정산 대상 계약 목록</h3>
               
-              {/* 1행: 마감일 기준 검색 기간 */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                <label style={{ fontSize: '11px', fontWeight: '600', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>마감일 기준 검색 기간</label>
+              {/* 1행: 마감일 기준 검색 기간 (Z-구텐버그 좌상단 Scope 퀵버튼 탑재) */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'nowrap' }}>
+                  <label style={{ fontSize: '11.5px', fontWeight: '700', color: 'var(--text-secondary)', whiteSpace: 'nowrap', flexShrink: 0 }}>
+                    마감일 기준 검색 기간
+                  </label>
+                  <div style={{ display: 'flex', gap: '4px', alignItems: 'center', flexWrap: 'nowrap' }}>
+                    {[
+                      { id: 'PREV_MONTH', label: '전월' },
+                      { id: 'THIS_MONTH', label: '당월' },
+                      { id: 'NEXT_MONTH', label: '익월' },
+                      { id: 'LAST_3_MONTHS', label: '최근 3개월' },
+                      { id: 'ALL_YEAR', label: '연간' }
+                    ].map(btn => {
+                      const isActive = activeQuickPeriod === btn.id;
+                      return (
+                        <button
+                          key={btn.id}
+                          type="button"
+                          onClick={() => handleSetWizardPeriod(btn.id as any)}
+                          style={{
+                            padding: '2px 7px',
+                            fontSize: '11px',
+                            fontWeight: isActive ? 700 : 500,
+                            whiteSpace: 'nowrap',
+                            flexShrink: 0,
+                            borderRadius: '4px',
+                            border: isActive ? '1px solid var(--primary)' : '1px solid var(--border-color)',
+                            backgroundColor: isActive ? 'var(--primary)' : 'var(--bg-app)',
+                            color: isActive ? '#ffffff' : 'var(--text-secondary)',
+                            cursor: 'pointer',
+                            transition: 'all 0.15s ease'
+                          }}
+                        >
+                          {btn.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
                 <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                   <input
                     type="date"
                     value={wizardSearchStartDate}
                     onChange={e => setWizardSearchStartDate(e.target.value)}
-                    style={{ flex: 1, padding: '5px 8px', fontSize: '12.5px', borderRadius: '5px', border: '1px solid var(--border-color)' }}
+                    style={{ flex: 1, padding: '5px 8px', fontSize: '12.5px', borderRadius: '5px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-card)', color: 'var(--text-main)' }}
                   />
                   <span style={{ color: 'var(--text-muted)' }}>~</span>
                   <input
                     type="date"
                     value={wizardSearchEndDate}
                     onChange={e => setWizardSearchEndDate(e.target.value)}
-                    style={{ flex: 1, padding: '5px 8px', fontSize: '12.5px', borderRadius: '5px', border: '1px solid var(--border-color)' }}
+                    style={{ flex: 1, padding: '5px 8px', fontSize: '12.5px', borderRadius: '5px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-card)', color: 'var(--text-main)' }}
                   />
                 </div>
               </div>
@@ -2942,25 +3071,98 @@ ${currentTenant?.tradeName || currentTenant?.corporateName || '임대인'} 올�
                 </div>
 
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', marginBottom: '24px' }}>
-                  {/* 정산 기간 입력 */}
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                    <div>
-                      <label style={{ fontSize: '12px', fontWeight: '600', marginBottom: '4px', display: 'block' }}>정산 시작일</label>
-                      <input
-                        type="date"
-                        value={wizardStartDate}
-                        onChange={e => setWizardStartDate(e.target.value)}
-                        style={{ width: '100%', padding: '8px' }}
-                      />
+                  {/* 정산 기간 입력 (퀵버튼 탑재) */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'nowrap' }}>
+                      <span style={{ fontSize: '12px', fontWeight: '700', color: 'var(--text-primary)' }}>
+                        정산 대상 기간 설정
+                      </span>
+                      <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (selectedContractForWizard.lastBilledPeriodEnd) {
+                              const nextStart = new Date(selectedContractForWizard.lastBilledPeriodEnd);
+                              nextStart.setDate(nextStart.getDate() + 1);
+                              setWizardStartDate(nextStart.toISOString().split('T')[0]);
+                            } else {
+                              setWizardStartDate(selectedContractForWizard.startDate);
+                            }
+                          }}
+                          className="btn-secondary"
+                          style={{ padding: '2px 7px', fontSize: '11px', fontWeight: 600, borderRadius: '4px' }}
+                        >
+                          권장 시작일
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const now = new Date();
+                            const y = now.getFullYear();
+                            const m = now.getMonth();
+                            const end = new Date(y, m + 1, 0);
+                            setWizardStartDate(`${y}-${String(m + 1).padStart(2, '0')}-01`);
+                            setWizardEndDate(`${y}-${String(m + 1).padStart(2, '0')}-${String(end.getDate()).padStart(2, '0')}`);
+                          }}
+                          className="btn-secondary"
+                          style={{ padding: '2px 7px', fontSize: '11px', fontWeight: 600, borderRadius: '4px' }}
+                        >
+                          당월
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const now = new Date();
+                            const y = now.getFullYear();
+                            const m = now.getMonth();
+                            const prevDate = new Date(y, m - 1, 1);
+                            const prevY = prevDate.getFullYear();
+                            const prevM = prevDate.getMonth();
+                            const end = new Date(prevY, prevM + 1, 0);
+                            setWizardStartDate(`${prevY}-${String(prevM + 1).padStart(2, '0')}-01`);
+                            setWizardEndDate(`${prevY}-${String(prevM + 1).padStart(2, '0')}-${String(end.getDate()).padStart(2, '0')}`);
+                          }}
+                          className="btn-secondary"
+                          style={{ padding: '2px 7px', fontSize: '11px', fontWeight: 600, borderRadius: '4px' }}
+                        >
+                          전월
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setWizardStartDate(selectedContractForWizard.startDate);
+                            const endStr = formatContractEndDate(selectedContractForWizard.endDate);
+                            if (endStr && endStr !== '미정') {
+                              setWizardEndDate(selectedContractForWizard.endDate || '');
+                            }
+                          }}
+                          className="btn-secondary"
+                          style={{ padding: '2px 7px', fontSize: '11px', fontWeight: 600, borderRadius: '4px' }}
+                        >
+                          계약 전체
+                        </button>
+                      </div>
                     </div>
-                    <div>
-                      <label style={{ fontSize: '12px', fontWeight: '600', marginBottom: '4px', display: 'block' }}>정산 종료일</label>
-                      <input
-                        type="date"
-                        value={wizardEndDate}
-                        onChange={e => setWizardEndDate(e.target.value)}
-                        style={{ width: '100%', padding: '8px' }}
-                      />
+
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                        <label style={{ fontSize: '11px', fontWeight: '600', color: 'var(--text-secondary)' }}>정산 시작일</label>
+                        <input
+                          type="date"
+                          value={wizardStartDate}
+                          onChange={e => setWizardStartDate(e.target.value)}
+                          style={{ width: '100%', padding: '7px 10px', fontSize: '13px', borderRadius: '6px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-card)', color: 'var(--text-main)' }}
+                        />
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                        <label style={{ fontSize: '11px', fontWeight: '600', color: 'var(--text-secondary)' }}>정산 종료일</label>
+                        <input
+                          type="date"
+                          value={wizardEndDate}
+                          onChange={e => setWizardEndDate(e.target.value)}
+                          style={{ width: '100%', padding: '7px 10px', fontSize: '13px', borderRadius: '6px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-card)', color: 'var(--text-main)' }}
+                        />
+                      </div>
                     </div>
                   </div>
 

@@ -1,8 +1,9 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
 import * as XLSX from 'xlsx';
-import { Clock, Trash2, Download, Search, CheckCircle2, Plus, Minus, RotateCcw, ChevronLeft, ChevronRight, Calendar, List, X } from 'lucide-react';
+import { Clock, Trash2, Download, Search, CheckCircle2, Plus, Minus, RotateCcw, ChevronLeft, ChevronRight, Calendar, List, X, Printer } from 'lucide-react';
 import { User as UserType, Department, db } from '../services/db';
+import { OtApprovalDocumentModal } from '../components/OtApprovalDocumentModal';
 
 const getDayOfWeekKr = (dateStr: string) => {
   if (!dateStr) return '';
@@ -90,6 +91,7 @@ export const OtManagementPage: React.FC = () => {
   } = useApp();
 
   const [toastMessage, setToastMessage] = useState<{ type: 'success' | 'error' | 'warning'; text: string } | null>(null);
+  const [isApprovalDocModalOpen, setIsApprovalDocModalOpen] = useState<boolean>(false);
   const showToast = (text: string, type: 'success' | 'error' | 'warning' = 'success') => {
     setToastMessage({ type, text });
     setTimeout(() => setToastMessage(null), 3500);
@@ -562,14 +564,46 @@ export const OtManagementPage: React.FC = () => {
           </h2>
         </div>
 
-        <button
-          onClick={handleExportExcel}
-          className="btn btn-secondary"
-          style={{ fontSize: '13px', whiteSpace: 'nowrap', backgroundColor: 'rgba(16, 185, 129, 0.12)', color: '#10b981', border: '1px solid rgba(16, 185, 129, 0.3)', fontWeight: 'bold' }}
-        >
-          <Download size={14} style={{ marginRight: '6px' }} />
-          엑셀 다운로드
-        </button>
+        <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'nowrap' }}>
+          <button
+            onClick={() => setIsApprovalDocModalOpen(true)}
+            className="btn btn-primary"
+            style={{
+              fontSize: '13px',
+              whiteSpace: 'nowrap',
+              flexShrink: 0,
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              fontWeight: 'bold',
+              padding: '7px 14px'
+            }}
+          >
+            <Printer size={15} />
+            결재 문서 출력
+          </button>
+
+          <button
+            onClick={handleExportExcel}
+            className="btn btn-secondary"
+            style={{
+              fontSize: '13px',
+              whiteSpace: 'nowrap',
+              flexShrink: 0,
+              backgroundColor: 'rgba(16, 185, 129, 0.12)',
+              color: '#10b981',
+              border: '1px solid rgba(16, 185, 129, 0.3)',
+              fontWeight: 'bold',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              padding: '7px 14px'
+            }}
+          >
+            <Download size={15} />
+            엑셀 다운로드
+          </button>
+        </div>
       </div>
 
       {/* 📊 통계 요약 바 */}
@@ -2095,6 +2129,13 @@ export const OtManagementPage: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* 📄 월간 OT 수당지급용 결재 문서 출력 모달 */}
+      <OtApprovalDocumentModal
+        isOpen={isApprovalDocModalOpen}
+        onClose={() => setIsApprovalDocModalOpen(false)}
+        initialMonth={calMonthPrefix}
+      />
 
       {/* 토스트 알림 팝업 (헌장 5.2) */}
       {toastMessage && (

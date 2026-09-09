@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
 import * as XLSX from 'xlsx';
-import { Clock, Trash2, Download, Search, CheckCircle2, Plus, Minus, RotateCcw } from 'lucide-react';
+import { Clock, Trash2, Download, Search, CheckCircle2, Plus, Minus, RotateCcw, ChevronLeft, ChevronRight, Calendar } from 'lucide-react';
 import { User as UserType } from '../services/db';
 
 const getTodayYmd = () => {
@@ -29,8 +29,6 @@ const OT_REASON_PRESETS = [
   '재고 실사'
 ];
 
-const START_TIME_PRESETS = ['18:00', '19:00', '08:00', '13:00'];
-
 export const OtManagementPage: React.FC = () => {
   const {
     users,
@@ -52,12 +50,54 @@ export const OtManagementPage: React.FC = () => {
   const canSave = hasPermission('ot_management', 'save');
   const isAdmin = currentUser?.role === 'ADMIN' || currentUser?.role === 'MANAGER';
 
-  // OT 연장근무 6단계 등록 폼 상태
+  // OT 연장근무 등록 폼 상태 (기본 시작시간 17:00, 근로시간 1.0시간)
   const [otDate, setOtDate] = useState<string>(getTodayYmd());
   const [otUserId, setOtUserId] = useState(currentUser?.id || '');
-  const [otStartTime, setOtStartTime] = useState('18:00');
+  const [otStartTime, setOtStartTime] = useState('17:00');
   const [otHours, setOtHours] = useState<number>(1.0);
   const [otWorkDetail, setOtWorkDetail] = useState('');
+
+  // 1. 날짜 하루 단위 가감 (-1일 / +1일)
+  const handleDateShift = (deltaDays: number) => {
+    const base = otDate || getTodayYmd();
+    const [y, m, d] = base.split('-').map(Number);
+    const date = new Date(y, m - 1, d);
+    date.setDate(date.getDate() + deltaDays);
+    const ny = date.getFullYear();
+    const nm = String(date.getMonth() + 1).padStart(2, '0');
+    const nd = String(date.getDate()).padStart(2, '0');
+    setOtDate(`${ny}-${nm}-${nd}`);
+  };
+
+  // 날짜 표시 (요일 및 오늘 여부)
+  const getDateDisplayInfo = (ymd: string) => {
+    if (!ymd) return { label: '', isToday: false };
+    const [y, m, d] = ymd.split('-').map(Number);
+    const date = new Date(y, m - 1, d);
+    const days = ['일', '월', '화', '수', '목', '금', '토'];
+    const dayName = days[date.getDay()];
+    const isToday = ymd === getTodayYmd();
+    return { label: `${ymd} (${dayName})`, isToday };
+  };
+
+  // 2. 시작시간 30분 단위 가감 (-30분 / +30분)
+  const handleStartTimeShift = (deltaMinutes: number) => {
+    const [h, m] = (otStartTime || '17:00').split(':').map(Number);
+    let total = h * 60 + m + deltaMinutes;
+    if (total < 0) total += 24 * 60;
+    total = total % (24 * 60);
+    const nh = String(Math.floor(total / 60)).padStart(2, '0');
+    const nm = String(total % 60).padStart(2, '0');
+    setOtStartTime(`${nh}:${nm}`);
+  };
+
+  // 3. 근로시간 30분(0.5h) 단위 가감 (-0.5h / +0.5h)
+  const handleHoursShift = (deltaHours: number) => {
+    setOtHours(prev => {
+      const next = Math.round((prev + deltaHours) * 10) / 10;
+      return Math.max(0.5, Math.min(24, next));
+    });
+  };
 
   // 검색 및 필터
   const [searchQuery, setSearchQuery] = useState('');
@@ -107,6 +147,7 @@ export const OtManagementPage: React.FC = () => {
       const targetUser = users.find(u => u.id === otUserId);
       setOtWorkDetail('');
       setOtHours(1.0);
+      setOtStartTime('17:00');
       showToast(`${targetUser?.name || '임직원'} 님의 OT(${otHours}시간) 내역이 등록되었습니다.`);
     } catch (err: any) {
       showErrorModal(err?.message || 'OT 연장근무 등록 중 오류가 발생했습니다.');
@@ -227,196 +268,372 @@ export const OtManagementPage: React.FC = () => {
 
           <form onSubmit={handleOvertimeSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
             
-            {/* 1. 날짜 지정 */}
+            {/* 1. 날짜 지정 (오늘 중앙, 좌우 < > 하루씩 이동) */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
-              <label style={{ fontSize: '12px', fontWeight: 'bold', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
-                1. 날짜 지정
-              </label>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <label style={{ fontSize: '12px', fontWeight: 'bold', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
+                  1. 날짜 지정
+                </label>
+                {!getDateDisplayInfo(otDate).isToday && (
+                  <button
+                    type="button"
+                    onClick={() => setOtDate(getTodayYmd())}
+                    style={{
+                      fontSize: '11px',
+                      fontWeight: 600,
+                      color: 'var(--primary)',
+                      background: 'none',
+                      border: 'none',
+                      cursor: 'pointer',
+                      textDecoration: 'underline'
+                    }}
+                  >
+                    오늘로 이동
+                  </button>
+                )}
+              </div>
               <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
                 <button
                   type="button"
-                  onClick={() => setOtDate(getTodayYmd())}
-                  className="btn"
+                  onClick={() => handleDateShift(-1)}
+                  className="btn btn-secondary"
                   style={{
-                    fontSize: '11.5px',
-                    padding: '5px 9px',
-                    whiteSpace: 'nowrap',
-                    backgroundColor: otDate === getTodayYmd() ? 'var(--primary)' : 'var(--bg-main)',
-                    color: otDate === getTodayYmd() ? '#fff' : 'var(--text-main)',
-                    border: '1px solid var(--border-color)',
-                    fontWeight: otDate === getTodayYmd() ? 700 : 500
+                    padding: '8px 10px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    backgroundColor: 'var(--bg-main)',
+                    border: '1px solid var(--border-color)'
                   }}
+                  title="이전날 (-1일)"
                 >
-                  오늘
+                  <ChevronLeft size={16} />
                 </button>
+                <div style={{
+                  flex: 1,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '8px',
+                  backgroundColor: 'var(--bg-main)',
+                  border: '1px solid var(--border-color)',
+                  borderRadius: '6px',
+                  padding: '7px 10px',
+                  position: 'relative'
+                }}>
+                  <Calendar size={14} style={{ color: 'var(--primary)', flexShrink: 0 }} />
+                  <span style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-main)', whiteSpace: 'nowrap' }}>
+                    {getDateDisplayInfo(otDate).label}
+                  </span>
+                  {getDateDisplayInfo(otDate).isToday && (
+                    <span style={{
+                      fontSize: '10.5px',
+                      fontWeight: 700,
+                      backgroundColor: 'rgba(16, 185, 129, 0.15)',
+                      color: '#10b981',
+                      padding: '2px 6px',
+                      borderRadius: '4px',
+                      whiteSpace: 'nowrap'
+                    }}>
+                      오늘
+                    </span>
+                  )}
+                  <input
+                    type="date"
+                    required
+                    value={otDate}
+                    onChange={(e) => setOtDate(e.target.value)}
+                    style={{
+                      position: 'absolute',
+                      opacity: 0,
+                      width: '100%',
+                      height: '100%',
+                      left: 0,
+                      top: 0,
+                      cursor: 'pointer'
+                    }}
+                    title="달력으로 날짜 직접 선택"
+                  />
+                </div>
                 <button
                   type="button"
-                  onClick={() => setOtDate(getYesterdayYmd())}
-                  className="btn"
+                  onClick={() => handleDateShift(1)}
+                  className="btn btn-secondary"
                   style={{
-                    fontSize: '11.5px',
-                    padding: '5px 9px',
-                    whiteSpace: 'nowrap',
-                    backgroundColor: otDate === getYesterdayYmd() ? 'var(--primary)' : 'var(--bg-main)',
-                    color: otDate === getYesterdayYmd() ? '#fff' : 'var(--text-main)',
-                    border: '1px solid var(--border-color)',
-                    fontWeight: otDate === getYesterdayYmd() ? 700 : 500
+                    padding: '8px 10px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    backgroundColor: 'var(--bg-main)',
+                    border: '1px solid var(--border-color)'
                   }}
+                  title="다음날 (+1일)"
                 >
-                  어제
+                  <ChevronRight size={16} />
                 </button>
-                <input
-                  type="date"
-                  required
-                  value={otDate}
-                  onChange={(e) => setOtDate(e.target.value)}
-                  className="form-control"
-                  style={{ fontSize: '13px', flex: 1 }}
-                />
               </div>
             </div>
 
-            {/* 2. 대상 임직원 지정 */}
+            {/* 2. 대상 임직원 전체 퀵버튼 */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
-              <label style={{ fontSize: '12px', fontWeight: 'bold', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
-                2. 대상 임직원 지정
-              </label>
-              <select
-                required
-                value={otUserId}
-                onChange={(e) => setOtUserId(e.target.value)}
-                className="form-control"
-                style={{ fontSize: '13px' }}
-              >
-                <option value="">임직원 선택</option>
-                {users.map(u => (
-                  <option key={u.id} value={u.id}>{u.name} ({u.department || '미지정'})</option>
-                ))}
-              </select>
-            </div>
-
-            {/* 3. 시작시간 지정 */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
-              <label style={{ fontSize: '12px', fontWeight: 'bold', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
-                3. 시작시간 지정
-              </label>
-              <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap' }}>
-                <input
-                  type="time"
-                  required
-                  value={otStartTime}
-                  onChange={(e) => setOtStartTime(e.target.value)}
-                  className="form-control"
-                  style={{ fontSize: '13px', width: '120px' }}
-                />
-                <div style={{ display: 'flex', gap: '4px' }}>
-                  {START_TIME_PRESETS.map(time => (
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <label style={{ fontSize: '12px', fontWeight: 'bold', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
+                  2. 대상 임직원 지정
+                </label>
+                {otUserId && (
+                  <span style={{ fontSize: '11px', color: 'var(--primary)', fontWeight: 600, whiteSpace: 'nowrap' }}>
+                    {users.find(u => u.id === otUserId)?.name} 선택됨
+                  </span>
+                )}
+              </div>
+              <div style={{
+                display: 'flex',
+                flexWrap: 'wrap',
+                gap: '5px',
+                maxHeight: '140px',
+                overflowY: 'auto',
+                padding: '8px',
+                backgroundColor: 'var(--bg-main)',
+                borderRadius: '6px',
+                border: '1px solid var(--border-color)'
+              }}>
+                {users.map(u => {
+                  const isSelected = otUserId === u.id;
+                  return (
                     <button
-                      key={time}
+                      key={u.id}
                       type="button"
-                      onClick={() => setOtStartTime(time)}
-                      className="btn"
+                      onClick={() => setOtUserId(u.id)}
                       style={{
-                        fontSize: '11px',
-                        padding: '4px 6px',
+                        fontSize: '12px',
+                        padding: '5px 9px',
+                        borderRadius: '5px',
+                        border: isSelected ? '1px solid var(--primary)' : '1px solid var(--border-color)',
+                        backgroundColor: isSelected ? 'var(--primary)' : 'var(--bg-surface)',
+                        color: isSelected ? '#ffffff' : 'var(--text-main)',
+                        fontWeight: isSelected ? 700 : 500,
                         whiteSpace: 'nowrap',
-                        backgroundColor: otStartTime === time ? 'rgba(59, 130, 246, 0.15)' : 'var(--bg-main)',
-                        color: otStartTime === time ? 'var(--primary)' : 'var(--text-muted)',
-                        border: otStartTime === time ? '1px solid var(--primary)' : '1px solid var(--border-color)',
-                        fontWeight: otStartTime === time ? 700 : 500
+                        flexShrink: 0,
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '4px',
+                        transition: 'all 0.15s ease'
                       }}
                     >
-                      {time}
+                      <span>{u.name}</span>
+                      {u.department && (
+                        <span style={{
+                          fontSize: '10px',
+                          opacity: isSelected ? 0.9 : 0.6,
+                          fontWeight: 400
+                        }}>
+                          ({u.department})
+                        </span>
+                      )}
                     </button>
-                  ))}
-                </div>
+                  );
+                })}
               </div>
             </div>
 
-            {/* 4. 근로시간 설정 (+1시간, +0.5시간 증감) */}
+            {/* 3. 시작시간 지정 (기본 17:00, 좌우 < > 30분씩 가감) */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <label style={{ fontSize: '12px', fontWeight: 'bold', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
+                  3. 시작시간 지정
+                </label>
+                {otStartTime !== '17:00' && (
+                  <button
+                    type="button"
+                    onClick={() => setOtStartTime('17:00')}
+                    style={{
+                      fontSize: '11px',
+                      color: 'var(--text-muted)',
+                      background: 'none',
+                      border: 'none',
+                      cursor: 'pointer',
+                      textDecoration: 'underline'
+                    }}
+                  >
+                    17:00 복귀
+                  </button>
+                )}
+              </div>
+              <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                <button
+                  type="button"
+                  onClick={() => handleStartTimeShift(-30)}
+                  className="btn btn-secondary"
+                  style={{
+                    padding: '8px 12px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    backgroundColor: 'var(--bg-main)',
+                    border: '1px solid var(--border-color)'
+                  }}
+                  title="30분 빼기 (-30m)"
+                >
+                  <ChevronLeft size={16} />
+                </button>
+                <div style={{
+                  flex: 1,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  backgroundColor: 'var(--bg-main)',
+                  border: '1px solid var(--border-color)',
+                  borderRadius: '6px',
+                  padding: '7px 10px',
+                  position: 'relative'
+                }}>
+                  <Clock size={15} style={{ color: 'var(--primary)', marginRight: '8px', flexShrink: 0 }} />
+                  <span style={{ fontSize: '15px', fontWeight: 800, color: 'var(--text-main)', letterSpacing: '1px' }}>
+                    {otStartTime}
+                  </span>
+                  <input
+                    type="time"
+                    required
+                    value={otStartTime}
+                    onChange={(e) => setOtStartTime(e.target.value)}
+                    style={{
+                      position: 'absolute',
+                      opacity: 0,
+                      width: '100%',
+                      height: '100%',
+                      left: 0,
+                      top: 0,
+                      cursor: 'pointer'
+                    }}
+                    title="시작시간 직접 선택"
+                  />
+                </div>
+                <button
+                  type="button"
+                  onClick={() => handleStartTimeShift(30)}
+                  className="btn btn-secondary"
+                  style={{
+                    padding: '8px 12px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    backgroundColor: 'var(--bg-main)',
+                    border: '1px solid var(--border-color)'
+                  }}
+                  title="30분 더하기 (+30m)"
+                >
+                  <ChevronRight size={16} />
+                </button>
+              </div>
+            </div>
+
+            {/* 4. 근로시간 설정 (기본 1.0시간, 좌우 < > 30분단위 가감) */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <label style={{ fontSize: '12px', fontWeight: 'bold', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
                   4. 근로시간 설정
                 </label>
-                <div style={{
-                  fontSize: '14px',
-                  fontWeight: 'bold',
-                  color: 'var(--primary)',
-                  backgroundColor: 'rgba(59, 130, 246, 0.1)',
-                  padding: '2px 8px',
-                  borderRadius: '4px',
-                  border: '1px solid rgba(59, 130, 246, 0.3)'
-                }}>
-                  {otHours.toFixed(1)} 시간
-                </div>
+                {otHours !== 1.0 && (
+                  <button
+                    type="button"
+                    onClick={() => setOtHours(1.0)}
+                    style={{
+                      fontSize: '11px',
+                      color: 'var(--text-muted)',
+                      background: 'none',
+                      border: 'none',
+                      cursor: 'pointer',
+                      textDecoration: 'underline'
+                    }}
+                  >
+                    1.0h 복귀
+                  </button>
+                )}
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' }}>
+              <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
                 <button
                   type="button"
-                  onClick={() => setOtHours(prev => Math.min(24, Math.round((prev + 1.0) * 10) / 10))}
+                  onClick={() => handleHoursShift(-0.5)}
+                  disabled={otHours <= 0.5}
                   className="btn btn-secondary"
                   style={{
-                    fontSize: '12px',
-                    padding: '6px 8px',
-                    fontWeight: 700,
-                    backgroundColor: 'rgba(16, 185, 129, 0.1)',
-                    color: '#10b981',
-                    border: '1px solid rgba(16, 185, 129, 0.3)',
+                    padding: '8px 12px',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
-                    gap: '4px'
-                  }}
-                >
-                  <Plus size={13} /> +1시간
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setOtHours(prev => Math.min(24, Math.round((prev + 0.5) * 10) / 10))}
-                  className="btn btn-secondary"
-                  style={{
-                    fontSize: '12px',
-                    padding: '6px 8px',
-                    fontWeight: 700,
-                    backgroundColor: 'rgba(59, 130, 246, 0.1)',
-                    color: 'var(--primary)',
-                    border: '1px solid rgba(59, 130, 246, 0.3)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: '4px'
-                  }}
-                >
-                  <Plus size={13} /> +0.5시간
-                </button>
-              </div>
-
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' }}>
-                <button
-                  type="button"
-                  onClick={() => setOtHours(prev => Math.max(0.5, Math.round((prev - 0.5) * 10) / 10))}
-                  className="btn btn-secondary"
-                  style={{
-                    fontSize: '11px',
-                    padding: '5px 8px',
-                    color: 'var(--text-muted)',
+                    backgroundColor: 'var(--bg-main)',
                     border: '1px solid var(--border-color)',
+                    opacity: otHours <= 0.5 ? 0.35 : 1,
+                    cursor: otHours <= 0.5 ? 'not-allowed' : 'pointer'
+                  }}
+                  title="0.5시간 빼기 (-30m)"
+                >
+                  <ChevronLeft size={16} />
+                </button>
+                <div style={{
+                  flex: 1,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  backgroundColor: 'rgba(59, 130, 246, 0.08)',
+                  border: '1px solid rgba(59, 130, 246, 0.3)',
+                  borderRadius: '6px',
+                  padding: '7px 12px'
+                }}>
+                  <span style={{ fontSize: '16px', fontWeight: 800, color: 'var(--primary)', letterSpacing: '0.5px' }}>
+                    {otHours.toFixed(1)} 시간
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => handleHoursShift(0.5)}
+                  disabled={otHours >= 24}
+                  className="btn btn-secondary"
+                  style={{
+                    padding: '8px 12px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    backgroundColor: 'var(--bg-main)',
+                    border: '1px solid var(--border-color)',
+                    opacity: otHours >= 24 ? 0.35 : 1,
+                    cursor: otHours >= 24 ? 'not-allowed' : 'pointer'
+                  }}
+                  title="0.5시간 더하기 (+30m)"
+                >
+                  <ChevronRight size={16} />
+                </button>
+              </div>
+
+              {/* 보조 단축 버튼 (+1시간, 1.0h 초기화) */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px', marginTop: '2px' }}>
+                <button
+                  type="button"
+                  onClick={() => handleHoursShift(1.0)}
+                  className="btn btn-secondary"
+                  style={{
+                    fontSize: '11.5px',
+                    padding: '5px 8px',
+                    fontWeight: 600,
+                    backgroundColor: 'rgba(16, 185, 129, 0.08)',
+                    color: '#10b981',
+                    border: '1px solid rgba(16, 185, 129, 0.25)',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
                     gap: '4px'
                   }}
                 >
-                  <Minus size={12} /> -0.5시간
+                  <Plus size={12} /> +1시간
                 </button>
                 <button
                   type="button"
                   onClick={() => setOtHours(1.0)}
                   className="btn btn-secondary"
                   style={{
-                    fontSize: '11px',
+                    fontSize: '11.5px',
                     padding: '5px 8px',
                     color: 'var(--text-muted)',
                     border: '1px solid var(--border-color)',

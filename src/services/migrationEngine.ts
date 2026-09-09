@@ -2904,12 +2904,21 @@ export function parseDispatchHistoryText(rawText: string): ParsedDispatchPost[] 
       }
     });
 
-    // 🌟 [21대 전사 표준 안전스펙 키워드 정밀 매칭]
+    // 🌟 [고객 요구사항 순수 통합] 본문 키워드 매칭 사양을 기본 유상옵션(paidOptions)과 기본 보양작업(protection)으로 자동 통합
     const cleanedText = fullContentText.replace(/\s+/g, '');
     STANDARD_SPECS.forEach(spec => {
       const isMatched = spec.keywords.some(kw => cleanedText.includes(kw.replace(/\s+/g, '')));
       if (isMatched) {
         matchedSpecs[spec.id] = true;
+        if (spec.id === 'spec11' || spec.id === 'spec12') {
+          if (!protection.includes(spec.label)) {
+            protection = protection ? `${protection}, ${spec.label}` : spec.label;
+          }
+        } else if (spec.id !== 'spec21') {
+          if (!paidOptions.includes(spec.label)) {
+            paidOptions = paidOptions ? `${paidOptions}, ${spec.label}` : spec.label;
+          }
+        }
       }
     });
 

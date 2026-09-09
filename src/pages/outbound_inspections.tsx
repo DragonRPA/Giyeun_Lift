@@ -274,16 +274,13 @@ export const OutboundInspections: React.FC = () => {
   }, [outboundInspections, contracts, customers, sites, assets, deliveries]);
 
   // ──────────────────────────────────────────────────────────────────────────
-  // 2. 검색, 탭 및 📅 상차일자 기간 범위 필터링
+  // 2-A. 날짜+검색만 적용 (상태 필터 제외) → 탭 카운트용
+  //      사용자가 설정한 기간과 검색어에 해당하는 건만 탭 숫자에 반영
   // ──────────────────────────────────────────────────────────────────────────
-  const filteredGroups = useMemo(() => {
+  const scopedGroups = useMemo(() => {
     return inspectionGroups.filter(g => {
-      if (activeTabStatus !== 'ALL' && g.status !== activeTabStatus) return false;
-
-      // 💡 [사장님 지시] 상차일자(loadingDate) 기준 기간 범위 필터링 적용
       if (startDate && g.loadingDate < startDate) return false;
       if (endDate && g.loadingDate > endDate) return false;
-
       if (!searchQuery) return true;
       const q = searchQuery.toLowerCase();
       return (
@@ -295,7 +292,16 @@ export const OutboundInspections: React.FC = () => {
         g.assets.some(a => a.assetNo.toLowerCase().includes(q))
       );
     });
-  }, [inspectionGroups, activeTabStatus, startDate, endDate, searchQuery]);
+  }, [inspectionGroups, startDate, endDate, searchQuery]);
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // 2-B. 상태 탭 추가 적용 → 실제 리스트 표시용
+  // ──────────────────────────────────────────────────────────────────────────
+  const filteredGroups = useMemo(() => {
+    if (activeTabStatus === 'ALL') return scopedGroups;
+    return scopedGroups.filter(g => g.status === activeTabStatus);
+  }, [scopedGroups, activeTabStatus]);
+
 
   const selectedGroup = useMemo(() => {
     if (!selectedGroupId) return null;
@@ -730,11 +736,11 @@ export const OutboundInspections: React.FC = () => {
       {/* 상태 필터 카운트 탭 */}
       <div style={{ display: 'flex', gap: '8px', marginBottom: '20px', flexWrap: 'wrap' }}>
         {[
-          { key: 'ALL', label: '전체 의뢰 보기', count: inspectionGroups.length },
-          { key: 'PENDING', label: '🟡 접수 대기', count: inspectionGroups.filter(g => g.status === 'PENDING').length },
-          { key: 'IN_PROGRESS', label: '🔵 검수 진행중', count: inspectionGroups.filter(g => g.status === 'IN_PROGRESS').length },
-          { key: 'COMPLETED', label: '🟢 출고 승인 마감', count: inspectionGroups.filter(g => g.status === 'COMPLETED').length },
-          { key: 'REJECTED', label: '🔴 의뢰 반려', count: inspectionGroups.filter(g => g.status === 'REJECTED').length },
+          { key: 'ALL', label: '전체 의뢰 보기', count: scopedGroups.length },
+          { key: 'PENDING', label: '🟡 접수 대기', count: scopedGroups.filter(g => g.status === 'PENDING').length },
+          { key: 'IN_PROGRESS', label: '🔵 검수 진행중', count: scopedGroups.filter(g => g.status === 'IN_PROGRESS').length },
+          { key: 'COMPLETED', label: '🟢 출고 승인 마감', count: scopedGroups.filter(g => g.status === 'COMPLETED').length },
+          { key: 'REJECTED', label: '🔴 의뢰 반려', count: scopedGroups.filter(g => g.status === 'REJECTED').length },
         ].map(tab => (
           <button
             key={tab.key}

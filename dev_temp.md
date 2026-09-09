@@ -1,5 +1,27 @@
 # 개발 요구사항 임시 기록 (dev_temp.md)
 
+## [완료] 법인차량 등록 후 웹앱 주유/운행 등록 차량 선택 동기화 및 WTT 10회 완결 (v1.11.4.Build.16)
+- **요구사항**: "법인차량운행일지 에서 등록된 차량정보를, 웹앱에서 주유 등록할때 선택이 안되는것 같아. 점검. 이 기능의 WTT 10회 수행점검 후 개편하여 ㄹㅇ"
+- **적용 목적 (헌장 1.1 최대 편익, 1.2 사건 무누락 DB 저장, 3.1 무수식어 건조 표준, 3.2 줄바꿈 방지, 5.2 무음 실패 방지, 5.5 WTT 도메인 관통 스트레스 테스트)**:
+  - PC 법인차량운행일지(`VehicleOperationLogPage.tsx`)에서 등록된 법인 차량(`corporateVehicles`) 정보가 현장 직원의 모바일 웹앱(`MobileVehicleLog.tsx`) 주유 영수증 및 운행일지 작성 시 비동기 로딩 타이밍 결함 및 HTML select-state 불일치로 인해 선택이 영구 차단되던 결함을 100% 척결.
+  - 마운트 시 `loadTablesForMenu('vehicle_log')` 동기화 및 로그인 사용자 전담 배정 차량(`primaryDriverId === currentUser.id`) 최우선 핀(`★내 배정차량`), 비활성 차량 `[휴차]` 표기.
+  - 런타임 신규 등록 차량 감지 시 수동 미선택 상태에 대해 자동 동기화(`hasManuallySelectedFuel`, `hasManuallySelectedOp`) 탑재.
+  - 드롭다운 플레이스홀더 및 `RotateCw` [목록 갱신] 원터치 버튼 탑재.
+  - 5대 축 매트릭스 기반 10회 WTT를 수행하여 3대 보존 법칙(차량 매핑 보존, 누적 주행거리 단조 증가 보존, 연비 및 회계 대차대조 보존) 100% 입증 (10/10 PASS).
+- **개편 내역**:
+  1. `src/mobile/pages/MobileVehicleLog.tsx`:
+     - 마운트 시 `loadTablesForMenu('vehicle_log')` 자동 호출로 최신 데이터 보장.
+     - `sortedCorporateVehicles`: 본인 배정 차량 최우선, 가용 차량 우선, 차량번호 오름차순, 휴차 후순위 정렬.
+     - `defaultVehicleId`: 가용 1순위 차량 안전 채번.
+     - `hasManuallySelectedFuel`, `hasManuallySelectedOp` 상태 도입으로 비동기 로딩 완료 또는 신규 차량 등록 시 자동 차량 동기화 및 수동 선택 보존.
+     - `<select>` 드롭다운 플레이스홀더(`등록된 법인 차량이 없습니다`, `-- 차량을 선택해 주십시오 --`) 및 `[목록 갱신]` 원터치 버튼 신설.
+     - `handleSaveFuel` 및 `handleSaveOperation`에 엄격한 차량 유효성 검증 가드 탑재.
+  2. `src/mobile/MobileApp.tsx`:
+     - `onOpenVehicleLog` 호출 시 `loadTablesForMenu('vehicle_log')` 동시 트리거.
+  3. `scratch/run_wtt_10_vehicle_fuel_selection.cjs`:
+     - 5대 축 10회 WTT 관통 스트레스 테스트 스크립트 작성 및 10/10 PASS 입증.
+- **검증 결과**: WTT 10회 전수 통과 (10/10 PASS), TypeScript & Vite 빌드 0 Error 완결.
+
 ## [완료] 정비이력조회 기능 강화, 모델명/현장명 100% 보정 및 WTT 50회 완결 (v1.11.4.Build.15)
 - **요구사항**: "주기장 정비, 현장AS 결과들을 조회할 수 있는 정비이력조회의 기능 강화. 현재 모델명 불일치, 현장명 불일치 이슈. 각 정비 메뉴들이 발생시킨 정보를 모두 볼수 있는 정도로 개편. 어떤것들이 기록되고 있는가를 먼저 확인하고, 설계 전면 개편. 정비이력조회 WTT 50 회 수행하고 개선과제 도출하여 추가개편까지 완료하고 ㄹㅇ"
 - **적용 목적 (헌장 1.1 최대 편익, 1.2 자산 운용 라이프사이클 및 사건 무누락 DB 저장, 3.1 무수식어 건조 표준, 3.2 줄바꿈 방지, 3.4 상하 수직 스택, 3.6 아키타입 결합, 5.5 WTT 도메인 관통 스트레스 테스트)**:

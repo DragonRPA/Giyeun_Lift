@@ -40,7 +40,7 @@ interface MobileAppProps {
 }
 
 export const MobileApp: React.FC<MobileAppProps> = ({ onSwitchToPc: _onSwitchToPc }) => {
-  const { fieldAsTickets, deliveries, outboundInspections, currentUser, assets, customers, billings, currentTenant, contractAssets } = useApp();
+  const { fieldAsTickets, deliveries, outboundInspections, currentUser, assets, customers, billings, currentTenant, contractAssets, loadTablesForMenu } = useApp();
 
   // 전대 장비 주기장 유휴 누수 위험 건수
   const subleaseLeakCount = useMemo(() => {
@@ -250,7 +250,10 @@ export const MobileApp: React.FC<MobileAppProps> = ({ onSwitchToPc: _onSwitchToP
           setIsWalkieModalOpen(true);
         }}
         onOpenApkMonitor={() => setIsApkMonitorOpen(true)}
-        onOpenVehicleLog={() => handleTabChange('vehicle_log')}
+        onOpenVehicleLog={() => {
+          if (loadTablesForMenu) loadTablesForMenu('vehicle_log');
+          handleTabChange('vehicle_log');
+        }}
         isWorking={workStatus?.isWorking ?? false}
         isWorkLoading={workLoading}
         onToggleWork={handleWorkToggle}

@@ -27,7 +27,8 @@ import {
   Building2,
   MapPin,
   Sparkles,
-  Loader2
+  Loader2,
+  RotateCw
 } from 'lucide-react';
 import { analyzeOdometerPhoto, analyzeFuelReceiptPhoto } from '../../services/visionOcrService';
 
@@ -56,18 +57,42 @@ export const MobileVehicleLog: React.FC<MobileVehicleLogProps> = ({ onBack }) =>
     currentUser,
     registerVehicleFuelLog,
     registerVehicleOperationLog,
+    loadTablesForMenu,
+    refreshAllData,
     showErrorModal
   } = useApp();
 
   const [activeTab, setActiveTab] = useState<MobileTab>('FUEL_LOG');
 
-  // 운행자 본인 배정 차량 또는 최근 차량 자동 감지
-  const defaultVehicleId = useMemo(() => {
-    if (!currentUser || corporateVehicles.length === 0) return corporateVehicles[0]?.id || '';
-    const myAssigned = corporateVehicles.find(v => v.primaryDriverId === currentUser.id);
-    if (myAssigned) return myAssigned.id;
-    return corporateVehicles[0]?.id || '';
+  // 모바일 화면 진입 시 최신 법인 차량 및 운행/주유 로그 동기화
+  useEffect(() => {
+    if (loadTablesForMenu) {
+      loadTablesForMenu('vehicle_log');
+    }
+  }, [loadTablesForMenu]);
+
+  // 가용성 및 본인 배정 우선 정렬된 법인 차량 목록
+  const sortedCorporateVehicles = useMemo(() => {
+    return [...(corporateVehicles || [])].sort((a, b) => {
+      // 1. 로그인 사용자 본인 전담 배정 차량 최우선
+      const aMine = a.primaryDriverId && a.primaryDriverId === currentUser?.id ? 1 : 0;
+      const bMine = b.primaryDriverId && b.primaryDriverId === currentUser?.id ? 1 : 0;
+      if (aMine !== bMine) return bMine - aMine;
+      // 2. 가용(Active) 차량 우선
+      const aActive = a.isActive !== false ? 1 : 0;
+      const bActive = b.isActive !== false ? 1 : 0;
+      if (aActive !== bActive) return bActive - aActive;
+      // 3. 차량번호 오름차순
+      return (a.vehicleNo || '').localeCompare(b.vehicleNo || '');
+    });
   }, [corporateVehicles, currentUser]);
+
+  // 운행자 본인 배정 차량 또는 최초 가용 차량 자동 감지 (비동기 지연 로드 방어)
+  const defaultVehicleId = useMemo(() => {
+    if (sortedCorporateVehicles.length === 0) return '';
+    const firstActive = sortedCorporateVehicles.find(v => v.isActive !== false);
+    return firstActive?.id || sortedCorporateVehicles[0]?.id || '';
+  }, [sortedCorporateVehicles]);
 
   // ─────────────────────────────────────────────────────────────
   // 1. 주유 기록 폼 상태
@@ -88,9 +113,33 @@ export const MobileVehicleLog: React.FC<MobileVehicleLogProps> = ({ onBack }) =>
   const [dashboardPhotos, setDashboardPhotos] = useState<string[]>([]);
   const [isSubmittingFuel, setIsSubmittingFuel] = useState<boolean>(false);
 
+  // ─────────────────────────────────────────────────────────────
+  // 2. 운행일지 폼 상태
+  // ─────────────────────────────────────────────────────────────
+  const [opVehicleId, setOpVehicleId] = useState<string>(defaultVehicleId);
+
+  const [hasManuallySelectedFuel, setHasManuallySelectedFuel] = useState<boolean>(false);
+  const [hasManuallySelectedOp, setHasManuallySelectedOp] = useState<boolean>(false);
+
+  // ─────────────────────────────────────────────────────────────
+  // 3. 비동기 로딩 및 신규 차량 등록 시 자동 차량 선택 동기화 (핵심 결함 방어)
+  // ─────────────────────────────────────────────────────────────
+  useEffect(() => {
+    if (sortedCorporateVehicles.length > 0) {
+      // 주유 차량: 수동 미선택이거나 비어있거나 목록에 없으면 기본 차량으로 자동 할당
+      if (!hasManuallySelectedFuel || !fuelVehicleId || !sortedCorporateVehicles.some(v => v.id === fuelVehicleId)) {
+        setFuelVehicleId(defaultVehicleId);
+      }
+      // 운행일지 차량: 수동 미선택이거나 비어있거나 목록에 없으면 기본 차량으로 자동 할당
+      if (!hasManuallySelectedOp || !opVehicleId || !sortedCorporateVehicles.some(v => v.id === opVehicleId)) {
+        setOpVehicleId(defaultVehicleId);
+      }
+    }
+  }, [sortedCorporateVehicles, defaultVehicleId, fuelVehicleId, opVehicleId, hasManuallySelectedFuel, hasManuallySelectedOp]);
+
   // 선택 차량 변경 시 유종 & 현재거리 자동 동기화
   useEffect(() => {
-    const selectedVeh = corporateVehicles.find(v => v.id === fuelVehicleId);
+    const selectedVeh = sortedCorporateVehicles.find(v => v.id === fuelVehicleId);
     if (selectedVeh) {
       if (selectedVeh.fuelType === 'DIESEL') setFuelType('경유');
       else if (selectedVeh.fuelType === 'GASOLINE') setFuelType('휘발유');
@@ -101,12 +150,7 @@ export const MobileVehicleLog: React.FC<MobileVehicleLogProps> = ({ onBack }) =>
         setFuelMileageStr(String(selectedVeh.currentMileage));
       }
     }
-  }, [fuelVehicleId, corporateVehicles]);
-
-  // ─────────────────────────────────────────────────────────────
-  // 2. 운행일지 폼 상태
-  // ─────────────────────────────────────────────────────────────
-  const [opVehicleId, setOpVehicleId] = useState<string>(defaultVehicleId);
+  }, [fuelVehicleId, sortedCorporateVehicles]);
   const [operationDate, setOperationDate] = useState<string>(() => {
     return new Date().toISOString().split('T')[0];
   });
@@ -220,11 +264,11 @@ export const MobileVehicleLog: React.FC<MobileVehicleLogProps> = ({ onBack }) =>
 
   // 운행일지 차량 변경 시 출발거리 자동 입력
   useEffect(() => {
-    const selectedVeh = corporateVehicles.find(v => v.id === opVehicleId);
+    const selectedVeh = sortedCorporateVehicles.find(v => v.id === opVehicleId);
     if (selectedVeh && selectedVeh.currentMileage > 0) {
       setStartMileageStr(String(selectedVeh.currentMileage));
     }
-  }, [opVehicleId, corporateVehicles]);
+  }, [opVehicleId, sortedCorporateVehicles]);
 
   // 주행거리 자동 계산
   const calculatedDriveDistance = useMemo(() => {
@@ -254,8 +298,8 @@ export const MobileVehicleLog: React.FC<MobileVehicleLogProps> = ({ onBack }) =>
     const amount = Number(fuelAmountStr);
     const mileage = Number(fuelMileageStr);
 
-    if (!fuelVehicleId) {
-      showErrorModal('차량을 선택해 주십시오.');
+    if (!fuelVehicleId || !sortedCorporateVehicles.some(v => v.id === fuelVehicleId)) {
+      showErrorModal('주유할 법인 차량을 목록에서 선택해 주십시오.');
       return;
     }
     if (!volume || volume <= 0) {
@@ -275,7 +319,7 @@ export const MobileVehicleLog: React.FC<MobileVehicleLogProps> = ({ onBack }) =>
       return;
     }
 
-    const selectedVeh = corporateVehicles.find(v => v.id === fuelVehicleId);
+    const selectedVeh = sortedCorporateVehicles.find(v => v.id === fuelVehicleId);
     const vehicleNo = selectedVeh ? selectedVeh.vehicleNo : '법인차량';
 
     setIsSubmittingFuel(true);
@@ -322,8 +366,8 @@ export const MobileVehicleLog: React.FC<MobileVehicleLogProps> = ({ onBack }) =>
     const startMileage = Number(startMileageStr);
     const endMileage = Number(endMileageStr);
 
-    if (!opVehicleId) {
-      showErrorModal('차량을 선택해 주십시오.');
+    if (!opVehicleId || !sortedCorporateVehicles.some(v => v.id === opVehicleId)) {
+      showErrorModal('운행할 법인 차량을 목록에서 선택해 주십시오.');
       return;
     }
     if (!departureLocation.trim() || !arrivalLocation.trim()) {
@@ -343,7 +387,7 @@ export const MobileVehicleLog: React.FC<MobileVehicleLogProps> = ({ onBack }) =>
       return;
     }
 
-    const selectedVeh = corporateVehicles.find(v => v.id === opVehicleId);
+    const selectedVeh = sortedCorporateVehicles.find(v => v.id === opVehicleId);
     const vehicleNo = selectedVeh ? selectedVeh.vehicleNo : '법인차량';
     const driveDistance = endMileage - startMileage;
     const isCommute = purposeType === 'COMMUTE';
@@ -488,17 +532,46 @@ export const MobileVehicleLog: React.FC<MobileVehicleLogProps> = ({ onBack }) =>
 
           {/* 차량 선택 */}
           <div className="flex flex-col gap-1">
-            <label className="text-xs font-bold text-slate-300">운행 차량 선택 *</label>
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-bold text-slate-300">운행 차량 선택 *</label>
+              <button
+                type="button"
+                onClick={async () => {
+                  setHasManuallySelectedFuel(false);
+                  if (loadTablesForMenu) await loadTablesForMenu('vehicle_log');
+                  else refreshAllData();
+                }}
+                className="text-[11px] text-amber-400 hover:text-amber-300 flex items-center gap-1 font-semibold"
+                title="차량 목록 갱신"
+              >
+                <RotateCw size={11} />
+                <span>목록 갱신</span>
+              </button>
+            </div>
             <select
               value={fuelVehicleId}
-              onChange={e => setFuelVehicleId(e.target.value)}
+              onChange={e => {
+                setFuelVehicleId(e.target.value);
+                setHasManuallySelectedFuel(true);
+              }}
               className="bg-slate-800 border border-slate-700 text-slate-100 text-sm rounded-lg px-3 py-2.5 focus:outline-none focus:border-amber-500 font-semibold"
             >
-              {corporateVehicles.map(v => (
-                <option key={v.id} value={v.id}>
-                  {v.vehicleNo} - {v.modelName} ({v.assignedDepartment})
-                </option>
-              ))}
+              {sortedCorporateVehicles.length === 0 ? (
+                <option value="">등록된 법인 차량이 없습니다</option>
+              ) : (
+                <>
+                  {!fuelVehicleId && (
+                    <option value="" disabled>
+                      -- 차량을 선택해 주십시오 --
+                    </option>
+                  )}
+                  {sortedCorporateVehicles.map(v => (
+                    <option key={v.id} value={v.id}>
+                      {v.vehicleNo} - {v.modelName} ({v.assignedDepartment}) {!v.isActive ? '[휴차]' : ''} {v.primaryDriverId === currentUser?.id ? '★내 배정차량' : ''}
+                    </option>
+                  ))}
+                </>
+              )}
             </select>
           </div>
 
@@ -673,17 +746,46 @@ export const MobileVehicleLog: React.FC<MobileVehicleLogProps> = ({ onBack }) =>
 
           {/* 차량 선택 */}
           <div className="flex flex-col gap-1">
-            <label className="text-xs font-bold text-slate-300">운행 차량 *</label>
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-bold text-slate-300">운행 차량 *</label>
+              <button
+                type="button"
+                onClick={async () => {
+                  setHasManuallySelectedOp(false);
+                  if (loadTablesForMenu) await loadTablesForMenu('vehicle_log');
+                  else refreshAllData();
+                }}
+                className="text-[11px] text-blue-400 hover:text-blue-300 flex items-center gap-1 font-semibold"
+                title="차량 목록 갱신"
+              >
+                <RotateCw size={11} />
+                <span>목록 갱신</span>
+              </button>
+            </div>
             <select
               value={opVehicleId}
-              onChange={e => setOpVehicleId(e.target.value)}
+              onChange={e => {
+                setOpVehicleId(e.target.value);
+                setHasManuallySelectedOp(true);
+              }}
               className="bg-slate-800 border border-slate-700 text-slate-100 text-sm rounded-lg px-3 py-2.5 focus:outline-none focus:border-blue-500 font-semibold"
             >
-              {corporateVehicles.map(v => (
-                <option key={v.id} value={v.id}>
-                  {v.vehicleNo} - {v.modelName}
-                </option>
-              ))}
+              {sortedCorporateVehicles.length === 0 ? (
+                <option value="">등록된 법인 차량이 없습니다</option>
+              ) : (
+                <>
+                  {!opVehicleId && (
+                    <option value="" disabled>
+                      -- 차량을 선택해 주십시오 --
+                    </option>
+                  )}
+                  {sortedCorporateVehicles.map(v => (
+                    <option key={v.id} value={v.id}>
+                      {v.vehicleNo} - {v.modelName} ({v.assignedDepartment}) {!v.isActive ? '[휴차]' : ''} {v.primaryDriverId === currentUser?.id ? '★내 배정차량' : ''}
+                    </option>
+                  ))}
+                </>
+              )}
             </select>
           </div>
 

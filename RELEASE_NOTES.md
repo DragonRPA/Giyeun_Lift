@@ -1,3 +1,35 @@
+## [v1.11.4.Build.16] - 2026-09-09 14:10
+
+### 🚗 [법인차량 등록 후 웹앱 주유/운행 등록 차량 선택 동기화 및 WTT 10회 완결]
+
+**배경**: PC 법인차량운행일지(`VehicleOperationLogPage.tsx`)에서 새로 등록되거나 관리되는 법인 차량(`corporateVehicles`) 정보가 현장 임직원의 모바일 웹앱(`MobileVehicleLog.tsx`) 주유 영수증 및 운행일지 작성 시 비동기 로딩 타이밍 결함 및 HTML `<select>`-React State 간 불일치로 인해 선택이 영구 차단되던 결함을 100% 척결. 비동기 데이터 로딩 지연 또는 신규 차량 런타임 등록 시에도 수동 미선택 상태를 감지하여 본인 전담 배정 차량으로 즉각 자동 동기화하는 엔진을 구축하고, 5대 축(공간·물리·시간·비용·수량) 매트릭스 기반 WTT 10회를 수행하여 3대 보존 법칙(차량 매핑 보존, 누적 주행거리 단조 증가 보존, 연비 및 회계 대차대조 보존)을 100% 입증.
+
+**개선 내역**:
+1. **모바일 웹앱 화면 진입 시 최신 데이터 동기화**:
+   - `MobileVehicleLog.tsx` 마운트 시 `loadTablesForMenu('vehicle_log')`를 자동 호출하여 Supabase 및 로컬 스토리지의 최신 `corporateVehicles`를 보장.
+   - `MobileApp.tsx`의 `onOpenVehicleLog` 핸들러에서도 `loadTablesForMenu('vehicle_log')`를 동시 트리거.
+2. **가용성 및 본인 배정 최우선 정렬 (`sortedCorporateVehicles` & `defaultVehicleId`)**:
+   - 1순위: 로그인 사용자 본인 전담 배정 차량(`primaryDriverId === currentUser.id`) 최우선 핀 (`★내 배정차량`).
+   - 2순위: 가용(Active) 차량 우선 배치.
+   - 3순위: 차량번호 오름차순 정렬.
+   - 비활성/휴차 차량은 최하단 배치 및 `[휴차]` 태그 명시.
+3. **수동 선택 의도 추적 및 자동 동기화 (`useEffect`)**:
+   - `hasManuallySelectedFuel` 및 `hasManuallySelectedOp` 상태 도입.
+   - 비동기 로딩 지연(초기 빈 배열 도착 후 50~500ms 후 수신) 시 `fuelVehicleId`와 `opVehicleId`를 `defaultVehicleId`로 100% 자동 동기화.
+   - 운행자가 명시적으로 수동 선택한 차량은 이후 백그라운드 리프레시 시에도 보존.
+4. **드롭다운 플레이스홀더 및 `[목록 갱신]` 원터치 버튼 신설 (헌장 3.1 & 3.2)**:
+   - 빈 목록 시: `<option value="">등록된 법인 차량이 없습니다</option>`
+   - 미선택 시: `<option value="" disabled>-- 차량을 선택해 주십시오 --</option>`
+   - 각 옵션에 `차량번호 - 차종 (부서) [휴차/전담]` 정보 가로 1줄 시원한 렌더링 (`white-space: nowrap`).
+   - 주유 및 운행일지 폼 레이블 우측에 `RotateCw` 아이콘의 `[목록 갱신]` 원터치 버튼 탑재.
+5. **엄격한 유효성 검증 가드 (헌장 5.2 무음 실패 방지)**:
+   - `handleSaveFuel` 및 `handleSaveOperation`에서 `!vehicleId || !sortedCorporateVehicles.some(v => v.id === vehicleId)` 체크로 고아/유령 차량 등록 원천 차단.
+6. **WTT 10회 도메인 관통 스트레스 테스트 전수 통과 (10/10 PASS)**:
+   - 5대 축 10회 시나리오 작성 및 집행 (`scratch/run_wtt_10_vehicle_fuel_selection.cjs`).
+   - 차량 매핑 보존, 누적 주행거리 단조 증가 보존, 연비 및 회계 대차대조 보존 무결성 확정.
+
+---
+
 ## [v1.11.4.Build.15] - 2026-09-09 14:05
 
 ### 🛠️ [정비이력조회 기능 강화, 모델명/현장명 100% 보정 및 WTT 50회 완결]

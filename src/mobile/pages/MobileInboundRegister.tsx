@@ -2,7 +2,7 @@
 import React, { useState, useMemo } from 'react';
 import { useApp } from '../../context/AppContext';
 import { CameraUploader } from '../components/CameraUploader';
-import { InboundDefectDetail, Asset } from '../../services/db';
+import { InboundDefectDetail, Asset, InspectionChecklistItem } from '../../services/db';
 import { 
   CheckCircle2, 
   AlertTriangle, 
@@ -13,28 +13,31 @@ import {
   Building2, 
   MapPin, 
   Wrench,
-  ChevronDown
+  ChevronDown,
+  RotateCcw
 } from 'lucide-react';
 
 interface DefectOption {
   id: string;
   name: string;
   score: number;
+  category: string;
 }
 
-const DEFECT_PRESETS: DefectOption[] = [
-  { id: 'CHK-001', name: '외관 파손 및 도색 불량', score: 10 },
-  { id: 'CHK-002', name: '안전 난간 및 확장 데크 변형', score: 20 },
-  { id: 'CHK-003', name: '상하강 및 주행 리미트 오작동', score: 25 },
-  { id: 'CHK-004', name: '과상승 감지봉 파손', score: 15 },
-  { id: 'CHK-005', name: '협착 방지봉 센서 파손', score: 15 },
-  { id: 'CHK-006', name: '조작부 비상정지 스위치 불량', score: 20 },
-  { id: 'CHK-007', name: '조종기 리모컨 및 케이블 불량', score: 25 },
-  { id: 'CHK-008', name: '배터리 방전 및 셀 불량', score: 30 },
-  { id: 'CHK-009', name: '유압 라인 누유 및 실린더 결함', score: 30 },
-  { id: 'CHK-010', name: '타이어 파손 및 휠 볼트 풀림', score: 20 },
-  { id: 'CHK-011', name: '충전선 파손 및 전원 플러그 불량', score: 15 },
-  { id: 'CHK-012', name: '하부 컨트롤러 수동 하강 불량', score: 25 },
+// 🛡️ [안전 폴백] DB 점검항목 미등록 시 비상 대비 기본 시드
+const FALLBACK_DEFECT_PRESETS: DefectOption[] = [
+  { id: 'CHK-001', name: '외관 파손 및 도색 불량', score: 10, category: '외관/바디' },
+  { id: 'CHK-002', name: '안전 난간 및 확장 데크 변형', score: 20, category: '외관/바디' },
+  { id: 'CHK-003', name: '상하강 및 주행 리미트 오작동', score: 25, category: '조작계통' },
+  { id: 'CHK-004', name: '과상승 감지봉 파손', score: 15, category: '안전장치' },
+  { id: 'CHK-005', name: '협착 방지봉 센서 파손', score: 15, category: '안전장치' },
+  { id: 'CHK-006', name: '조작부 비상정지 스위치 불량', score: 20, category: '조작계통' },
+  { id: 'CHK-007', name: '조종기 리모컨 및 케이블 불량', score: 25, category: '조작계통' },
+  { id: 'CHK-008', name: '배터리 방전 및 셀 불량', score: 30, category: '전기/배터리' },
+  { id: 'CHK-009', name: '유압 라인 누유 및 실린더 결함', score: 30, category: '유압/동력' },
+  { id: 'CHK-010', name: '타이어 파손 및 휠 볼트 풀림', score: 20, category: '주행/섀시' },
+  { id: 'CHK-011', name: '충전선 파손 및 전원 플러그 불량', score: 15, category: '전기/배터리' },
+  { id: 'CHK-012', name: '하부 컨트롤러 수동 하강 불량', score: 25, category: '조작계통' },
 ];
 
 interface MobileInboundRegisterProps {
@@ -46,13 +49,24 @@ export const MobileInboundRegister: React.FC<MobileInboundRegisterProps> = ({
   onSuccess,
   onBack,
 }) => {
-  const { assets, contractAssets, contracts, customers, sites, registerInboundAsset, showErrorModal } = useApp();
+  const { 
+    assets, 
+    contractAssets, 
+    contracts, 
+    customers, 
+    sites, 
+    inspectionChecklistItems,
+    registerInboundAsset, 
+    showErrorModal 
+  } = useApp();
 
   // 기본 상태값
   const [selectedAssetId, setSelectedAssetId] = useState<string>('');
   const [returnDate, setReturnDate] = useState<string>(() => new Date().toISOString().split('T')[0]);
   const [isInboundGood, setIsInboundGood] = useState<boolean>(true); // true: 정상, false: 불량/정비필요
   const [selectedDefects, setSelectedDefects] = useState<string[]>([]); // CHK-001 등 id 리스트
+  const [selectedCategory, setSelectedCategory] = useState<string>('전체');
+  const [defectSearchQuery, setDefectSearchQuery] = useState<string>('');
   const [otherDefectText, setOtherDefectText] = useState<string>('');
   const [memo, setMemo] = useState<string>('');
   const [photos, setPhotos] = useState<string[]>([]);
@@ -63,7 +77,42 @@ export const MobileInboundRegister: React.FC<MobileInboundRegisterProps> = ({
   const [isAssetSheetOpen, setIsAssetSheetOpen] = useState<boolean>(false);
   const [assetSearchQuery, setAssetSearchQuery] = useState<string>('');
 
-  // 1. 대여중 / 회수 대상 자산 목록 (RENTED 우선, 그 외 전체)
+  // 1. 점검 마스터 항목 (SSOT 연동: inspectionChecklistItems 우선 구독)
+  const availableDefects: DefectOption[] = useMemo(() => {
+    if (inspectionChecklistItems && inspectionChecklistItems.length > 0) {
+      return inspectionChecklistItems.map((item: InspectionChecklistItem) => ({
+        id: item.id,
+        name: item.name,
+        score: item.score || 10,
+        category: item.category || '기타'
+      }));
+    }
+    return FALLBACK_DEFECT_PRESETS;
+  }, [inspectionChecklistItems]);
+
+  // 카테고리 목록 도출
+  const categories = useMemo(() => {
+    const cats = Array.from(new Set(availableDefects.map(d => d.category)));
+    return ['전체', ...cats];
+  }, [availableDefects]);
+
+  // 필터링된 불량 항목 목록
+  const displayedDefects = useMemo(() => {
+    let list = availableDefects;
+    if (selectedCategory !== '전체') {
+      list = list.filter(d => d.category === selectedCategory);
+    }
+    if (defectSearchQuery.trim()) {
+      const q = defectSearchQuery.trim().toLowerCase();
+      list = list.filter(d => 
+        d.name.toLowerCase().includes(q) || 
+        d.category.toLowerCase().includes(q)
+      );
+    }
+    return list;
+  }, [availableDefects, selectedCategory, defectSearchQuery]);
+
+  // 2. 대여중 / 회수 대상 자산 목록 (RENTED 우선, 그 외 전체)
   const candidateAssets = useMemo(() => {
     return assets.map(a => {
       const ca = contractAssets.find(c => c.assetId === a.id && c.status === 'RENTED') ||
@@ -75,6 +124,7 @@ export const MobileInboundRegister: React.FC<MobileInboundRegisterProps> = ({
       return {
         ...a,
         isRented: a.status === 'RENTED' || !!ca,
+        isSublease: a.ownerType === 'RENTED',
         customerName: customer?.name || '미등록 거래처',
         siteName: site?.name || '미등록 현장',
       };
@@ -112,18 +162,24 @@ export const MobileInboundRegister: React.FC<MobileInboundRegisterProps> = ({
     );
   };
 
+  // 선택 초기화
+  const handleClearDefects = () => {
+    setSelectedDefects([]);
+    setOtherDefectText('');
+  };
+
   // 총 정비점수 계산
   const totalDegradationScore = useMemo(() => {
     if (isInboundGood) return 0;
     let score = selectedDefects.reduce((sum, id) => {
-      const p = DEFECT_PRESETS.find(d => d.id === id);
+      const p = availableDefects.find(d => d.id === id);
       return sum + (p ? p.score : 0);
     }, 0);
     if (otherDefectText.trim() && score === 0) {
       score = 10; // 기타 불량 증상만 입력된 경우 기본 10점 부여
     }
     return score;
-  }, [isInboundGood, selectedDefects, otherDefectText]);
+  }, [isInboundGood, selectedDefects, availableDefects, otherDefectText]);
 
   // 등록 제출
   const handleSubmit = async () => {
@@ -139,9 +195,9 @@ export const MobileInboundRegister: React.FC<MobileInboundRegisterProps> = ({
 
     setIsSubmitting(true);
     try {
-      // 불량 디테일 구조 생성
+      // 불량 디테일 구조 생성 (SSOT 마스터 데이터 연동)
       const defectDetails: InboundDefectDetail[] = isInboundGood ? [] : selectedDefects.map(id => {
-        const item = DEFECT_PRESETS.find(d => d.id === id);
+        const item = availableDefects.find(d => d.id === id);
         return {
           checkitemId: id,
           checkitemName: item?.name || id,
@@ -234,56 +290,67 @@ export const MobileInboundRegister: React.FC<MobileInboundRegisterProps> = ({
 
       {/* ── 1. 대상 자산 선택 카드 ── */}
       <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 flex flex-col gap-3 shadow-lg">
-        <div className="flex flex-col gap-1">
-          <label className="text-xs font-bold text-slate-300 flex items-center justify-between">
-            <span className="whitespace-nowrap flex-shrink-0">입고 대상 자산 선택</span>
-            {currentAsset?.isRented && (
-              <span className="text-[11px] font-bold text-sky-400 whitespace-nowrap flex-shrink-0">
-                현재 대여중 장비
-              </span>
-            )}
+        <div className="flex items-center justify-between">
+          <label className="text-xs font-bold text-slate-300 whitespace-nowrap flex-shrink-0">
+            입고 대상 장비
           </label>
-          <button
-            type="button"
-            onClick={() => setIsAssetSheetOpen(true)}
-            className="w-full py-3 px-3.5 rounded-xl bg-slate-950 border border-slate-700 hover:border-slate-600 text-left flex items-center justify-between text-sm active:scale-98 transition-all"
-          >
-            {currentAsset ? (
-              <div className="flex flex-col min-w-0">
-                <div className="flex items-center gap-2">
-                  <span className="font-mono font-black text-emerald-400 text-base">
-                    {currentAsset.assetNo}
-                  </span>
-                  <span className="font-bold text-slate-200 text-xs">
-                    {currentAsset.modelName}
-                  </span>
-                </div>
-                <div className="text-xs text-slate-400 flex items-center gap-2 mt-0.5 truncate">
-                  <span className="truncate">{currentAsset.customerName}</span>
-                  <span>•</span>
-                  <span className="truncate">{currentAsset.siteName}</span>
-                </div>
-              </div>
-            ) : (
-              <span className="text-slate-500 text-xs">터치하여 입고할 자산을 검색·선택하십시오</span>
-            )}
-            <ChevronDown className="w-4 h-4 text-slate-400 flex-shrink-0 ml-2" />
-          </button>
+          {currentAsset && (
+            <div className="flex items-center gap-1.5">
+              {currentAsset.isSublease && (
+                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-purple-900/80 text-purple-300 border border-purple-700 whitespace-nowrap">
+                  타사전대
+                </span>
+              )}
+              <span className={`text-[10px] font-bold px-2 py-0.5 rounded border whitespace-nowrap ${
+                currentAsset.isRented
+                  ? 'bg-sky-950/80 border-sky-800 text-sky-400'
+                  : 'bg-slate-800 border-slate-700 text-slate-400'
+              }`}>
+                {currentAsset.isRented ? '대여중' : currentAsset.status}
+              </span>
+            </div>
+          )}
         </div>
 
+        {/* 자산 선택 버튼 */}
+        <button
+          type="button"
+          onClick={() => setIsAssetSheetOpen(true)}
+          className="w-full py-3 px-3.5 rounded-xl bg-slate-950 border border-slate-700 hover:border-slate-500 text-left flex items-center justify-between text-sm active:scale-98 transition-all"
+        >
+          {currentAsset ? (
+            <div className="flex flex-col min-w-0">
+              <div className="flex items-center gap-2">
+                <span className="font-mono font-black text-emerald-400 text-base">
+                  #{currentAsset.assetNo}
+                </span>
+                <span className="font-bold text-slate-200 text-xs">
+                  {currentAsset.modelName}
+                </span>
+              </div>
+              <div className="text-xs text-slate-400 flex items-center gap-2 mt-0.5 truncate">
+                <span className="truncate">{currentAsset.customerName}</span>
+                <span>•</span>
+                <span className="truncate">{currentAsset.siteName}</span>
+              </div>
+            </div>
+          ) : (
+            <span className="text-slate-500 text-xs">터치하여 입고할 장비를 검색·선택하십시오</span>
+          )}
+          <ChevronDown className="w-4 h-4 text-slate-400 flex-shrink-0 ml-2" />
+        </button>
+
         {/* 입고 일자 */}
-        <div className="flex flex-col gap-1">
+        <div className="flex flex-col gap-1 pt-1">
           <label className="text-xs font-bold text-slate-300 whitespace-nowrap flex-shrink-0">
             입고 일자
           </label>
-          <div className="relative">
-            <input
-              type="date"
-              value={returnDate}
-              onChange={(e) => setReturnDate(e.target.value)}
-              className="w-full py-2.5 px-3 rounded-xl bg-slate-950 border border-slate-700 text-white text-xs font-mono focus:outline-none focus:border-emerald-500"
-            />
-          </div>
+          <input
+            type="date"
+            value={returnDate}
+            onChange={(e) => setReturnDate(e.target.value)}
+            className="w-full py-2.5 px-3 rounded-xl bg-slate-950 border border-slate-700 text-white text-xs font-mono focus:outline-none focus:border-emerald-500"
+          />
         </div>
       </div>
 
@@ -328,61 +395,138 @@ export const MobileInboundRegister: React.FC<MobileInboundRegisterProps> = ({
         </div>
       </div>
 
-      {/* ── 3. 불량 증상 선택 및 기타 입력 (불량 선택 시에만 표출) ── */}
+      {/* ── 3. 불량 증상 선택 (정비항목관리 SSOT 연동) ── */}
       {!isInboundGood && (
-        <div className="bg-slate-900 border border-rose-500/30 rounded-2xl p-4 flex flex-col gap-4 shadow-xl">
-          {/* 점수 요약 헤더 */}
+        <div className="bg-slate-900 border border-rose-500/30 rounded-2xl p-4 flex flex-col gap-3 shadow-xl">
+          {/* 점수 요약 & 초기화 헤더 */}
           <div className="flex items-center justify-between border-b border-slate-800 pb-2.5">
             <div className="flex items-center gap-2">
               <Wrench className="w-4 h-4 text-rose-400" />
               <span className="text-xs font-bold text-white whitespace-nowrap flex-shrink-0">
-                불량 증상 선택 (다중 선택)
+                정비 불량 증상 선택
+              </span>
+              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-950/80 text-emerald-400 border border-emerald-800">
+                SSOT
               </span>
             </div>
-            <div className="flex items-center gap-1.5">
-              <span className="text-xs text-slate-400 whitespace-nowrap flex-shrink-0">누적 정비점수:</span>
-              <span className="font-mono font-black text-rose-400 text-sm px-2 py-0.5 rounded bg-rose-950/80 border border-rose-800">
-                +{totalDegradationScore}점
-              </span>
+            <div className="flex items-center gap-2">
+              {selectedDefects.length > 0 && (
+                <button
+                  type="button"
+                  onClick={handleClearDefects}
+                  className="px-2 py-0.5 rounded-lg bg-slate-800 text-slate-400 hover:text-white text-[11px] flex items-center gap-1 active:scale-95"
+                >
+                  <RotateCcw className="w-3 h-3" />
+                  초기화
+                </button>
+              )}
+              <div className="flex items-center gap-1">
+                <span className="text-xs text-slate-400 whitespace-nowrap flex-shrink-0">누적:</span>
+                <span className="font-mono font-black text-rose-400 text-sm px-2 py-0.5 rounded bg-rose-950/80 border border-rose-800">
+                  +{totalDegradationScore}점
+                </span>
+              </div>
             </div>
           </div>
 
-          {/* 12대 프리셋 칩 목록 */}
-          <div className="flex flex-wrap gap-2">
-            {DEFECT_PRESETS.map((preset) => {
-              const isChecked = selectedDefects.includes(preset.id);
+          {/* 카테고리 퀵 필터 칩 */}
+          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 no-scrollbar">
+            {categories.map(cat => {
+              const isActive = selectedCategory === cat;
+              // 해당 카테고리에 선택된 항목 수
+              const countInCat = selectedDefects.filter(id => {
+                const item = availableDefects.find(d => d.id === id);
+                return cat === '전체' || item?.category === cat;
+              }).length;
+
               return (
                 <button
-                  key={preset.id}
+                  key={cat}
                   type="button"
-                  onClick={() => handleToggleDefect(preset.id)}
-                  className={`py-2 px-3 rounded-xl border text-xs font-medium flex items-center gap-1.5 transition-all whitespace-nowrap flex-shrink-0 active:scale-95 ${
-                    isChecked
-                      ? 'bg-rose-600/30 border-rose-500 text-white font-bold shadow-md shadow-rose-950'
-                      : 'bg-slate-950 border-slate-800 text-slate-300 hover:bg-slate-800'
+                  onClick={() => setSelectedCategory(cat)}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap flex-shrink-0 transition-all flex items-center gap-1.5 ${
+                    isActive
+                      ? 'bg-rose-600 text-white shadow-md shadow-rose-900/40'
+                      : 'bg-slate-950 text-slate-400 hover:bg-slate-800 border border-slate-800'
                   }`}
                 >
-                  <div className={`w-3.5 h-3.5 rounded flex items-center justify-center ${isChecked ? 'bg-rose-500 text-white' : 'border border-slate-600'}`}>
-                    {isChecked && <Check className="w-3 h-3 stroke-[3]" />}
-                  </div>
-                  <span>{preset.name}</span>
-                  <span className={`text-[10px] font-mono ${isChecked ? 'text-rose-300' : 'text-slate-500'}`}>
-                    +{preset.score}점
-                  </span>
+                  <span>{cat}</span>
+                  {countInCat > 0 && (
+                    <span className="px-1.5 py-0.2 rounded-full bg-white text-rose-600 text-[10px] font-black">
+                      {countInCat}
+                    </span>
+                  )}
                 </button>
               );
             })}
           </div>
 
+          {/* 키워드 검색창 */}
+          <div className="relative">
+            <Search className="w-3.5 h-3.5 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
+            <input
+              type="text"
+              value={defectSearchQuery}
+              onChange={(e) => setDefectSearchQuery(e.target.value)}
+              placeholder="불량 증상 키워드 검색 (예: 누유, 배터리, 센서, 파손 등)"
+              className="w-full py-2 pl-8 pr-3 rounded-xl bg-slate-950 border border-slate-800 text-white text-xs placeholder-slate-500 focus:outline-none focus:border-rose-500"
+            />
+            {defectSearchQuery && (
+              <button
+                type="button"
+                onClick={() => setDefectSearchQuery('')}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white p-0.5"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
+
+          {/* 동적 불량 항목 칩 목록 (SSOT) */}
+          <div className="flex flex-wrap gap-2 max-h-[300px] overflow-y-auto pr-0.5">
+            {displayedDefects.length === 0 ? (
+              <div className="w-full py-6 text-center text-xs text-slate-500">
+                검색된 정비 점검 항목이 없습니다.
+              </div>
+            ) : (
+              displayedDefects.map((preset) => {
+                const isChecked = selectedDefects.includes(preset.id);
+                return (
+                  <button
+                    key={preset.id}
+                    type="button"
+                    onClick={() => handleToggleDefect(preset.id)}
+                    className={`py-2 px-3 rounded-xl border text-xs font-medium flex items-center gap-2 transition-all whitespace-nowrap flex-shrink-0 active:scale-95 ${
+                      isChecked
+                        ? 'bg-rose-600/30 border-rose-500 text-white font-bold shadow-md shadow-rose-950 ring-1 ring-rose-500/50'
+                        : 'bg-slate-950 border-slate-800 text-slate-300 hover:bg-slate-800/80'
+                    }`}
+                  >
+                    <div className={`w-4 h-4 rounded flex items-center justify-center shrink-0 ${isChecked ? 'bg-rose-500 text-white' : 'border border-slate-600'}`}>
+                      {isChecked && <Check className="w-3 h-3 stroke-[3]" />}
+                    </div>
+                    <span className="text-[10.5px] px-1.5 py-0.5 rounded bg-slate-800/80 text-slate-400 font-normal">
+                      {preset.category}
+                    </span>
+                    <span>{preset.name}</span>
+                    <span className={`text-[11px] font-mono font-bold shrink-0 ${isChecked ? 'text-rose-300' : 'text-slate-500'}`}>
+                      +{preset.score}점
+                    </span>
+                  </button>
+                );
+              })
+            )}
+          </div>
+
           {/* 기타 불량 증상 직접 입력 */}
           <div className="flex flex-col gap-1.5 pt-2 border-t border-slate-800">
             <label className="text-xs font-bold text-slate-300 whitespace-nowrap flex-shrink-0">
-              기타 불량 증상 (임의 텍스트 입력)
+              기타 특이 불량 내용 (자유 텍스트 입력)
             </label>
             <textarea
               value={otherDefectText}
               onChange={(e) => setOtherDefectText(e.target.value)}
-              placeholder="체크 항목 외 특이 고장 증상이나 파손 내용을 자유롭게 입력하십시오."
+              placeholder="점검 항목 외 현장 특이 파손이나 고장 증상을 상세히 입력하십시오."
               rows={2}
               className="w-full py-2.5 px-3 rounded-xl bg-slate-950 border border-slate-700 text-white text-xs placeholder-slate-500 focus:outline-none focus:border-rose-500"
             />
@@ -435,7 +579,7 @@ export const MobileInboundRegister: React.FC<MobileInboundRegisterProps> = ({
               ? '입고 저장 처리 중...' 
               : isInboundGood 
                 ? '정상 입고 등록 완료 (임대가능 전환)' 
-                : '불량 입고 등록 완료 (정비의뢰 연동)'}
+                : `불량 입고 등록 완료 (+${totalDegradationScore}점 정비의뢰 연동)`}
           </span>
         </button>
       </div>
@@ -524,11 +668,16 @@ export const MobileInboundRegister: React.FC<MobileInboundRegisterProps> = ({
                     <div className="flex flex-col gap-1 min-w-0">
                       <div className="flex items-center gap-2">
                         <span className="font-mono font-black text-white text-sm">
-                          {asset.assetNo}
+                          #{asset.assetNo}
                         </span>
                         <span className="text-xs font-bold text-slate-300">
                           {asset.modelName}
                         </span>
+                        {asset.isSublease && (
+                          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-purple-900/80 text-purple-300 border border-purple-700 whitespace-nowrap flex-shrink-0">
+                            타사전대
+                          </span>
+                        )}
                         {asset.isRented ? (
                           <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-sky-900/80 text-sky-300 border border-sky-700 whitespace-nowrap flex-shrink-0">
                             대여중

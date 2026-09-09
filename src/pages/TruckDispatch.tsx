@@ -2083,7 +2083,7 @@ export const TruckDispatch: React.FC = () => {
 
   // 2. 배차건 정밀 필터링 (상태 4단계 + 요청/운송일 기간 피커 + 검색어)
   const filteredDeliveries = useMemo(() => {
-    return deliveries.filter(d => {
+    const list = deliveries.filter(d => {
       const dStatus = getNormalizedDeliveryStatus(d);
       if (activeDispatchStatusTab !== 'ALL' && dStatus !== activeDispatchStatusTab) return false;
 
@@ -2103,6 +2103,16 @@ export const TruckDispatch: React.FC = () => {
         (contract && contract.contractNo.toLowerCase().includes(q.toLowerCase())) ||
         (customer && matchHangul(customer.name, q))
       );
+    });
+
+    // 최신 등록순 (createdAt 내림차순, 없으면 loadingDate/requestDate 내림차순) 정렬
+    return list.sort((a, b) => {
+      const timeA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+      const timeB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+      if (timeA !== timeB) return timeB - timeA;
+      const dateA = a.loadingDate || a.requestDate || '';
+      const dateB = b.loadingDate || b.requestDate || '';
+      return dateB.localeCompare(dateA);
     });
   }, [deliveries, activeDispatchStatusTab, startDate, endDate, searchQuery, contracts, customers]);
 

@@ -158,7 +158,9 @@ export const SmartDispatch4: React.FC = () => {
     hasPermission, customers, sites, contacts, currentUser, currentTenant,
     saveSmartDispatch, assets, deliveries, standardOptions,
     printStations, enqueuePrintJob,
-    products = []
+    products = [],
+    setActiveTab: setGlobalActiveTab,
+    refreshAllData
   } = useApp();
 
   const canSave = hasPermission('smart_dispatch', 'save') || hasPermission('delivery', 'save') || hasPermission('smart_dispatch4', 'save');
@@ -200,6 +202,21 @@ export const SmartDispatch4: React.FC = () => {
   // 🚀 [출고의뢰 정식 생성 및 초안 연계 상태]
   const [editingDraftId, setEditingDraftId] = useState<string | null>(null);
   const [isSubmittingDispatch, setIsSubmittingDispatch] = useState<boolean>(false);
+
+  // 🟢 출고 요청 및 배차 등록 완료 모달 상태
+  interface DispatchSuccessInfo {
+    contractId: string;
+    contractNo: string;
+    customerName: string;
+    siteName: string;
+    siteAddress: string;
+    equipments: { modelName: string; qty: number }[];
+    totalQty: number;
+    loadingTime: string;
+    unloadingTime: string;
+    generatedHtml?: string;
+  }
+  const [successModalInfo, setSuccessModalInfo] = useState<DispatchSuccessInfo | null>(null);
 
   // ── 탭 ──────────────────────────────────────────────────────────────────
   const [activeTab, setActiveTab] = useState<ActiveTab>('NEW');
@@ -1535,18 +1552,31 @@ export const SmartDispatch4: React.FC = () => {
           }
         }
 
-        // 🖨️ 등록 완료 즉시 1회 선택된 프린터(원격 큐 또는 브라우저)로 출고요청서 자동 출력
+        // 🖨️ 출고요청서 HTML 생성 (모달에서 즉시 또는 수동 인쇄 가능)
+        let generatedHtmlDoc = '';
         try {
-          const { html, customerName: cName, siteName: sName } = generateDispatchOrderHtml();
-          if (targetStationId === 'BROWSER_DIRECT') {
-            handlePrint(html);
-          } else if (targetStationId) {
-            await handleRemoteQueuePrint(html, cName, sName);
-          }
+          const { html } = generateDispatchOrderHtml();
+          generatedHtmlDoc = html;
         } catch (printErr) {
-          console.error('출고 후 자동 인쇄 오류:', printErr);
+          console.error('출고 HTML 생성 오류:', printErr);
         }
 
+        // 🛡️ 강제 브라우저 인쇄 모달(handlePrint)을 바로 띄워 메인 화면을 가리고 폼이 사라지는 UX 결함 전면 개선:
+        // 성공 확인 전용 모달을 띄워 계약번호, 배차 생성, 이동 링크를 명확히 제시!
+        setSuccessModalInfo({
+          contractId: res.contractId || '',
+          contractNo: res.contractNo || '',
+          customerName: effectiveCustomerName,
+          siteName: effectiveSiteName,
+          siteAddress: effectiveAddress,
+          equipments: equipments.map(eq => ({ modelName: eq.modelName, qty: Math.max(1, Math.floor(Number(eq.qty) || 1)) })),
+          totalQty: equipments.reduce((sum, eq) => sum + Math.max(1, Math.floor(Number(eq.qty) || 1)), 0),
+          loadingTime: fullLoadingTime,
+          unloadingTime: fullUnloadingTime,
+          generatedHtml: generatedHtmlDoc,
+        });
+
+        refreshAllData();
         showToast(`출고 요청이 정식 등록되었습니다! (계약 #${res.contractNo || ''}, 고객사·현장·배차·장비할당 생성 완료)`, 'success');
         resetForm();
         setEditingDraftId(null);
@@ -4823,6 +4853,135 @@ export const SmartDispatch4: React.FC = () => {
               >
                 취소 (서식으로 돌아가기)
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 🟢 출고 요청 및 배차 등록 완료 모달 */}
+      {successModalInfo && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-in fade-in">
+          <div className="bg-slate-900 border border-emerald-500/40 rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden flex flex-col">
+            {/* 헤더 */}
+            <div className="px-5 py-4 bg-emerald-950/40 border-b border-emerald-800/40 flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-full bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-emerald-400">
+                  <Check className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-black text-white m-0 tracking-tight">출고 요청 및 배차 등록 완료</h3>
+                  <p className="text-[11px] text-emerald-400 m-0">계약 체결 및 배차 관리 대장에 정상 등록되었습니다.</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSuccessModalInfo(null)}
+                className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* 본문 요약 카드 */}
+            <div className="p-5 flex flex-col gap-3.5 text-xs">
+              {/* 계약 & 배차 식별 번호 */}
+              <div className="grid grid-cols-2 gap-2.5">
+                <div className="bg-slate-800/80 border border-slate-700/70 p-3 rounded-xl flex flex-col gap-1">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">계약 번호</span>
+                  <span className="text-sm font-black text-blue-400 font-mono">{successModalInfo.contractNo || '생성 완료'}</span>
+                </div>
+                <div className="bg-slate-800/80 border border-slate-700/70 p-3 rounded-xl flex flex-col gap-1">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">배차 상태</span>
+                  <span className="text-sm font-black text-emerald-400 flex items-center gap-1">
+                    <Truck className="w-3.5 h-3.5" /> 배차 요청 등록됨
+                  </span>
+                </div>
+              </div>
+
+              {/* 거래처 및 현장 정보 */}
+              <div className="bg-slate-800/50 border border-slate-750 p-3.5 rounded-xl flex flex-col gap-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-slate-400 font-bold text-[11px]">거래처</span>
+                  <span className="text-white font-bold">{successModalInfo.customerName}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-slate-400 font-bold text-[11px]">투입 현장</span>
+                  <span className="text-slate-200 font-medium">{successModalInfo.siteName}</span>
+                </div>
+                {successModalInfo.siteAddress && (
+                  <div className="flex items-start justify-between gap-2 pt-1 border-t border-slate-750/60">
+                    <span className="text-slate-500 text-[10px] whitespace-nowrap">현장 주소</span>
+                    <span className="text-slate-300 text-[11px] text-right truncate">{successModalInfo.siteAddress}</span>
+                  </div>
+                )}
+              </div>
+
+              {/* 출고 장비 목록 */}
+              <div className="bg-slate-800/50 border border-slate-750 p-3.5 rounded-xl flex flex-col gap-2">
+                <div className="flex items-center justify-between mb-0.5">
+                  <span className="text-slate-400 font-bold text-[11px]">출고 투입 장비</span>
+                  <span className="text-blue-400 font-bold text-xs">총 {successModalInfo.totalQty}대</span>
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {successModalInfo.equipments.map((eq, idx) => (
+                    <span key={idx} className="px-2.5 py-1 rounded-lg bg-blue-950/60 border border-blue-800/60 text-blue-200 text-xs font-mono font-bold">
+                      {eq.modelName} × {eq.qty}대
+                    </span>
+                  ))}
+                </div>
+              </div>
+
+              {/* 다음 진행 안내 */}
+              <div className="bg-blue-950/30 border border-blue-800/30 p-3 rounded-xl flex items-start gap-2 text-blue-300 text-[11px]">
+                <Info className="w-4 h-4 flex-shrink-0 text-blue-400 mt-0.5" />
+                <span>
+                  배차 대장에 출고 의뢰가 정상 등록되었습니다. 배차 관리 대장에서 운송 기사를 배정하거나 출고요청서를 인쇄할 수 있습니다.
+                </span>
+              </div>
+            </div>
+
+            {/* 하단 액션 버튼군 (4단계 Gutenberg Z-패턴 최종 액션) */}
+            <div className="px-5 py-4 bg-slate-950 border-t border-slate-800 flex items-center justify-between gap-2.5">
+              <button
+                type="button"
+                onClick={() => {
+                  if (successModalInfo.generatedHtml) {
+                    if (targetStationId === 'BROWSER_DIRECT') {
+                      handlePrint(successModalInfo.generatedHtml);
+                    } else if (targetStationId) {
+                      handleRemoteQueuePrint(successModalInfo.generatedHtml, successModalInfo.customerName, successModalInfo.siteName);
+                    }
+                  } else {
+                    handlePrintAction();
+                  }
+                }}
+                className="py-2 px-3.5 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-600 text-slate-200 hover:text-white font-bold text-xs transition flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
+              >
+                <Printer className="w-3.5 h-3.5" />
+                <span>출고요청서 인쇄</span>
+              </button>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setSuccessModalInfo(null)}
+                  className="py-2 px-3 rounded-xl text-slate-400 hover:text-slate-200 hover:bg-slate-800/80 font-bold text-xs transition cursor-pointer whitespace-nowrap"
+                >
+                  새 출고 작성
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSuccessModalInfo(null);
+                    setGlobalActiveTab('delivery');
+                  }}
+                  className="py-2 px-4 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-black text-xs transition shadow-lg shadow-blue-900/40 flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
+                >
+                  <Truck className="w-4 h-4" />
+                  <span>배차 관리 대장 이동</span>
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </button>
+              </div>
             </div>
           </div>
         </div>

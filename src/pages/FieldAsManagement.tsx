@@ -2490,6 +2490,8 @@ showToast('밴드 과거 AS 빅데이터 탑재를 시작합니다.');
         const daysInMonth = new Date(calYear, calMonth, 0).getDate();
         const firstDayOfWeek = new Date(calYear, calMonth - 1, 1).getDay();
         const daysArray = Array.from({ length: daysInMonth }, (_, i) => i + 1);
+        const totalWeeks = Math.ceil((firstDayOfWeek + daysInMonth) / 7);
+        const trailingEmptyCount = (totalWeeks * 7) - (firstDayOfWeek + daysInMonth);
 
         const handlePrevMonth = () => {
           let newYear = calYear;
@@ -2526,10 +2528,10 @@ showToast('밴드 과거 AS 빅데이터 탑재를 시작합니다.');
         const selectedDateTickets = calendarMonthData.ticketsByDate[selectedCalDate] || [];
 
         return (
-          <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '16px', height: 'calc(100vh - 170px)' }}>
-            {/* 좌측: 월간 달력 그리드 */}
-            <div className="card" style={{ padding: '16px', display: 'flex', flexDirection: 'column', height: '100%', boxSizing: 'border-box' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', flexWrap: 'wrap', gap: '8px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 380px', gap: '16px', height: 'calc(100vh - 170px)', minHeight: '620px' }}>
+            {/* 좌측: 월간 달력 그리드 (크기 고정 및 6등분 균등 분배) */}
+            <div className="card" style={{ padding: '16px', display: 'flex', flexDirection: 'column', height: '100%', boxSizing: 'border-box', minHeight: 0 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', flexWrap: 'wrap', gap: '8px', flexShrink: 0 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                   <h3 style={{ margin: 0, fontSize: '15px', fontWeight: 800, color: 'var(--text-primary)', whiteSpace: 'nowrap' }}>
                     📅 {calYear}년 {calMonth}월 AS 방문 일정
@@ -2580,7 +2582,7 @@ showToast('밴드 과거 AS 빅데이터 탑재를 시작합니다.');
               </div>
 
               {/* 요일 헤더 */}
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '4px', textAlign: 'center', fontWeight: 700, fontSize: '12px', color: 'var(--text-secondary)', paddingBottom: '6px', borderBottom: '1px solid var(--border-color)' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '6px', textAlign: 'center', fontWeight: 700, fontSize: '12px', color: 'var(--text-secondary)', paddingBottom: '8px', borderBottom: '1px solid var(--border-color)', flexShrink: 0 }}>
                 <div style={{ color: '#ef4444' }}>일</div>
                 <div>월</div>
                 <div>화</div>
@@ -2590,11 +2592,33 @@ showToast('밴드 과거 AS 빅데이터 탑재를 시작합니다.');
                 <div style={{ color: '#3b82f6' }}>토</div>
               </div>
 
-              {/* 날짜 그리드 (O(1) 인덱스 참조로 31일 * 7,600건 루프 완전 제거) */}
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '4px', flex: 1, marginTop: '6px', overflowY: 'auto' }}>
+              {/* 날짜 그리드 (totalWeeks repeat(minmax(0, 1fr)) 고정 격자 분배로 클릭/선택 시에도 1px의 크기 변동 없이 철통 고정) */}
+              <div style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(7, 1fr)',
+                gridTemplateRows: `repeat(${totalWeeks}, minmax(0, 1fr))`,
+                gap: '6px',
+                flex: 1,
+                minHeight: 0,
+                marginTop: '8px'
+              }}>
+                {/* 앞쪽 빈칸 */}
                 {Array.from({ length: firstDayOfWeek }).map((_, idx) => (
-                  <div key={`empty-${idx}`} style={{ backgroundColor: 'transparent' }} />
+                  <div
+                    key={`empty-before-${idx}`}
+                    style={{
+                      borderRadius: '6px',
+                      backgroundColor: 'var(--bg-app)',
+                      opacity: 0.35,
+                      border: '1px dashed var(--border-color)',
+                      boxSizing: 'border-box',
+                      minHeight: 0,
+                      height: '100%'
+                    }}
+                  />
                 ))}
+
+                {/* 실제 날짜 셀 */}
                 {daysArray.map(day => {
                   const dateStr = `${calYear}-${String(calMonth).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
                   const dayTickets = calendarMonthData.ticketsByDate[dateStr] || [];
@@ -2606,29 +2630,41 @@ showToast('밴드 과거 AS 빅데이터 탑재를 시작합니다.');
                       key={day}
                       onClick={() => setSelectedCalDate(dateStr)}
                       style={{
-                        padding: '6px',
+                        padding: '6px 8px',
                         borderRadius: '6px',
-                        border: isSelected ? '2px solid var(--primary)' : '1px solid var(--border-color)',
-                        backgroundColor: isToday ? 'rgba(59, 130, 246, 0.06)' : 'var(--bg-card)',
+                        border: '1.5px solid ' + (isSelected ? 'var(--primary)' : 'var(--border-color)'),
+                        backgroundColor: isSelected
+                          ? 'rgba(59, 130, 246, 0.12)'
+                          : (isToday ? 'rgba(59, 130, 246, 0.05)' : 'var(--bg-card)'),
                         cursor: 'pointer',
                         display: 'flex',
                         flexDirection: 'column',
-                        minHeight: '75px',
-                        boxSizing: 'border-box'
+                        minHeight: 0,
+                        height: '100%',
+                        boxSizing: 'border-box',
+                        overflow: 'hidden',
+                        transition: 'border-color 0.15s, background-color 0.15s'
                       }}
                     >
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
-                        <span style={{ fontSize: '12px', fontWeight: isToday || isSelected ? 800 : 500, color: isToday ? 'var(--primary)' : 'var(--text-primary)' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '3px', flexShrink: 0 }}>
+                        <span style={{ fontSize: '12px', fontWeight: isToday || isSelected ? 800 : 600, color: isToday ? 'var(--primary)' : 'var(--text-primary)' }}>
                           {day}
                         </span>
                         {dayTickets.length > 0 && (
-                          <span style={{ fontSize: '10px', padding: '1px 5px', borderRadius: '8px', backgroundColor: 'rgba(59, 130, 246, 0.15)', color: 'var(--primary)', fontWeight: 700 }}>
+                          <span style={{
+                            fontSize: '10px',
+                            padding: '1px 5px',
+                            borderRadius: '8px',
+                            backgroundColor: isSelected ? 'var(--primary)' : 'rgba(59, 130, 246, 0.15)',
+                            color: isSelected ? '#ffffff' : 'var(--primary)',
+                            fontWeight: 700
+                          }}>
                             {dayTickets.length}건
                           </span>
                         )}
                       </div>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', overflow: 'hidden' }}>
-                        {dayTickets.slice(0, 3).map(t => (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', flex: 1, minHeight: 0, overflow: 'hidden' }}>
+                        {dayTickets.slice(0, 2).map(t => (
                           <div
                             key={t.id}
                             style={{
@@ -2639,19 +2675,39 @@ showToast('밴드 과거 AS 빅데이터 탑재를 시작합니다.');
                               color: t.status === 'COMPLETED' || t.status === 'GUIDED' ? '#166534' : '#92400e',
                               whiteSpace: 'nowrap',
                               overflow: 'hidden',
-                              textOverflow: 'ellipsis'
+                              textOverflow: 'ellipsis',
+                              lineHeight: '14px',
+                              flexShrink: 0
                             }}
                           >
                             {t.siteName || t.assetNo || 'AS건'}
                           </div>
                         ))}
-                        {dayTickets.length > 3 && (
-                          <span style={{ fontSize: '9px', color: 'var(--text-muted)' }}>+{dayTickets.length - 3}건 더보기</span>
+                        {dayTickets.length > 2 && (
+                          <span style={{ fontSize: '9.5px', color: 'var(--text-muted)', lineHeight: '12px', flexShrink: 0 }}>
+                            +{dayTickets.length - 2}건 더보기
+                          </span>
                         )}
                       </div>
                     </div>
                   );
                 })}
+
+                {/* 뒤쪽 빈칸 (월말 후 여백 채움) */}
+                {Array.from({ length: trailingEmptyCount }).map((_, idx) => (
+                  <div
+                    key={`empty-after-${idx}`}
+                    style={{
+                      borderRadius: '6px',
+                      backgroundColor: 'var(--bg-app)',
+                      opacity: 0.35,
+                      border: '1px dashed var(--border-color)',
+                      boxSizing: 'border-box',
+                      minHeight: 0,
+                      height: '100%'
+                    }}
+                  />
+                ))}
               </div>
             </div>
 

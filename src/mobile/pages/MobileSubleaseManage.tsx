@@ -62,7 +62,7 @@ export const MobileSubleaseManage: React.FC<MobileSubleaseManageProps> = ({
   const [newMonthlyRentFee, setNewMonthlyRentFee] = useState<number>(450000);
   const [isRegistering, setIsRegistering] = useState(false);
 
-  // 원사 반납 마감 바텀시트 상태
+  // 임차처 반납 마감 바텀시트 상태
   const [isReturnSheetOpen, setIsReturnSheetOpen] = useState(false);
   const [targetAssetForReturn, setTargetAssetForReturn] = useState<Asset | null>(null);
   const [actualReturnDate, setActualReturnDate] = useState(() => new Date().toISOString().split('T')[0]);
@@ -186,7 +186,7 @@ export const MobileSubleaseManage: React.FC<MobileSubleaseManageProps> = ({
     }
   };
 
-  // 임차처(원사) 공급자 목록 (type === 'RENTAL' 또는 types 포함)
+  // 임차처 공급자 목록 (type === 'RENTAL' 또는 types 포함)
   const rentalVendors = useMemo(() => {
     return vendors.filter(v => v.type === 'RENTAL' || (v.types && v.types.includes('RENTAL')) || v.name.includes('렌탈') || v.name.includes('네트웍스'));
   }, [vendors]);
@@ -204,8 +204,8 @@ export const MobileSubleaseManage: React.FC<MobileSubleaseManageProps> = ({
         const customer = customers.find(cu => cu.id === a.currentCustomerId);
         const site = sites.find(s => s.id === a.currentSiteId);
 
-        // 원사명 결정 (vendorId 또는 renter)
-        let vendorName = a.renter || '원사 미지정';
+        // 임차처명 결정 (vendorId 또는 renter)
+        let vendorName = a.renter || '임차처 미지정';
         if (a.vendorId) {
           const v = vendors.find(item => item.id === a.vendorId);
           if (v) vendorName = v.name;
@@ -218,7 +218,7 @@ export const MobileSubleaseManage: React.FC<MobileSubleaseManageProps> = ({
         // 2. 고객사 현장 가동중: status === 'RENTED'
         const isDeployedToCustomer = a.status === 'RENTED' && !isReturnedToVendor;
 
-        // 3. 🚨 주기장 유휴 누수 위험: 원사에 아직 안 돌려줬는데(미반납), 현장에도 안 나가있는 상태(AVAILABLE or ASSIGNED or REPAIRING)
+        // 3. 🚨 주기장 유휴 누수 위험: 임차처에 아직 안 돌려줬는데(미반납), 현장에도 안 나가있는 상태(AVAILABLE or ASSIGNED or REPAIRING)
         const isIdleLeakRisk = !isReturnedToVendor && !isDeployedToCustomer;
 
         // 유휴 누수 일수 계산 (당일 입고 시 0일 보정 - 과제 10)
@@ -256,7 +256,7 @@ export const MobileSubleaseManage: React.FC<MobileSubleaseManageProps> = ({
       if (statusFilter === 'IDLE' && !item.isIdleLeakRisk) return false;
       if (statusFilter === 'RETURNED' && !item.isReturnedToVendor) return false;
 
-      // 원사 필터
+      // 임차처 필터
       if (selectedVendorFilter !== 'ALL' && item.vendorId !== selectedVendorFilter && item.vendorName !== selectedVendorFilter) {
         return false;
       }

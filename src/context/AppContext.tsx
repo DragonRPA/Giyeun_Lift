@@ -2594,7 +2594,7 @@ ${currentTenant?.corporateName || tenantCorp} 배상
         updatedAt: new Date().toISOString()
       });
     }
-    // 헌장 1.2 무누락 감사 로그: 원사 임차 반입
+    // 헌장 1.2 무누락 감사 로그: 임차처 임차 반입
     if (result) {
       db.insertRow<AssetInOutLog>('assetInOutLogs', {
         assetId: result.id,
@@ -5030,7 +5030,7 @@ ${currentTenant?.corporateName || tenantCorp} 배상
         contractStart: undefined,
         contractEnd: undefined,
         note: appendedNote, // 🌟 자산 정비필요항목(note)에만 정확히 저장
-        // 🌟 memo(일반 자산 비고: 원사/임차처/결제조건 등)는 절대 오염시키지 않고 원본 100% 보존!
+        // 🌟 memo(일반 자산 비고: 임차처/결제조건 등)는 절대 오염시키지 않고 원본 100% 보존!
         updatedAt: nowIso
       };
 

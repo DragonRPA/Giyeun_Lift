@@ -15,7 +15,7 @@ export interface VendorStatementRow {
   unitPrice?: number;     // 단가 (월렌탈료/일단가)
   taxAmount?: number;     // 세액 (V.A.T)
   totalAmount?: number;   // 공급가액 + 세액 (합계)
-  contractNo?: string;    // 원사 계약번호
+  contractNo?: string;    // 임차처 계약번호
   seq?: number;           // 순번
   memo?: string;          // 비고 / 품목 상세명
   itemType: 'EQUIPMENT' | 'REPAIR' | 'OTHER_FEE'; // 장비 렌탈 vs 수리비 vs 청소비/기타 비용
@@ -156,7 +156,7 @@ export function parseVendorStatementExcel(
     return { rows: [], headerRowIndex: -1, totalParsedAmount: 0, totalParsedTax: 0, totalParsedCount: 0 };
   }
 
-  // 2. 공급자(원사) 자동 감지 (파일명 및 상단 공급자 정보 우선 매핑)
+  // 2. 공급자(임차처) 자동 감지 (파일명 및 상단 공급자 정보 우선 매핑)
   let detectedVendor: string | undefined = undefined;
   const headerBlockText = matrix.slice(0, 15).map(r => r.join(' ')).join(' ');
   const combinedVendorSearch = fileName + ' ' + headerBlockText;

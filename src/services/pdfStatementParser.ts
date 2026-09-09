@@ -78,7 +78,7 @@ export async function parsePdfStatement(
     fullDocText += pageLines.join(' ') + ' ';
   }
 
-  // 1. 공급자(원사) 자동 감지
+  // 1. 공급자(임차처) 자동 감지
   let detectedVendor: string | undefined = undefined;
   if (fullDocText.includes('화테') || fileName.includes('화테')) {
     detectedVendor = '(주)화테코리아설비렌탈';

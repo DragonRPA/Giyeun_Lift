@@ -422,7 +422,7 @@ export interface Asset {
   modelName: string;
   assetNo: string; // 관리번호
   vendorId?: string; // 임차처/매입처 외래키
-  vendorAssetNo?: string; // 타사(원사) 원래 관리번호
+  vendorAssetNo?: string; // 타사(임차처) 원래 관리번호
   serialNo?: string; // 제조번호
   manufacturer?: string;
   manufactureYear?: string; // 제조년도 (예: 2023)
@@ -454,7 +454,7 @@ export interface Asset {
   rentEnd?: string;
   monthlyRentFee?: number;
   dailyRentFee?: number;
-  actualRentReturnDate?: string; // 실제 소유원사 반납 처리일
+  actualRentReturnDate?: string; // 실제 소유 임차처 반납 처리일
 
   // 매각 상세
   disposalDate?: string;
@@ -824,7 +824,7 @@ export interface Receivable {
   occurredDate: string;        // 발생일
   status: 'PENDING' | 'PARTIAL' | 'CLEARED';
   repairId?: string;           // 수리비 연동 시 repairs.id
-  vendorName?: string;         // 타사 구상금인 경우 원사명
+  vendorName?: string;         // 타사 구상금인 경우 임차처명
   assetNo?: string;            // 대상 장비번호
   createdAt: string;
   updatedAt: string;
@@ -944,15 +944,15 @@ export interface TransportNegotiation {
 /** 전대 임차 협의 모델 (자산출고부) */
 export interface SubleaseNegotiation {
   id: string;
-  vendorId: string; // 원사(협력사) ID
-  vendorName: string; // 원사 상호명
+  vendorId: string; // 임차처(협력사) ID
+  vendorName: string; // 임차처 상호명
   modelName: string; // 필요 장비 모델
   quantity: number; // 필요 대수
   monthlyRate: number; // 월 임차 단가
   dailyRate?: number; // 일할 단가
   startDate: string; // 임차 희망 시작일
   endDate: string; // 임차 희망 종료일
-  transportPayer: 'VENDOR' | 'OURS' | 'SPLIT'; // 운송비 부담: 원사/당사/각자
+  transportPayer: 'VENDOR' | 'OURS' | 'SPLIT'; // 운송비 부담: 임차처/당사/각자
   status: 'INQUIRY' | 'NEGOTIATING' | 'CONTRACTED' | 'CANCELLED'; // 문의, 협의중, 계약체결, 취소
   targetCustomerId?: string; // 투입 예정 고객사 ID
   targetSiteName?: string; // 투입 예정 현장명

@@ -301,6 +301,13 @@ export const RentAssets: React.FC = () => {
           });
         } else if (Math.abs(diff) > 1000) {
           // 🟡 단가/금액 오차 ➔ 차액
+          const isProrated = row.unitPrice && row.unitPrice !== row.billedAmount;
+          const reasonText = (isProrated && expected === row.unitPrice)
+            ? `일할계산 청구 (월단가 ₩${row.unitPrice.toLocaleString()} ➔ 실청구 ₩${row.billedAmount.toLocaleString()})`
+            : diff > 0 
+              ? `원사 초과청구 (+₩${diff.toLocaleString()})` 
+              : `원사 단가할인 (-₩${Math.abs(diff).toLocaleString()})`;
+
           results.push({
             id: `recon-price-${idx}`,
             status: 'PRICE_MISMATCH',
@@ -310,7 +317,7 @@ export const RentAssets: React.FC = () => {
             matchedAsset: matched,
             priceDiff: diff,
             expectedAmount: expected,
-            reason: diff > 0 ? `원사 초과청구 (+₩${diff.toLocaleString()})` : `원사 단가할인 (-₩${Math.abs(diff).toLocaleString()})`
+            reason: reasonText
           });
         } else {
           // 🟢 완벽 일치 ➔ 일치
@@ -627,7 +634,7 @@ export const RentAssets: React.FC = () => {
       renter: selectedVendor || '외부임차처',
       rentStart: stmt.rentStart || `${selectedYm || new Date().toISOString().slice(0, 7)}-01`,
       rentEnd: stmt.rentEnd || `${selectedYm || new Date().toISOString().slice(0, 7)}-31`,
-      monthlyRentFee: stmt.billedAmount || 0,
+      monthlyRentFee: stmt.unitPrice || stmt.billedAmount || 0,
       createdAt: nowIso,
       updatedAt: nowIso
     };
@@ -1184,6 +1191,7 @@ export const RentAssets: React.FC = () => {
       '관리번호': r.statementRow?.assetNo || r.matchedAsset?.assetNo || '-',
       '임차처 원래번호': r.matchedAsset?.vendorAssetNo || '-',
       '모델명': r.statementRow?.modelName || r.matchedAsset?.modelName || '-',
+      '임차처 월단가': r.statementRow?.unitPrice || r.statementRow?.billedAmount || 0,
       '임차처 청구금액': r.statementRow?.billedAmount || 0,
       '자사 약정금액': r.expectedAmount || 0,
       '대차 차액': r.priceDiff,
@@ -1883,7 +1891,16 @@ export const RentAssets: React.FC = () => {
 
                             {/* 원사 청구금액 (우측) */}
                             <td style={{ padding: '4px 8px', whiteSpace: 'nowrap', textAlign: 'right', fontWeight: 700, borderRight: '1px solid var(--border-color)' }}>
-                              {stmt ? `₩${stmt.billedAmount.toLocaleString()}` : '-'}
+                              {stmt ? (
+                                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', lineHeight: 1.2 }}>
+                                  <span>₩{stmt.billedAmount.toLocaleString()}</span>
+                                  {stmt.unitPrice && stmt.unitPrice !== stmt.billedAmount ? (
+                                    <span style={{ fontSize: '10px', fontWeight: 500, color: 'var(--text-muted)' }}>
+                                      (단가 ₩{stmt.unitPrice.toLocaleString()})
+                                    </span>
+                                  ) : null}
+                                </div>
+                              ) : '-'}
                             </td>
 
                             {/* 오차 */}
@@ -3420,7 +3437,10 @@ export const RentAssets: React.FC = () => {
                     <div><strong>시리얼/제조번호:</strong> {selectedReconcileDetail.statementRow.serialNo || '미기재'}</div>
                     <div><strong>임차처 표기 모델명:</strong> {selectedReconcileDetail.statementRow.modelName || '미기재'}</div>
                     <div><strong>임차처 청구 기간:</strong> <span style={{ color: '#3b82f6', fontWeight: '700' }}>{selectedReconcileDetail.statementRow.rentStart} ~ {selectedReconcileDetail.statementRow.rentEnd}</span></div>
-                    <div><strong>임차처 청구 금액:</strong> <span style={{ color: '#ef4444', fontWeight: '800', fontSize: '14px' }}>₩{selectedReconcileDetail.statementRow.billedAmount.toLocaleString()}원</span></div>
+                    {selectedReconcileDetail.statementRow.unitPrice && (
+                      <div><strong>원사 약정 단가 (월단가):</strong> <span style={{ color: '#6366f1', fontWeight: '700' }}>₩{selectedReconcileDetail.statementRow.unitPrice.toLocaleString()}원</span></div>
+                    )}
+                    <div><strong>임차처 실청구 금액:</strong> <span style={{ color: '#ef4444', fontWeight: '800', fontSize: '14px' }}>₩{selectedReconcileDetail.statementRow.billedAmount.toLocaleString()}원</span></div>
                     <div><strong>임차처 비고/메모:</strong> {selectedReconcileDetail.statementRow.memo || '없음'}</div>
                   </div>
                 ) : (
@@ -3860,6 +3880,9 @@ export const RentAssets: React.FC = () => {
                 <div><span style={{ color: 'var(--text-secondary)' }}>청구 자산번호:</span> <strong>{matchingItem.statementRow.assetNo || '미기재'}</strong></div>
                 <div><span style={{ color: 'var(--text-secondary)' }}>청구 모델:</span> <strong>{matchingItem.statementRow.modelName || '미기재'}</strong></div>
                 <div><span style={{ color: 'var(--text-secondary)' }}>청구 기간:</span> {matchingItem.statementRow.rentStart} ~ {matchingItem.statementRow.rentEnd}</div>
+                {matchingItem.statementRow.unitPrice && matchingItem.statementRow.unitPrice !== matchingItem.statementRow.billedAmount && (
+                  <div><span style={{ color: 'var(--text-secondary)' }}>원사 월단가:</span> <strong style={{ color: '#6366f1' }}>₩{matchingItem.statementRow.unitPrice.toLocaleString()}</strong></div>
+                )}
                 <div><span style={{ color: 'var(--text-secondary)' }}>청구 금액:</span> <strong style={{ color: '#2563eb' }}>₩{matchingItem.statementRow.billedAmount.toLocaleString()}</strong></div>
               </div>
             </div>
@@ -3880,7 +3903,7 @@ export const RentAssets: React.FC = () => {
                 </button>
               </div>
               <div style={{ fontSize: '11.5px', color: 'var(--text-secondary)', lineHeight: '1.4' }}>
-                임차처 청구 명세(자산번호: {matchingItem.statementRow.assetNo || '자동채번'}, 모델: {matchingItem.statementRow.modelName || '기본'}, 약정료: ₩{matchingItem.statementRow.billedAmount.toLocaleString()})를 바탕으로 자사 임차자산 대장에 신규 등록하고 대사를 완결합니다.
+                임차처 청구 명세(자산번호: {matchingItem.statementRow.assetNo || '자동채번'}, 모델: {matchingItem.statementRow.modelName || '기본'}, 월단가: ₩{(matchingItem.statementRow.unitPrice || matchingItem.statementRow.billedAmount).toLocaleString()}, 청구액: ₩{matchingItem.statementRow.billedAmount.toLocaleString()})를 바탕으로 자사 임차자산 대장에 신규 등록하고 대사를 완결합니다.
               </div>
             </div>
 

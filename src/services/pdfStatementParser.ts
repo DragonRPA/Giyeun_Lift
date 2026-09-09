@@ -121,6 +121,7 @@ export async function parsePdfStatement(
       rentStart: `${selectedYm}-01`,
       rentEnd: `${selectedYm}-31`,
       billedAmount: item.amount,
+      unitPrice: item.amount,
       taxAmount: Math.round(item.amount * 0.1),
       totalAmount: item.amount + Math.round(item.amount * 0.1),
       seq: item.seq,
@@ -199,14 +200,21 @@ export async function parsePdfStatement(
         const rentEnd = datesMatchAJ[2];
         const numMatches = cleanLine.match(/[\d,]{4,12}/g);
         let supplyAmount = 0;
+        let unitPrice = 0;
         let taxAmount = 0;
 
-        if (numMatches && numMatches.length >= 2) {
+        if (numMatches && numMatches.length >= 3) {
           taxAmount = parseInt(numMatches[numMatches.length - 1].replace(/,/g, ''), 10);
           supplyAmount = parseInt(numMatches[numMatches.length - 2].replace(/,/g, ''), 10);
+          unitPrice = parseInt(numMatches[numMatches.length - 3].replace(/,/g, ''), 10);
+        } else if (numMatches && numMatches.length >= 2) {
+          taxAmount = parseInt(numMatches[numMatches.length - 1].replace(/,/g, ''), 10);
+          supplyAmount = parseInt(numMatches[numMatches.length - 2].replace(/,/g, ''), 10);
+          unitPrice = supplyAmount;
         } else if (numMatches && numMatches.length === 1) {
           supplyAmount = parseInt(numMatches[0].replace(/,/g, ''), 10);
           taxAmount = Math.round(supplyAmount * 0.1);
+          unitPrice = supplyAmount;
         }
 
         const dateIndex = cleanLine.indexOf(rentStart);
@@ -238,6 +246,7 @@ export async function parsePdfStatement(
             rentStart,
             rentEnd,
             billedAmount: supplyAmount,
+            unitPrice: unitPrice || supplyAmount,
             taxAmount,
             totalAmount: supplyAmount + taxAmount,
             memo: cleanLine,
@@ -260,17 +269,9 @@ export async function parsePdfStatement(
         const modelName = parts[2] || '';
         const assetNo = parts[3] || '';
         const dates = parsePeriodString(parts[4], selectedYm);
-        const numMatches = cleanLine.match(/[\d,]{4,12}/g);
-
-        let supplyAmount = 0;
-        let taxAmount = 0;
-        if (numMatches && numMatches.length >= 3) {
-          taxAmount = parseInt(numMatches[numMatches.length - 2].replace(/,/g, ''), 10);
-          supplyAmount = parseInt(numMatches[numMatches.length - 3].replace(/,/g, ''), 10);
-        } else if (numMatches && numMatches.length >= 1) {
-          supplyAmount = parseInt(numMatches[numMatches.length - 1].replace(/,/g, ''), 10);
-          taxAmount = Math.round(supplyAmount * 0.1);
-        }
+        const unitPrice = parts[7] ? parseInt(parts[7].replace(/,/g, ''), 10) || 0 : 0;
+        const supplyAmount = parts[8] ? parseInt(parts[8].replace(/,/g, ''), 10) || 0 : 0;
+        const taxAmount = parts[9] ? parseInt(parts[9].replace(/,/g, ''), 10) || Math.round(supplyAmount * 0.1) : Math.round(supplyAmount * 0.1);
 
         if (supplyAmount > 0) {
           rows.push({
@@ -280,6 +281,7 @@ export async function parsePdfStatement(
             rentStart: dates.rentStart,
             rentEnd: dates.rentEnd,
             billedAmount: supplyAmount,
+            unitPrice: unitPrice || supplyAmount,
             taxAmount,
             totalAmount: supplyAmount + taxAmount,
             seq,
@@ -314,11 +316,13 @@ export async function parsePdfStatement(
 
         const numMatches = cleanLine.match(/[\d,]{4,12}/g);
         let supplyAmount = 0;
-        if (numMatches && numMatches.length > 0) {
-          const lastNum = numMatches[numMatches.length - 1];
-          if (lastNum) {
-            supplyAmount = parseInt(lastNum.replace(/,/g, ''), 10);
-          }
+        let unitPrice = 0;
+        if (numMatches && numMatches.length >= 2) {
+          supplyAmount = parseInt(numMatches[numMatches.length - 1].replace(/,/g, ''), 10);
+          unitPrice = parseInt(numMatches[numMatches.length - 2].replace(/,/g, ''), 10);
+        } else if (numMatches && numMatches.length === 1) {
+          supplyAmount = parseInt(numMatches[0].replace(/,/g, ''), 10);
+          unitPrice = supplyAmount;
         }
 
         const firstDateIdx = d0 ? cleanLine.indexOf(d0) : -1;
@@ -335,6 +339,7 @@ export async function parsePdfStatement(
             rentStart,
             rentEnd,
             billedAmount: supplyAmount,
+            unitPrice: unitPrice || supplyAmount,
             taxAmount,
             totalAmount: supplyAmount + taxAmount,
             memo: cleanLine,
@@ -354,55 +359,78 @@ export async function parsePdfStatement(
       // =========================================================================
       const assetMatch = cleanLine.match(/\(([A-Z0-9\-]{3,15})\)/i);
       const periodMatch = cleanLine.match(/(\d{2,4}[\/\.\-]\d{1,2}[\/\.\-]\d{1,2}\s*[\~\-]\s*\d{2,4}[\/\.\-]\d{1,2}[\/\.\-]\d{1,2})/);
-      const moneyMatch = cleanLine.match(/([\d,]{4,12})\s*$/);
 
-      if (assetMatch && moneyMatch) {
+      if (assetMatch) {
         const assetNo = assetMatch[1].trim();
         const parts = cleanLine.split(`(${assetMatch[1]})`);
         const modelName = parts[0].replace(/^[\d\s]+/, '').trim();
         const rawPeriod = periodMatch ? periodMatch[1] : '';
         const dates = parsePeriodString(rawPeriod, selectedYm);
-        const billedAmount = parseInt(moneyMatch[1].replace(/,/g, ''), 10);
-        const taxAmount = Math.round(billedAmount * 0.1);
 
-        rows.push({
-          id: `pdf-std-${rows.length + 1}`,
-          assetNo,
-          modelName: modelName || '장비임대료',
-          rentStart: dates.rentStart,
-          rentEnd: dates.rentEnd,
-          billedAmount,
-          taxAmount,
-          totalAmount: billedAmount + taxAmount,
-          memo: cleanLine,
-          itemType: 'EQUIPMENT'
-        });
-        totalParsedAmount += billedAmount;
-        totalParsedTax += taxAmount;
-        return;
+        const numMatches = cleanLine.match(/[\d,]{4,12}/g);
+        let billedAmount = 0;
+        let unitPrice = 0;
+
+        if (numMatches && numMatches.length >= 2) {
+          billedAmount = parseInt(numMatches[numMatches.length - 1].replace(/,/g, ''), 10);
+          unitPrice = parseInt(numMatches[numMatches.length - 2].replace(/,/g, ''), 10);
+        } else if (numMatches && numMatches.length === 1) {
+          billedAmount = parseInt(numMatches[0].replace(/,/g, ''), 10);
+          unitPrice = billedAmount;
+        }
+
+        if (billedAmount > 0) {
+          const taxAmount = Math.round(billedAmount * 0.1);
+          rows.push({
+            id: `pdf-std-${rows.length + 1}`,
+            assetNo,
+            modelName: modelName || '장비임대료',
+            rentStart: dates.rentStart,
+            rentEnd: dates.rentEnd,
+            billedAmount,
+            unitPrice: unitPrice || billedAmount,
+            taxAmount,
+            totalAmount: billedAmount + taxAmount,
+            memo: cleanLine,
+            itemType: 'EQUIPMENT'
+          });
+          totalParsedAmount += billedAmount;
+          totalParsedTax += taxAmount;
+          return;
+        }
       }
 
       // =========================================================================
       // 패턴 5: 포스렌탈 페인트 등 비장비 단독 청구 항목
       // 예: "페인트 오렌지색 1 130,000 130,000"
       // =========================================================================
-      if (!assetMatch && moneyMatch && (cleanLine.includes('페인트') || cleanLine.includes('수리') || cleanLine.includes('청소') || cleanLine.includes('운송'))) {
-        const billedAmount = parseInt(moneyMatch[1].replace(/,/g, ''), 10);
+      const numMatchesFee = cleanLine.match(/[\d,]{4,12}/g);
+      if (!assetMatch && numMatchesFee && numMatchesFee.length > 0 && (cleanLine.includes('페인트') || cleanLine.includes('수리') || cleanLine.includes('청소') || cleanLine.includes('운송'))) {
+        let billedAmount = 0;
+        let unitPrice = 0;
+        if (numMatchesFee.length >= 2) {
+          billedAmount = parseInt(numMatchesFee[numMatchesFee.length - 1].replace(/,/g, ''), 10);
+          unitPrice = parseInt(numMatchesFee[numMatchesFee.length - 2].replace(/,/g, ''), 10);
+        } else {
+          billedAmount = parseInt(numMatchesFee[0].replace(/,/g, ''), 10);
+          unitPrice = billedAmount;
+        }
         const taxAmount = Math.round(billedAmount * 0.1);
         const tokens = cleanLine.split(/\s+/);
         const itemName = tokens[0] + (tokens[1] ? ' ' + tokens[1] : '');
 
         rows.push({
           id: `pdf-fee-${rows.length + 1}`,
-          assetNo: `기타/${tokens[0]}`,
+          assetNo: `기타/${itemName}`,
           modelName: itemName,
           rentStart: `${selectedYm}-01`,
           rentEnd: `${selectedYm}-31`,
           billedAmount,
+          unitPrice: unitPrice || billedAmount,
           taxAmount,
           totalAmount: billedAmount + taxAmount,
           memo: cleanLine,
-          itemType: 'OTHER_FEE'
+          itemType: cleanLine.includes('수리') ? 'REPAIR' : 'OTHER_FEE'
         });
         totalParsedAmount += billedAmount;
         totalParsedTax += taxAmount;

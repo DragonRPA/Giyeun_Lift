@@ -341,6 +341,7 @@ export function parseVendorStatementExcel(
     } else if (rawUnitPrice !== undefined && rawUnitPrice > 0) {
       rawSupplyAmount = rawUnitPrice;
     }
+    const finalUnitPrice = (rawUnitPrice !== undefined && rawUnitPrice > 0) ? rawUnitPrice : rawSupplyAmount;
     const rawTaxAmount = colTaxAmount !== -1 ? parseNumber(rowData[colTaxAmount]) : 0;
     const rawContractNo = colContractNo !== -1 ? parseString(rowData[colContractNo]) : '';
     const rawSeq = colSeq !== -1 ? parseNumber(rowData[colSeq]) : undefined;
@@ -443,7 +444,7 @@ export function parseVendorStatementExcel(
       rentStart: rentStart || `${selectedYm}-01`,
       rentEnd: rentEnd || `${selectedYm}-31`,
       billedAmount: rawSupplyAmount,
-      unitPrice: rawUnitPrice,
+      unitPrice: finalUnitPrice,
       taxAmount: calculatedTax,
       totalAmount: rawSupplyAmount + calculatedTax,
       contractNo: rawContractNo,

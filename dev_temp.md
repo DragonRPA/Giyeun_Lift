@@ -1,5 +1,42 @@
 # 개발 요구사항 임시 기록 (dev_temp.md)
 
+## [완료] 조직도 및 구성원 저장 시 Supabase users 테이블 'department' 컬럼 오류 원천 해결 (v1.12.0.Build.8)
+- **요구사항**: "조직도 변경저장 시 오류. ⚠️ 조직도 및 구성원 저장 중 DB 동기화 오류가 발생했습니다: Could not find the 'department' column of 'users' in the schema cache"
+- **원인 분석**:
+  - 원격 PostgreSQL Supabase DB의 `users` 테이블은 `departmentId` 외래키(FK)를 통해 `departments` 테이블과 정규화 연결되어 있으며 물리적 `department` 컬럼이 부재함.
+  - `saveOrganizationBatch` 및 `sanitizeSupabasePayload`에서 프론트엔드 표기용 필드인 `department`를 Supabase upsert 페이로드에 포함하여 전송함으로써 PostgREST 스키마 캐시 거부 오류 발생.
+- **수정 내역 (`src/services/db.ts`)**:
+  - 1. `saveOrganizationBatch`: `sanitizedUsers` 매핑에서 비실존 컬럼 `department` 제거. 원격 DB 컬럼 불일치 시 2차 Fallback 자동 복구 재시도 탑재.
+  - 2. `sanitizeSupabasePayload`: `tableName === 'users'` 허용 컬럼 화이트리스트에서 `'department'`를 완전 배제하여 일반 `saveUser`, `updateRow`, `insertRow` 시에도 누출 차단.
+  - 3. `fallbackPayload`: 2차 Fallback 삭제 목록에 `delete fallbackPayload.department` 추가.
+- **검증 결과**: `cmd /c "npm run build"` 정적 컴파일 0 Error 완결, `경험.md` (E-069) 기록 완료.
+
+## [완료] 연차신청, OT 관리, 연차관리 메뉴 3단 분리 및 권한 정책 완결 (v1.12.0.Build.8)
+- **요구사항**: "연차신청 메뉴와 OT 관리, 연차관리 메뉴를 모두 분리. 연차신청은 권한 구분 없이 모든 임직원의 공통 기능으로 처리. 연차관리 권한은 급여 권한자와 동일하게 변경. OT 관리는 권한관리에서 통제."
+- **적용 목적 (헌장 1.1 최대 편익, 2.1 R&R, 3.1 무수식어 건조 표준, 3.2 줄바꿈 방지, 3.4 상하 수직 스택, 3.5 Z-패턴, 3.6 아키타입 분리)**:
+  - 1. **3개 메뉴 완전 분리**:
+    - `연차신청` (`leave_application`): 모든 임직원의 기본 공통 기능 (권한 구분 없이 상시 활성화).
+    - `연차관리` (`leave_management`): 급여 권한자(`payroll`)와 100% 동일하게 연동되는 엄격 격리 관리 메뉴 (`grp_management_special` 배치).
+    - `OT 관리` (`ot_management`): 권한관리(`users_permissions`)에서 관리자가 독립적으로 ON/OFF 통제하는 연장근무 관리 메뉴 (`grp_management` 배치).
+  - 2. **RBAC & 권한 엔진 가드 불변원칙 보장**:
+    - `src/config/menu_config.ts` 및 `menuConfig.ts` SSOT 동기화.
+    - `src/config/role_templates.ts`: `BASE_COMMON_PERMISSIONS`에 `leave_application` 등록.
+    - `src/context/AppContext.tsx`: `hasPermission` 내 `leave_application` 무조건 true 반환, `leave_management`는 `hasPermission('payroll', action)`으로 급여 권한 100% 자동 상속.
+    - `src/pages/users_permissions.tsx`:
+      - `leave_application`: `전원 공통` 배지 및 체크박스 영구 체크 고정, 개별/일괄 토글 시 안내 후 불변 보존.
+      - `leave_management`: `급여 권한 연동` 배지 및 체크박스 비활성화, 급여 권한 변경 시 100% 자동 동기화.
+      - `ot_management`: 독립 체크박스로 관리자가 일반 메뉴와 동일하게 자유로운 통제 가능.
+  - 3. **독립 페이지 컴포넌트 신설 3종**:
+    - `LeaveApplicationPage.tsx`: 본인 연차 현황 카드, 신청 폼, 내 신청 이력 및 취소/삭제, 엑셀 다운로드.
+    - `LeaveManagementPage.tsx`: 전사 연차 통계 바, 임직원 연차 갱신/현황 대장([부여 갯수 갱신] 모달), 전사 연차 소진 관리 대장, 하단 대차대조 검증 바, 엑셀 다운로드.
+    - `OtManagementPage.tsx`: OT 통계 요약 바, OT 연장근무 등록 폼, OT 관리 대장, 하단 집계 바, 엑셀 다운로드.
+    - `LeaveOtPage.tsx`: 구 URL 및 호환용 라우팅 시 급여 권한자는 `LeaveManagementPage`, 일반 임직원은 `LeaveApplicationPage`로 자동 분기.
+  - 4. **라우팅 및 대시보드 동기화**:
+    - `App.tsx`: 사이드바 그룹 배치 및 라우팅 추가.
+    - `Dashboard.tsx`: ToDo 피드 `tabMap` 3개 메뉴 매핑 및 `/admin/leave_ot` 레거시 URL 호환.
+    - `PayrollPage.tsx`: 텍스트 표기 `[연차관리 / OT 관리]` 동기화.
+- **검증 결과**: TypeScript 빌드 (`cmd /c "npm run build"`) 0 Error 완결.
+
 ## [완료] 현장 AS 관리 및 주기장 정비 관리 본질 목적 부합 개편, 정비점수 통일, 담당자지정 권한 필터링 완결 (v1.12.0.Build.7)
 - **요구사항**: "현장 AS 관리와, 주기장 정비 관리 에서 메뉴가 열릴때 조회되어야 하는 내용은 무엇인가? 이 메뉴의 본질 목적은 무엇이고, 시스템은 실무자를 위해서 무엇을 편리하게 제공해줘야 하는가? 정책 준수하여 미비점 개편. "자산 노후도 점수" 는 정비점수 로 통일. "기사선택"은 "담당자지정" 으로 변경하고, 조직도 최상위(root) 에 속하지 않으면서 해당 메뉴의 권한보유자만 선택 가능하도록 개편.ㄹㅇ"
 - **적용 목적 (헌장 1.1 최대 편익, 1.2 렌탈 자산 운용 및 사건 무누락 저장, 2.1 부서 R&R, 3.1 무수식어 건조 표준, 3.2 줄바꿈 방지, 3.4 상하 수직 스택, 3.5 Z-패턴, 3.6 본질 속성별 UI 아키타입, 5.5 상태 보존 법칙)**:

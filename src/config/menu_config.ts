@@ -77,7 +77,8 @@ export const SYSTEM_MENU_CONFIG: MenuGroupConfig[] = [
     id: 'grp_management',
     name: '경영관리',
     items: [
-      { id: 'leave_ot', name: '연차/OT 관리' },
+      { id: 'leave_application', name: '연차신청' },
+      { id: 'ot_management', name: 'OT 관리' },
       { id: 'vehicle_log', name: '차량 / 주유관리' },
       { id: 'purchase_settlement', name: '월말 매입 정산' },
       { id: 'vendors', name: '매입처 (공급자/외주처) 관리' },
@@ -96,7 +97,8 @@ export const SYSTEM_MENU_CONFIG: MenuGroupConfig[] = [
     items: [
       { id: 'organization', name: '조직/인사 관리' },
       { id: 'permission', name: '사용자 및 권한 설정' },
-      { id: 'payroll', name: '급여 정산 (보안 강제)' }
+      { id: 'payroll', name: '급여 정산 (보안 강제)' },
+      { id: 'leave_management', name: '연차관리' }
     ]
   },
   {
@@ -155,6 +157,18 @@ export const CANONICAL_MENU_ALIASES: Record<string, string> = {
   'payrolls': 'payroll',
   'corporate_cards': 'corporate_card',
   'leave-ot': 'leave_ot',
+  'leave_application': 'leave_application',
+  'leave-application': 'leave_application',
+  'leave_apply': 'leave_application',
+  'leave-apply': 'leave_application',
+  'leave_applications': 'leave_application',
+  'leave_management': 'leave_management',
+  'leave-management': 'leave_management',
+  'ot_management': 'ot_management',
+  'ot-management': 'ot_management',
+  'overtime_management': 'ot_management',
+  'overtime-management': 'ot_management',
+  'overtime': 'ot_management',
   'vehicle-log': 'vehicle_log',
   'outbound_inspection': 'outbound_inspections',
   'print_queue_monitor': 'print_queue_monitor',

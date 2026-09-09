@@ -4671,8 +4671,8 @@ class LocalDB {
       if (tableName === 'departments' && !['id', 'name', 'parentDepartmentId', 'managerId', 'createdAt', 'updatedAt'].includes(key)) {
         continue;
       }
-      // users 테이블 전용 허용 컬럼 방어벽
-      if (tableName === 'users' && !['id', 'loginId', 'passwordHash', 'name', 'departmentId', 'position', 'managerId', 'role', 'status', 'department', 'baseSalary', 'phone', 'email', 'address', 'birthDate', 'joinDate', 'retireDate', 'profileImageUrl', 'createdAt', 'updatedAt'].includes(key)) {
+      // users 테이블 전용 허용 컬럼 방어벽 (DB users 테이블에 존재하지 않는 department 컬럼 누출 차단)
+      if (tableName === 'users' && !['id', 'loginId', 'passwordHash', 'name', 'departmentId', 'position', 'managerId', 'role', 'status', 'baseSalary', 'phone', 'email', 'address', 'birthDate', 'joinDate', 'retireDate', 'profileImageUrl', 'createdAt', 'updatedAt'].includes(key)) {
         continue;
       }
       if (typeof val === 'string' && (key === 'userId' || key === 'salespersonId' || key === 'requesterId' || key === 'accepterId' || key === 'completerId' || key === 'inbounderId' || key === 'createdById' || key === 'updatedById' || key.toLowerCase().includes('user'))) {
@@ -4820,6 +4820,7 @@ class LocalDB {
               delete fallbackPayload.note;
               delete fallbackPayload.repairingQty;
               delete fallbackPayload.bankTransactionId;
+              delete fallbackPayload.department;
               return supabase.from(tableName).upsert([fallbackPayload], { onConflict: 'id' }).then(({ data: d2, error: e2 }) => {
                 if (e2) console.warn(`Supabase fallback upsert failed for ${tableName}:`, e2);
                 return d2;
@@ -5066,7 +5067,6 @@ class LocalDB {
             managerId: (u as any).managerId || null,
             role: u.role || 'USER',
             status: u.status || 'ACTIVE',
-            department: u.department || '',
             baseSalary: u.baseSalary ?? 0,
             phone: u.phone || null,
             email: u.email || null,
@@ -5078,7 +5078,21 @@ class LocalDB {
             createdAt: u.createdAt || nowIso,
             updatedAt: nowIso
           }));
-          const { error: userErr } = await supabase.from('users').upsert(sanitizedUsers, { onConflict: 'id' });
+          let { error: userErr } = await supabase.from('users').upsert(sanitizedUsers, { onConflict: 'id' });
+          if (userErr) {
+            const msg = userErr.message || String(userErr);
+            if (msg.includes('column') || msg.includes('Could not find') || userErr.code === 'PGRST200' || userErr.code === '42703' || userErr.code === 'PGRST204') {
+              console.warn('Supabase batch upsert users column error, attempting retry with minimal payload:', userErr);
+              const fallbackUsers = sanitizedUsers.map(u => {
+                const copy: any = { ...u };
+                delete copy.retireDate;
+                delete copy.profileImageUrl;
+                return copy;
+              });
+              const retryRes = await supabase.from('users').upsert(fallbackUsers, { onConflict: 'id' });
+              userErr = retryRes.error;
+            }
+          }
           if (userErr) {
             console.error('Supabase batch upsert users failed:', userErr);
             throw userErr;

@@ -758,6 +758,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     'delinquency':          ['billings', 'customers', 'contracts'],
     'google_config':        ['googleConfigs'],
     'depreciation_execution': ['depreciationLogs', 'assets'],
+    'leave_application':    ['users', 'annualLeaveQuotas', 'leaveUsages'],
+    'leave_management':     ['users', 'annualLeaveQuotas', 'leaveUsages', 'overtimeRecords'],
+    'ot_management':        ['users', 'overtimeRecords'],
     'leave_ot':             ['users', 'annualLeaveQuotas', 'leaveUsages', 'overtimeRecords'],
     'vehicle_log':          ['corporateVehicles', 'vehicleOperationLogs', 'vehicleFuelLogs', 'users'],
     'regular_reports':      ['contracts', 'contractAssets', 'deliveries', 'assets', 'repairs', 'purchaseSettlements', 'purchaseSettlementItems', 'billings', 'billingDetails', 'bankTransactions', 'customers'],
@@ -931,6 +934,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     // 2. 단일 표준(SSOT) 단수형 메뉴 ID로 정규화
     const normMenuId = normalizeMenuId(menuId);
+
+    // 2-1. 연차신청은 권한 구분 없이 모든 임직원의 공통 기능으로 처리 (전원 상시 개방)
+    if (normMenuId === 'leave_application') {
+      return true;
+    }
+
+    // 2-2. 연차관리 권한은 급여 권한자와 100% 동일하게 변경 (급여 권한 상속)
+    if (normMenuId === 'leave_management') {
+      return hasPermission('payroll', action);
+    }
 
     // 3. 사용자별 명시적 오버라이드(개인 예외 권한) 우선 판정
     const perm = permissions.find(p => 
@@ -6524,7 +6537,7 @@ ${currentTenant?.corporateName || tenantCorp} 배상
       content: `${applicant?.name || '임직원'} 휴가 신청 (${usage.startDate} ~ ${usage.endDate}, ${usage.usedDays}일). 사유: ${usage.reason || '-'}`,
       targetRole: 'MANAGER',
       priority: 'NORMAL',
-      actionUrl: '/admin/leave_ot',
+      actionUrl: '/admin/leave_management',
       entityType: 'LEAVE',
       entityId: newLeave.id,
       senderId: currentUser?.id,
@@ -6559,8 +6572,8 @@ ${currentTenant?.corporateName || tenantCorp} 배상
       content: `${applicant?.name || '임직원'} 연장/야간 근무 신청 (${record.startDateTime?.substring(0, 10)}, ${record.hours}시간). 사유: ${record.workDetail || '-'}`,
       targetRole: 'MANAGER',
       priority: 'NORMAL',
-      actionUrl: '/admin/leave_ot',
-      entityType: 'LEAVE',
+      actionUrl: '/admin/ot_management',
+      entityType: 'OT',
       entityId: newOt.id,
       senderId: currentUser?.id,
       senderName: currentUser?.name

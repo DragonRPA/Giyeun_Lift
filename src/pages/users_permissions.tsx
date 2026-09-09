@@ -199,15 +199,28 @@ export const UsersPermissions: React.FC = () => {
       return;
     }
 
+    // 연차신청은 모든 임직원의 기본 공통 기능으로 항상 활성화
+    if (menuId === 'leave_application') {
+      showToast('연차신청은 모든 임직원의 기본 공통 기능으로 항상 활성화됩니다.');
+      return;
+    }
+
+    // 연차관리는 급여 정산 권한과 100% 동일 연동
+    if (menuId === 'leave_management') {
+      showToast('연차관리 권한은 급여 정산 권한과 100% 동일 연동됩니다. [급여 정산] 권한을 조정해 주십시오.');
+      return;
+    }
 
     setLocalPermissions(prev => {
       const index = prev.findIndex(p => p.userId === selectedUserId && p.menuId === menuId);
       let updatedList = [...prev];
+      let nextView = false;
+      let nextSave = false;
       
       if (index > -1) {
         const current = updatedList[index];
-        let nextView = current.canView;
-        let nextSave = current.canSave;
+        nextView = current.canView;
+        nextSave = current.canSave;
 
         if (type === 'view') {
           nextView = !current.canView;
@@ -219,14 +232,33 @@ export const UsersPermissions: React.FC = () => {
 
         updatedList[index] = { ...current, canView: nextView, canSave: nextSave };
       } else {
+        nextView = type === 'view' ? true : true;
+        nextSave = type === 'save' ? true : false;
         updatedList.push({
           id: `perm-${selectedUserId}-${menuId}`,
           userId: selectedUserId,
           menuId: menuId,
-          canView: type === 'view' ? true : true,
-          canSave: type === 'save' ? true : false,
+          canView: nextView,
+          canSave: nextSave,
           createdAt: new Date().toISOString()
         });
+      }
+
+      // 급여 정산(payroll) 변경 시 연차관리(leave_management) 권한도 100% 동기화
+      if (menuId === 'payroll') {
+        const lmIndex = updatedList.findIndex(p => p.userId === selectedUserId && p.menuId === 'leave_management');
+        if (lmIndex > -1) {
+          updatedList[lmIndex] = { ...updatedList[lmIndex], canView: nextView, canSave: nextSave };
+        } else {
+          updatedList.push({
+            id: `perm-${selectedUserId}-leave_management`,
+            userId: selectedUserId,
+            menuId: 'leave_management',
+            canView: nextView,
+            canSave: nextSave,
+            createdAt: new Date().toISOString()
+          });
+        }
       }
 
       setIsDirty(true);
@@ -246,6 +278,11 @@ export const UsersPermissions: React.FC = () => {
 
     // 그룹 내 메뉴 항목들의 현재 권한 상태 검사 (모두 true이면 전체 false로, 아니면 전체 true로)
     const allChecked = grp.items.every(item => {
+      if (item.id === 'leave_application') return true;
+      if (item.id === 'leave_management') {
+        const payP = localPermissions.find(p => p.userId === selectedUserId && p.menuId === 'payroll');
+        return type === 'view' ? payP?.canView : payP?.canSave;
+      }
       const perm = localPermissions.find(p => p.userId === selectedUserId && p.menuId === item.id);
       return type === 'view' ? perm?.canView : perm?.canSave;
     });
@@ -256,6 +293,29 @@ export const UsersPermissions: React.FC = () => {
       let updatedList = [...prev];
 
       grp.items.forEach(item => {
+        // 연차신청은 전원 공통 기능으로 항상 활성화 유지
+        if (item.id === 'leave_application') {
+          const idx = updatedList.findIndex(p => p.userId === selectedUserId && p.menuId === item.id);
+          if (idx > -1) {
+            updatedList[idx] = { ...updatedList[idx], canView: true, canSave: true };
+          } else {
+            updatedList.push({
+              id: `perm-${selectedUserId}-leave_application`,
+              userId: selectedUserId,
+              menuId: 'leave_application',
+              canView: true,
+              canSave: true,
+              createdAt: new Date().toISOString()
+            });
+          }
+          return;
+        }
+
+        // 연차관리는 급여 정산 권한과 100% 동일 연동되므로 단독 토글 건너뜀 (아래 payroll 처리 시 동기화)
+        if (item.id === 'leave_management') {
+          return;
+        }
+
         if (item.id === 'payroll' && targetVal) {
           // 급여 정산 일괄 승인 시 보안 체크
           const existingPayrollHolder = updatedList.find(p => {
@@ -267,26 +327,48 @@ export const UsersPermissions: React.FC = () => {
         }
 
         const idx = updatedList.findIndex(p => p.userId === selectedUserId && p.menuId === item.id);
+        let nextView = false;
+        let nextSave = false;
+
         if (idx > -1) {
           const cur = updatedList[idx];
           if (type === 'view') {
-            const nextView = targetVal;
-            const nextSave = nextView ? cur.canSave : false;
+            nextView = targetVal;
+            nextSave = nextView ? cur.canSave : false;
             updatedList[idx] = { ...cur, canView: nextView, canSave: nextSave };
           } else {
-            const nextSave = targetVal;
-            const nextView = nextSave ? true : cur.canView;
+            nextSave = targetVal;
+            nextView = nextSave ? true : cur.canView;
             updatedList[idx] = { ...cur, canView: nextView, canSave: nextSave };
           }
         } else {
+          nextView = type === 'view' ? targetVal : targetVal;
+          nextSave = type === 'save' ? targetVal : false;
           updatedList.push({
             id: `perm-${selectedUserId}-${item.id}`,
             userId: selectedUserId,
             menuId: item.id,
-            canView: type === 'view' ? targetVal : targetVal,
-            canSave: type === 'save' ? targetVal : false,
+            canView: nextView,
+            canSave: nextSave,
             createdAt: new Date().toISOString()
           });
+        }
+
+        // 급여 정산 변경 시 연차관리도 함께 동기화
+        if (item.id === 'payroll') {
+          const lmIdx = updatedList.findIndex(p => p.userId === selectedUserId && p.menuId === 'leave_management');
+          if (lmIdx > -1) {
+            updatedList[lmIdx] = { ...updatedList[lmIdx], canView: nextView, canSave: nextSave };
+          } else {
+            updatedList.push({
+              id: `perm-${selectedUserId}-leave_management`,
+              userId: selectedUserId,
+              menuId: 'leave_management',
+              canView: nextView,
+              canSave: nextSave,
+              createdAt: new Date().toISOString()
+            });
+          }
         }
       });
 
@@ -306,6 +388,11 @@ export const UsersPermissions: React.FC = () => {
 
     const allItems = MENU_CATEGORIES.flatMap(grp => grp.items);
     const allChecked = allItems.every(item => {
+      if (item.id === 'leave_application') return true;
+      if (item.id === 'leave_management') {
+        const payP = localPermissions.find(p => p.userId === selectedUserId && p.menuId === 'payroll');
+        return type === 'view' ? payP?.canView : payP?.canSave;
+      }
       const perm = localPermissions.find(p => p.userId === selectedUserId && p.menuId === item.id);
       return type === 'view' ? perm?.canView : perm?.canSave;
     });
@@ -316,6 +403,27 @@ export const UsersPermissions: React.FC = () => {
       let updatedList = [...prev];
 
       allItems.forEach(item => {
+        if (item.id === 'leave_application') {
+          const idx = updatedList.findIndex(p => p.userId === selectedUserId && p.menuId === item.id);
+          if (idx > -1) {
+            updatedList[idx] = { ...updatedList[idx], canView: true, canSave: true };
+          } else {
+            updatedList.push({
+              id: `perm-${selectedUserId}-leave_application`,
+              userId: selectedUserId,
+              menuId: 'leave_application',
+              canView: true,
+              canSave: true,
+              createdAt: new Date().toISOString()
+            });
+          }
+          return;
+        }
+
+        if (item.id === 'leave_management') {
+          return;
+        }
+
         if (item.id === 'payroll' && targetVal) {
           const existingPayrollHolder = updatedList.find(p => {
             if (p.menuId !== 'payroll' || p.userId === selectedUserId) return false;
@@ -326,26 +434,47 @@ export const UsersPermissions: React.FC = () => {
         }
 
         const idx = updatedList.findIndex(p => p.userId === selectedUserId && p.menuId === item.id);
+        let nextView = false;
+        let nextSave = false;
+
         if (idx > -1) {
           const cur = updatedList[idx];
           if (type === 'view') {
-            const nextView = targetVal;
-            const nextSave = nextView ? cur.canSave : false;
+            nextView = targetVal;
+            nextSave = nextView ? cur.canSave : false;
             updatedList[idx] = { ...cur, canView: nextView, canSave: nextSave };
           } else {
-            const nextSave = targetVal;
-            const nextView = nextSave ? true : cur.canView;
+            nextSave = targetVal;
+            nextView = nextSave ? true : cur.canView;
             updatedList[idx] = { ...cur, canView: nextView, canSave: nextSave };
           }
         } else {
+          nextView = type === 'view' ? targetVal : targetVal;
+          nextSave = type === 'save' ? targetVal : false;
           updatedList.push({
             id: `perm-${selectedUserId}-${item.id}`,
             userId: selectedUserId,
             menuId: item.id,
-            canView: type === 'view' ? targetVal : targetVal,
-            canSave: type === 'save' ? targetVal : false,
+            canView: nextView,
+            canSave: nextSave,
             createdAt: new Date().toISOString()
           });
+        }
+
+        if (item.id === 'payroll') {
+          const lmIdx = updatedList.findIndex(p => p.userId === selectedUserId && p.menuId === 'leave_management');
+          if (lmIdx > -1) {
+            updatedList[lmIdx] = { ...updatedList[lmIdx], canView: nextView, canSave: nextSave };
+          } else {
+            updatedList.push({
+              id: `perm-${selectedUserId}-leave_management`,
+              userId: selectedUserId,
+              menuId: 'leave_management',
+              canView: nextView,
+              canSave: nextSave,
+              createdAt: new Date().toISOString()
+            });
+          }
         }
       });
 
@@ -466,8 +595,25 @@ export const UsersPermissions: React.FC = () => {
     }
 
     try {
-      await updatePermissions(localPermissions);
+      // 🛡️ 연차신청(전원 상시 허용) 및 연차관리(급여 정산 100% 동기화) 불변원칙 보정
+      const sanitizedPermissions = localPermissions.map(p => {
+        if (p.menuId === 'leave_application') {
+          return { ...p, canView: true, canSave: true };
+        }
+        if (p.menuId === 'leave_management') {
+          const payrollP = localPermissions.find(x => x.userId === p.userId && x.menuId === 'payroll');
+          return {
+            ...p,
+            canView: payrollP?.canView ?? false,
+            canSave: payrollP?.canSave ?? false
+          };
+        }
+        return p;
+      });
+
+      await updatePermissions(sanitizedPermissions);
       await db.awaitPendingWrites();
+      setLocalPermissions(sanitizedPermissions);
       setIsDirty(false);
       showToast('메뉴 권한 설정이 성공적으로 저장되었습니다.');
     } catch (err: any) {
@@ -856,12 +1002,22 @@ export const UsersPermissions: React.FC = () => {
 
                   // 상위 그룹의 전체 선택 상태 파악
                   const allViewChecked = grp.items.every(item => {
+                    if (isSuperAdminUser || item.id === 'leave_application') return true;
+                    if (item.id === 'leave_management') {
+                      const payP = localPermissions.find(x => x.userId === selectedUserId && x.menuId === 'payroll');
+                      return payP?.canView ?? false;
+                    }
                     const p = localPermissions.find(x => x.userId === selectedUserId && x.menuId === item.id);
-                    return isSuperAdminUser ? true : (p?.canView ?? false);
+                    return p?.canView ?? false;
                   });
                   const allSaveChecked = grp.items.every(item => {
+                    if (isSuperAdminUser || item.id === 'leave_application') return true;
+                    if (item.id === 'leave_management') {
+                      const payP = localPermissions.find(x => x.userId === selectedUserId && x.menuId === 'payroll');
+                      return payP?.canSave ?? false;
+                    }
                     const p = localPermissions.find(x => x.userId === selectedUserId && x.menuId === item.id);
-                    return isSuperAdminUser ? true : (p?.canSave ?? false);
+                    return p?.canSave ?? false;
                   });
 
                   return (
@@ -920,20 +1076,74 @@ export const UsersPermissions: React.FC = () => {
 
                       {/* 하위 메뉴 행들 */}
                       {!isCollapsed && grp.items.map(menu => {
+                        const isLeaveApp = menu.id === 'leave_application';
+                        const isLeaveMgmt = menu.id === 'leave_management';
+
+                        // 급여 정산 권한 연동 대상
+                        const payrollPerm = localPermissions.find(p => p.userId === selectedUserId && p.menuId === 'payroll');
+                        const payrollCanView = isSuperAdminUser || !!payrollPerm?.canView;
+                        const payrollCanSave = isSuperAdminUser || !!payrollPerm?.canSave;
+
                         const perm = localPermissions.find(p => p.userId === selectedUserId && p.menuId === menu.id) || { canView: isSuperAdminUser, canSave: isSuperAdminUser };
-                        const canView = isSuperAdminUser || perm.canView;
-                        const canSaveVal = isSuperAdminUser || perm.canSave;
+                        const canView = isLeaveApp ? true : isLeaveMgmt ? payrollCanView : (isSuperAdminUser || perm.canView);
+                        const canSaveVal = isLeaveApp ? true : isLeaveMgmt ? payrollCanSave : (isSuperAdminUser || perm.canSave);
 
                         return (
                           <tr key={menu.id} style={{ borderBottom: '1px dashed var(--border-color)' }}>
                             <td style={{ paddingLeft: '32px', fontSize: '13px' }}>
-                              <span>• {menu.name}</span>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <span>• {menu.name}</span>
+                                {isLeaveApp && (
+                                  <span style={{
+                                    fontSize: '10.5px',
+                                    padding: '1px 6px',
+                                    borderRadius: '4px',
+                                    backgroundColor: 'rgba(59, 130, 246, 0.12)',
+                                    color: '#2563eb',
+                                    fontWeight: '600',
+                                    whiteSpace: 'nowrap',
+                                    flexShrink: 0
+                                  }}>
+                                    전원 공통
+                                  </span>
+                                )}
+                                {isLeaveMgmt && (
+                                  <span style={{
+                                    fontSize: '10.5px',
+                                    padding: '1px 6px',
+                                    borderRadius: '4px',
+                                    backgroundColor: 'rgba(245, 158, 11, 0.12)',
+                                    color: '#d97706',
+                                    fontWeight: '600',
+                                    whiteSpace: 'nowrap',
+                                    flexShrink: 0
+                                  }}>
+                                    급여 권한 연동
+                                  </span>
+                                )}
+                              </div>
                             </td>
 
                             {/* 조회 권한 */}
                             <td style={{ textAlign: 'center' }}>
                               {isSuperAdminUser ? (
                                 <span style={{ color: 'var(--text-muted)', fontSize: '12px' }}><Lock size={12} /> 허용</span>
+                              ) : isLeaveApp ? (
+                                <input
+                                  type="checkbox"
+                                  checked={true}
+                                  disabled={true}
+                                  title="연차신청은 모든 임직원에게 상시 허용됩니다."
+                                  style={{ cursor: 'not-allowed' }}
+                                />
+                              ) : isLeaveMgmt ? (
+                                <input
+                                  type="checkbox"
+                                  checked={payrollCanView}
+                                  disabled={true}
+                                  title="연차관리 권한은 급여 정산 권한과 100% 동일하게 연동됩니다."
+                                  style={{ cursor: 'not-allowed' }}
+                                />
                               ) : (
                                 <input
                                   type="checkbox"
@@ -949,6 +1159,22 @@ export const UsersPermissions: React.FC = () => {
                             <td style={{ textAlign: 'center' }}>
                               {isSuperAdminUser ? (
                                 <span style={{ color: 'var(--text-muted)', fontSize: '12px' }}><Lock size={12} /> 허용</span>
+                              ) : isLeaveApp ? (
+                                <input
+                                  type="checkbox"
+                                  checked={true}
+                                  disabled={true}
+                                  title="연차신청은 모든 임직원에게 상시 허용됩니다."
+                                  style={{ cursor: 'not-allowed' }}
+                                />
+                              ) : isLeaveMgmt ? (
+                                <input
+                                  type="checkbox"
+                                  checked={payrollCanSave}
+                                  disabled={true}
+                                  title="연차관리 권한은 급여 정산 권한과 100% 동일하게 연동됩니다."
+                                  style={{ cursor: 'not-allowed' }}
+                                />
                               ) : (
                                 <input
                                   type="checkbox"

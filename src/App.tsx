@@ -5,7 +5,7 @@ import {
   LayoutDashboard, Users, UserCheck, Package, Layers, PlusCircle,
   Truck, Wrench, Shield, ShoppingBag, CreditCard, LogOut, Sun, Moon, Menu, X, Zap, Settings, Database as DatabaseIcon,
   TrendingUp, Clock, AlertTriangle, Building2, ChevronDown, ChevronRight, Briefcase, Box, FolderKanban, ShieldAlert, Terminal, ArrowLeftRight, CheckSquare,
-  Smartphone, Monitor, Car, FileText, Search, Printer, PackagePlus, Boxes
+  Smartphone, Monitor, Car, FileText, Search, Printer, PackagePlus, Boxes, Calendar
 } from 'lucide-react';
 
 import { WeatherWidget } from './components/WeatherWidget';
@@ -43,6 +43,9 @@ import { OrganizationSettings } from './pages/OrganizationSettings';
 import { Vendors } from './pages/Vendors';
 import { GoogleConfig } from './pages/GoogleConfig';
 import { LeaveOtPage } from './pages/LeaveOtPage';
+import { LeaveApplicationPage } from './pages/LeaveApplicationPage';
+import { LeaveManagementPage } from './pages/LeaveManagementPage';
+import { OtManagementPage } from './pages/OtManagementPage';
 import { VehicleOperationLogPage } from './pages/VehicleOperationLogPage';
 import { PayrollPage } from './pages/PayrollPage';
 import { CorporateCardPage } from './pages/CorporateCardPage';
@@ -258,7 +261,8 @@ const App: React.FC = () => {
       name: '경영관리',
       icon: <FolderKanban size={17} />,
       items: [
-        { id: 'leave_ot', name: '연차/OT 관리', icon: <Clock size={16} />, component: <LeaveOtPage /> },
+        { id: 'leave_application', name: '연차신청', icon: <Calendar size={16} />, component: <LeaveApplicationPage /> },
+        { id: 'ot_management', name: 'OT 관리', icon: <Clock size={16} />, component: <OtManagementPage /> },
         { id: 'vehicle_log', name: '차량 / 주유관리', icon: <Car size={16} />, component: <VehicleOperationLogPage /> },
         { id: 'purchase_settlement', name: '월말 매입 정산', icon: <CreditCard size={16} />, component: <PurchaseSettlementPage /> },
         { id: 'vendors', name: '매입처 (공급자 / 외주처) 관리', icon: <Building2 size={16} />, component: <Vendors /> },
@@ -278,6 +282,7 @@ const App: React.FC = () => {
         { id: 'organization', name: '조직 / 인사 관리', icon: <Users size={16} />, component: <OrganizationSettings /> },
         { id: 'permission', name: '사용자 및 권한', icon: <Shield size={16} />, component: <UsersPermissions /> },
         { id: 'payroll', name: '급여 정산', icon: <CreditCard size={16} />, component: <PayrollPage /> },
+        { id: 'leave_management', name: '연차관리', icon: <UserCheck size={16} />, component: <LeaveManagementPage /> },
       ]
     },
     {
@@ -407,6 +412,7 @@ const App: React.FC = () => {
   const getActiveComponent = () => {
     if (activeTab === 'dashboard') return <Dashboard />;
     if (activeTab === 'consumable' || activeTab === 'consumables') return <ConsumableStockPage />;
+    if (activeTab === 'leave_ot') return <LeaveOtPage />;
     for (const grp of menuGroups) {
       const found = grp.items.find(item => item.id === activeTab);
       if (found) return found.component;

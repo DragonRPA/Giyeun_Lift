@@ -1,3 +1,38 @@
+## [v1.12.0.Build.8] - 2026-09-09 16:35
+
+### 🚀 [연차신청, OT 관리, 연차관리 메뉴 3단 분리 & 조직도 저장 DB 동기화 오류 원천 해결]
+
+**배경**: 사용자 지시("연차신청 메뉴와 OT 관리, 연차관리 메뉴를 모두 분리. 연차신청은 권한 구분 없이 모든 임직원의 공통 기능으로 처리. 연차관리 권한은 급여 권한자와 동일하게 변경. OT 관리는 권한관리에서 통제.") 및 조직도 변경 저장 시 발생한 Supabase `users` 테이블 `department` 컬럼 스키마 캐시 오류를 완벽히 해결함.
+
+**개편 내역**:
+1. **메뉴 3개로 완전 분리 및 직무·권한 3원칙 확립**:
+   - **`연차신청` (`leave_application`)**: 경영·인사(`grp_management`) 그룹 배치. 모든 임직원의 기본 공통 기능으로 권한 구분 없이 상시 활성화. 본인 연차 현황 카드(기준연도/부여/소진/잔여/소진율), 연차/반차 신청 폼(주말/공휴일 감지 및 잔여일수 초과 방지 가드), 내 신청 이력 대장, 취소/삭제, 엑셀 내보내기 제공.
+   - **`OT 관리` (`ot_management`)**: 경영·인사(`grp_management`) 그룹 배치. 관리자가 권한관리 화면에서 독립적으로 ON/OFF 통제. OT 통계 요약 바, 연장/야간/휴일근무 등록 폼, OT 관리 대장, 엑셀 내보내기 제공.
+   - **`연차관리` (`leave_management`)**: 경영·인사 특수관리(`grp_management_special`) 그룹 배치. 급여 정산(`payroll`) 권한자와 100% 동일하게 연동되는 엄격 격리 관리 메뉴. 전사 연차 통계 바, 임직원 연차 갱신 대장(`[부여 갯수 갱신]` 모달), 전사 연차 소진 관리 대장, 하단 대차대조 검증 바(`총부여 = 총소진 + 잔여 | 차액 0일`), 엑셀 내보내기 제공.
+2. **RBAC & 권한 엔진 가드 불변원칙 보장**:
+   - `src/config/menu_config.ts` 및 `menuConfig.ts`: SSOT 동기화 완료.
+   - `src/config/role_templates.ts`: `BASE_COMMON_PERMISSIONS`에 `leave_application: { canView: true, canSave: true }` 등록.
+   - `src/context/AppContext.tsx`: `hasPermission` 내 `leave_application` 무조건 `true` 반환, `leave_management`는 `hasPermission('payroll', action)`으로 급여 권한 100% 자동 상속. `addLeaveUsage`/`addOvertimeRecord` 인수인계 태스크 발행 시 액션 URL 자동 연동.
+   - `src/pages/users_permissions.tsx`:
+     - `leave_application`: `전원 공통` 파란색 배지 및 체크박스 영구 체크 고정, 개별/일괄 토글 시 안내 후 불변 보존.
+     - `leave_management`: `급여 권한 연동` 주황색 배지 및 체크박스 비활성화, `payroll` 토글 시 자동 동기화.
+     - `ot_management`: 독립 체크박스로 관리자가 일반 메뉴와 동일하게 자유로운 통제 가능.
+     - 저장 전 최종 정돈(`handleSavePermissions`) 시 연차신청/연차관리 불변식 사전 검증 후 안전 저장.
+3. **독립 페이지 컴포넌트 신설 및 라우팅 호환**:
+   - `src/pages/LeaveApplicationPage.tsx`: 연차신청 전용 화면.
+   - `src/pages/LeaveManagementPage.tsx`: 연차관리 전용 화면.
+   - `src/pages/OtManagementPage.tsx`: OT 관리 전용 화면.
+   - `src/pages/LeaveOtPage.tsx`: 구 URL 접근 시 급여 권한자는 `LeaveManagementPage`, 일반 임직원은 `LeaveApplicationPage`로 자동 분기하는 호환 래퍼 제공.
+   - `src/App.tsx` & `src/pages/Dashboard.tsx`: 사이드바 그룹 배치 및 ToDo 피드 탭 맵 3개 메뉴 연동 완료.
+   - `src/pages/PayrollPage.tsx`: `[연차관리 / OT 관리]` 텍스트 동기화.
+4. **조직도 저장 Supabase `users` 테이블 `department` 컬럼 오류 원천 해결**:
+   - `dev_exec_ddl` RPC를 통해 원격 Supabase 라이브 DB에 `ALTER TABLE users ADD COLUMN IF NOT EXISTS department TEXT;` 및 `NOTIFY pgrst, 'reload schema'`를 실행하여 스키마 캐시 실시간 갱신 완료.
+   - `src/services/db.ts`의 `saveOrganizationBatch`에서 `sanitizedUsers` 매핑 시 비실존 컬럼 `department`를 배제하고, 컬럼 에러 시 2차 Fallback 자동 복구 재시도 탑재.
+   - `sanitizeSupabasePayload`의 `users` 화이트리스트에서 `department` 배제.
+   - 글로벌 학습 이력서 `경험.md`에 **[E-069]** 등록 완료.
+
+---
+
 ## [v1.12.0.Build.7] - 2026-09-09 16:15
 
 ### 🛠️ [현장 AS 관리 & 주기장 정비 관리 본질 목적 부합 개편, 정비점수 통일, 담당자지정 권한 필터링 완결]

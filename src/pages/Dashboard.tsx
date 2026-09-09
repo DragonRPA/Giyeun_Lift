@@ -820,7 +820,11 @@ export const Dashboard: React.FC = () => {
                                   '/admin/organization': 'organization',
                                   '/admin/asset_acquisition_disposal': 'asset_acquisition_disposal',
                                   '/admin/delinquency': 'delinquency',
-                                  '/admin/cash_flow': 'cash_flow'
+                                  '/admin/cash_flow': 'cash_flow',
+                                  '/admin/leave_application': 'leave_application',
+                                  '/admin/leave_management': 'leave_management',
+                                  '/admin/ot_management': 'ot_management',
+                                  '/admin/leave_ot': 'leave_management'
                                 };
                                 const target = tabMap[task.actionUrl || ''] || 'dashboard';
                                 setActiveTab(target);

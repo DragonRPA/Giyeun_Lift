@@ -8,11 +8,14 @@ export interface MenuPermissionRule {
 
 export type PermissionRuleMap = Record<string, MenuPermissionRule>;
 
-// 1. 공통 기본 권한 (모든 직원 공통: 대시보드, 본인 연차/OT, 차량운행일지)
+// 1. 공통 기본 권한 (모든 직원 공통: 대시보드, 본인 연차신청, 차량운행일지)
 const BASE_COMMON_PERMISSIONS: PermissionRuleMap = {
   dashboard: { canView: true, canSave: false },
-  leave_ot: { canView: true, canSave: true },
+  leave_application: { canView: true, canSave: true }, // 모든 직원 공통 연차신청
+  leave_ot: { canView: true, canSave: true },          // 레거시 호환
   vehicle_log: { canView: true, canSave: true },
+  ot_management: { canView: false, canSave: false },   // OT 관리: 권한관리에서 통제
+  leave_management: { canView: false, canSave: false }, // 연차관리: 급여 권한자 전용
   // 에이전트 배지: 기본 비노출 (프린터·파일변환 직무만 ON)
   agent_badge: { canView: false, canSave: false }
 };
@@ -30,6 +33,8 @@ export const ACCOUNTING_TEMPLATE: PermissionRuleMap = {
   delinquency: { canView: true, canSave: true },
   depreciation_execution: { canView: true, canSave: true },
   payroll: { canView: true, canSave: true },
+  leave_management: { canView: true, canSave: true }, // 급여 권한자와 100% 동일
+  ot_management: { canView: true, canSave: true },    // 관리부 OT 관리 권한
   organization: { canView: true, canSave: true },
   regular_reports: { canView: true, canSave: true },
   acquisition_disposal: { canView: true, canSave: true },

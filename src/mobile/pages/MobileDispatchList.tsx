@@ -367,14 +367,14 @@ export const MobileDispatchList: React.FC = () => {
         </button>
       </div>
 
-      {/* 📋 영업 의뢰 배차 대기 ToDo 헤더 배너 */}
+      {/* 배차 대기 현황 배너 */}
       {filter === 'PENDING' && (
         <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs font-bold flex items-center justify-between">
           <div className="flex items-center gap-1.5">
             <AlertCircle className="w-4 h-4 text-amber-400 flex-shrink-0" />
-            <span>영업 의뢰 배차 대기 할일 (ToDo): {pendingDeliveries.length}건</span>
+            <span>배차 대기 의뢰: {pendingDeliveries.length}건</span>
           </div>
-          <span className="text-[11px] font-normal text-amber-200/70">기사 배정 시 자동 완결</span>
+          <span className="text-[11px] font-normal text-amber-200/70">기사 배정 필요</span>
         </div>
       )}
 
@@ -385,7 +385,7 @@ export const MobileDispatchList: React.FC = () => {
             <CheckCircle2 className="w-7 h-7 text-emerald-500" />
             <span className="font-bold text-slate-300">
               {filter === 'PENDING' 
-                ? '현재 대기 중인 배차 의뢰가 모두 완료되었습니다. (할일 0건)' 
+                ? '현재 대기 중인 배차 의뢰가 없습니다. (0건)' 
                 : '해당 상태의 배차 건이 없습니다.'}
             </span>
             {filter === 'PENDING' && (

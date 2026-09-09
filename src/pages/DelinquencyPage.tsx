@@ -707,7 +707,7 @@ export const DelinquencyPage: React.FC = () => {
           <h3 style={{ fontSize: '17px', fontWeight: '800', margin: '2px 0', color: 'var(--primary)' }}>
             {pendingDirectiveCount}건
           </h3>
-          <span style={{ fontSize: '10.5px', color: 'var(--text-muted)' }}>영업사원 개인 ToDo 자동 연동</span>
+          <span style={{ fontSize: '10.5px', color: 'var(--text-muted)' }}>영업사원 업무 연동</span>
         </div>
 
         <div className="card" style={{ padding: '14px', borderLeft: neglectedDirectiveCount > 0 ? '4px solid #b91c1c' : '4px solid var(--border-color)' }}>
@@ -998,7 +998,7 @@ export const DelinquencyPage: React.FC = () => {
             <div style={{ backgroundColor: 'var(--bg-app)', padding: '12px', borderRadius: '8px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
               <div style={{ fontSize: '12px', fontWeight: '700', display: 'flex', justifyContent: 'space-between' }}>
                 <span>영업사원 조치 / 입금 약속 기록</span>
-                <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>등록 시 지시 ToDo 자동 마감</span>
+                <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>등록 시 지시 자동 마감</span>
               </div>
 
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '6px' }}>
@@ -1487,7 +1487,7 @@ export const DelinquencyPage: React.FC = () => {
                 취소
               </button>
               <button type="button" className="btn-primary" onClick={handleSubmitDirective} style={{ padding: '6px 14px', fontSize: '12px' }}>
-                지시 하달 (ToDo 연동)
+                지시 하달
               </button>
             </div>
           </div>

@@ -15,6 +15,8 @@ export const Dashboard: React.FC = () => {
     assets, 
     contracts, 
     contractAssets, 
+    contractHistory,
+    outboundInspections,
     consumables, 
     repairs, 
     deliveries, 
@@ -42,12 +44,14 @@ export const Dashboard: React.FC = () => {
   const userDept = currentUser?.department || '';
   const isExecUser = userRole === 'ADMIN' || userRole === 'EXECUTIVE' || userRole === 'MANAGER' || userDept.includes('경영') || userDept.includes('대표');
 
-  // 사용자 메뉴 권한 기반 카드 노출 판단 플래그 (조치/저장 실행 권한 기준 단일 표준 ID + 담당 역할/조회 권한 fallback)
-  const canActDelivery = hasPermission('delivery', 'save') || hasPermission('delivery', 'view') || isExecUser || userRole === 'LOGISTICS' || userRole === 'DELIVERY';
-  const canActRepair = hasPermission('repair', 'save') || hasPermission('repair', 'view') || isExecUser || userRole === 'REPAIR' || userRole === 'MECHANIC';
-  const canActBilling = hasPermission('billing', 'save') || hasPermission('billing', 'view') || isExecUser || userRole === 'ACCOUNTING';
-  const canActContract = hasPermission('contract', 'save') || hasPermission('contract', 'view') || isExecUser || userRole === 'SALES';
-  const canActRentAsset = hasPermission('rent_asset', 'save') || hasPermission('rent_asset', 'view') || isExecUser || userRole === 'LOGISTICS' || userRole === 'DELIVERY';
+  // 사용자 메뉴 권한 기반 카드 노출 판단 플래그 (조치/저장 실행 권한 기준 단일 표준 ID + 담당 역할/부서/조회 권한 fallback)
+  const canActAssign = hasPermission('dispatch_assign', 'save') || hasPermission('dispatch_assign', 'view') || isExecUser || userRole === 'LOGISTICS' || userRole === 'DELIVERY' || userRole === 'YARD' || (userDept && (userDept.includes('출고') || userDept.includes('주기장') || userDept.includes('배차') || userDept.includes('물류')));
+  const canActOutboundInspection = hasPermission('outbound_inspections', 'save') || hasPermission('outbound_inspections', 'view') || hasPermission('repair', 'save') || isExecUser || userRole === 'MECHANIC' || userRole === 'REPAIR' || userRole === 'YARD' || (userDept && (userDept.includes('출고') || userDept.includes('검수') || userDept.includes('정비') || userDept.includes('주기장')));
+  const canActDelivery = hasPermission('delivery', 'save') || hasPermission('delivery', 'view') || isExecUser || userRole === 'LOGISTICS' || userRole === 'DELIVERY' || (userDept && (userDept.includes('배차') || userDept.includes('운송') || userDept.includes('물류')));
+  const canActRepair = hasPermission('repair', 'save') || hasPermission('repair', 'view') || isExecUser || userRole === 'REPAIR' || userRole === 'MECHANIC' || (userDept && (userDept.includes('정비') || userDept.includes('AS') || userDept.includes('주기장')));
+  const canActBilling = hasPermission('billing', 'save') || hasPermission('billing', 'view') || isExecUser || userRole === 'ACCOUNTING' || (userDept && (userDept.includes('회계') || userDept.includes('관리') || userDept.includes('경리')));
+  const canActContract = hasPermission('contract', 'save') || hasPermission('contract', 'view') || isExecUser || userRole === 'SALES' || (userDept && (userDept.includes('영업') || userDept.includes('영업부')));
+  const canActRentAsset = hasPermission('rent_asset', 'save') || hasPermission('rent_asset', 'view') || isExecUser || userRole === 'LOGISTICS' || userRole === 'DELIVERY' || (userDept && (userDept.includes('출고') || userDept.includes('배차') || userDept.includes('주기장')));
 
   // ── 📄 계약서패키지 재발송 모달 상태 ──
   const [showBundleModal, setShowBundleModal] = useState(false);
@@ -294,24 +298,169 @@ export const Dashboard: React.FC = () => {
       {/* 권한(Permission) 기반 스마트 카드 피드 렌더링 섹션 */}
       {/* ──────────────────────────────────────────────────────── */}
       {(() => {
+        // 1. 계약 장비 할당 대기 건 (계약 체결 후 자산 미매핑 슬롯)
+        const unassignedContractAssets = contractAssets.filter(ca => !ca.assetId);
+        const unassignedContractIds = Array.from(new Set(unassignedContractAssets.map(ca => ca.contractId)));
+        const showAssignFeed = unassignedContractAssets.length > 0 && canActAssign;
+
+        // 2. 출고 PDI 검수 대기 건 (장비 할당 후 검수 대기/진행)
+        const pendingOutboundInspections = (outboundInspections || []).filter(i => {
+          const st = i.status || 'PENDING';
+          return st === 'PENDING' || st === 'IN_PROGRESS';
+        });
+        const pendingInspectionContractIds = Array.from(new Set(pendingOutboundInspections.map(i => i.contractId)));
+        const showOutboundInspectionFeed = pendingOutboundInspections.length > 0 && canActOutboundInspection;
+
+        // 3. 배차 대기 건
         const requestedDeliveries = deliveries.filter(d => {
           const st = d.status || 'PENDING';
           return st === 'PENDING' || st === 'REQUESTED' || (st !== 'DISPATCHED' && st !== 'DELIVERED' && st !== 'COMPLETED' && st !== 'CANCELLED');
         });
         const showDeliveryFeed = requestedDeliveries.length > 0 && canActDelivery;
-        const showBillingFeed = unpaidBillings.length > 0 && canActBilling;
-        const showRentAssetFeed = (overdueRentedCount > 0 || mismatchRentedCount > 0) && canActRentAsset;
+
+        // 4. 정비 대기 건
         const showRepairFeed = pendingRepairs > 0 && canActRepair;
-        // 정비 소모품은 안전재고 기준 미정의 상태이므로 ToDo 피드에서 미표출
+
+        // 5. 미수금 대장
+        const showBillingFeed = unpaidBillings.length > 0 && canActBilling;
+
+        // 6. 임차 자산 반납 지연
+        const showRentAssetFeed = (overdueRentedCount > 0 || mismatchRentedCount > 0) && canActRentAsset;
+
+        // 7. 진행 계약
         const showContractFeed = activeContracts > 0 && canActContract;
+
+        // 8. 직무 맞춤 당면 과제 ToDo
         const showTodoFeed = myTodos.length > 0;
 
-        const visibleCount = [showDeliveryFeed, showBillingFeed, showRentAssetFeed, showRepairFeed, showContractFeed, showTodoFeed].filter(Boolean).length;
+        const visibleCount = [showTodoFeed, showAssignFeed, showOutboundInspectionFeed, showDeliveryFeed, showRepairFeed, showBillingFeed, showRentAssetFeed, showContractFeed].filter(Boolean).length;
 
         return (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
 
-            {/* 1. 출고/회수 배차 대기 피드 카드 (배차 저장/실행 권한자 표출) */}
+            {/* 1. 계약 장비 할당 대기 피드 카드 (장비할당/배차/주기장 담당자 표출) */}
+            {showAssignFeed && (
+              <div style={{
+                backgroundColor: 'var(--bg-card)', borderRadius: '12px', padding: '20px 24px',
+                borderLeft: '5px solid #8b5cf6', border: '1px solid var(--border-color)', borderLeftWidth: '5px'
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
+                  <span style={{ fontSize: '11.5px', fontWeight: '800', color: '#8b5cf6', backgroundColor: 'rgba(139,92,246,0.12)', padding: '3px 9px', borderRadius: '4px', border: '1px solid rgba(139,92,246,0.3)' }}>
+                    장비 할당 (매핑)
+                  </span>
+                  <span style={{ fontSize: '12.5px', fontWeight: '700', color: '#8b5cf6' }}>
+                    미할당 {unassignedContractAssets.length}대 ({unassignedContractIds.length}개 계약)
+                  </span>
+                </div>
+                <h4 style={{ margin: '0 0 10px 0', fontSize: '16px', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <Layers size={18} color="#8b5cf6" /> 계약 장비 할당 대기
+                </h4>
+                <p style={{ fontSize: '13px', color: 'var(--text-secondary)', margin: '0 0 14px 0', lineHeight: '1.5' }}>
+                  계약 체결 후 관리번호 미매핑 슬롯 <strong>{unassignedContractAssets.length}대</strong> 대기. 가용 재고에서 장비 배정 필요.
+                </p>
+
+                {/* 미할당 계약 프리뷰 리스트 */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '16px' }}>
+                  {unassignedContractIds.slice(0, 3).map((cid, idx) => {
+                    const contr = contracts.find(c => c.id === cid);
+                    const cust = contr ? customers.find(c => c.id === contr.customerId) : null;
+                    const slots = unassignedContractAssets.filter(ca => ca.contractId === cid);
+                    const isExchange = contractHistory ? contractHistory.some(h => h.contractId === cid && h.changeType === 'EXCHANGE') : false;
+                    const modelSummary = slots.map(s => s.expectedModel || '미지정').join(', ');
+
+                    return (
+                      <div key={cid} style={{
+                        backgroundColor: 'var(--bg-secondary)', padding: '12px 14px', borderRadius: '8px',
+                        border: '1px solid var(--border-color)', fontSize: '13px', display: 'flex', flexDirection: 'column', gap: '4px'
+                      }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <span style={{ fontWeight: '800', color: 'var(--text-main)' }}>
+                            {idx + 1}. {cust?.name || contr?.contractNo || '고객사'}
+                          </span>
+                          <span style={{
+                            fontSize: '11px', fontWeight: '800', padding: '2px 6px', borderRadius: '4px',
+                            backgroundColor: isExchange ? 'rgba(239,68,68,0.15)' : 'rgba(139,92,246,0.15)',
+                            color: isExchange ? '#ef4444' : '#8b5cf6'
+                          }}>
+                            {isExchange ? '대차 할당 우선' : '신규 계약'} (미할당 {slots.length}대)
+                          </span>
+                        </div>
+                        <div style={{ fontSize: '12px', color: 'var(--text-muted)', display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+                          <span>📄 <strong>계약번호:</strong> {contr?.contractNo || '-'}</span>
+                          <span>📦 <strong>요구모델:</strong> <strong style={{ color: '#8b5cf6' }}>{modelSummary}</strong></span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                <button className="btn-primary" onClick={() => setActiveTab('dispatch_assign')} style={{ backgroundColor: '#8b5cf6', border: 'none', fontSize: '12.5px', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  장비 할당 이동 <ArrowRight size={13} />
+                </button>
+              </div>
+            )}
+
+            {/* 2. 출고 PDI 검수 승인 대기 피드 카드 (검수/정비/출고 담당자 표출) */}
+            {showOutboundInspectionFeed && (
+              <div style={{
+                backgroundColor: 'var(--bg-card)', borderRadius: '12px', padding: '20px 24px',
+                borderLeft: '5px solid #10b981', border: '1px solid var(--border-color)', borderLeftWidth: '5px'
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
+                  <span style={{ fontSize: '11.5px', fontWeight: '800', color: '#10b981', backgroundColor: 'rgba(16,185,129,0.12)', padding: '3px 9px', borderRadius: '4px', border: '1px solid rgba(16,185,129,0.3)' }}>
+                    출고 검수 관리
+                  </span>
+                  <span style={{ fontSize: '12.5px', fontWeight: '700', color: '#10b981' }}>
+                    검수 대기 {pendingOutboundInspections.length}건 ({pendingInspectionContractIds.length}개 의뢰)
+                  </span>
+                </div>
+                <h4 style={{ margin: '0 0 10px 0', fontSize: '16px', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <CheckSquare size={18} color="#10b981" /> 출고 PDI 검수 승인 대기
+                </h4>
+                <p style={{ fontSize: '13px', color: 'var(--text-secondary)', margin: '0 0 14px 0', lineHeight: '1.5' }}>
+                  장비 할당 완료 후 출고 전 PDI 안전점검 및 승인 대기 <strong>{pendingOutboundInspections.length}건</strong>. 승인 시 자산 상태가 대여중(RENTED)으로 전환.
+                </p>
+
+                {/* 검수 대기 목록 프리뷰 카드 */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '16px' }}>
+                  {pendingOutboundInspections.slice(0, 3).map((insp, idx) => {
+                    const contr = contracts.find(c => c.id === insp.contractId);
+                    const cust = contr ? customers.find(c => c.id === contr.customerId) : null;
+                    const asset = assets.find(a => a.id === insp.assetId);
+
+                    return (
+                      <div key={insp.id} style={{
+                        backgroundColor: 'var(--bg-secondary)', padding: '12px 14px', borderRadius: '8px',
+                        border: '1px solid var(--border-color)', fontSize: '13px', display: 'flex', flexDirection: 'column', gap: '4px'
+                      }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <span style={{ fontWeight: '800', color: 'var(--text-main)' }}>
+                            {idx + 1}. {cust?.name || contr?.contractNo || '고객사 미상'}
+                          </span>
+                          <span style={{
+                            fontSize: '11px', fontWeight: '800', padding: '2px 6px', borderRadius: '4px',
+                            backgroundColor: insp.status === 'IN_PROGRESS' ? 'rgba(59,130,246,0.15)' : 'rgba(245,158,11,0.15)',
+                            color: insp.status === 'IN_PROGRESS' ? '#2563eb' : '#d97706'
+                          }}>
+                            {insp.status === 'IN_PROGRESS' ? '검수 진행중' : '접수 대기'}
+                          </span>
+                        </div>
+                        <div style={{ fontSize: '12px', color: 'var(--text-muted)', display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+                          <span>🚜 <strong>할당장비:</strong> <strong style={{ color: '#10b981' }}>{asset?.assetNo || '장비'}</strong> ({asset?.modelName || '-'})</span>
+                          <span>📅 <strong>의뢰일:</strong> {insp.createdAt ? insp.createdAt.substring(0, 10) : '-'}</span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                <button className="btn-primary" onClick={() => setActiveTab('outbound_inspections')} style={{ backgroundColor: '#10b981', border: 'none', fontSize: '12.5px', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  출고 검수 이동 <ArrowRight size={13} />
+                </button>
+              </div>
+            )}
+
+            {/* 3. 출고/회수 배차 대기 피드 카드 (배차 저장/실행 권한자 표출) */}
             {showDeliveryFeed && (
               <div style={{
                 backgroundColor: 'var(--bg-card)', borderRadius: '12px', padding: '20px 24px',
@@ -590,7 +739,8 @@ export const Dashboard: React.FC = () => {
                               onClick={() => {
                                 const tabMap: Record<string, string> = {
                                   '/admin/dispatch': 'delivery',
-                                  '/admin/outbound_inspections': 'outbound_inspection',
+                                  '/admin/dispatch_assign': 'dispatch_assign',
+                                  '/admin/outbound_inspections': 'outbound_inspections',
                                   '/admin/contract': 'contract',
                                   '/admin/repairs': 'repair',
                                   '/admin/billings': 'billing',

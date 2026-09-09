@@ -192,6 +192,16 @@ export function findActiveTasksForUser(
       if (uDept.includes('출고') || uDept.includes('배차') || uRole.includes('LOGISTICS')) return true;
     }
 
+    // 6. 업무 카테고리별 시스템 메뉴 권한(Permission) 매칭
+    if (hasPermission) {
+      if ((t.taskCategory?.includes('DISPATCH') || t.entityType === 'DELIVERY') && hasPermission('delivery', 'view')) return true;
+      if ((t.taskCategory?.includes('INSPECTION') || t.entityType === 'INSPECTION') && (hasPermission('outbound_inspections', 'view') || hasPermission('repair', 'view'))) return true;
+      if (t.taskCategory?.includes('ASSIGN') && hasPermission('dispatch_assign', 'view')) return true;
+      if ((t.taskCategory?.includes('AS') || t.entityType === 'REPAIR') && (hasPermission('repair', 'view') || hasPermission('field_as', 'view'))) return true;
+      if (t.entityType === 'BILLING' && hasPermission('billing', 'view')) return true;
+      if (t.entityType === 'CONTRACT' && hasPermission('contract', 'view')) return true;
+    }
+
     return false;
   });
 

@@ -1,3 +1,38 @@
+## [v1.12.0.Build.58] - 2026-09-10 06:55
+
+### 🚀 [전 업무(장비할당/출고검수/배차 등) 대시보드 ToDo 피드 일괄 정비 및 개별 메뉴 ToDo 완전 배제 일원화 및 "ㄹㅇ" 배포]
+
+**배경**:
+1. 사장님 지시사항:
+   - "배차 권한 todo 문제의 원인과 동일한 논리로써, 장비할당, 출고검수 등도 다 똑같이 작동되나? 그렇다면 일괄로 정비. todo 는 대시보드에만 생기고 메뉴 화면에는 없어야 함. ㄹㅇ"
+2. 시스템 헌장 카테고리 I (1.1 최대 편익, 1.2 DB 무누락 보존), 카테고리 II (2.1 직무 및 권한별 R&R), 카테고리 III (3.1 무수식어 건조 표준, 3.3 직무 중심 ToDo 대시보드 정책, 3.6 업무 아키타입 표준), 카테고리 VI (6.1 버전 관리, 6.2 'ㄹㅇ' 배포) 준수.
+
+**개편 내역**:
+1. **대시보드 ToDo 피드 전 업무 일괄 확장 (`Dashboard.tsx`)**:
+   - **계약 장비 할당 대기 피드 (`showAssignFeed`) 신설**:
+     - 미할당 슬롯(`contractAssets.filter(ca => !ca.assetId)`) 및 대차 교체 우선 할당 대상 전수 집계.
+     - 권한 플래그 `canActAssign`: `dispatch_assign` 저장/조회 권한, 경영진, 출고/주기장/배차/물류 부서원 및 역할 소유자에게 자동 노출.
+     - 원클릭 즉시 이동: `setActiveTab('dispatch_assign')` 연결.
+   - **출고 PDI 검수 승인 대기 피드 (`showOutboundInspectionFeed`) 신설**:
+     - 검수 대기/진행 슬롯(`outboundInspections.filter(i => i.status === 'PENDING' || i.status === 'IN_PROGRESS')`) 실시간 집계.
+     - 권한 플래그 `canActOutboundInspection`: `outbound_inspections` 저장/조회 권한, 정비 권한, 주기장/검수/정비 부서원 및 역할 소유자에게 자동 노출.
+     - 원클릭 즉시 이동: `setActiveTab('outbound_inspections')` 연결 (오타 `outbound_inspection` ➔ `outbound_inspections` 교정).
+   - **전 업무 권한 플래그(`canAct...`) 일괄 정비**:
+     - `canActDelivery`, `canActRepair`, `canActBilling`, `canActContract`, `canActRentAsset`에 대해 저장/조회 권한, 직무 역할, 소속 부서 키워드(배차, 운송, 정비, 회계, 영업 등) fallback을 전수 적용하여 권한 불일치로 인한 ToDo 미표출 원천 차단.
+2. **업무 인계 파이프라인(`taskHandoverPipeline.ts`) 권한 매칭 보강**:
+   - `findActiveTasksForUser` 함수에 시스템 메뉴 권한(`hasPermission`) 매칭 추가 (`delivery`, `outbound_inspections`, `dispatch_assign`, `repair`, `billing`, `contract`).
+   - 부서명이 일부 상이하더라도 메뉴 권한을 부여받은 실무자에게 대시보드 당면 과제 ToDo가 100% 누락 없이 연결되도록 개선.
+3. **"ToDo는 대시보드에만 존재" 원칙 구현 및 개별 메뉴 ToDo 문구 완전 배제 (헌장 3.1)**:
+   - 배차 관리 화면(`TruckDispatch.tsx`): 상단 중복 ToDo 블록 완전 제거 유지.
+   - 모바일 배차 화면(`MobileDispatchList.tsx`): '영업 의뢰 배차 대기 할일 (ToDo)' 문구를 건조한 명사 '배차 대기 의뢰'로 정규화.
+   - 미수 채권 화면(`DelinquencyPage.tsx`): 'ToDo 연동' 등 개별 메뉴 내 불필요한 ToDo 수식어구 전면 제거.
+   - 장비 할당 및 출고 검수 화면: 별도의 중복 ToDo 없이 마스터-디테일 본문 작업대에만 집중하도록 화면 전문성 극대화.
+
+**검증 결과**:
+- **TypeScript 빌드 및 번들링**: `cmd /c npm run build` **0 Error 정상 통과 (`built in 1.15s`)**.
+
+---
+
 ## [v1.12.0.Build.57] - 2026-09-10 06:50
 
 ### 🚀 [진짜 개발자와 최고관리자(ADMIN) 엄격 분리, 대시보드 배차 ToDo 피드 정상화, 배차관리 상단 중복 ToDo 큐 완전 제거 및 "ㄹㅇ" 배포]

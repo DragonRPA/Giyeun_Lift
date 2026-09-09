@@ -64,14 +64,22 @@ export interface ReconPairRow {
   isExcluded?: boolean;
 }
 
-// 💡 [사장님 지시] 배차 운반비 0원 온전 보존 헬퍼 (하드코딩 70,000원 기본값 완전 제거)
+// 💡 [사장님 지시] 배차 운반비 0원 온전 보존 헬퍼 (하드코딩 70,000원 기본값 완전 제거 및 finalCost=0 미확정 시 deliveryCost 우선 평가)
 export const getEffectiveDeliveryCost = (d?: Delivery | null): number => {
   if (!d) return 0;
-  if (d.finalCost !== undefined && d.finalCost !== null) return d.finalCost;
+  // 1. 이미 정산/대사 완료되어 확정된 finalCost가 0보다 큰 경우 우선 반환
+  if (d.finalCost !== undefined && d.finalCost !== null && d.finalCost > 0) return d.finalCost;
+  // 2. 대사/정산 완료 상태(isCostSettled)이면서 명시적으로 finalCost가 0인 경우 0원 확정
+  if (d.isCostSettled && d.finalCost === 0) return 0;
+  // 3. 배차 원장의 등록/업로드 운송비(deliveryCost)가 존재하면 반환 (0원 포함)
   if (d.deliveryCost !== undefined && d.deliveryCost !== null) return d.deliveryCost;
+  // 4. 예상 운송비(expectedCost)가 존재하면 반환
   if (d.expectedCost !== undefined && d.expectedCost !== null) return d.expectedCost;
+  // 5. 배정 차량별 운송비 합산
   const vehicleCost = d.assignedVehicles?.reduce((acc: number, v: any) => acc + (v.deliveryCost || 0), 0);
   if (vehicleCost !== undefined && vehicleCost > 0) return vehicleCost;
+  // 6. finalCost가 0인 경우 최종 fallback
+  if (d.finalCost !== undefined && d.finalCost !== null) return d.finalCost;
   return 0;
 };
 

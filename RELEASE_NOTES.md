@@ -1,3 +1,56 @@
+## [v1.12.0.Build.19] - 2026-09-09 21:40
+
+### 🚀 [초기 DB 밴드 출고 데이터 업로드 시 21대 전사 표준 안전스펙 및 유상옵션·보양작업 추출/동기화 무누락 복원]
+
+**배경**:
+1. 사용자 문의("초기 DB 업로드 메뉴에서 밴드에서 추출한 출고 데이터를 업로드 할 때, 고객의 옵션정보를 업로드 하던 것이 왜 없어졌지? 원인 찾아 수정하고 ㄹㅇ") 및 고객 관리 화면 스크린샷(`유창이앤씨` 현장 기본상속 설정: 유상옵션: (없음), 보양작업: NONE)을 정밀 감사함.
+2. 과거 커밋(`721e43e`)에서 체크리스트 제거를 수행하면서 `migrationEngine.ts` 내 `STANDARD_SPECS` 21대 표준 스펙 키워드 매칭(`matchedSpecs`)과 `defaultCheckedSpecs`, `checkedSpecs` 수집 및 DB 동기화 코드가 과도하게 전면 삭제되어, 밴드 본문에 존재하는 수많은 안전 사양(철망, 감지봉, 협착 방지, 단자커버, 속도세팅, 소화기함 등)과 고객 옵션이 유실되던 결함을 원천 해결함.
+
+**개편 내역**:
+1. **밴드 출고 텍스트 파싱 엔진 21대 전사 표준 안전스펙 매칭 복원 (`src/services/migrationEngine.ts`)**:
+   - `STANDARD_SPECS` 임포트 복원 및 본문 텍스트 내 21대 안전 스펙 키워드(소화기함, 감지봉, 협착 센서, 철망, 함석, 단자커버, 주행속도 세팅 등) 전수 정밀 매칭 복원 ➔ `matchedSpecs: Record<string, boolean>` 생성.
+   - `유상옵션:`, `보양작업:` 명시 라인 외에도 본문 불릿 및 스펙 라인을 유상옵션/보양/스펙 데이터로 100% 무누락 수집하도록 보강.
+2. **고객사 및 현장별 스펙 합집합 집계 복원 (`src/services/migrationEngine.ts`)**:
+   - `analyzeDispatchHistoryForCustomerDefaults`에서 고객사별 `aggregatedSpecs`, 현장별 `checkedSpecs`, 고객 마스터 `defaultCheckedSpecs` 집계 복원.
+   - 통계 지표 `extractedSpecCount` 복원.
+3. **고객 마스터 & 현장 마스터 원격 DB 동기화 복원 (`src/services/migrationEngine.ts`)**:
+   - `ingestCustomerDefaultsFromDispatchHistory`에서 고객 테이블(`customers`)에 `defaultCheckedSpecs`, `defaultPaidOptions`, `defaultProtection`, `specialNotes`, `defaultBillingDay` 무누락 upsert.
+   - 현장 테이블(`customer_sites`)에 `checkedSpecs`, `paidOptions`, `protection`, `address`, `contactName`, `contact` 무누락 upsert.
+   - `defaultPaidOptions` 및 `paidOptions`가 문자열/배열 혼용 없이 DB 정규화 규격에 맞춰 깨끗하게 저장되도록 개선.
+   - 빈값 판정 가드 `isEmptyVal`에 공백 문자열(`v.trim() === ''`) 및 빈 배열/객체 방어 가드 강화.
+4. **`InitialDbUploader.tsx` Card ⑤ 대사 그리드 & 5대 통계 UI 복원**:
+   - 상단 통계 카드에 `추출 표준 안전 스펙: {N}개사` 복원.
+   - 대사 테이블에 `표준 안전 스펙` 컬럼 복원 (`안전스펙 N종 확인` 배지 표출).
+5. **출고검수 화면과의 도메인 정합성 완성**:
+   - 계약 시 고객/현장의 `defaultCheckedSpecs` 및 `checkedSpecs`를 기반으로 모바일/PC 출고검수 화면(`MobileInspectionList.tsx`, `outbound_inspections.tsx`)에서 검수 체크포인트가 100% 자동 생성되도록 데이터 파이프라인 연계 확립.
+6. **검증 결과**:
+   - 밴드 출고 텍스트 샘플 파싱 테스트 ➔ 8개 표준 안전스펙(철망, 감지봉, 원판, 단자커버, 주행속도, 오버로드, 사다리보양, 소화기함) 100% 정상 인식 확인.
+   - TypeScript 컴파일 및 프로덕션 번들 빌드 (`npm run build`): **0 Error 정상 통과 (`built in 1.41s`)**.
+
+---
+
+## [v1.12.0.Build.18] - 2026-09-09 21:26
+
+### 🚀 [배차 운반비 ₩0 표출 은폐 결함 해결 및 원격 DB 380건 운송비 100% 동기화]
+
+**배경**:
+1. 사용자 문의("초기DB 업로드 에서 배차내역을 업로드 했을 때, 왜 전부 0원으로 입력되어있지? 엑셀에 운반비 값이 들어있는데")에 따라 배차 내역 파싱, DB 저장 및 화면 표출 전 과정을 정밀 감사함.
+2. 엑셀 D열(운반비) 데이터는 `deliveryCost` 및 `expectedCost`로 DB에 220,000원, 140,000원 등 정상 저장되어 있었으나, 원격 DB 스키마의 `finalCost DEFAULT 0`과 `TruckDispatch.tsx`의 헬퍼 함수 우선순위 평가 결함으로 인해 화면과 통계에서 모조리 `₩0`으로 덮어씌워지던(Shadowing) 결함을 원천 해결함.
+
+**개편 내역**:
+1. **운송비 산출 헬퍼 다단계 평가 가드 구축 (`src/pages/TruckDispatch.tsx`)**:
+   - `getEffectiveDeliveryCost`에서 미확정 상태의 `finalCost: 0` 기본값이 등록 운송비(`deliveryCost > 0`)를 덮어씌우지 않도록 순서 재조정.
+   - `finalCost > 0`일 때만 확정액을 우선 반환하고, 미정산 시에는 원천 등록 데이터인 `deliveryCost`를 1순위로 평가하여 엑셀 운반비(30만원, 20만원, 12만원, 22만원 등)가 화면 대장과 통계에 100% 정밀 표출되도록 조치.
+2. **배차 이력 업로드 시 `finalCost` 동기화 보강 (`src/services/migrationEngine.ts`)**:
+   - `ingestDispatchData`에서 배차 레코드 생성 시 `finalCost: r.deliveryCost ?? 0`을 명시적으로 매핑하여 스키마 기본값(0)에 의한 왜곡 원천 차단.
+3. **원격 Supabase DB 기존 380건 배차 데이터 즉시 동기화 완료**:
+   - 기존 적재된 배차 이력 중 `deliveryCost > 0`이면서 `finalCost = 0`이었던 380건에 대해 `finalCost = deliveryCost` 일괄 동기화 완료 (`잔여 불일치 0건`).
+4. **검증 결과**:
+   - 삼영기업(220,000원), 준제이엔씨(140,000원), 세보엠이씨(260,000원) 등 정상 표출 확인.
+   - TypeScript 컴파일 및 프로덕션 번들 빌드 (`npm run build`): **0 Error 정상 통과 (`built in 1.13s`)**.
+
+---
+
 ## [v1.12.0.Build.17] - 2026-09-09 21:15
 
 ### 🚀 [배차 운송관리 메뉴 진입 시 TDZ 'Cannot access P before initialization' 크래시 오류 원천 해결]

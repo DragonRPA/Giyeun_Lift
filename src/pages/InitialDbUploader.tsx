@@ -1753,7 +1753,8 @@ export const InitialDbUploader: React.FC = () => {
                     { label: '총 출고요청 건수', value: `${dispatchAnalysisResult.stats.totalParsed}건`, color: 'var(--text-main)' },
                     { label: '유효 계약 고객사', value: `${dispatchAnalysisResult.stats.contractedCustomerCount}개사`, color: '#7c3aed' },
                     { label: '유효 계약 현장', value: `${dispatchAnalysisResult.stats.contractedSiteCount}개소`, color: '#2563eb' },
-                    { label: '추출 고객 요구사항', value: `${dispatchAnalysisResult.stats.extractedOptionCount + dispatchAnalysisResult.stats.extractedProtectionCount}건`, color: '#059669' },
+                    { label: '추출 유상옵션/보양', value: `${dispatchAnalysisResult.stats.extractedOptionCount + dispatchAnalysisResult.stats.extractedProtectionCount}건`, color: '#059669' },
+                    { label: '추출 표준 안전 스펙', value: `${dispatchAnalysisResult.stats.extractedSpecCount || 0}개사`, color: '#d97706' },
                     { label: '제외된 미계약 건', value: `${dispatchAnalysisResult.stats.ignoredCount}건`, color: 'var(--text-muted)' },
                   ].map(({ label, value, color }) => (
                     <div key={label} style={{ backgroundColor: 'var(--bg-app)', padding: '10px 14px', borderRadius: '6px', border: '1px solid var(--border-color)' }}>
@@ -1767,7 +1768,7 @@ export const InitialDbUploader: React.FC = () => {
                 <div style={{ border: '1px solid var(--border-color)', borderRadius: '6px', overflow: 'hidden' }}>
                   <div style={{ padding: '10px 14px', backgroundColor: 'var(--bg-secondary)', borderBottom: '1px solid var(--border-color)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <span style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-main)' }}>
-                      📋 고객사별 고유 요구사항(옵션·보양·특이사항) 마스터 추출 내역 ({dispatchAnalysisResult.matchedEnrichments.length}개사)
+                      📋 고객사별 고유 요구사항(옵션·보양·안전스펙·특이사항) 마스터 추출 내역 ({dispatchAnalysisResult.matchedEnrichments.length}개사)
                     </span>
                     <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
                       * 시계열 최신값 우선 & 빈칸 안전 보완 정책 적용
@@ -1783,12 +1784,14 @@ export const InitialDbUploader: React.FC = () => {
                           <th style={{ padding: '8px 10px', whiteSpace: 'nowrap' }}>최신일자</th>
                           <th style={{ padding: '8px 10px', whiteSpace: 'nowrap' }}>기본 유상옵션</th>
                           <th style={{ padding: '8px 10px', whiteSpace: 'nowrap' }}>기본 보양작업</th>
+                          <th style={{ padding: '8px 10px', whiteSpace: 'nowrap' }}>표준 안전 스펙</th>
                           <th style={{ padding: '8px 10px', whiteSpace: 'nowrap' }}>현장/담당자</th>
                           <th style={{ padding: '8px 10px', minWidth: '180px' }}>고객 특이 요구사항 (반복 재사용 메모)</th>
                         </tr>
                       </thead>
                       <tbody>
                         {dispatchAnalysisResult.matchedEnrichments.map(item => {
+                          const specCount = item.extractedDefaults.defaultCheckedSpecs ? Object.keys(item.extractedDefaults.defaultCheckedSpecs).length : 0;
                           return (
                             <tr key={item.customerId} style={{ borderBottom: '1px solid #f1f5f9' }}>
                               <td style={{ padding: '8px 10px', fontWeight: 600, color: 'var(--text-main)', whiteSpace: 'nowrap' }}>
@@ -1807,6 +1810,15 @@ export const InitialDbUploader: React.FC = () => {
                               </td>
                               <td style={{ padding: '8px 10px', whiteSpace: 'nowrap', color: item.extractedDefaults.defaultProtection ? '#059669' : '#94a3b8' }}>
                                 {item.extractedDefaults.defaultProtection || '(기본)'}
+                              </td>
+                              <td style={{ padding: '8px 10px', whiteSpace: 'nowrap' }}>
+                                {specCount > 0 ? (
+                                  <span style={{ padding: '2px 6px', borderRadius: '4px', backgroundColor: 'rgba(217, 119, 6, 0.12)', color: '#d97706', fontSize: '11px', fontWeight: 600 }}>
+                                    안전스펙 {specCount}종 확인
+                                  </span>
+                                ) : (
+                                  <span style={{ color: '#94a3b8', fontSize: '11px' }}>-</span>
+                                )}
                               </td>
                               <td style={{ padding: '8px 10px', whiteSpace: 'nowrap' }}>
                                 {item.sites.map(s => s.siteName).join(', ') || '-'}

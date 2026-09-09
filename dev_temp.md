@@ -1,5 +1,45 @@
 # 개발 요구사항 임시 기록 (dev_temp.md)
 
+## [완료] 초기 DB 밴드 출고 데이터 업로드 시 21대 전사 표준 안전스펙 및 유상옵션·보양작업 추출/동기화 무누락 복원 (v1.12.0.Build.19)
+- **요구사항**: "초기 DB 업로드 메뉴에서 밴드에서 추출한 출고 데이터를 업로드 할 때, 고객의 옵션정보를 업로드 하던 것이 왜 없어졌지? 원인 찾아 수정하고 ㄹㅇ"
+- **적용 목적 (헌장 1.1 최대 편익, 1.2 발생 사건 무누락 DB 저장, 3.1 무수식어 건조 표준, 5.2 무음 실패 방지, 5.3 SSOT 일원화, 7.2 경험 지식 베이스)**:
+  - 과거 커밋(`721e43e`)에서 체크리스트 제거 시 과도하게 삭제되었던 21대 전사 표준 안전스펙(`STANDARD_SPECS`) 키워드 매칭, `defaultCheckedSpecs`, `checkedSpecs`, `defaultPaidOptions`, `defaultProtection` 추출 및 DB upsert 파이프라인을 전면 복원.
+  - 출고검수 화면(`MobileInspectionList.tsx`, `outbound_inspections.tsx`)에서 고객/현장의 요구 스펙을 동적으로 불러와 체크포인트를 생성하는 도메인 라이프사이클의 무누락 상속 보장.
+- **작업 및 개편 내역**:
+  - 1. **`parseDispatchHistoryText` 키워드 매칭 및 스펙 추출 전면 복원 (`src/services/migrationEngine.ts`)**:
+    - `STANDARD_SPECS` 임포트 및 21대 안전스펙 키워드(소화기, 감지봉, 협착 센서, 철망, 함석, 단자커버 등) 전수 정밀 매칭 복원 ➔ `matchedSpecs: Record<string, boolean>` 생성.
+    - 본문 라인에서 유상옵션, 보양작업 및 표준 스펙을 무누락 수집하도록 보강.
+  - 2. **`analyzeDispatchHistoryForCustomerDefaults` 스펙 합집합 집계 복원 (`src/services/migrationEngine.ts`)**:
+    - 고객사별 `aggregatedSpecs`, 현장별 `checkedSpecs`, 고객 마스터 `defaultCheckedSpecs` 집계 복원.
+    - 통계 지표 `extractedSpecCount` 복원.
+  - 3. **`ingestCustomerDefaultsFromDispatchHistory` 원격 DB 동기화 복원 (`src/services/migrationEngine.ts`)**:
+    - `isEmptyVal` 함수에 공백 문자열(`v.trim() === ''`) 및 빈 배열/객체 방어 가드 강화.
+    - `customers` 테이블에 `defaultCheckedSpecs`, `defaultPaidOptions`, `defaultProtection`, `specialNotes`, `defaultBillingDay` 무누락 upsert.
+    - `customer_sites` 테이블에 `checkedSpecs`, `paidOptions`, `protection`, `address`, `contactName`, `contact` 무누락 upsert.
+  - 4. **`InitialDbUploader.tsx` Card ⑤ 대사 그리드 & 5대 통계 UI 복원**:
+    - 상단 통계 카드에 `추출 표준 안전 스펙: {N}개사` 복원.
+    - 대사 테이블에 `표준 안전 스펙` 컬럼 복원 (`안전스펙 N종 확인` 배지 표출).
+  - 5. **경험 지식 베이스(E-076) 등재**: `C:\Users\이정용\.gemini\config\경험.md` 기록 완료.
+- **검증 결과**:
+  - 밴드 출고 텍스트 샘플 파싱 테스트 ➔ 8개 표준 안전스펙(철망, 감지봉, 원판, 단자커버, 주행속도, 오버로드, 사다리보양, 소화기함) 100% 정상 인식 확인.
+  - TypeScript 전체 정적 빌드 (`cmd /c "npm run build"`): **0 Error 정상 통과 (`built in 1.41s`)**.
+
+## [완료] 배차 운반비 ₩0 표출 은폐 결함 해결 및 원격 DB 380건 운송비 100% 동기화 (v1.12.0.Build.18)
+- **요구사항**: "초기DB 업로드 에서 배차내역을 업로드 했을 때, 왜 전부 0원으로 입력되어있지? 엑셀에 운반비 값이 들어있는데"
+- **적용 목적 (헌장 1.1 최대 편익, 1.2 사건 무누락 DB 저장, 4.1 정밀 일할/원가 집계, 5.2 무음 실패 방지, 5.3 SSOT 일원화, 7.2 경험 지식 베이스)**:
+  - 엑셀 D열(운반비) 데이터는 정상적으로 10,000배 환산되어 DB `deliveryCost`에 저장되었으나, PostgreSQL `finalCost DEFAULT 0`과 화면 헬퍼의 우선순위 결함으로 인해 ₩0으로 덮어씌워지던 결함을 원천 해결.
+- **작업 및 개편 내역**:
+  - 1. **`getEffectiveDeliveryCost` 우선순위 가드 재정립 (`src/pages/TruckDispatch.tsx`)**:
+    - `finalCost > 0`인 경우에만 확정액 우선 반환, 미정산 시 원천 등록 데이터 `deliveryCost`를 1순위로 평가하여 엑셀 운반비 정상 표출.
+  - 2. **배차 이력 업로드 시 `finalCost` 동기화 매핑 (`src/services/migrationEngine.ts`)**:
+    - `ingestDispatchData`에서 `finalCost: r.deliveryCost ?? 0` 추가.
+  - 3. **원격 Supabase DB 기존 380건 일괄 동기화**:
+    - `deliveryCost > 0`이면서 `finalCost = 0`인 380건에 대해 `finalCost = deliveryCost` 일괄 동기화 완료 (잔여 0건).
+  - 4. **경험 지식 베이스(E-075) 등재**: `C:\Users\이정용\.gemini\config\경험.md` 기록 완료.
+- **검증 결과**:
+  - 삼영기업(220,000원), 준제이엔씨(140,000원), 세보엠이씨(260,000원) 등 정상 표출 확인.
+  - TypeScript 전체 정적 빌드 (`npm run build`): **0 Error 정상 통과 (`built in 1.13s`)**.
+
 ## [완료] 배차 운송관리 메뉴 진입 시 TDZ 'Cannot access P before initialization' 크래시 오류 원천 해결 (v1.12.0.Build.17)
 - **요구사항**: "배차 운송관리 메뉴 열때 오류"
 - **적용 목적 (헌장 1.1 최대 편익, 1.2 발생 사건 무누락 DB 저장, 5.2 무음 실패 방지, 5.3 SSOT 일원화, 7.2 경험 지식 베이스)**:

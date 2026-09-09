@@ -207,19 +207,47 @@ export const OtManagementPage: React.FC = () => {
     setOtDate(tYmd);
   };
 
-  // OT 연장근무 등록 폼 상태 (기본 시작시간 17:00, 근로시간 1.0시간)
+  // OT 연장근무 등록 폼 상태 (다수인원 동시 선택 지원, 기본 시작시간 17:00, 근로시간 1.0시간)
   const [otDate, setOtDate] = useState<string>(getTodayYmd());
-  const [otUserId, setOtUserId] = useState(currentUser?.id || '');
+  const [otUserIds, setOtUserIds] = useState<string[]>(currentUser?.id ? [currentUser.id] : []);
   const [otStartTime, setOtStartTime] = useState('17:00');
   const [otHours, setOtHours] = useState<number>(1.0);
   const [otWorkDetail, setOtWorkDetail] = useState('');
 
   // 로그인 사용자 또는 1순위 임직원으로 초기 선택 안전 보장
   useEffect(() => {
-    if (!otUserId && sortedUsers.length > 0) {
-      setOtUserId(currentUser?.id || sortedUsers[0].id);
+    if (otUserIds.length === 0 && sortedUsers.length > 0) {
+      setOtUserIds([currentUser?.id || sortedUsers[0].id]);
     }
-  }, [sortedUsers, otUserId, currentUser]);
+  }, [sortedUsers, currentUser]);
+
+  // 임직원 다중 선택 토글 핸들러
+  const handleToggleUser = (userId: string) => {
+    setOtUserIds(prev =>
+      prev.includes(userId) ? prev.filter(id => id !== userId) : [...prev, userId]
+    );
+  };
+
+  const handleSelectAllUsers = () => {
+    setOtUserIds(sortedUsers.map(u => u.id));
+  };
+
+  const handleClearAllUsers = () => {
+    setOtUserIds([]);
+  };
+
+  const handleSelectDeptUsers = (deptId: string | null) => {
+    const deptUserIds = sortedUsers
+      .filter(u => u.departmentId === deptId)
+      .map(u => u.id);
+    if (deptUserIds.length === 0) return;
+    const allDeptSelected = deptUserIds.every(id => otUserIds.includes(id));
+    if (allDeptSelected) {
+      setOtUserIds(prev => prev.filter(id => !deptUserIds.includes(id)));
+    } else {
+      setOtUserIds(prev => Array.from(new Set([...prev, ...deptUserIds])));
+    }
+  };
 
   // 1. 날짜 하루 단위 가감 (-1일 / +1일)
   const handleDateShift = (deltaDays: number) => {
@@ -274,8 +302,8 @@ export const OtManagementPage: React.FC = () => {
       showErrorModal('근무 일자를 지정해 주십시오.');
       return;
     }
-    if (!otUserId) {
-      showErrorModal('신청 대상 임직원을 선택해 주십시오.');
+    if (otUserIds.length === 0) {
+      showErrorModal('신청 대상 임직원을 최소 1명 이상 선택해 주십시오.');
       return;
     }
     if (!otStartTime) {
@@ -300,19 +328,25 @@ export const OtManagementPage: React.FC = () => {
     const startDateTime = `${otDate} ${otStartTime}`;
 
     try {
-      await addOvertimeRecord({
-        userId: otUserId,
-        startDateTime,
-        hours: otHours,
-        workDetail: otWorkDetail.trim(),
-        status: 'APPROVED'
-      });
+      for (const uid of otUserIds) {
+        await addOvertimeRecord({
+          userId: uid,
+          startDateTime,
+          hours: otHours,
+          workDetail: otWorkDetail.trim(),
+          status: 'APPROVED'
+        });
+      }
 
-      const targetUser = users.find(u => u.id === otUserId);
+      const selectedNames = otUserIds
+        .map(uid => sortedUsers.find(u => u.id === uid)?.name || users.find(u => u.id === uid)?.name)
+        .filter(Boolean)
+        .join(', ');
+
       setOtWorkDetail('');
       setOtHours(1.0);
       setOtStartTime('17:00');
-      showToast(`${targetUser?.name || '임직원'} 님의 OT(${otHours}시간) 내역이 등록되었습니다.`);
+      showToast(`총 ${otUserIds.length}명 (${selectedNames})의 OT(${otHours}시간) 내역이 일괄 등록되었습니다.`);
     } catch (err: any) {
       showErrorModal(err?.message || 'OT 연장근무 등록 중 오류가 발생했습니다.');
     }
@@ -567,23 +601,67 @@ export const OtManagementPage: React.FC = () => {
               </div>
             </div>
 
-            {/* 2. 대상 임직원 전체 퀵버튼 */}
+            {/* 2. 대상 임직원 지정 (다수인원 동시 선택 지원) */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <label style={{ fontSize: '12px', fontWeight: 'bold', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
-                  2. 대상 임직원 지정
+                  2. 대상 임직원 지정 <span style={{ color: 'var(--primary)', fontWeight: 800 }}>({otUserIds.length}명 선택됨)</span>
                 </label>
-                {otUserId && (
-                  <span style={{ fontSize: '11px', color: 'var(--primary)', fontWeight: 600, whiteSpace: 'nowrap' }}>
-                    {sortedUsers.find(u => u.id === otUserId)?.name || users.find(u => u.id === otUserId)?.name} 선택됨
-                  </span>
-                )}
+                <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                  <button
+                    type="button"
+                    onClick={handleSelectAllUsers}
+                    style={{ fontSize: '11px', color: 'var(--primary)', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600, padding: 0 }}
+                  >
+                    전체선택
+                  </button>
+                  <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>|</span>
+                  <button
+                    type="button"
+                    onClick={handleClearAllUsers}
+                    style={{ fontSize: '11px', color: 'var(--text-muted)', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600, padding: 0 }}
+                  >
+                    선택해제
+                  </button>
+                </div>
               </div>
+
+              {/* 부서별 일괄 선택 칩 */}
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', marginBottom: '2px' }}>
+                {departments.map(d => {
+                  const deptUsers = sortedUsers.filter(u => u.departmentId === d.id);
+                  if (deptUsers.length === 0) return null;
+                  const isAllDeptSelected = deptUsers.every(u => otUserIds.includes(u.id));
+                  return (
+                    <button
+                      key={d.id}
+                      type="button"
+                      onClick={() => handleSelectDeptUsers(d.id)}
+                      style={{
+                        fontSize: '10.5px',
+                        padding: '2px 6px',
+                        borderRadius: '4px',
+                        border: isAllDeptSelected ? '1px solid var(--primary)' : '1px solid var(--border-color)',
+                        backgroundColor: isAllDeptSelected ? 'rgba(59, 130, 246, 0.15)' : 'var(--bg-main)',
+                        color: isAllDeptSelected ? 'var(--primary)' : 'var(--text-secondary)',
+                        fontWeight: isAllDeptSelected ? 700 : 500,
+                        cursor: 'pointer',
+                        whiteSpace: 'nowrap'
+                      }}
+                      title={`${d.name} 소속 ${deptUsers.length}명 일괄 선택/해제`}
+                    >
+                      {d.name} ({deptUsers.length})
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* 임직원 개별 퀵버튼 */}
               <div style={{
                 display: 'flex',
                 flexWrap: 'wrap',
                 gap: '5px',
-                maxHeight: '140px',
+                maxHeight: '150px',
                 overflowY: 'auto',
                 padding: '8px',
                 backgroundColor: 'var(--bg-main)',
@@ -591,18 +669,18 @@ export const OtManagementPage: React.FC = () => {
                 border: '1px solid var(--border-color)'
               }}>
                 {sortedUsers.map(u => {
-                  const isSelected = otUserId === u.id;
+                  const isSelected = otUserIds.includes(u.id);
                   const deptName = getEmployeeDeptName(u);
                   return (
                     <button
                       key={u.id}
                       type="button"
-                      onClick={() => setOtUserId(u.id)}
+                      onClick={() => handleToggleUser(u.id)}
                       style={{
                         fontSize: '12px',
                         padding: '5px 9px',
                         borderRadius: '5px',
-                        border: isSelected ? '1px solid var(--primary)' : '1px solid var(--border-color)',
+                        border: isSelected ? '1.5px solid var(--primary)' : '1px solid var(--border-color)',
                         backgroundColor: isSelected ? 'var(--primary)' : 'var(--bg-surface)',
                         color: isSelected ? '#ffffff' : 'var(--text-main)',
                         fontWeight: isSelected ? 700 : 500,
@@ -615,6 +693,7 @@ export const OtManagementPage: React.FC = () => {
                         transition: 'all 0.15s ease'
                       }}
                     >
+                      {isSelected && <span style={{ fontSize: '11px', fontWeight: 900 }}>✓</span>}
                       <span>{u.name}</span>
                       {deptName && (
                         <span style={{
@@ -896,7 +975,7 @@ export const OtManagementPage: React.FC = () => {
               }}
               disabled={!canSave}
             >
-              OT 등록 ({otHours.toFixed(1)}시간)
+              OT 등록 ({otUserIds.length}명, 각 {otHours.toFixed(1)}시간)
             </button>
           </form>
         </div>

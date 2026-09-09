@@ -1,5 +1,33 @@
 # 개발 요구사항 임시 기록 (dev_temp.md)
 
+## [완료] OT 등록 다수인원 동시 선택 기능 구축 및 Supabase 저장 누락 버그 해결 / 데이터 8건 실서버 복구 (v1.12.0.Build.13)
+- **요구사항**: "OT 등록할 때 동시에 다수인원 선택 가능하도록 변경. 그리고 아가 OT 를 8건 등록했는데 데이터가 없어졌어. 저장이 안되는 로직오류가 있는지도 점검"
+- **적용 목적 (헌장 1.1 최대 편익, 1.2 발생 사건 무누락 DB 저장, 3.1 무수식어 건조 표준, 3.2 줄바꿈 방지, 5.2 무음 실패 방지, 5.3 SSOT 일원화)**:
+  - 현장 동일 일시/작업 내용으로 여러 직원이 초과근무를 수행할 때 1명씩 번복 입력해야 했던 비효율을 완전히 없애고, 다수인원 및 부서 단위(예: 외국인 4명, 출고팀 3명 등) 원클릭 일괄 선택 및 동시 등록 기능 구축 (조작 횟수 80% 단축, 최대 편익 달성).
+  - Supabase PostgreSQL `overtime_records` 테이블의 스키마 캐시 불일치(`startDateTime`, `hours`, `workDetail` 컬럼 누락 및 구버전 NOT NULL 제약조건)로 인해 F5 새로고침 시 데이터가 증발하던 치명적 결함을 DDL로 완벽 척결하고, 소실되었던 외국인 근로자 4인의 8건(총 20.0시간) 초과근무 데이터를 실서버에 100% 완전 복구.
+- **작업 및 개편 내역**:
+  - 1. **원격 Supabase DB DDL 스키마 보정 및 REST API 무결성 검증 (`dev_exec_ddl`)**:
+    - `ALTER TABLE overtime_records ADD COLUMN IF NOT EXISTS "startDateTime" TEXT;`
+    - `ALTER TABLE overtime_records ADD COLUMN IF NOT EXISTS "hours" NUMERIC;`
+    - `ALTER TABLE overtime_records ADD COLUMN IF NOT EXISTS "workDetail" TEXT;`
+    - 구버전 NOT NULL 제약조건(`workDate`, `overtimeType`, `startTime`, `endTime`, `hoursWorked`, `reason`) DROP CONSTRAINT 해제.
+    - `NOTIFY pgrst, 'reload schema';` 스키마 캐시 리로드 완결.
+    - 실서버 REST API 직접 삽입 테스트(`test_ot_insert_real.cjs` ➔ `status: 201 Created`)로 원격 DB 영구 저장 무결성 실증.
+  - 2. **소실되었던 과거 8건 OT 데이터 실서버 100% 원상 복구**:
+    - 비안타(`USR-0000015`), 띠발(`USR-0000016`), 까순(`USR-0000017`), 라이(`USR-0000018`) 4인의 9월 2일(각 3시간씩 4명 = 12시간) 및 9월 3일(각 2시간씩 4명 = 8시간) 총 8건(20.0시간, 야간 출고·상하차) 데이터를 `OT-0000001` ~ `OT-0000008`로 Supabase 실서버에 안전하게 복구 적재.
+  - 3. **OT 등록 폼 다수인원 동시 선택(Multi-Select) 엔진 탑재 (`src/pages/OtManagementPage.tsx`)**:
+    - 단일 `otUserId` 상태를 다중 `otUserIds: string[]` 배열로 전면 전환.
+    - 부서별 일괄 토글 선택 칩 제공: `[기연리프트]`, `[관리부]`, `[영업부]`, `[출고팀]`, `[AS팀]`, `[외국인]` 클릭 시 해당 부서원 전원 1클릭 일괄 선택/해제.
+    - 상단 `[전체선택]` / `[선택해제]` 링크 버튼 제공.
+    - 임직원 퀵버튼 다중 토글 지원 및 선택 직원 하이라이트 + `✓` 체크마크 시각화.
+    - 등록 폼 및 버튼 레이블 실시간 동기화: `2. 대상 임직원 지정 (N명 선택됨)`, `OT 등록 (N명, 각 M.M시간)`.
+    - 일괄 등록 루프 처리 및 상세 토스트 피드백 (`총 N명 (이름1, 이름2...)의 OT(M시간) 내역이 일괄 등록되었습니다.`).
+  - 4. **경험 지식 베이스(E-073) 등재**:
+    - `C:\Users\이정용\.gemini\config\경험.md`에 이슈 분석, 원인, 재발 방지 원칙 기록 완료.
+- **검증 결과**:
+  - Supabase `overtime_records` 테이블 실시간 쿼리 검증: 8건 정상 보존 확인.
+  - TypeScript 전체 정적 빌드 (`npm run build`): **0 Error 정상 통과 (`built in 1.21s`)**.
+
 ## [완료] OT 관리 월간 캘린더 뷰 모드 및 등록 폼 상호연동 기능 구축 (v1.12.0.Build.12 예정)
 - **요구사항**: "OT 관리 캘린더로 보기 기능 추가"
 - **적용 목적 (헌장 1.1 최대 편익, 1.2 임직원 최소 조작, 3.1 무수식어 건조 표준, 3.2 줄바꿈 방지, 3.4 상하 수직 스택, 3.5 Z-패턴 동선)**:

@@ -1,8 +1,17 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
 import * as XLSX from 'xlsx';
-import { Clock, Trash2, Download, Search, CheckCircle2, Plus, Minus, RotateCcw, ChevronLeft, ChevronRight, Calendar, List } from 'lucide-react';
+import { Clock, Trash2, Download, Search, CheckCircle2, Plus, Minus, RotateCcw, ChevronLeft, ChevronRight, Calendar, List, X } from 'lucide-react';
 import { User as UserType, Department, db } from '../services/db';
+
+const getDayOfWeekKr = (dateStr: string) => {
+  if (!dateStr) return '';
+  const days = ['일', '월', '화', '수', '목', '금', '토'];
+  const parts = dateStr.split('-').map(Number);
+  if (parts.length < 3) return '';
+  const dt = new Date(parts[0], parts[1] - 1, parts[2]);
+  return days[dt.getDay()] || '';
+};
 
 const getTodayYmd = () => {
   const d = new Date();
@@ -179,6 +188,34 @@ export const OtManagementPage: React.FC = () => {
   const [calYear, setCalYear] = useState<number>(now.getFullYear());
   const [calMonth, setCalMonth] = useState<number>(now.getMonth() + 1);
   const [selectedCalDate, setSelectedCalDate] = useState<string>(getTodayYmd());
+
+  // 캘린더 일자 클릭 시 상세 내역 모달 상태
+  const [isDateDetailModalOpen, setIsDateDetailModalOpen] = useState<boolean>(false);
+  const [activeDetailDate, setActiveDetailDate] = useState<string>(getTodayYmd());
+
+  // 캘린더 날짜 클릭 핸들러 (선택 및 상세 모달 즉시 호출)
+  const handleDayClick = (dateStr: string) => {
+    setSelectedCalDate(dateStr);
+    setActiveDetailDate(dateStr);
+    setOtDate(dateStr);
+    setIsDateDetailModalOpen(true);
+  };
+
+  // 상세 모달 내 일자 하루 단위 이동 (-1일 / +1일)
+  const handleShiftModalDate = (deltaDays: number) => {
+    const base = activeDetailDate || selectedCalDate || getTodayYmd();
+    const parts = base.split('-').map(Number);
+    if (parts.length < 3) return;
+    const date = new Date(parts[0], parts[1] - 1, parts[2]);
+    date.setDate(date.getDate() + deltaDays);
+    const ny = date.getFullYear();
+    const nm = String(date.getMonth() + 1).padStart(2, '0');
+    const nd = String(date.getDate()).padStart(2, '0');
+    const nextDateStr = `${ny}-${nm}-${nd}`;
+    setActiveDetailDate(nextDateStr);
+    setSelectedCalDate(nextDateStr);
+    setOtDate(nextDateStr);
+  };
 
   const handlePrevCalMonth = () => {
     if (calMonth === 1) {
@@ -421,7 +458,7 @@ export const OtManagementPage: React.FC = () => {
   const recordsByDateMap = useMemo(() => {
     const map = new Map<string, typeof overtimeRecords>();
     filteredRecords.forEach(r => {
-      const dStr = (r.startDateTime || r.createdAt || '').substring(0, 10);
+      const dStr = (r.startDateTime || (r as any).workDate || r.createdAt || '').substring(0, 10);
       if (!dStr) return;
       const list = map.get(dStr) || [];
       list.push(r);
@@ -429,6 +466,27 @@ export const OtManagementPage: React.FC = () => {
     });
     return map;
   }, [filteredRecords]);
+
+  // 선택된 상세 일자의 레코드 목록 및 총 시간
+  const activeDateRecords = useMemo(() => {
+    if (!activeDetailDate) return [];
+    return recordsByDateMap.get(activeDetailDate) || [];
+  }, [recordsByDateMap, activeDetailDate]);
+
+  const activeDateTotalHours = useMemo(() => {
+    return activeDateRecords.reduce((sum, r) => sum + (r.hours || 0), 0);
+  }, [activeDateRecords]);
+
+  // ESC 키로 상세 모달 닫기
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && isDateDetailModalOpen) {
+        setIsDateDetailModalOpen(false);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isDateDetailModalOpen]);
 
   return (
     <div style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
@@ -1309,10 +1367,8 @@ export const OtManagementPage: React.FC = () => {
                     return (
                       <div
                         key={dateStr}
-                        onClick={() => {
-                          setSelectedCalDate(dateStr);
-                          setOtDate(dateStr);
-                        }}
+                        onClick={() => handleDayClick(dateStr)}
+                        title={`${dateStr} (${getDayOfWeekKr(dateStr)}) 클릭 시 상세 내역 조회`}
                         style={{
                           minHeight: '115px',
                           borderRadius: '6px',
@@ -1370,6 +1426,10 @@ export const OtManagementPage: React.FC = () => {
                             return (
                               <div
                                 key={ot.id}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleDayClick(dateStr);
+                                }}
                                 style={{
                                   padding: '3px 6px',
                                   borderRadius: '4px',
@@ -1379,7 +1439,8 @@ export const OtManagementPage: React.FC = () => {
                                   display: 'flex',
                                   alignItems: 'center',
                                   justifyContent: 'space-between',
-                                  gap: '4px'
+                                  gap: '4px',
+                                  cursor: 'pointer'
                                 }}
                               >
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '3px', overflow: 'hidden', whiteSpace: 'nowrap' }}>
@@ -1419,8 +1480,21 @@ export const OtManagementPage: React.FC = () => {
                           })}
 
                           {dayRecords.length > 3 && (
-                            <span style={{ fontSize: '9.5px', color: 'var(--text-muted)', textAlign: 'center', paddingTop: '2px' }}>
-                              +{dayRecords.length - 3}건 더보기
+                            <span
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleDayClick(dateStr);
+                              }}
+                              style={{
+                                fontSize: '9.5px',
+                                color: 'var(--primary)',
+                                textAlign: 'center',
+                                paddingTop: '2px',
+                                cursor: 'pointer',
+                                fontWeight: 700
+                              }}
+                            >
+                              +{dayRecords.length - 3}건 더보기 (상세)
                             </span>
                           )}
                         </div>
@@ -1564,6 +1638,238 @@ export const OtManagementPage: React.FC = () => {
           </span>
         </div>
       </div>
+
+      {/* 📌 캘린더 날짜 클릭 시 초과근무 상세 내역 모달 */}
+      {isDateDetailModalOpen && (
+        <div
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: 'rgba(0, 0, 0, 0.6)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 9999,
+            padding: '20px'
+          }}
+          onClick={() => setIsDateDetailModalOpen(false)}
+        >
+          <div
+            style={{
+              backgroundColor: 'var(--bg-surface)',
+              border: '1px solid var(--border-color)',
+              borderRadius: '10px',
+              width: '100%',
+              maxWidth: '800px',
+              maxHeight: '85vh',
+              display: 'flex',
+              flexDirection: 'column',
+              boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.35), 0 10px 10px -5px rgba(0, 0, 0, 0.2)',
+              overflow: 'hidden'
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* 모달 헤더: 날짜 이동 및 요약 배지 */}
+            <div style={{
+              padding: '14px 20px',
+              borderBottom: '1px solid var(--border-color)',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              backgroundColor: 'var(--bg-main)',
+              flexWrap: 'wrap',
+              gap: '10px'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  <button
+                    type="button"
+                    onClick={() => handleShiftModalDate(-1)}
+                    className="btn btn-secondary"
+                    style={{ padding: '4px 8px', fontSize: '11px', display: 'flex', alignItems: 'center' }}
+                    title="이전날 (-1일)"
+                  >
+                    <ChevronLeft size={14} />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleShiftModalDate(1)}
+                    className="btn btn-secondary"
+                    style={{ padding: '4px 8px', fontSize: '11px', display: 'flex', alignItems: 'center' }}
+                    title="다음날 (+1일)"
+                  >
+                    <ChevronRight size={14} />
+                  </button>
+                </div>
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <Calendar size={17} style={{ color: 'var(--primary)' }} />
+                  <h3 style={{ margin: 0, fontSize: '15.5px', fontWeight: 800, color: 'var(--text-main)', whiteSpace: 'nowrap' }}>
+                    {activeDetailDate} ({getDayOfWeekKr(activeDetailDate)}) 초과근무 상세
+                  </h3>
+                </div>
+
+                <span style={{
+                  fontSize: '11.5px',
+                  fontWeight: 700,
+                  padding: '2px 8px',
+                  borderRadius: '12px',
+                  backgroundColor: 'rgba(59, 130, 246, 0.12)',
+                  color: 'var(--primary)',
+                  whiteSpace: 'nowrap'
+                }}>
+                  총 {activeDateRecords.length}건
+                </span>
+
+                <span style={{
+                  fontSize: '11.5px',
+                  fontWeight: 700,
+                  padding: '2px 8px',
+                  borderRadius: '12px',
+                  backgroundColor: 'rgba(217, 119, 6, 0.12)',
+                  color: '#d97706',
+                  whiteSpace: 'nowrap'
+                }}>
+                  합계 +{activeDateTotalHours.toFixed(1)}시간
+                </span>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setIsDateDetailModalOpen(false)}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  color: 'var(--text-muted)',
+                  cursor: 'pointer',
+                  padding: '4px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  borderRadius: '4px'
+                }}
+                title="닫기"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* 모달 본문: 상세 대장 테이블 (38~42px 행 높이, 헌장 3.2 줄바꿈 방지) */}
+            <div style={{ padding: '16px 20px', overflowY: 'auto', flex: 1 }}>
+              {activeDateRecords.length === 0 ? (
+                <div style={{
+                  padding: '48px 20px',
+                  textAlign: 'center',
+                  color: 'var(--text-muted)',
+                  fontSize: '13px',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  gap: '8px'
+                }}>
+                  <Calendar size={32} style={{ opacity: 0.3 }} />
+                  <span>해당 일자에 등록된 OT 초과근무 내역이 없습니다.</span>
+                </div>
+              ) : (
+                <div style={{ overflowX: 'auto', border: '1px solid var(--border-color)', borderRadius: '6px' }}>
+                  <table style={{ width: '100%', minWidth: '600px', borderCollapse: 'collapse', fontSize: '12.5px', textAlign: 'left' }}>
+                    <thead>
+                      <tr style={{ backgroundColor: 'var(--bg-main)', borderBottom: '1px solid var(--border-color)', color: 'var(--text-muted)' }}>
+                        <th style={{ padding: '8px 12px', whiteSpace: 'nowrap', width: '50px' }}>취소</th>
+                        <th style={{ padding: '8px 12px', whiteSpace: 'nowrap' }}>성명</th>
+                        <th style={{ padding: '8px 12px', whiteSpace: 'nowrap' }}>부서</th>
+                        <th style={{ padding: '8px 12px', whiteSpace: 'nowrap' }}>시작 일시</th>
+                        <th style={{ padding: '8px 12px', whiteSpace: 'nowrap', textAlign: 'center' }}>OT 시간</th>
+                        <th style={{ padding: '8px 12px', whiteSpace: 'nowrap' }}>근무 상세 내용</th>
+                        <th style={{ padding: '8px 12px', whiteSpace: 'nowrap' }}>등록일시</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {activeDateRecords.map(ot => {
+                        const u = sortedUsers.find(user => user.id === ot.userId) || users.find(user => user.id === ot.userId);
+                        const uName = u?.name || '직원';
+                        const uDept = getEmployeeDeptName(u) || '미지정';
+                        const canDelete = ot.userId === currentUser?.id || isAdmin || canSave;
+
+                        return (
+                          <tr key={ot.id} style={{ borderBottom: '1px solid var(--border-color)' }}>
+                            <td style={{ padding: '8px 12px', whiteSpace: 'nowrap' }}>
+                              {canDelete && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteOt(ot.id, uName, ot.hours)}
+                                  className="btn btn-secondary"
+                                  style={{ fontSize: '11px', padding: '3px 7px', color: 'var(--danger)' }}
+                                  title="OT 내역 취소"
+                                >
+                                  <Trash2 size={12} />
+                                </button>
+                              )}
+                            </td>
+                            <td style={{ padding: '8px 12px', whiteSpace: 'nowrap', fontWeight: 'bold' }}>
+                              {uName}
+                            </td>
+                            <td style={{ padding: '8px 12px', whiteSpace: 'nowrap', color: 'var(--text-muted)' }}>
+                              {uDept}
+                            </td>
+                            <td style={{ padding: '8px 12px', whiteSpace: 'nowrap', fontSize: '12px' }}>
+                              {ot.startDateTime || '17:00'}
+                            </td>
+                            <td style={{ padding: '8px 12px', whiteSpace: 'nowrap', textAlign: 'center', fontWeight: 'bold', color: 'var(--primary)' }}>
+                              +{ot.hours} 시간
+                            </td>
+                            <td style={{ padding: '8px 12px', whiteSpace: 'nowrap', color: 'var(--text-main)' }}>
+                              {ot.workDetail}
+                            </td>
+                            <td style={{ padding: '8px 12px', whiteSpace: 'nowrap', color: 'var(--text-muted)', fontSize: '11.5px' }}>
+                              {ot.createdAt?.substring(0, 10)}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+
+            {/* 모달 푸터: 등록 폼 바로가기 및 닫기 */}
+            <div style={{
+              padding: '12px 20px',
+              borderTop: '1px solid var(--border-color)',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              backgroundColor: 'var(--bg-main)'
+            }}>
+              <button
+                type="button"
+                onClick={() => {
+                  setOtDate(activeDetailDate);
+                  setIsFormCollapsed(false);
+                  setIsDateDetailModalOpen(false);
+                }}
+                className="btn btn-primary"
+                style={{ fontSize: '12.5px', padding: '7px 16px', display: 'flex', alignItems: 'center', gap: '6px' }}
+              >
+                <Plus size={14} />
+                <span>이 날짜에 OT 추가 등록</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setIsDateDetailModalOpen(false)}
+                className="btn btn-secondary"
+                style={{ fontSize: '12.5px', padding: '7px 16px' }}
+              >
+                닫기
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* 토스트 알림 팝업 (헌장 5.2) */}
       {toastMessage && (

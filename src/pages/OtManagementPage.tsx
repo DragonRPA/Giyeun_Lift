@@ -49,6 +49,16 @@ const DEPT_FALLBACK_ORDER: Record<string, number> = {
   'DEPT-0000006': 5, 'DEPT-6': 5,  // 외국인
 };
 
+// 표준 부서명 매핑 폴백
+const DEPT_FALLBACK_NAMES: Record<string, string> = {
+  'DEPT-0000001': '기연리프트', 'DEPT-1': '기연리프트',
+  'DEPT-0000002': '관리부', 'DEPT-2': '관리부',
+  'DEPT-0000003': '영업부', 'DEPT-3': '영업부',
+  'DEPT-0000004': '출고팀', 'DEPT-4': '출고팀',
+  'DEPT-0000005': 'AS팀', 'DEPT-5': 'AS팀',
+  'DEPT-0000006': '외국인', 'DEPT-6': '외국인',
+};
+
 // 직급 서열 가중치 (사장/대표 -> 부사장 -> 전무 -> 상무 -> 부장 -> 차장 -> 팀장 -> 과장 -> 대리 -> 주임 -> 사원)
 const POSITION_RANK: Record<string, number> = {
   '대표': 1, '대표이사': 1, '사장': 1,
@@ -92,8 +102,11 @@ export const OtManagementPage: React.FC = () => {
     }
   }, []);
 
-  // 조직도 부서 로딩 및 맵 생성
+  // 조직도 부서 로딩 및 맵 생성 (DB 최신화 연동)
   const departments: Department[] = useMemo(() => {
+    if (db.departments && db.departments.length > 0) {
+      return db.departments;
+    }
     const local = localStorage.getItem('erp_departments');
     if (local) {
       try {
@@ -101,8 +114,8 @@ export const OtManagementPage: React.FC = () => {
         if (Array.isArray(parsed) && parsed.length > 0) return parsed;
       } catch {}
     }
-    return db.departments || [];
-  }, []);
+    return [];
+  }, [users, overtimeRecords]);
 
   const departmentMap = useMemo(() => {
     const map = new Map<string, string>();
@@ -168,12 +181,49 @@ export const OtManagementPage: React.FC = () => {
     });
   }, [users, orderedDeptIds]);
 
+  // 🔍 다계층 임직원 검색 헬퍼 (대소문자, loginId, 성명, 최고관리자 Fallback 완벽 지원)
+  const findUser = (userId?: string): UserType | undefined => {
+    if (!userId) return undefined;
+    const cleanId = String(userId).trim();
+    // 1. sortedUsers / users 에서 id 일치 (엄격 + 대소문자 무시)
+    let found = sortedUsers.find(u => u.id === cleanId || u.id?.toLowerCase() === cleanId.toLowerCase())
+             || users.find(u => u.id === cleanId || u.id?.toLowerCase() === cleanId.toLowerCase());
+    if (found) return found;
+
+    // 2. loginId 일치 (대소문자 무시)
+    found = sortedUsers.find(u => u.loginId === cleanId || u.loginId?.toLowerCase() === cleanId.toLowerCase())
+         || users.find(u => u.loginId === cleanId || u.loginId?.toLowerCase() === cleanId.toLowerCase());
+    if (found) return found;
+
+    // 3. 성명(name) 일치
+    found = sortedUsers.find(u => u.name === cleanId)
+         || users.find(u => u.name === cleanId);
+    if (found) return found;
+
+    // 4. sys-admin 및 admin 계정 Fallback
+    if (cleanId === 'sys-admin' || cleanId.toLowerCase() === 'admin') {
+      return {
+        id: cleanId,
+        loginId: 'admin',
+        name: '최고관리자',
+        department: '시스템',
+        role: 'ADMIN'
+      } as UserType;
+    }
+
+    return undefined;
+  };
+
   const getEmployeeDeptName = (u?: UserType): string => {
     if (!u) return '';
-    if (u.departmentId && departmentMap.has(u.departmentId)) {
-      return departmentMap.get(u.departmentId)!;
+    if (u.departmentId) {
+      if (departmentMap.has(u.departmentId)) {
+        return departmentMap.get(u.departmentId)!;
+      }
+      const fb = DEPT_FALLBACK_NAMES[u.departmentId] || DEPT_FALLBACK_NAMES[u.departmentId.toUpperCase()];
+      if (fb) return fb;
     }
-    return u.department || '';
+    return u.department || '미지정';
   };
 
   // OT 관리는 권한관리에서 통제 (ot_management view/save)
@@ -245,26 +295,32 @@ export const OtManagementPage: React.FC = () => {
     setOtDate(tYmd);
   };
 
-  // OT 연장근무 등록 폼 상태 (다수인원 동시 선택 지원, 기본 시작시간 17:00, 근로시간 1.0시간)
+  // OT 연장근무 등록 폼 상태 (자유로운 다중/단일 원클릭 토글 지원)
   const [otDate, setOtDate] = useState<string>(getTodayYmd());
-  const [otUserIds, setOtUserIds] = useState<string[]>(currentUser?.id ? [currentUser.id] : []);
+  const [otUserIds, setOtUserIds] = useState<string[]>([]);
   const [otStartTime, setOtStartTime] = useState('17:00');
   const [otHours, setOtHours] = useState<number>(1.0);
   const [otWorkDetail, setOtWorkDetail] = useState('');
   const [otMealYn, setOtMealYn] = useState<'Y' | 'N'>('N');
 
-  // 로그인 사용자 또는 1순위 임직원으로 초기 선택 안전 보장
+  // 유효한 임직원 목록에 없는 유령 ID 자동 정제
   useEffect(() => {
-    if (otUserIds.length === 0 && sortedUsers.length > 0) {
-      setOtUserIds([currentUser?.id || sortedUsers[0].id]);
+    if (sortedUsers.length === 0 || otUserIds.length === 0) return;
+    const filtered = otUserIds.filter(id => sortedUsers.some(u => u.id === id));
+    if (filtered.length !== otUserIds.length) {
+      setOtUserIds(filtered);
     }
-  }, [sortedUsers, currentUser]);
+  }, [sortedUsers]);
 
-  // 임직원 다중 선택 토글 핸들러
+  // 임직원 칩 자유 토글 핸들러 (원클릭으로 자유롭게 선택/해제)
   const handleToggleUser = (userId: string) => {
     setOtUserIds(prev =>
       prev.includes(userId) ? prev.filter(id => id !== userId) : [...prev, userId]
     );
+  };
+
+  const handleRemoveUser = (userId: string) => {
+    setOtUserIds(prev => prev.filter(id => id !== userId));
   };
 
   const handleSelectAllUsers = () => {
@@ -380,7 +436,7 @@ export const OtManagementPage: React.FC = () => {
       }
 
       const selectedNames = otUserIds
-        .map(uid => sortedUsers.find(u => u.id === uid)?.name || users.find(u => u.id === uid)?.name)
+        .map(uid => findUser(uid)?.name || uid)
         .filter(Boolean)
         .join(', ');
 
@@ -388,7 +444,7 @@ export const OtManagementPage: React.FC = () => {
       setOtHours(1.0);
       setOtStartTime('17:00');
       setOtMealYn('N');
-      showToast(`총 ${otUserIds.length}명 (${selectedNames})의 OT(${otHours}시간, 식사: ${otMealYn}) 내역이 일괄 등록되었습니다.`);
+      showToast(`총 ${otUserIds.length}명 (${selectedNames})의 OT(${otHours}시간, 식사: ${otMealYn}) 내역이 등록되었습니다.`);
     } catch (err: any) {
       showErrorModal(err?.message || 'OT 연장근무 등록 중 오류가 발생했습니다.');
     }
@@ -409,8 +465,8 @@ export const OtManagementPage: React.FC = () => {
     const ymd = new Date().toISOString().substring(0, 10).replace(/-/g, '');
 
     const data = filteredRecords.map((ot, idx) => {
-      const u = sortedUsers.find(user => user.id === ot.userId) || users.find(user => user.id === ot.userId);
-      const uName = u?.name || '알 수 없음';
+      const u = findUser(ot.userId);
+      const uName = u?.name || ot.userId;
       const uDept = getEmployeeDeptName(u) || '미지정';
 
       return {
@@ -441,9 +497,9 @@ export const OtManagementPage: React.FC = () => {
     if (userFilter !== 'ALL' && ot.userId !== userFilter) return false;
     if (!searchQuery.trim()) return true;
     const q = searchQuery.toLowerCase();
-    const u = sortedUsers.find(user => user.id === ot.userId) || users.find(user => user.id === ot.userId);
+    const u = findUser(ot.userId);
     const uDept = getEmployeeDeptName(u);
-    return (u?.name || '').toLowerCase().includes(q) || uDept.toLowerCase().includes(q) || (ot.workDetail || '').toLowerCase().includes(q);
+    return (u?.name || ot.userId).toLowerCase().includes(q) || uDept.toLowerCase().includes(q) || (ot.workDetail || '').toLowerCase().includes(q);
   });
 
   // 📅 캘린더 월간 데이터 계산 (윤달/역법 정합성 준수)
@@ -665,9 +721,9 @@ export const OtManagementPage: React.FC = () => {
               </div>
             </div>
 
-            {/* 2. 대상 임직원 지정 (다수인원 동시 선택 지원) */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            {/* 2. 대상 임직원 지정 (단일 선택 기본 / 다중 선택 지원) */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'nowrap' }}>
                 <label style={{ fontSize: '12px', fontWeight: 'bold', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
                   2. 대상 임직원 지정 <span style={{ color: 'var(--primary)', fontWeight: 800 }}>({otUserIds.length}명 선택됨)</span>
                 </label>
@@ -690,35 +746,90 @@ export const OtManagementPage: React.FC = () => {
                 </div>
               </div>
 
+              {/* 🌟 선택된 임직원 태그 배지 (누가 선택되어 있는지 100% 한눈에 실시간 확인) */}
+              {otUserIds.length > 0 && (
+                <div style={{
+                  display: 'flex',
+                  flexWrap: 'wrap',
+                  gap: '4px',
+                  padding: '6px 8px',
+                  backgroundColor: 'rgba(59, 130, 246, 0.08)',
+                  borderRadius: '6px',
+                  border: '1px solid rgba(59, 130, 246, 0.2)'
+                }}>
+                  {otUserIds.map(uid => {
+                    const u = findUser(uid);
+                    return (
+                      <span
+                        key={uid}
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '4px',
+                          padding: '2px 7px',
+                          borderRadius: '4px',
+                          backgroundColor: 'var(--primary)',
+                          color: '#ffffff',
+                          fontSize: '11px',
+                          fontWeight: 700,
+                          whiteSpace: 'nowrap'
+                        }}
+                      >
+                        {u?.name || uid}
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveUser(uid)}
+                          style={{
+                            background: 'none',
+                            border: 'none',
+                            color: '#ffffff',
+                            padding: 0,
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            opacity: 0.8
+                          }}
+                          title="선택 해제"
+                        >
+                          <X size={11} />
+                        </button>
+                      </span>
+                    );
+                  })}
+                </div>
+              )}
+
               {/* 부서별 일괄 선택 칩 */}
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', marginBottom: '2px' }}>
-                {departments.map(d => {
-                  const deptUsers = sortedUsers.filter(u => u.departmentId === d.id);
-                  if (deptUsers.length === 0) return null;
-                  const isAllDeptSelected = deptUsers.every(u => otUserIds.includes(u.id));
-                  return (
-                    <button
-                      key={d.id}
-                      type="button"
-                      onClick={() => handleSelectDeptUsers(d.id)}
-                      style={{
-                        fontSize: '10.5px',
-                        padding: '2px 6px',
-                        borderRadius: '4px',
-                        border: isAllDeptSelected ? '1px solid var(--primary)' : '1px solid var(--border-color)',
-                        backgroundColor: isAllDeptSelected ? 'rgba(59, 130, 246, 0.15)' : 'var(--bg-main)',
-                        color: isAllDeptSelected ? 'var(--primary)' : 'var(--text-secondary)',
-                        fontWeight: isAllDeptSelected ? 700 : 500,
-                        cursor: 'pointer',
-                        whiteSpace: 'nowrap'
-                      }}
-                      title={`${d.name} 소속 ${deptUsers.length}명 일괄 선택/해제`}
-                    >
-                      {d.name} ({deptUsers.length})
-                    </button>
-                  );
-                })}
-              </div>
+              {departments.length > 0 && (
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', marginBottom: '2px' }}>
+                  {departments.map(d => {
+                    const deptUsers = sortedUsers.filter(u => u.departmentId === d.id);
+                    if (deptUsers.length === 0) return null;
+                    const isAllDeptSelected = deptUsers.every(u => otUserIds.includes(u.id));
+                    return (
+                      <button
+                        key={d.id}
+                        type="button"
+                        onClick={() => handleSelectDeptUsers(d.id)}
+                        style={{
+                          fontSize: '10.5px',
+                          padding: '2px 6px',
+                          borderRadius: '4px',
+                          border: isAllDeptSelected ? '1px solid var(--primary)' : '1px solid var(--border-color)',
+                          backgroundColor: isAllDeptSelected ? 'rgba(59, 130, 246, 0.15)' : 'var(--bg-main)',
+                          color: isAllDeptSelected ? 'var(--primary)' : 'var(--text-secondary)',
+                          fontWeight: isAllDeptSelected ? 700 : 500,
+                          cursor: 'pointer',
+                          whiteSpace: 'nowrap'
+                        }}
+                        title={`${d.name} 소속 ${deptUsers.length}명 일괄 선택/해제`}
+                      >
+                        {d.name} ({deptUsers.length})
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
 
               {/* 임직원 개별 퀵버튼 */}
               <div style={{
@@ -1103,9 +1214,15 @@ export const OtManagementPage: React.FC = () => {
                 justifyContent: 'center',
                 gap: '6px'
               }}
-              disabled={!canSave}
+              disabled={!canSave || otUserIds.length === 0}
             >
-              OT 등록 ({otUserIds.length}명, 각 {otHours.toFixed(1)}시간, 식사: {otMealYn})
+              {otUserIds.length === 0 ? (
+                '대상 임직원을 선택해주세요'
+              ) : otUserIds.length === 1 ? (
+                `OT 등록 (${findUser(otUserIds[0])?.name || '1명'}, ${otHours.toFixed(1)}시간, 식사: ${otMealYn})`
+              ) : (
+                `OT 등록 (${findUser(otUserIds[0])?.name || ''} 외 ${otUserIds.length - 1}명, 각 ${otHours.toFixed(1)}시간, 식사: ${otMealYn})`
+              )}
             </button>
           </form>
         </div>
@@ -1255,8 +1372,8 @@ export const OtManagementPage: React.FC = () => {
                     </tr>
                   ) : (
                     filteredRecords.map((ot) => {
-                      const u = sortedUsers.find(user => user.id === ot.userId) || users.find(user => user.id === ot.userId);
-                      const uName = u?.name || '알 수 없음';
+                      const u = findUser(ot.userId);
+                      const uName = u?.name || ot.userId;
                       const uDept = getEmployeeDeptName(u) || '미지정';
                       const canDelete = ot.userId === currentUser?.id || isAdmin || canSave;
 
@@ -1503,8 +1620,8 @@ export const OtManagementPage: React.FC = () => {
                         {/* 셀 본문: OT 명단 칩 목록 */}
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', flex: 1, overflowY: 'auto' }}>
                           {dayRecords.slice(0, 3).map(ot => {
-                            const u = sortedUsers.find(user => user.id === ot.userId) || users.find(user => user.id === ot.userId);
-                            const uName = u?.name || '직원';
+                            const u = findUser(ot.userId);
+                            const uName = u?.name || ot.userId;
                             const uDept = getEmployeeDeptName(u);
                             const canDelete = ot.userId === currentUser?.id || isAdmin || canSave;
 
@@ -1630,8 +1747,8 @@ export const OtManagementPage: React.FC = () => {
                   ) : (
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: '8px' }}>
                       {(recordsByDateMap.get(selectedCalDate) || []).map(ot => {
-                        const u = sortedUsers.find(user => user.id === ot.userId) || users.find(user => user.id === ot.userId);
-                        const uName = u?.name || '직원';
+                        const u = findUser(ot.userId);
+                        const uName = u?.name || ot.userId;
                         const uDept = getEmployeeDeptName(u) || '미지정';
                         const canDelete = ot.userId === currentUser?.id || isAdmin || canSave;
 
@@ -1884,8 +2001,8 @@ export const OtManagementPage: React.FC = () => {
                     </thead>
                     <tbody>
                       {activeDateRecords.map(ot => {
-                        const u = sortedUsers.find(user => user.id === ot.userId) || users.find(user => user.id === ot.userId);
-                        const uName = u?.name || '직원';
+                        const u = findUser(ot.userId);
+                        const uName = u?.name || ot.userId;
                         const uDept = getEmployeeDeptName(u) || '미지정';
                         const canDelete = ot.userId === currentUser?.id || isAdmin || canSave;
 

@@ -31,11 +31,20 @@ export interface ParseVendorStatementResult {
 }
 
 /**
- * 날짜 문자열(단일 날짜 예: "7/1", "7/31", "5/26", "2026-07-01") 파싱 헬퍼
+ * 날짜 문자열(단일 날짜 예: "7/1", "7/31", "5/26", "2026-07-01", 엑셀 시리얼 넘버 46235) 파싱 헬퍼
  */
-export function parseSingleDateString(dateStr: string, defaultYm: string): string {
-  if (!dateStr || typeof dateStr !== 'string') return '';
-  const clean = dateStr.trim();
+export function parseSingleDateString(dateStr: any, defaultYm: string): string {
+  if (dateStr === null || dateStr === undefined) return '';
+
+  // Excel serial number date
+  if (typeof dateStr === 'number' && dateStr > 40000 && dateStr < 60000) {
+    const d = XLSX.SSF.parse_date_code(dateStr);
+    if (d) {
+      return `${d.y}-${String(d.m).padStart(2, '0')}-${String(d.d).padStart(2, '0')}`;
+    }
+  }
+
+  const clean = String(dateStr).trim();
   if (!clean || clean === '-') return '';
 
   const [defaultYear] = defaultYm.split('-');
@@ -64,20 +73,20 @@ export function parseSingleDateString(dateStr: string, defaultYm: string): strin
 }
 
 /**
- * 다양한 기간 문자열(예: "26.07.01 ~26.07.31", "26-07-01 ~ 26-07-31", "2026.07.01~2026.07.14") 파싱 헬퍼
+ * 다양한 기간 문자열(예: "26.07.01 ~26.07.31", "26-07-01 ~ 26-07-31", "08/01-08/31") 파싱 헬퍼
  */
-export function parsePeriodString(periodStr: string, defaultYm: string): { rentStart: string; rentEnd: string } {
+export function parsePeriodString(periodStr: any, defaultYm: string): { rentStart: string; rentEnd: string } {
   const [defaultYear, defaultMonth] = defaultYm.split('-');
   const lastDay = new Date(parseInt(defaultYear, 10), parseInt(defaultMonth, 10), 0).getDate();
   const fallbackStart = `${defaultYm}-01`;
   const fallbackEnd = `${defaultYm}-${String(lastDay).padStart(2, '0')}`;
 
-  if (!periodStr || typeof periodStr !== 'string') {
+  if (!periodStr) {
     return { rentStart: fallbackStart, rentEnd: fallbackEnd };
   }
 
-  const clean = periodStr.trim();
-  const periodMatch = clean.match(/(\d{2,4})[\.\-\/](\d{1,2})[\.\-\/](\d{1,2})\s*~\s*(\d{2,4})[\.\-\/](\d{1,2})[\.\-\/](\d{1,2})/);
+  const clean = String(periodStr).trim();
+  const periodMatch = clean.match(/(\d{2,4})[\.\-\/](\d{1,2})[\.\-\/](\d{1,2})\s*[\~\-]\s*(\d{2,4})[\.\-\/](\d{1,2})[\.\-\/](\d{1,2})/);
   
   if (periodMatch) {
     let y1 = periodMatch[1];
@@ -93,6 +102,15 @@ export function parsePeriodString(periodStr: string, defaultYm: string): { rentS
     return {
       rentStart: `${y1}-${m1}-${d1}`,
       rentEnd: `${y2}-${m2}-${d2}`
+    };
+  }
+
+  // M/D - M/D (예: 08/01-08/31)
+  const mdRangeMatch = clean.match(/(\d{1,2})[\.\-\/](\d{1,2})\s*[\~\-]\s*(\d{1,2})[\.\-\/](\d{1,2})/);
+  if (mdRangeMatch) {
+    return {
+      rentStart: `${defaultYear}-${mdRangeMatch[1].padStart(2, '0')}-${mdRangeMatch[2].padStart(2, '0')}`,
+      rentEnd: `${defaultYear}-${mdRangeMatch[3].padStart(2, '0')}-${mdRangeMatch[4].padStart(2, '0')}`
     };
   }
 
@@ -120,14 +138,16 @@ function parseString(val: any): string {
 
 /**
  * 임차처 거래명세서 엑셀 범용 파서 엔진
- * - 롯데렌탈(주), (주)하이로드, 하은(주), AJ네트웍스, 한국리프트 등 다중 양식 자동 감지 및 파싱
- * - 동적 헤더 행 자동 탐색 (품명/장비명, 장비번호/관리번호, 기간, 사용시작, 사용종료, V.A.T 등 표준어 매핑)
+ * - 롯데렌탈(주), (주)하이로드, 하은(주), AJ네트웍스, 주식회사 프린스렌탈, 주식회사 현대네트웍스, 주식회사 현대렌탈, ㈜엘제이리프트 등 전 서식 지원
+ * - 동적 헤더 행 자동 탐색 (한글 띄어쓰기 셀 정규화, 품명/장비명, 기간, 단가, 공급가액 등)
+ * - 장비명 내 괄호 속 관리번호((HS1406), (BS1020), (D1531)) 자동 분리 추출
  * - 중간 청소비/수리비/세척비/도색비/운송비 등 기타 비용 항목 누락 없는 수용
  * - 하단 합계 행('소계', '합계', '청구금액', '결제계좌', '예금주') 및 빈 행 자동 거름
  */
 export function parseVendorStatementExcel(
   worksheet: XLSX.WorkSheet,
-  selectedYm: string = new Date().toISOString().slice(0, 7)
+  selectedYm: string = new Date().toISOString().slice(0, 7),
+  fileName: string = ''
 ): ParseVendorStatementResult {
   // 1. sheet를 2D 배열로 변환 ({ header: 1 })
   const matrix: any[][] = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: '' });
@@ -135,29 +155,35 @@ export function parseVendorStatementExcel(
     return { rows: [], headerRowIndex: -1, totalParsedAmount: 0, totalParsedTax: 0, totalParsedCount: 0 };
   }
 
-  // 2. 공급자(원사) 자동 감지
+  // 2. 공급자(원사) 자동 감지 (파일명 및 상단 공급자 정보 우선 매핑)
   let detectedVendor: string | undefined = undefined;
-  for (let r = 0; r < Math.min(20, matrix.length); r++) {
-    const rowStr = matrix[r].map(cell => parseString(cell)).join(' ');
-    if (rowStr.includes('하은')) {
-      detectedVendor = '하은(주)';
-      break;
-    } else if (rowStr.includes('하이로드')) {
-      detectedVendor = '(주)하이로드';
-      break;
-    } else if (rowStr.includes('롯데렌탈')) {
-      detectedVendor = '롯데렌탈(주)';
-      break;
-    } else if (rowStr.includes('AJ네트웍스') || rowStr.includes('에이엔네트웍스')) {
-      detectedVendor = '(주)AJ네트웍스';
-      break;
-    } else if (rowStr.includes('한국리프트')) {
-      detectedVendor = '한국리프트';
-      break;
-    } else if (rowStr.includes('중부렌탈')) {
-      detectedVendor = '(주)중부렌탈';
-      break;
-    }
+  const headerBlockText = matrix.slice(0, 15).map(r => r.join(' ')).join(' ');
+  const combinedVendorSearch = fileName + ' ' + headerBlockText;
+
+  if (combinedVendorSearch.includes('엘제이리프트') || fileName.includes('엘제이')) {
+    detectedVendor = '㈜엘제이리프트';
+  } else if (combinedVendorSearch.includes('프린스렌탈') || fileName.includes('프린스')) {
+    detectedVendor = '주식회사 프린스렌탈';
+  } else if (combinedVendorSearch.includes('현대네트웍스') || fileName.includes('현대네트웍스')) {
+    detectedVendor = '주식회사 현대네트웍스';
+  } else if (combinedVendorSearch.includes('현대렌탈') || fileName.includes('현대렌탈')) {
+    detectedVendor = '주식회사 현대렌탈';
+  } else if (combinedVendorSearch.includes('롯데렌탈') || fileName.includes('롯데렌탈')) {
+    detectedVendor = '롯데렌탈(주)';
+  } else if (combinedVendorSearch.includes('하은') || fileName.includes('하은')) {
+    detectedVendor = '하은(주)';
+  } else if (combinedVendorSearch.includes('중부') || combinedVendorSearch.includes('하이로드') || fileName.includes('중부')) {
+    detectedVendor = '(주)하이로드';
+  } else if (combinedVendorSearch.includes('AJ네트웍스') || combinedVendorSearch.includes('아주렌탈') || combinedVendorSearch.includes('에이엔네트웍스')) {
+    detectedVendor = '(주)AJ네트웍스';
+  } else if (combinedVendorSearch.includes('라이즈') || fileName.includes('라이즈')) {
+    detectedVendor = '주식회사 라이즈리프트';
+  } else if (combinedVendorSearch.includes('포스렌탈') || fileName.includes('포스')) {
+    detectedVendor = '주식회사 포스렌탈';
+  } else if (combinedVendorSearch.includes('한솔') || fileName.includes('한솔')) {
+    detectedVendor = '한솔렌탈 주식회사';
+  } else if (combinedVendorSearch.includes('화테') || fileName.includes('화테')) {
+    detectedVendor = '(주)화테코리아설비렌탈';
   }
 
   // 3. 헤더 행(Header Row Index) 동적 찾기
@@ -165,20 +191,34 @@ export function parseVendorStatementExcel(
   let maxHeaderScore = 0;
 
   const headerKeywords = [
-    '관리번호', '자산번호', '장비번호', '장비No', '시리얼', '제조번호',
-    '모델명', '장비명', '품명', '모델', '기간', '사용시작', '사용종료', '투입일자', '철수일지',
-    '월렌탈료', '공급가액', '청구금액', '세액', 'V.A.T', 'VAT', '순번', '계약번호', '일수', '단가', '운반비'
+    '관리번호', '자산번호', '장비번호', '장비NO', '시리얼', '제조번호',
+    '모델명', '장비명', '품명', '모델', '기간', '사용기간', '사용시작', '사용종료', '투입일자', '철수일자',
+    '월렌탈료', '월임대료', '공급가액', '청구금액', '세액', 'V.A.T', 'VAT', '부가세', '순번', '계약번호', '일수', '단가', '운반비', '금액'
   ];
 
-  for (let r = 0; r < Math.min(40, matrix.length); r++) {
+  for (let r = 0; r < Math.min(30, matrix.length); r++) {
     const row = matrix[r];
     if (!Array.isArray(row)) continue;
 
+    const rowCleanStr = row.map(c => parseString(c).replace(/\s+/g, '')).join(' ');
+    // 계좌/요약 행은 헤더 후보에서 제외
+    if (
+      rowCleanStr.includes('입금계좌') ||
+      rowCleanStr.includes('계좌번호') ||
+      rowCleanStr.includes('농협') ||
+      rowCleanStr.includes('국민은행') ||
+      rowCleanStr.includes('기업은행') ||
+      rowCleanStr.includes('하나은행')
+    ) {
+      continue;
+    }
+
     let score = 0;
     row.forEach(cell => {
-      const cellText = parseString(cell);
+      const cellClean = parseString(cell).replace(/\s+/g, '').toUpperCase();
+      if (!cellClean) return;
       headerKeywords.forEach(kw => {
-        if (cellText.includes(kw)) score++;
+        if (cellClean.includes(kw.replace(/\s+/g, '').toUpperCase())) score++;
       });
     });
 
@@ -219,13 +259,13 @@ export function parseVendorStatementExcel(
       colSerialNo = idx;
     } else if (txt.includes('장비명') || txt.includes('모델명') || txt.includes('품명') || txt === '모델' || txt.includes('규격')) {
       colModelName = idx;
-    } else if (txt.includes('기간') || txt.includes('사용기간') || txt.includes('임차기간')) {
+    } else if (txt.includes('사용기간') || txt === '기간' || txt.includes('임차기간')) {
       colPeriod = idx;
     } else if (txt.includes('사용시작') || txt.includes('임차시작') || txt.includes('시작일') || txt.includes('투입일')) {
       colRentStart = idx;
     } else if (txt.includes('사용종료') || txt.includes('임차종료') || txt.includes('종료일') || txt.includes('철수일')) {
       colRentEnd = idx;
-    } else if (txt.includes('공급가액') || txt.includes('청구금액') || txt.includes('임차료') || txt === '금액' || txt.includes('공급가')) {
+    } else if (txt.includes('공급가액') || txt.includes('청구금액') || txt === '금액' || txt.includes('공급가')) {
       colSupplyAmount = idx;
     } else if (txt.includes('V.A.T') || txt.includes('VAT') || txt.includes('세액') || txt.includes('부가세')) {
       colTaxAmount = idx;
@@ -265,8 +305,10 @@ export function parseVendorStatementExcel(
       firstColStr === '총계' ||
       secondColStr === '소계' ||
       secondColStr === '합계' ||
+      secondColStr === '계' ||
       cleanFullText.includes('소계') ||
       cleanFullText.includes('합계') ||
+      cleanFullText.includes('총계') ||
       cleanFullText.includes('청구금액') ||
       cleanFullText.includes('결제계좌') ||
       cleanFullText.includes('입금계좌') ||
@@ -276,32 +318,49 @@ export function parseVendorStatementExcel(
       cleanFullText.includes('공급자보관용') ||
       cleanFullText.includes('공급받는자용') ||
       cleanFullText.includes('영업담당') ||
-      cleanFullText.includes('연락처:')
+      cleanFullText.includes('연락처:') ||
+      cleanFullText.includes('미사용반환')
     ) {
       continue;
     }
 
     // 각 필드 값 추출
-    const rawAssetNo = colAssetNo !== -1 ? parseString(rowData[colAssetNo]) : '';
+    let rawAssetNo = colAssetNo !== -1 ? parseString(rowData[colAssetNo]) : '';
     const rawSerialNo = colSerialNo !== -1 ? parseString(rowData[colSerialNo]) : '';
-    const rawModelName = colModelName !== -1 ? parseString(rowData[colModelName]) : '';
+    let rawModelName = colModelName !== -1 ? parseString(rowData[colModelName]) : '';
     const rawPeriod = colPeriod !== -1 ? parseString(rowData[colPeriod]) : '';
-    const rawRentStart = colRentStart !== -1 ? parseString(rowData[colRentStart]) : '';
-    const rawRentEnd = colRentEnd !== -1 ? parseString(rowData[colRentEnd]) : '';
+    const rawRentStart = colRentStart !== -1 ? rowData[colRentStart] : '';
+    const rawRentEnd = colRentEnd !== -1 ? rowData[colRentEnd] : '';
     const rawSupplyAmount = colSupplyAmount !== -1 ? parseNumber(rowData[colSupplyAmount]) : 0;
     const rawTaxAmount = colTaxAmount !== -1 ? parseNumber(rowData[colTaxAmount]) : 0;
     const rawContractNo = colContractNo !== -1 ? parseString(rowData[colContractNo]) : '';
     const rawSeq = colSeq !== -1 ? parseNumber(rowData[colSeq]) : undefined;
     const rawMemo = colMemo !== -1 ? parseString(rowData[colMemo]) : '';
 
-    // 공급가액과 세액 모두 0이고, 관리번호/모델명도 없는 행 무시
-    if (!rawAssetNo && !rawModelName && rawSupplyAmount === 0 && !rowFullText.match(/\d+/)) {
+    // 헤더 행 재등장 무시
+    if (
+      rawAssetNo.replace(/\s+/g, '') === '장비번호' ||
+      rawAssetNo.replace(/\s+/g, '') === '관리번호' ||
+      rawModelName.replace(/\s+/g, '') === '장비명' ||
+      rawModelName.replace(/\s+/g, '') === '모델명' ||
+      rawModelName.replace(/\s+/g, '') === '품명'
+    ) {
       continue;
     }
 
-    // 헤더 행 재등장 무시
-    if (rawAssetNo === '장비번호' || rawAssetNo === '관리번호' || rawModelName === '장비명' || rawModelName === '모델명' || rawModelName === '품명') {
+    // 관리번호와 모델명이 둘 다 없고 단독 숫자만 있는 합계/소계 잔여 행 무시
+    if (!rawAssetNo && !rawModelName) {
       continue;
+    }
+
+    // 💡 [핵심] colAssetNo 컬럼이 없거나 비어있고, rawModelName에 괄호 속 관리번호가 있는 경우 분리 추출
+    // 예: "S1412AC+ (HS1406)", "SJ3219(신형)(BS1020)", "JCPT1008AC (D1531)", "ES1330L(J71)"
+    if (!rawAssetNo && rawModelName) {
+      const pMatch = rawModelName.match(/\(([A-Z0-9\-]{2,15})\)/i);
+      if (pMatch) {
+        rawAssetNo = pMatch[1].trim();
+        rawModelName = rawModelName.replace(pMatch[0], '').trim();
+      }
     }
 
     // 날짜 파싱 (M/D 단일 날짜 및 기간 포맷 모두 대처)
@@ -329,12 +388,18 @@ export function parseVendorStatementExcel(
     let finalModelName = rawModelName;
     let finalMemo = rawMemo;
 
-    // 장비번호가 없으나 모델명/품목 셀에 청소비/수리비 등 청구 텍스트 및 공급가액이 있는 경우
     if (!rawAssetNo) {
       const feeText = rawModelName || rawMemo || rowFullText;
-      const isKnownFeeKeyword = feeText.includes('청소') || feeText.includes('수리') || feeText.includes('세척') || feeText.includes('도색') || feeText.includes('부품') || feeText.includes('운송') || feeText.includes('소모품');
+      const isKnownFeeKeyword =
+        feeText.includes('청소') ||
+        feeText.includes('수리') ||
+        feeText.includes('세척') ||
+        feeText.includes('도색') ||
+        feeText.includes('부품') ||
+        feeText.includes('운송') ||
+        feeText.includes('소모품');
       
-      if (isKnownFeeKeyword || rawSupplyAmount > 0) {
+      if (isKnownFeeKeyword) {
         if (feeText.includes('수리')) {
           itemType = 'REPAIR';
           finalAssetNo = '기타/수리비';
@@ -348,7 +413,8 @@ export function parseVendorStatementExcel(
         finalModelName = rawModelName || feeText || '기타비용';
         finalMemo = rawMemo ? `${rawModelName} - ${rawMemo}` : feeText;
       } else {
-        if (rawSupplyAmount === 0) continue;
+        // 엘제이리프트 등 별도 관리번호 컬럼 없는 단기 운송/임차 행
+        finalAssetNo = `R-${1000 + r}`;
       }
     } else {
       // 장비번호가 있더라도 품목명이 청소비/수리비 등인 경우
@@ -357,6 +423,8 @@ export function parseVendorStatementExcel(
       }
     }
 
+    const calculatedTax = rawTaxAmount || Math.round(rawSupplyAmount * 0.1);
+
     // 레코드 생성
     const rowRecord: VendorStatementRow = {
       id: `stmt-${r}-${Date.now()}`,
@@ -364,10 +432,10 @@ export function parseVendorStatementExcel(
       serialNo: rawSerialNo,
       modelName: finalModelName,
       rentStart: rentStart || `${selectedYm}-01`,
-      rentEnd: rentEnd || `${selectedYm}-28`,
+      rentEnd: rentEnd || `${selectedYm}-31`,
       billedAmount: rawSupplyAmount,
-      taxAmount: rawTaxAmount,
-      totalAmount: rawSupplyAmount + rawTaxAmount,
+      taxAmount: calculatedTax,
+      totalAmount: rawSupplyAmount + calculatedTax,
       contractNo: rawContractNo,
       seq: rawSeq,
       memo: finalMemo,
@@ -377,7 +445,7 @@ export function parseVendorStatementExcel(
 
     rows.push(rowRecord);
     totalParsedAmount += rawSupplyAmount;
-    totalParsedTax += rawTaxAmount;
+    totalParsedTax += calculatedTax;
   }
 
   return {

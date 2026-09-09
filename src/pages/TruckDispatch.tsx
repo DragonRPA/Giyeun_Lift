@@ -325,7 +325,7 @@ export const TruckDispatch: React.FC = () => {
       ? `[타사 직출고] ${delivery.pickupVendorName} (${delivery.originAddress || '-'})` 
       : (isOutbound ? (delivery.originAddress || '당사 보관소') : (delivery.destinationAddress || site?.address || '-'));
     const toAddr    = delivery.viaDropoffName 
-      ? `[혼적 경유] 1차: ${delivery.viaDropoffName} (${delivery.viaDropoffAddress || '본사'}) ➔ 2차: ${delivery.destinationAddress || '원사 보관소'}` 
+      ? `[혼적 경유] 1차: ${delivery.viaDropoffName} (${delivery.viaDropoffAddress || '본사'}) ➔ 2차: ${delivery.destinationAddress || '임차처 보관소'}` 
       : (isOutbound ? (delivery.destinationAddress || site?.address || '-') : (delivery.originAddress || '당사 보관소'));
 
     const html = `<!DOCTYPE html><html lang="ko"><head><meta charset="UTF-8">
@@ -394,7 +394,7 @@ export const TruckDispatch: React.FC = () => {
       ? `[타사 직출고] ${delivery.pickupVendorName} (${delivery.originAddress || '-'})` 
       : (isOutbound ? (delivery.originAddress || '당사 보관소') : (delivery.destinationAddress || site?.address || '-'));
     const toAddr    = delivery.viaDropoffName 
-      ? `[혼적 경유] 1차: ${delivery.viaDropoffName} (${delivery.viaDropoffAddress || '본사'}) ➔ 2차: ${delivery.destinationAddress || '원사 보관소'}` 
+      ? `[혼적 경유] 1차: ${delivery.viaDropoffName} (${delivery.viaDropoffAddress || '본사'}) ➔ 2차: ${delivery.destinationAddress || '임차처 보관소'}` 
       : (isOutbound ? (delivery.destinationAddress || site?.address || '-') : (delivery.originAddress || '당사 보관소'));
 
     const html = `<!DOCTYPE html><html lang="ko"><head><meta charset="UTF-8">

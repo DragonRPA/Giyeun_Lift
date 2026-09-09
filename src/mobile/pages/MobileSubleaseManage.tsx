@@ -289,17 +289,17 @@ export const MobileSubleaseManage: React.FC<MobileSubleaseManageProps> = ({
     .filter(i => !i.isReturnedToVendor)
     .reduce((sum, i) => sum + (i.monthlyRentFee || 0), 0);
 
-  // [액션 1] 원사 장비 신규 등록 제출
+  // [액션 1] 임차 장비 신규 등록 제출
   const handleRegisterSubmit = async () => {
-    const finalRenter = newVendorId ? (vendors.find(v => v.id === newVendorId)?.name || '원사') : newCustomVendor.trim();
+    const finalRenter = newVendorId ? (vendors.find(v => v.id === newVendorId)?.name || '임차처') : newCustomVendor.trim();
     if (!finalRenter) {
-      showErrorModal('소유 원사를 선택하거나 직접 입력하십시오.', '입력 오류');
+      showErrorModal('임차처를 선택하거나 직접 입력하십시오.', '입력 오류');
       return;
     }
 
     const cleanAssetNo = (newAssetNo.trim() || newVendorAssetNo.trim()).toUpperCase();
     if (!cleanAssetNo) {
-      showErrorModal('관리번호 또는 원사 번호를 입력하십시오.', '입력 오류');
+      showErrorModal('관리번호 또는 임차처 번호를 입력하십시오.', '입력 오류');
       return;
     }
 
@@ -317,7 +317,7 @@ export const MobileSubleaseManage: React.FC<MobileSubleaseManageProps> = ({
         dailyRentFee: Math.floor(sanitizedMonthlyFee / 30),
       });
 
-      showToast(`${cleanAssetNo} 원사 장비가 등록되었습니다. (임대가능 가용재고 편입)`);
+      showToast(`${cleanAssetNo} 임차 장비가 등록되었습니다. (임대가능 가용재고 편입)`);
       setIsRegisterSheetOpen(false);
       // 폼 초기화
       setNewVendorAssetNo('');
@@ -330,10 +330,10 @@ export const MobileSubleaseManage: React.FC<MobileSubleaseManageProps> = ({
     }
   };
 
-  // [액션 2] 원사 반납 마감 바텀시트 오픈
+  // [액션 2] 임차처 반납 마감 바텀시트 오픈
   const handleOpenReturnModal = (asset: Asset) => {
     if (asset.status === 'RENTED' || (asset as any).isDeployedToCustomer) {
-      showErrorModal(`자산 ${asset.assetNo}은 현재 고객사 현장에 대여중(RENTED)입니다. 현장 회수 입고 전에는 원사 반납이 불가합니다.`, '반납 차단');
+      showErrorModal(`자산 ${asset.assetNo}은 현재 고객사 현장에 대여중(RENTED)입니다. 현장 회수 입고 전에는 임차처 반납이 불가합니다.`, '반납 차단');
       return;
     }
     setTargetAssetForReturn(asset);
@@ -341,11 +341,11 @@ export const MobileSubleaseManage: React.FC<MobileSubleaseManageProps> = ({
     setIsReturnSheetOpen(true);
   };
 
-  // [액션 3] 원사 반납 마감 확정 실행
+  // [액션 3] 임차처 반납 마감 확정 실행
   const handleConfirmReturn = async () => {
     if (!targetAssetForReturn) return;
     if (targetAssetForReturn.status === 'RENTED') {
-      showErrorModal(`자산 ${targetAssetForReturn.assetNo}은 현재 고객사에 대여중입니다. 회수 입고 전에는 원사 반납이 불가합니다.`, '반납 차단');
+      showErrorModal(`자산 ${targetAssetForReturn.assetNo}은 현재 고객사에 대여중입니다. 회수 입고 전에는 임차처 반납이 불가합니다.`, '반납 차단');
       return;
     }
     if (!actualReturnDate) {
@@ -356,7 +356,7 @@ export const MobileSubleaseManage: React.FC<MobileSubleaseManageProps> = ({
     setIsReturning(true);
     try {
       await returnRentedAsset(targetAssetForReturn.id, actualReturnDate);
-      showToast(`${targetAssetForReturn.assetNo} 원사 반납 마감이 완료되었습니다.`);
+      showToast(`${targetAssetForReturn.assetNo} 임차처 반납 마감이 완료되었습니다.`);
       setIsReturnSheetOpen(false);
       setTargetAssetForReturn(null);
     } catch (err: any) {
@@ -410,18 +410,18 @@ export const MobileSubleaseManage: React.FC<MobileSubleaseManageProps> = ({
                 관리부
               </span>
             </h1>
-            <p className="text-xs text-slate-400 mt-0.5">외부 원사 임차 장비 운용 및 누수 차단 관제</p>
+            <p className="text-xs text-slate-400 mt-0.5">외부 임차 장비 운용 및 누수 차단 관제</p>
           </div>
         </div>
 
-        {/* 원사 장비 등록 버튼 */}
+        {/* 임차 장비 등록 버튼 */}
         <button
           type="button"
           onClick={() => setIsRegisterSheetOpen(true)}
           className="py-2 px-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs flex items-center gap-1.5 shadow-lg shadow-blue-600/30 active:scale-95 transition-all whitespace-nowrap flex-shrink-0"
         >
           <Plus className="w-4 h-4 stroke-[2.5]" />
-          <span>원사 장비 등록</span>
+          <span>임차 장비 등록</span>
         </button>
       </div>
 
@@ -498,7 +498,7 @@ export const MobileSubleaseManage: React.FC<MobileSubleaseManageProps> = ({
         </div>
       </div>
 
-      {/* ── 2. 검색창 & 원사 필터 ── */}
+      {/* ── 2. 검색창 & 임차처 필터 ── */}
       <div className="flex flex-col gap-2 pt-1">
         <div className="relative">
           <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
@@ -506,7 +506,7 @@ export const MobileSubleaseManage: React.FC<MobileSubleaseManageProps> = ({
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="관리번호, 원사번호, 모델명, 현장 검색"
+            placeholder="관리번호, 임차처번호, 모델명, 현장 검색"
             className="w-full py-2.5 pl-9 pr-3 rounded-xl bg-slate-900 border border-slate-700 text-white text-xs placeholder-slate-500 focus:outline-none focus:border-sky-500"
           />
           {searchQuery && (
@@ -596,7 +596,7 @@ export const MobileSubleaseManage: React.FC<MobileSubleaseManageProps> = ({
                     : 'bg-slate-950/80 border-slate-800/60 opacity-80'
               }`}
             >
-              {/* 상단 원사 및 관리번호 헤더 */}
+              {/* 상단 임차처 및 관리번호 헤더 */}
               <div className="flex items-start justify-between gap-2 border-b border-slate-800/80 pb-2.5">
                 <div className="flex flex-col min-w-0">
                   <div className="flex items-center gap-2">
@@ -608,7 +608,7 @@ export const MobileSubleaseManage: React.FC<MobileSubleaseManageProps> = ({
                     </span>
                     {asset.vendorAssetNo && asset.vendorAssetNo !== asset.assetNo && (
                       <span className="text-[11px] font-mono text-slate-400 whitespace-nowrap flex-shrink-0">
-                        (원사: {asset.vendorAssetNo})
+                        (임차처번호: {asset.vendorAssetNo})
                       </span>
                     )}
                   </div>
@@ -635,7 +635,7 @@ export const MobileSubleaseManage: React.FC<MobileSubleaseManageProps> = ({
                     </span>
                   ) : (
                     <span className="px-2 py-0.5 rounded-lg bg-slate-800 text-slate-400 font-medium text-[11px] whitespace-nowrap flex-shrink-0">
-                      원사 반납완료
+                      임차처 반납완료
                     </span>
                   )}
                 </div>
@@ -660,7 +660,7 @@ export const MobileSubleaseManage: React.FC<MobileSubleaseManageProps> = ({
 
                 {/* 차입 및 반납 일정 */}
                 <div className="p-2.5 rounded-xl bg-slate-950/60 border border-slate-800/80 flex flex-col gap-1">
-                  <span className="text-[10px] text-slate-500 font-medium whitespace-nowrap flex-shrink-0">원사 차입 기간</span>
+                  <span className="text-[10px] text-slate-500 font-medium whitespace-nowrap flex-shrink-0">임차 계약 기간</span>
                   <div className="font-mono text-slate-300 text-[11px] truncate flex items-center gap-1">
                     <Calendar className="w-3 h-3 text-slate-500 flex-shrink-0" />
                     <span>{asset.rentStart || '시작일 미등록'}</span>
@@ -724,15 +724,15 @@ export const MobileSubleaseManage: React.FC<MobileSubleaseManageProps> = ({
                     <button
                       type="button"
                       disabled
-                      title="대여중인 자산은 회수 전 원사 반납이 불가합니다"
+                      title="대여중인 자산은 회수 전 임차처 반납이 불가합니다"
                       className="py-1.5 px-3 rounded-lg bg-slate-800 text-slate-500 font-bold text-xs cursor-not-allowed opacity-60 whitespace-nowrap"
                     >
-                      원사 반납 불가
+                      임차처 반납 불가
                     </button>
                   </div>
                 ) : (
                   <div className="w-full py-1.5 text-center text-xs text-slate-500 font-medium">
-                    원사 최종 반납 처리 완료 (정산 마감됨)
+                    임차처 최종 반납 처리 완료 (정산 마감됨)
                   </div>
                 )}
               </div>
@@ -741,7 +741,7 @@ export const MobileSubleaseManage: React.FC<MobileSubleaseManageProps> = ({
         )}
       </div>
 
-      {/* ── 4. 원사 장비 신규등록 다크 바텀시트 ── */}
+      {/* ── 4. 임차처 장비 신규등록 다크 바텀시트 ── */}
       {isRegisterSheetOpen && (
         <div 
           style={{
@@ -775,7 +775,7 @@ export const MobileSubleaseManage: React.FC<MobileSubleaseManageProps> = ({
             {/* 타이틀 바 */}
             <div className="flex items-center justify-between pb-2 border-b border-slate-800">
               <div>
-                <h3 className="text-sm font-black text-white">원사 임차 장비 신규 등록</h3>
+                <h3 className="text-sm font-black text-white">임차 장비 신규 등록</h3>
                 <p className="text-[11px] text-slate-400 mt-0.5">외부 타사 차입 장비 반입 및 관리번호 등록</p>
               </div>
               <button
@@ -789,10 +789,10 @@ export const MobileSubleaseManage: React.FC<MobileSubleaseManageProps> = ({
 
             {/* 입력 폼 (상하 세로 스택 - 헌장 3.4 준수) */}
             <div className="flex flex-col gap-3 overflow-y-auto max-h-[55vh] pr-0.5">
-              {/* 원사 선택 */}
+              {/* 임차처 선택 */}
               <div className="flex flex-col gap-1">
                 <label className="text-xs font-bold text-slate-300 whitespace-nowrap flex-shrink-0">
-                  소유 원사 (임차처)
+                  임차처
                 </label>
                 <select
                   value={newVendorId}
@@ -809,17 +809,17 @@ export const MobileSubleaseManage: React.FC<MobileSubleaseManageProps> = ({
                     type="text"
                     value={newCustomVendor}
                     onChange={(e) => setNewCustomVendor(e.target.value)}
-                    placeholder="원사 상호명 직접 입력 (예: 한솔렌탈)"
+                    placeholder="임차처 상호명 직접 입력 (예: 한솔렌탈)"
                     className="w-full mt-1 py-2 px-3 rounded-xl bg-slate-950 border border-slate-700 text-white text-xs placeholder-slate-500 focus:outline-none focus:border-sky-500"
                   />
                 )}
               </div>
 
-              {/* 원사 번호 & 관리 번호 */}
+              {/* 임차처 번호 & 관리 번호 */}
               <div className="grid grid-cols-2 gap-2">
                 <div className="flex flex-col gap-1">
                   <label className="text-xs font-bold text-slate-300 whitespace-nowrap flex-shrink-0">
-                    원사 번호
+                    임차처 번호
                   </label>
                   <input
                     type="text"
@@ -838,7 +838,7 @@ export const MobileSubleaseManage: React.FC<MobileSubleaseManageProps> = ({
                     type="text"
                     value={newAssetNo}
                     onChange={(e) => setNewAssetNo(e.target.value)}
-                    placeholder="미입력 시 원사번호 사용"
+                    placeholder="미입력 시 임차처번호 사용"
                     className="w-full py-2 px-3 rounded-xl bg-slate-950 border border-slate-700 text-white text-xs font-mono placeholder-slate-500 focus:outline-none focus:border-sky-500"
                   />
                 </div>
@@ -880,7 +880,7 @@ export const MobileSubleaseManage: React.FC<MobileSubleaseManageProps> = ({
               {/* 차입 단가 */}
               <div className="flex flex-col gap-1">
                 <label className="text-xs font-bold text-slate-300 whitespace-nowrap flex-shrink-0 flex items-center justify-between">
-                  <span>원사 월 차입단가 (매입원가)</span>
+                  <span>임차처 월 차입단가 (매입원가)</span>
                   <span className="text-[11px] font-mono text-sky-400">
                     일할: ₩{Math.floor(newMonthlyRentFee / 30).toLocaleString()}원/일
                   </span>
@@ -905,14 +905,14 @@ export const MobileSubleaseManage: React.FC<MobileSubleaseManageProps> = ({
                 className="w-full py-3.5 px-4 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-black text-sm flex items-center justify-center gap-2 shadow-xl shadow-blue-600/30 active:scale-98 transition-all"
               >
                 <Check className="w-4 h-4 stroke-[2.5]" />
-                <span>{isRegistering ? '등록 처리 중...' : '원사 장비 등록 완료 (가용자산 편입)'}</span>
+                <span>{isRegistering ? '등록 처리 중...' : '임차 장비 등록 완료 (가용자산 편입)'}</span>
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* ── 5. 원사 반납 마감 다크 바텀시트 ── */}
+      {/* ── 5. 임차처 반납 마감 다크 바텀시트 ── */}
       {isReturnSheetOpen && targetAssetForReturn && (
         <div 
           style={{
@@ -946,7 +946,7 @@ export const MobileSubleaseManage: React.FC<MobileSubleaseManageProps> = ({
             {/* 타이틀 바 */}
             <div className="flex items-center justify-between pb-2 border-b border-slate-800">
               <div>
-                <h3 className="text-sm font-black text-white">원사 반납 마감 승인</h3>
+                <h3 className="text-sm font-black text-white">임차처 반납 마감 승인</h3>
                 <p className="text-[11px] text-slate-400 mt-0.5">실제 반납일 확정 및 임차료 지급 마감</p>
               </div>
               <button
@@ -961,7 +961,7 @@ export const MobileSubleaseManage: React.FC<MobileSubleaseManageProps> = ({
             {/* 대상 장비 요약 */}
             <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 flex flex-col gap-1 text-xs">
               <div className="flex items-center justify-between">
-                <span className="font-bold text-sky-400">{targetAssetForReturn.renter || '원사'}</span>
+                <span className="font-bold text-sky-400">{targetAssetForReturn.renter || '임차처'}</span>
                 <span className="font-mono font-black text-white">{targetAssetForReturn.assetNo}</span>
               </div>
               <div className="text-slate-400 text-[11px]">
@@ -972,7 +972,7 @@ export const MobileSubleaseManage: React.FC<MobileSubleaseManageProps> = ({
             {/* 실제 반납일 입력 */}
             <div className="flex flex-col gap-1">
               <label className="text-xs font-bold text-slate-300 whitespace-nowrap flex-shrink-0">
-                실제 소유원사 반납일
+                실제 임차처 반납일
               </label>
               <input
                 type="date"
@@ -989,7 +989,7 @@ export const MobileSubleaseManage: React.FC<MobileSubleaseManageProps> = ({
                 <span>반납 마감 시 주의사항</span>
               </div>
               <div className="text-[11px] text-rose-300/80 leading-relaxed">
-                반납이 확정되면 자산 상태가 [원사 반납완료]로 종결되며, 추가 임차료 계상이 중단되고 월말 매입 정산서에 확정 일수로 전송됩니다.
+                반납이 확정되면 자산 상태가 [임차처 반납완료]로 종결되며, 추가 임차료 계상이 중단되고 월말 매입 정산서에 확정 일수로 전송됩니다.
               </div>
             </div>
 
@@ -1002,7 +1002,7 @@ export const MobileSubleaseManage: React.FC<MobileSubleaseManageProps> = ({
                 className="w-full py-3.5 px-4 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-black text-sm flex items-center justify-center gap-2 shadow-xl shadow-rose-600/30 active:scale-98 transition-all"
               >
                 <Check className="w-4 h-4 stroke-[2.5]" />
-                <span>{isReturning ? '반납 마감 처리 중...' : '원사 반납 확정 마감 실행'}</span>
+                <span>{isReturning ? '반납 마감 처리 중...' : '임차처 반납 확정 마감 실행'}</span>
               </button>
             </div>
           </div>

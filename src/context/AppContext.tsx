@@ -2602,7 +2602,7 @@ ${currentTenant?.corporateName || tenantCorp} 배상
         modelName: result.modelName,
         type: 'INBOUND',
         eventDate: result.rentStart || new Date().toISOString().split('T')[0],
-        memo: `[원사 임차 반입] 공급원사: ${result.renter || '원사'} (원사번호: ${result.vendorAssetNo || '-'})`,
+        memo: `[임차 반입] 임차처: ${result.renter || '임차처'} (임차처번호: ${result.vendorAssetNo || '-'})`,
         createdAt: new Date().toISOString()
       });
     }
@@ -2623,12 +2623,12 @@ ${currentTenant?.corporateName || tenantCorp} 배상
     if (!target) return;
 
     if (target.status === 'RENTED') {
-      showErrorModal(`⚠️ 해당 자산(${target.assetNo})은 현재 고객사 현장에 투입 중(대여중)입니다.\n고객사 회수(입고)를 먼저 진행한 후 원사 반납이 가능합니다.`);
-      throw new Error(`대여중인 자산은 원사 반납이 불가합니다.`);
+      showErrorModal(`⚠️ 해당 자산(${target.assetNo})은 현재 고객사 현장에 투입 중(대여중)입니다.\n고객사 회수(입고)를 먼저 진행한 후 임차처 반납이 가능합니다.`);
+      throw new Error(`대여중인 자산은 임차처 반납이 불가합니다.`);
     }
     if (target.rentStart && returnDate < target.rentStart) {
-      showErrorModal(`⚠️ 원사 반납일(${returnDate})은 임차 시작일(${target.rentStart}) 이전일 수 없습니다.`);
-      throw new Error(`원사 반납일이 임차 시작일 이전입니다.`);
+      showErrorModal(`⚠️ 임차처 반납일(${returnDate})은 임차 시작일(${target.rentStart}) 이전일 수 없습니다.`);
+      throw new Error(`임차처 반납일이 임차 시작일 이전입니다.`);
     }
 
     try {
@@ -2640,14 +2640,14 @@ ${currentTenant?.corporateName || tenantCorp} 배상
         updatedAt: new Date().toISOString()
       });
 
-      // 헌장 1.2 무누락 감사 로그: 원사 반납 반출 (사법 감사 판정: type OUTBOUND)
+      // 헌장 1.2 무누락 감사 로그: 임차처 반납 반출 (사법 감사 판정: type OUTBOUND)
       db.insertRow<AssetInOutLog>('assetInOutLogs', {
         assetId: target.id,
         assetNo: target.assetNo,
         modelName: target.modelName,
         type: 'OUTBOUND',
         eventDate: returnDate,
-        memo: `[원사 최종 반납] 반납처: ${target.renter || '원사'} (원사번호: ${target.vendorAssetNo || '-'})`,
+        memo: `[임차자산 최종 반납] 반납처: ${target.renter || '임차처'} (임차처번호: ${target.vendorAssetNo || '-'})`,
         createdAt: new Date().toISOString()
       });
 
@@ -2656,7 +2656,7 @@ ${currentTenant?.corporateName || tenantCorp} 배상
       refreshAllData();
     } catch (err: any) {
       console.error('returnRentedAsset 동기화 실패:', err);
-      showErrorModal(`⚠️ 원사 반납 마감 처리 중 DB 동기화 오류가 발생했습니다:\n${err.message || err}`, 'DB 동기화 오류');
+      showErrorModal(`⚠️ 임차처 반납 마감 처리 중 DB 동기화 오류가 발생했습니다:\n${err.message || err}`, 'DB 동기화 오류');
       throw err;
     }
   };
@@ -7816,7 +7816,7 @@ ${currentTenant?.corporateName || tenantCorp} 배상
       if (existing) continue;
 
       const vendor = db.vendors.find(v => v.id === vendorId);
-      const vendorName = vendor?.name || aList[0]?.renter || '장비 임차원사';
+      const vendorName = vendor?.name || aList[0]?.renter || '장비 임차처';
       const totalAmount = aList.reduce((sum, a) => sum + (a.monthlyRentFee || 0), 0);
       const settlementId = db.generateNextId('purchaseSettlements', db.purchaseSettlements);
 

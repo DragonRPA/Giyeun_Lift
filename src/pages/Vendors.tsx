@@ -273,7 +273,7 @@ export const Vendors: React.FC = () => {
             <Building2 className="text-primary" /> 매입처 (공급자 / 외주처) 관리
           </h2>
           <p style={{ fontSize: '13px', color: 'var(--text-muted)', marginTop: '4px' }}>
-            장비 재임차 원사, 소모품/장비 구매처, 운송 협력사 및 외주 수리정비 업체의 마스터 정보 및 누적거래액을 통합 관리합니다.
+            장비 재임차 임차처, 소모품/장비 구매처, 운송 협력사 및 외주 수리정비 업체의 마스터 정보 및 누적거래액을 통합 관리합니다.
           </p>
         </div>
         <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>

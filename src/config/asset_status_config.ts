@@ -39,7 +39,7 @@ export const ASSET_STATUS_SSOT: Record<AssetStatusKey, AssetStatusDetail> = {
     code: 'RENTED_RETURNED',
     label: '임차반납',
     badgeClass: 'badge-secondary',
-    description: '외부 원사에서 임차한 자산을 원사에 반납 완료한 상태'
+    description: '외부 임차처에서 임차한 자산을 임차처에 반납 완료한 상태'
   },
   SOLD: {
     code: 'SOLD',

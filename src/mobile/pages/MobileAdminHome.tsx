@@ -146,7 +146,7 @@ export const MobileAdminHome: React.FC<MobileAdminHomeProps> = ({ onNavigate }) 
         </h2>
       </div>
 
-      {/* ── 전대 장비 운용 & 원사 반납 관제 퀵 배너 (신규) ── */}
+      {/* ── 전대 장비 운용 & 임차처 반납 관제 퀵 배너 (신규) ── */}
       <div
         onClick={() => onNavigate('sublease')}
         className={`p-4 rounded-2xl border flex items-center justify-between active:scale-98 transition-all cursor-pointer shadow-lg ${
@@ -178,7 +178,7 @@ export const MobileAdminHome: React.FC<MobileAdminHomeProps> = ({ onNavigate }) 
             <div className="text-xs text-slate-400">
               {subleaseLeakCount > 0 
                 ? `🚨 주기장 미반납 유휴 장비 ${subleaseLeakCount}대 방치 중!` 
-                : '외부 원사 임차 장비 및 반납 기한 관리'}
+                : '외부 임차 장비 및 임차처 반납 기한 관리'}
             </div>
           </div>
         </div>

@@ -888,7 +888,7 @@ export const Repairs: React.FC = () => {
                         {asset.serialNo && <span>S/N: {asset.serialNo}</span>}
                       </div>
 
-                      {/* 🌟 일반 자산 비고(원사, 결제조건 등)는 절대 빨간색 경고가 아닌 차분한 중립 회색 메타정보로 표기 */}
+                      {/* 🌟 일반 자산 비고(임차처, 결제조건 등)는 절대 빨간색 경고가 아닌 차분한 중립 회색 메타정보로 표기 */}
                       {asset.memo && (
                         <div style={{ fontSize: '11px', color: 'var(--text-muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                           비고: {asset.memo}

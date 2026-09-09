@@ -70,7 +70,7 @@ export const Assets: React.FC = () => {
     return map;
   }, [contractAssets, contracts]);
 
-  // 헬퍼: 외부 임차(전대) 자산 소유 원사명 (O(1) 즉각 조회)
+  // 헬퍼: 외부 임차(전대) 자산 임차처명 (O(1) 즉각 조회)
   const getAssetRenterName = (a: Asset): string => {
     if (a.ownerType !== 'RENTED') return '-';
     if (a.renter) return a.renter;
@@ -349,7 +349,7 @@ export const Assets: React.FC = () => {
         '계약기간': a.contractStart ? `${a.contractStart.slice(0, 10)} ~ ${a.contractEnd?.slice(0, 10) || ''}` : '-',
         '청구마감일': a.billingDay ? `${a.billingDay}일` : '-',
         '월 렌탈료(원)': a.monthlyRentalFee || 0,
-        '소유원사(임차처)': getAssetRenterName(a),
+        '임차처': getAssetRenterName(a),
         '구입/공급처': getAssetSupplierName(a),
         '취득일자': a.acquisitionDate ? a.acquisitionDate.slice(0, 10) : (a.rentStart ? a.rentStart.slice(0, 10) : '-'),
         '취득원가(원)': a.acquisitionPrice || 0,
@@ -656,8 +656,8 @@ export const Assets: React.FC = () => {
                 <th style={{ padding: '7px 8px', width: '65px', textAlign: 'center', whiteSpace: 'nowrap' }}>청구일</th>
                 {/* 15. 월 렌탈료 */}
                 <th style={{ padding: '7px 8px', width: '95px', textAlign: 'right', whiteSpace: 'nowrap' }}>월 렌탈료</th>
-                {/* 16. 소유 원사 (임차처) */}
-                <th style={{ padding: '7px 8px', width: '120px', whiteSpace: 'nowrap' }}>소유 원사 (임차처)</th>
+                {/* 16. 임차처 */}
+                <th style={{ padding: '7px 8px', width: '120px', whiteSpace: 'nowrap' }}>임차처</th>
                 {/* 17. 구입/공급처 */}
                 <th style={{ padding: '7px 8px', width: '120px', whiteSpace: 'nowrap' }}>구입/공급처</th>
                 {/* 18. 취득/개시일 */}
@@ -829,7 +829,7 @@ export const Assets: React.FC = () => {
                         {a.monthlyRentalFee ? `₩${a.monthlyRentalFee.toLocaleString()}` : '-'}
                       </td>
 
-                      {/* 16. 소유 원사 (임차처) - 임차자산 전용 */}
+                      {/* 16. 임차처 - 임차자산 전용 */}
                       <td style={{ padding: '6px 8px', fontWeight: 600, color: 'var(--text-main)', whiteSpace: 'nowrap' }}>
                         {renterName !== '-' ? renterName : <span style={{ color: 'var(--text-muted)' }}>-</span>}
                       </td>
@@ -1135,13 +1135,13 @@ export const Assets: React.FC = () => {
                 </div>
               ) : (
                 <div style={{ padding: '10px 12px', backgroundColor: 'var(--bg-app)', borderRadius: '6px', border: '1px solid var(--border-color)' }}>
-                  <div style={{ fontWeight: 600, color: 'var(--text-main)', marginBottom: '8px' }}>3. 소유 원사 임차 약정 조건</div>
+                  <div style={{ fontWeight: 600, color: 'var(--text-main)', marginBottom: '8px' }}>3. 임차 약정 조건</div>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', fontSize: '11.5px' }}>
-                    <div><span style={{ color: 'var(--text-secondary)' }}>소유 원사:</span> <strong>{renterName}</strong></div>
+                    <div><span style={{ color: 'var(--text-secondary)' }}>임차처:</span> <strong>{renterName}</strong></div>
                     <div><span style={{ color: 'var(--text-secondary)' }}>월 임차료:</span> <strong style={{ color: 'var(--danger)' }}>₩{(selectedAsset.monthlyRentFee || 0).toLocaleString()}</strong></div>
                     <div><span style={{ color: 'var(--text-secondary)' }}>임차 시작일:</span> {selectedAsset.rentStart || '-'}</div>
                     <div><span style={{ color: 'var(--text-secondary)' }}>임차 만료예정:</span> {selectedAsset.rentEnd || '-'}</div>
-                    <div><span style={{ color: 'var(--text-secondary)' }}>원사 반납일:</span> {selectedAsset.actualRentReturnDate ? <span style={{ color: 'var(--success)', fontWeight: 600 }}>{selectedAsset.actualRentReturnDate} (반납)</span> : '미반납'}</div>
+                    <div><span style={{ color: 'var(--text-secondary)' }}>임차처 반납일:</span> {selectedAsset.actualRentReturnDate ? <span style={{ color: 'var(--success)', fontWeight: 600 }}>{selectedAsset.actualRentReturnDate} (반납)</span> : '미반납'}</div>
                     <div><span style={{ color: 'var(--text-secondary)' }}>일할 단가:</span> ₩{(selectedAsset.dailyRentFee || 0).toLocaleString()}</div>
                   </div>
                 </div>

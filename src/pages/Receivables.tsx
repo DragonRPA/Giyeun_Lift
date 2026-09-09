@@ -273,7 +273,7 @@ export const Receivables: React.FC = () => {
         '현장명': s ? s.name : '-',
 
         // ③ 구상 및 장비 연계
-        '원사명(타사)': r.vendorName || '-',
+        '임차처명(타사)': r.vendorName || '-',
         '대상 장비번호': r.assetNo || '-',
 
         // ④ 발생 일정 및 내역

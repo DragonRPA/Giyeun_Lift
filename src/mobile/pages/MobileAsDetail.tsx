@@ -370,13 +370,13 @@ export const MobileAsDetail: React.FC<MobileAsDetailProps> = ({ ticketId, onBack
         </div>
 
         <div className="flex flex-col gap-1.5 mt-2">
-          <label className="text-xs font-bold text-slate-300 whitespace-nowrap">자산 노후도 누적 점수 (+)</label>
+          <label className="text-xs font-bold text-slate-300 whitespace-nowrap">정비점수 (+)</label>
           <input
             type="number"
             min={0}
             value={degradationScore}
             onChange={(e) => setDegradationScore(parseInt(e.target.value) || 0)}
-            placeholder="노후도 점수"
+            placeholder="정비점수"
             className="w-full bg-slate-950 border border-slate-700 rounded-xl p-3 text-sm text-white focus:outline-none focus:border-blue-500"
           />
         </div>

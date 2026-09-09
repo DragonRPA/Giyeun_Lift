@@ -1,5 +1,4 @@
-// src/pages/Repairs.tsx
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
 import { 
   Wrench, Download, Search, AlertTriangle, CheckCircle, Clock, 
@@ -9,13 +8,13 @@ import {
 import { Repair, Asset, InboundDefectDetail, db } from '../services/db';
 import { exportToExcel } from '../services/excel';
 import { compressFileIfNeeded } from '../utils/imageCompressor';
-
-
+import { normalizeMenuId } from '../config/menu_config';
+import { getRoleTemplatePermission } from '../config/role_templates';
 
 export const Repairs: React.FC = () => {
   const {
     repairs, assets, consumables, repairConsumables, registerRepair, updateRepairStatus, 
-    hasPermission, users, currentUser, vendors, assetInOutLogs, showErrorModal,
+    hasPermission, users, permissions, currentUser, vendors, assetInOutLogs, showErrorModal,
     inspectionChecklistItems
   } = useApp();
 
@@ -94,17 +93,69 @@ export const Repairs: React.FC = () => {
   // 대장 사진 라이트박스 뷰어 모달
   const [viewingPhotoRepair, setViewingPhotoRepair] = useState<Repair | null>(null);
 
+  // 🏢 조직도 최상위(root)에 속하지 않으면서 repair 권한을 보유한 담당자 목록 (SSOT)
+  const eligibleAssignees = useMemo(() => {
+    const depts = db.departments || [];
+    const rootDeptIds = new Set<string>(['DEPT-0000001', 'DEPT-1']);
+    depts.forEach(d => {
+      if (!d.parentDepartmentId) rootDeptIds.add(d.id);
+    });
+
+    return users.filter(u => {
+      if (u.status === 'RETIRED') return false;
+
+      // 1. 조직도 최상위(root) 소속 배제 (대표이사, 임원진, 시스템 최고관리자)
+      if (u.id === 'sys-admin' || u.id === 'u-1' || u.loginId === 'admin') return false;
+      if (u.position === '대표이사' || u.position === '대표' || u.position?.includes('대표')) return false;
+      const dName = (u.department || '').trim();
+      if (dName.includes('대표') || dName.includes('경영진') || dName.includes('임원') || dName.includes('시스템')) return false;
+      if (u.departmentId && rootDeptIds.has(u.departmentId)) return false;
+      if (!u.departmentId && u.role === 'ADMIN') return false;
+
+      // 2. 해당 메뉴(repair) 권한 보유 여부 확인
+      const perm = permissions.find(p =>
+        (p.userId === u.id || (p as any).user_id === u.id) &&
+        normalizeMenuId(p.menuId) === 'repair'
+      );
+      if (perm) {
+        return Boolean(perm.canView || perm.canSave);
+      }
+
+      const dept = u.departmentId || u.department;
+      const canView = getRoleTemplatePermission(u.role, dept, 'repair', 'view');
+      const canSave = getRoleTemplatePermission(u.role, dept, 'repair', 'save');
+      if (canView || canSave) return true;
+
+      // 실무 정비 역할이나 AS/주기장팀 소속인 경우 기본 부여
+      if (u.role === 'MECHANIC') return true;
+      if (u.department?.includes('정비') || u.department?.includes('주기장') || u.department?.includes('AS')) return true;
+      if (u.departmentId === 'DEPT-0000005' || u.departmentId === 'DEPT-5') return true;
+
+      return false;
+    });
+  }, [users, permissions]);
+
+  // 담당자 선택 자동 동기화
+  useEffect(() => {
+    if (eligibleAssignees.length > 0) {
+      if (!selectedMechanicId || !eligibleAssignees.some(u => u.id === selectedMechanicId)) {
+        const myMatch = eligibleAssignees.find(u => u.id === currentUser?.id);
+        setSelectedMechanicId(myMatch ? myMatch.id : eligibleAssignees[0].id);
+      }
+    }
+  }, [eligibleAssignees, currentUser]);
+
   // =========================================================================
   // [3] 연산 및 필터링
   // =========================================================================
   const getAssetNo = (id?: string) => (id ? assets.find(a => a.id === id)?.assetNo : '') || '-';
   const getAssetModel = (id?: string) => (id ? assets.find(a => a.id === id)?.modelName : '') || '-';
-  const getMechanicName = (id?: string) => users.find(u => u.id === id)?.name || '정비사';
+  const getMechanicName = (id?: string) => users.find(u => u.id === id)?.name || '담당자';
   const getVendorName = (id?: string) => vendors.find(v => v.id === id)?.name || '-';
 
   // 주기장 대상 자산 목록 (RENTED_RETURNED, REPAIRING, AVAILABLE 및 진행중인 외주정비 자산)
   const yardAssets = useMemo(() => {
-    return assets.filter(a => {
+    const list = assets.filter(a => {
       // 대여중(RENTED)이나 매각(SOLD)은 주기장 정비 큐에서 제외
       if (a.status === 'RENTED' || a.status === 'SOLD' || a.status === 'ASSIGNED') return false;
 
@@ -122,6 +173,23 @@ export const Repairs: React.FC = () => {
       if (!yardSearchTerm.trim()) return true;
       const term = yardSearchTerm.toLowerCase();
       return a.assetNo.toLowerCase().includes(term) || a.modelName.toLowerCase().includes(term) || (a.memo && a.memo.toLowerCase().includes(term));
+    });
+
+    // 당면 정비 우선순위 정렬: 입고결함/수리중 > 입고검수대기 > 외주위탁 > 정상임대가능
+    return list.sort((a, b) => {
+      const getPriority = (item: Asset) => {
+        const hasInboundDefect = repairs.some(r => r.assetId === item.id && r.status === 'PENDING' && r.source === 'INBOUND_INSPECTION');
+        if (hasInboundDefect) return 1;
+        if (item.status === 'REPAIRING') return 2;
+        if (item.status === 'RENTED_RETURNED') return 3;
+        const hasExternal = repairs.some(r => r.assetId === item.id && r.status === 'IN_PROGRESS' && r.maintenanceType === 'EXTERNAL');
+        if (hasExternal) return 4;
+        return 5; // AVAILABLE
+      };
+      const pA = getPriority(a);
+      const pB = getPriority(b);
+      if (pA !== pB) return pA - pB;
+      return a.assetNo.localeCompare(b.assetNo, 'ko');
     });
   }, [assets, repairs, yardQueueFilter, yardSearchTerm]);
 
@@ -589,11 +657,11 @@ export const Repairs: React.FC = () => {
       '소요시간': r.durationMinutes ? `${r.durationMinutes}분 (${(r.durationMinutes / 60).toFixed(1)}M/H)` : (r.spentManHours ? `${r.spentManHours.toFixed(1)} M/H` : '-'),
       '미완료사유': r.unresolvedReason || '-',
       '총비용(원)': r.totalCost || 0,
-      '담당정비사': getMechanicName(r.mechanicId),
+      '담당자': getMechanicName(r.mechanicId),
       '외주거래처': r.vendorId ? getVendorName(r.vendorId) : '-',
       '진행상태': r.status === 'COMPLETED' ? '정비완료' : r.status === 'UNRESOLVED' ? '소모품대기' : '진행중',
       '점검코드': r.inspectionItemCode || '-',
-      '노후도점수': r.degradationScore ? `${r.degradationScore}점` : '0점',
+      '정비점수': r.degradationScore ? `${r.degradationScore}점` : '0점',
       '유무상구분': r.billableType === 'BILLABLE' ? '유상' : '무상',
       '고객청구액': r.billableAmount ? `${r.billableAmount.toLocaleString()}원` : '0원'
     }));
@@ -990,13 +1058,14 @@ export const Repairs: React.FC = () => {
                   </div>
 
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                    <label style={{ fontSize: '11px', fontWeight: '600', whiteSpace: 'nowrap' }}>담당 정비사 *</label>
+                    <label style={{ fontSize: '11px', fontWeight: '600', whiteSpace: 'nowrap' }}>담당자지정 *</label>
                     <select
                       value={selectedMechanicId}
                       onChange={e => setSelectedMechanicId(e.target.value)}
                       style={{ padding: '6px 8px', fontSize: '12.5px' }}
                     >
-                      {users.map(u => (
+                      <option value="">담당자지정</option>
+                      {eligibleAssignees.map(u => (
                         <option key={u.id} value={u.id}>{u.name} ({u.role})</option>
                       ))}
                     </select>
@@ -1019,7 +1088,7 @@ export const Repairs: React.FC = () => {
                   </div>
 
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                    <label style={{ fontSize: '11px', fontWeight: '600', whiteSpace: 'nowrap' }}>노후도 점수 (Degradation)</label>
+                    <label style={{ fontSize: '11px', fontWeight: '600', whiteSpace: 'nowrap' }}>정비점수</label>
                     <input
                       type="number"
                       value={degradationScore}
@@ -1475,14 +1544,14 @@ export const Repairs: React.FC = () => {
             </div>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-              <label style={{ fontSize: '11px', fontWeight: '600', whiteSpace: 'nowrap' }}>담당 정비사</label>
+              <label style={{ fontSize: '11px', fontWeight: '600', whiteSpace: 'nowrap' }}>담당자</label>
               <select
                 value={ledgerMechanicFilter}
                 onChange={e => setLedgerMechanicFilter(e.target.value)}
                 style={{ padding: '6px', fontSize: '12px' }}
               >
-                <option value="ALL">전체 정비사</option>
-                {users.map(u => (
+                <option value="ALL">전체 담당자</option>
+                {eligibleAssignees.map(u => (
                   <option key={u.id} value={u.id}>{u.name}</option>
                 ))}
               </select>
@@ -1512,8 +1581,8 @@ export const Repairs: React.FC = () => {
                   <th style={{ padding: '8px 10px', textAlign: 'right', whiteSpace: 'nowrap' }}>소요시간</th>
                   <th style={{ padding: '8px 10px', textAlign: 'right', whiteSpace: 'nowrap' }}>정비비용</th>
                   <th style={{ padding: '8px 10px', textAlign: 'center', whiteSpace: 'nowrap' }}>점검코드</th>
-                  <th style={{ padding: '8px 10px', textAlign: 'center', whiteSpace: 'nowrap' }}>노후도</th>
-                  <th style={{ padding: '8px 10px', whiteSpace: 'nowrap' }}>담당정비사</th>
+                  <th style={{ padding: '8px 10px', textAlign: 'center', whiteSpace: 'nowrap' }}>정비점수</th>
+                  <th style={{ padding: '8px 10px', whiteSpace: 'nowrap' }}>담당자</th>
                   <th style={{ padding: '8px 10px', textAlign: 'center', whiteSpace: 'nowrap' }}>증빙사진</th>
                   <th style={{ padding: '8px 10px', textAlign: 'center', whiteSpace: 'nowrap' }}>상태</th>
                   <th style={{ padding: '8px 10px', textAlign: 'center', whiteSpace: 'nowrap', width: '60px' }}>상세</th>
@@ -1753,11 +1822,11 @@ export const Repairs: React.FC = () => {
                   <span>{selectedDetailRepair.repairDate || selectedDetailRepair.requestDate}</span>
                 </div>
                 <div>
-                  <div style={{ color: 'var(--text-muted)', fontSize: '11px' }}>담당 정비사</div>
+                  <div style={{ color: 'var(--text-muted)', fontSize: '11px' }}>담당자</div>
                   <span>{getMechanicName(selectedDetailRepair.mechanicId)}</span>
                 </div>
                 <div>
-                  <div style={{ color: 'var(--text-muted)', fontSize: '11px' }}>점검코드 / 노후도</div>
+                  <div style={{ color: 'var(--text-muted)', fontSize: '11px' }}>점검코드 / 정비점수</div>
                   <span>{selectedDetailRepair.inspectionItemCode || '-'} / {selectedDetailRepair.degradationScore ? `${selectedDetailRepair.degradationScore}점` : '0점'}</span>
                 </div>
                 <div>

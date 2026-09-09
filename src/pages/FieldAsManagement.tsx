@@ -11,6 +11,8 @@ import { db, FieldAsTicket, FieldAsPartUsed, FieldAsCollectedPart } from '../ser
 import { exportToExcel } from '../services/excel';
 import { compressImageFile } from '../utils/imageCompressor';
 import { launchNavigation, safePhoneCall, resolveSiteDetailedAddress } from '../utils/nativeLauncher';
+import { normalizeMenuId } from '../config/menu_config';
+import { getRoleTemplatePermission } from '../config/role_templates';
 
 // 자주 쓰이는 조치 내용 프리셋 태그 (5,518건 빅데이터 기반)
 const QUICK_ACTION_TAGS = [
@@ -45,7 +47,7 @@ export const FieldAsManagement: React.FC = () => {
   const {
     fieldAsTickets, createFieldAsTicket, updateFieldAsTicketStatus, completeFieldAsTicket,
     createRevisitAsTicket, importBandAsHistory, logFieldAsTimelineEvent,
-    users, customers, sites, assets, consumables, mechanicConsumableStocks,
+    users, permissions, customers, sites, assets, consumables, mechanicConsumableStocks,
     transferConsumableToMechanic, currentUser, hasPermission, showErrorModal, setActiveTab,
     inspectionChecklistItems
   } = useApp();
@@ -247,17 +249,65 @@ export const FieldAsManagement: React.FC = () => {
     }
   };
 
-  // 정비 기사 목록
-  const mechanics = users.filter(u => u.role === 'MECHANIC' || u.role === 'ADMIN' || u.role === 'MANAGER');
+  // 🏢 조직도 최상위(root)에 속하지 않으면서 field_as 권한을 보유한 담당자 목록 (SSOT)
+  const eligibleAssignees = useMemo(() => {
+    const depts = db.departments || [];
+    const rootDeptIds = new Set<string>(['DEPT-0000001', 'DEPT-1']);
+    depts.forEach(d => {
+      if (!d.parentDepartmentId) rootDeptIds.add(d.id);
+    });
 
-  // 선택된 티켓 정보
-  const selectedTicket = useMemo(() => {
-    return fieldAsTickets.find(t => t.id === studioSelectedTicketId) || fieldAsTickets[0] || null;
-  }, [fieldAsTickets, studioSelectedTicketId]);
+    return users.filter(u => {
+      if (u.status === 'RETIRED') return false;
 
-  // 스튜디오 필터링된 티켓 목록
+      // 1. 조직도 최상위(root) 소속 배제 (대표이사, 임원진, 시스템 최고관리자)
+      if (u.id === 'sys-admin' || u.id === 'u-1' || u.loginId === 'admin') return false;
+      if (u.position === '대표이사' || u.position === '대표' || u.position?.includes('대표')) return false;
+      const dName = (u.department || '').trim();
+      if (dName.includes('대표') || dName.includes('경영진') || dName.includes('임원') || dName.includes('시스템')) return false;
+      if (u.departmentId && rootDeptIds.has(u.departmentId)) return false;
+      if (!u.departmentId && u.role === 'ADMIN') return false;
+
+      // 2. 해당 메뉴(field_as) 권한 보유 여부 확인
+      const perm = permissions.find(p =>
+        (p.userId === u.id || (p as any).user_id === u.id) &&
+        normalizeMenuId(p.menuId) === 'field_as'
+      );
+      if (perm) {
+        return Boolean(perm.canView || perm.canSave);
+      }
+
+      const dept = u.departmentId || u.department;
+      const canView = getRoleTemplatePermission(u.role, dept, 'field_as', 'view');
+      const canSave = getRoleTemplatePermission(u.role, dept, 'field_as', 'save');
+      if (canView || canSave) return true;
+
+      // 실무 정비 역할이나 AS팀 소속인 경우 기본 부여
+      if (u.role === 'MECHANIC') return true;
+      if (u.department?.includes('AS') || u.department?.includes('정비')) return true;
+      if (u.departmentId === 'DEPT-0000005' || u.departmentId === 'DEPT-5') return true;
+
+      return false;
+    });
+  }, [users, permissions]);
+
+  // 담당자 기본 선택 자동 동기화
+  useEffect(() => {
+    if (eligibleAssignees.length > 0) {
+      if (!actionAssignMechanicId || !eligibleAssignees.some(u => u.id === actionAssignMechanicId)) {
+        const myMatch = eligibleAssignees.find(u => u.id === currentUser?.id);
+        setActionAssignMechanicId(myMatch ? myMatch.id : eligibleAssignees[0].id);
+      }
+      if (!newAssignedMechanicId || !eligibleAssignees.some(u => u.id === newAssignedMechanicId)) {
+        const myMatch = eligibleAssignees.find(u => u.id === currentUser?.id);
+        setNewAssignedMechanicId(myMatch ? myMatch.id : eligibleAssignees[0].id);
+      }
+    }
+  }, [eligibleAssignees, currentUser]);
+
+  // 스튜디오 필터링된 티켓 목록 (당면 미완결 과제 우선순위 정렬)
   const studioFilteredTickets = useMemo(() => {
-    return fieldAsTickets.filter(t => {
+    const list = fieldAsTickets.filter(t => {
       // 상태 필터
       if (studioStatusFilter === 'UNRESOLVED') {
         if (t.status === 'COMPLETED' || t.status === 'GUIDED' || t.status === 'CANCELED') return false;
@@ -286,7 +336,26 @@ export const FieldAsManagement: React.FC = () => {
 
       return true;
     });
+
+    // 당면 과제 우선순위 정렬: 긴급(URGENT) > 담당자 미지정 > 최신 접수순
+    return list.sort((a, b) => {
+      if (a.priority === 'URGENT' && b.priority !== 'URGENT') return -1;
+      if (b.priority === 'URGENT' && a.priority !== 'URGENT') return 1;
+      const aUnassigned = !a.assignedMechanicId ? 1 : 0;
+      const bUnassigned = !b.assignedMechanicId ? 1 : 0;
+      if (aUnassigned !== bUnassigned) return bUnassigned - aUnassigned;
+      return (b.requestDate || '').localeCompare(a.requestDate || '');
+    });
   }, [fieldAsTickets, studioStatusFilter, studioCategoryFilter, studioSearchTerm]);
+
+  // 선택된 티켓 정보 (현재 필터의 1순위 미완결 티켓 자동 포커스)
+  const selectedTicket = useMemo(() => {
+    if (studioSelectedTicketId) {
+      const found = fieldAsTickets.find(t => t.id === studioSelectedTicketId);
+      if (found) return found;
+    }
+    return studioFilteredTickets[0] || fieldAsTickets[0] || null;
+  }, [fieldAsTickets, studioSelectedTicketId, studioFilteredTickets]);
 
   // 대장 필터링된 티켓 목록
   const ledgerFilteredTickets = useMemo(() => {
@@ -463,7 +532,7 @@ export const FieldAsManagement: React.FC = () => {
   const handleCompleteTicket = async () => {
     if (!selectedTicket) return;
     if (!actionAssignMechanicId) {
-      showErrorModal('담당 정비 기사를 지정해 주세요.');
+      showErrorModal('담당자를 지정해 주세요.');
       return;
     }
     if (!actionTakenText.trim()) {
@@ -616,8 +685,8 @@ showToast('밴드 과거 AS 빅데이터 탑재를 시작합니다.');
       '고장분류': t.issueCategory || '-',
       '고장증상': t.issueDescription || '-',
 
-      // ④ 배정 기사
-      '담당기사': users.find(u => u.id === t.assignedMechanicId)?.name || '미배정',
+      // ④ 배정 담당자
+      '담당자': users.find(u => u.id === t.assignedMechanicId)?.name || '미지정',
 
       // ⑤ 일정 및 진행상태
       '방문일자': t.visitDate || '-',
@@ -634,7 +703,7 @@ showToast('밴드 과거 AS 빅데이터 탑재를 시작합니다.');
       '유무상구분': t.billableType === 'BILLABLE' ? '유상' : '무상',
       '청구금액(원)': t.billableAmount ? `${t.billableAmount.toLocaleString()}원` : '0원',
       '점검항목코드': t.inspectionItemCode || '-',
-      '노후도점수': t.degradationScore ? `${t.degradationScore}점` : '0점',
+      '정비점수': t.degradationScore ? `${t.degradationScore}점` : '0점',
 
       // ⑦ 비고
       '비고': t.memo || '-'
@@ -1296,7 +1365,7 @@ showToast('밴드 과거 AS 빅데이터 탑재를 시작합니다.');
                   type="text"
                   value={studioSearchTerm}
                   onChange={(e) => setStudioSearchTerm(e.target.value)}
-                  placeholder="현장명, 장비번호, 고장내용, 기사명 검색..."
+                  placeholder="현장명, 장비번호, 고장내용, 담당자명 검색..."
                   style={{
                     width: '100%',
                     padding: '7px 10px 7px 32px',
@@ -1432,10 +1501,10 @@ showToast('밴드 과거 AS 빅데이터 탑재를 시작합니다.');
                         <strong style={{ color: isSelected ? '#60a5fa' : 'var(--primary)' }}>[{t.issueCategory}]</strong> {t.issueDescription}
                       </p>
 
-                      {/* 카드 하단: 기사 배정 및 조치 결과 요약 */}
+                      {/* 카드 하단: 담당자 지정 및 조치 결과 요약 */}
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '11px', color: 'var(--text-muted)' }}>
                         <span>
-                          👨‍🔧 {users.find(u => u.id === t.assignedMechanicId)?.name || '기사 미배정'}
+                          👨‍🔧 {users.find(u => u.id === t.assignedMechanicId)?.name || '담당자 미지정'}
                         </span>
                         {t.actionTaken && (
                           <span style={{ color: '#16a34a', fontWeight: 600 }}>
@@ -1533,11 +1602,11 @@ showToast('밴드 과거 AS 빅데이터 탑재를 시작합니다.');
                   </div>
                 </div>
 
-                {/* 2. 출동 기사 배정 및 방문일정 설정 */}
+                {/* 2. 출동 담당자 지정 및 방문일정 설정 */}
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
                     <label style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>
-                      담당 AS 기사 지정
+                      담당자지정
                     </label>
                     <select
                       value={actionAssignMechanicId}
@@ -1550,8 +1619,8 @@ showToast('밴드 과거 AS 빅데이터 탑재를 시작합니다.');
                         backgroundColor: 'var(--bg-card)'
                       }}
                     >
-                      <option value="">기사 선택</option>
-                      {mechanics.map(m => (
+                      <option value="">담당자지정</option>
+                      {eligibleAssignees.map(m => (
                         <option key={m.id} value={m.id}>{m.name} ({m.role})</option>
                       ))}
                     </select>
@@ -1657,7 +1726,7 @@ showToast('밴드 과거 AS 빅데이터 탑재를 시작합니다.');
                       </select>
                     </div>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                      <label style={{ fontSize: '11px', fontWeight: '600', whiteSpace: 'nowrap' }}>자산 노후도 누적 점수 (+)</label>
+                      <label style={{ fontSize: '11px', fontWeight: '600', whiteSpace: 'nowrap' }}>정비점수 (+)</label>
                       <input
                         type="number"
                         min={0}
@@ -2257,7 +2326,7 @@ showToast('밴드 과거 AS 빅데이터 탑재를 시작합니다.');
                           </span>
                         </div>
                         <div style={{ fontSize: '11.5px', color: 'var(--text-secondary)' }}>
-                          자산: <strong>{t.assetNo || '-'}</strong> | 기사: <strong>{mechUser?.name || '미배정'}</strong>
+                          자산: <strong>{t.assetNo || '-'}</strong> | 담당: <strong>{mechUser?.name || '미지정'}</strong>
                         </div>
                         <div style={{ fontSize: '11.5px', color: 'var(--text-muted)' }}>
                           증상: {t.issueDescription || t.issueCategory}
@@ -2420,17 +2489,17 @@ showToast('밴드 과거 AS 빅데이터 탑재를 시작합니다.');
               </div>
 
               <div className="card" style={{ padding: '16px' }}>
-                <h4 style={{ margin: '0 0 12px 0', fontSize: '14px', fontWeight: 800 }}>🔧 기사별 조치 및 완료 실적</h4>
+                <h4 style={{ margin: '0 0 12px 0', fontSize: '14px', fontWeight: 800 }}>🔧 담당자별 조치 및 완료 실적</h4>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                   {Object.entries(mechanicMap).map(([mId, data]) => {
                     const u = users.find(user => user.id === mId);
-                    const name = u ? u.name : (mId === 'UNASSIGNED' ? '미배정' : mId);
+                    const name = u ? u.name : (mId === 'UNASSIGNED' ? '미지정' : mId);
                     const rate = data.total > 0 ? Math.round((data.completed / data.total) * 100) : 0;
                     return (
                       <div key={mId} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 10px', borderRadius: '6px', backgroundColor: 'var(--bg-app)', fontSize: '12px' }}>
                         <span><strong>{name}</strong></span>
                         <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
-                          <span>배정: {data.total}건</span>
+                          <span>지정: {data.total}건</span>
                           <span style={{ color: '#16a34a', fontWeight: 700 }}>완료: {data.completed}건 ({rate}%)</span>
                         </div>
                       </div>
@@ -2456,7 +2525,7 @@ showToast('밴드 과거 AS 빅데이터 탑재를 시작합니다.');
                 type="text"
                 value={ledgerSearch}
                 onChange={(e) => setLedgerSearch(e.target.value)}
-                placeholder="통합 검색 (현장, 장비, 고장, 기사)..."
+                placeholder="통합 검색 (현장, 장비, 고장, 담당자)..."
                 style={{ padding: '7px 12px', borderRadius: '6px', border: '1px solid var(--border-color)', fontSize: '13px', width: '220px' }}
               />
 
@@ -2490,8 +2559,8 @@ showToast('밴드 과거 AS 빅데이터 탑재를 시작합니다.');
                 onChange={(e) => setLedgerMechanic(e.target.value)}
                 style={{ padding: '7px 10px', borderRadius: '6px', border: '1px solid var(--border-color)', fontSize: '13px', backgroundColor: 'var(--bg-card)', color: 'var(--text-main)' }}
               >
-                <option value="ALL">전체 담당기사</option>
-                {mechanics.map(m => (
+                <option value="ALL">전체 담당자</option>
+                {eligibleAssignees.map(m => (
                   <option key={m.id} value={m.id}>{m.name}</option>
                 ))}
               </select>
@@ -2549,11 +2618,11 @@ showToast('밴드 과거 AS 빅데이터 탑재를 시작합니다.');
                   <th style={{ padding: '10px 12px', textAlign: 'left', color: 'var(--text-secondary)' }}>고장분류</th>
                   <th style={{ padding: '10px 12px', textAlign: 'left', color: 'var(--text-secondary)' }}>고장증상</th>
                   <th style={{ padding: '10px 12px', textAlign: 'center', color: 'var(--text-secondary)' }}>상태</th>
-                  <th style={{ padding: '10px 12px', textAlign: 'left', color: 'var(--text-secondary)' }}>담당기사</th>
+                  <th style={{ padding: '10px 12px', textAlign: 'left', color: 'var(--text-secondary)' }}>담당자</th>
                   <th style={{ padding: '10px 12px', textAlign: 'left', color: 'var(--text-secondary)' }}>조치내용</th>
                   <th style={{ padding: '10px 12px', textAlign: 'left', color: 'var(--text-secondary)' }}>사용소모품</th>
                   <th style={{ padding: '10px 12px', textAlign: 'center', color: 'var(--text-secondary)' }}>점검코드</th>
-                  <th style={{ padding: '10px 12px', textAlign: 'center', color: 'var(--text-secondary)' }}>노후도</th>
+                  <th style={{ padding: '10px 12px', textAlign: 'center', color: 'var(--text-secondary)' }}>정비점수</th>
                   <th style={{ padding: '10px 12px', textAlign: 'center', color: 'var(--text-secondary)' }}>유/무상</th>
                   <th style={{ padding: '10px 12px', textAlign: 'right', color: 'var(--text-secondary)' }}>청구액</th>
                 </tr>
@@ -2753,7 +2822,7 @@ showToast('밴드 과거 AS 빅데이터 탑재를 시작합니다.');
           
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <h2 style={{ fontSize: '16px', fontWeight: 700, color: 'var(--text-main)', margin: 0 }}>
-              🚚 AS 담당 기사별 차량 소모품 적재 현황
+              🚚 AS 담당자별 차량 소모품 적재 현황
             </h2>
             <button
               onClick={() => setShowTransferModal(true)}
@@ -2777,7 +2846,7 @@ showToast('밴드 과거 AS 빅데이터 탑재를 시작합니다.');
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: '16px' }}>
-            {mechanics.map(m => {
+            {eligibleAssignees.map(m => {
               const myStocks = (mechanicConsumableStocks || []).filter(s => s.mechanicId === m.id);
               const totalItemsCount = myStocks.reduce((sum, s) => sum + s.stockQty, 0);
 
@@ -2795,7 +2864,7 @@ showToast('밴드 과거 AS 빅데이터 탑재를 시작합니다.');
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border-color)', paddingBottom: '10px', marginBottom: '12px' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                       <User size={18} color="#2563eb" />
-                      <span style={{ fontSize: '15px', fontWeight: 700, color: 'var(--text-main)' }}>{m.name} 기사 차량</span>
+                      <span style={{ fontSize: '15px', fontWeight: 700, color: 'var(--text-main)' }}>{m.name} 차량</span>
                     </div>
                     <span style={{ fontSize: '12px', fontWeight: 700, color: '#3b82f6', backgroundColor: 'rgba(37, 99, 235, 0.12)', border: '1px solid rgba(59, 130, 246, 0.25)', padding: '2px 8px', borderRadius: '12px' }}>
                       총 적재 {totalItemsCount}개
@@ -3450,14 +3519,14 @@ showToast('밴드 과거 AS 빅데이터 탑재를 시작합니다.');
                   />
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                  <label style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-secondary)' }}>담당 기사 배정</label>
+                  <label style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-secondary)' }}>담당자지정</label>
                   <select
                     value={newAssignedMechanicId}
                     onChange={(e) => setNewAssignedMechanicId(e.target.value)}
                     style={{ padding: '8px 10px', borderRadius: '6px', border: '1px solid var(--border-color)', fontSize: '13px', backgroundColor: '#fff' }}
                   >
-                    <option value="">미배정 (추후 배정)</option>
-                    {mechanics.map(m => (
+                    <option value="">담당자지정 (추후 지정)</option>
+                    {eligibleAssignees.map(m => (
                       <option key={m.id} value={m.id}>{m.name}</option>
                     ))}
                   </select>
@@ -3576,15 +3645,15 @@ showToast('밴드 과거 AS 빅데이터 탑재를 시작합니다.');
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                <label style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-secondary)' }}>대상 정비 기사 (차량)</label>
+                <label style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-secondary)' }}>담당자지정 (차량)</label>
                 <select
                   value={transferTargetMechId}
                   onChange={(e) => setTransferTargetMechId(e.target.value)}
                   style={{ padding: '8px 10px', borderRadius: '6px', border: '1px solid var(--border-color)', fontSize: '13px', backgroundColor: '#fff' }}
                 >
-                  <option value="">기사 선택</option>
-                  {mechanics.map(m => (
-                    <option key={m.id} value={m.id}>{m.name} 기사</option>
+                  <option value="">담당자지정</option>
+                  {eligibleAssignees.map(m => (
+                    <option key={m.id} value={m.id}>{m.name}</option>
                   ))}
                 </select>
               </div>
@@ -3628,7 +3697,7 @@ showToast('밴드 과거 AS 빅데이터 탑재를 시작합니다.');
                   type="button"
                   onClick={async () => {
                     if (!transferTargetMechId || !transferConsumableId) {
-                      showErrorModal('기사 및 소모품 품목을 선택해 주세요.');
+                      showErrorModal('담당자 및 소모품 품목을 선택해 주세요.');
                       return;
                     }
                     try {
@@ -3824,7 +3893,7 @@ showToast('밴드 과거 AS 빅데이터 탑재를 시작합니다.');
               fontWeight: 700,
               fontSize: '11px'
             }}>
-              ⚖️ 대차 정상 (현장AS-기사배정-차량소모품차감 100% 무결)
+              ⚖️ 대차 정상 (현장AS-담당자지정-차량소모품차감 100% 무결)
             </span>
           </div>
         );

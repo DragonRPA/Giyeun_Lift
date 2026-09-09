@@ -1055,7 +1055,7 @@ export interface Repair {
   issueCategory?: string;
   inspectionItemId?: string;   // [NEW] 정비 항목 마스터 ID 매핑 (InspectionChecklistItem.id)
   inspectionItemCode?: string; // [NEW] 정비 항목 코드 맵핑 (e.g. CHK-0000001)
-  degradationScore?: number;   // [NEW] 자산 노후도 누적 점수 (e.g. +15)
+  degradationScore?: number;   // [NEW] 정비점수 누적 점수 (e.g. +15)
   durationMinutes?: number;    // [NEW] 실제 정비 소요시간 (분 단위, 예: 30, 45, 60, 90)
   spentManHours?: number;      // [NEW] 실제 투입 공수 (M/H 단위 = durationMinutes / 60)
   issueDescription?: string;

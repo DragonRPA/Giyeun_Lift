@@ -619,7 +619,7 @@ export const InitialDbUploader: React.FC = () => {
     let inspectionItemCode = '';
     let degradationScore = 0;
     
-    // 💡 [Phase 1/2] 밴드 빅데이터 고장 증상 키워드 기반 정비 마스터 코드 및 노후도 점수 1:1 정밀 매핑
+    // 💡 [Phase 1/2] 밴드 빅데이터 고장 증상 키워드 기반 정비 마스터 코드 및 정비점수 1:1 정밀 매핑
     const lowerIssue = issue.toLowerCase();
     if (lowerIssue.includes('타이어') || lowerIssue.includes('바퀴') || lowerIssue.includes('주행') || lowerIssue.includes('조향') || lowerIssue.includes('거북이') || lowerIssue.includes('핸들') || lowerIssue.includes('전진') || lowerIssue.includes('후진')) {
       inspectionItemCode = 'CHK-000004'; // 주행/타이어/조향

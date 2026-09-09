@@ -48,7 +48,7 @@ export interface UnifiedRepairRecord {
   partsUsed: { modelName: string; quantity: number; unitPrice?: number; totalPrice?: number }[];
   partsTotalCost: number;          // 투입 부품 총액
   collectedParts?: { partName: string; quantity: number; status: string }[];
-  degradationScore?: number;       // 자산 노후도/정비점수
+  degradationScore?: number;       // 정비점수
   evidenceImages?: string[];       // 첨부 증빙 사진들
   beforeImage?: string;            // 정비 전 사진
   afterImage?: string;             // 정비 후 사진

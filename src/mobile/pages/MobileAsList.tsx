@@ -349,7 +349,7 @@ export const MobileAsList: React.FC<MobileAsListProps> = ({
 
                     <div className="flex items-center justify-between text-[11px] text-slate-400 pt-1 border-t border-slate-800/60 font-mono">
                       <span>접수: {ticket.requestDate || ''}</span>
-                      <span>기사: {ticket.mechanicName || '미배정'}</span>
+                      <span>담당: {ticket.mechanicName || '미지정'}</span>
                     </div>
                   </div>
                 );

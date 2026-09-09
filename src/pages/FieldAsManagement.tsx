@@ -43,6 +43,42 @@ const CATEGORIES = [
   '기타'
 ];
 
+// 합리적인 기본 날짜 범위 유틸리티 (전사 표준 헌장 3.5 & 1.2)
+export type DatePreset = 'LAST_1M' | 'THIS_MONTH' | 'LAST_MONTH' | 'LAST_3M' | 'ALL';
+
+export function calculateDatePresetRange(preset: DatePreset): { startDate: string; endDate: string } {
+  const today = new Date();
+  const todayStr = today.toISOString().split('T')[0];
+
+  if (preset === 'ALL') {
+    return { startDate: '', endDate: '' };
+  }
+  if (preset === 'LAST_1M') {
+    const d = new Date(today);
+    d.setDate(d.getDate() - 30);
+    return { startDate: d.toISOString().split('T')[0], endDate: todayStr };
+  }
+  if (preset === 'THIS_MONTH') {
+    const y = today.getFullYear();
+    const m = String(today.getMonth() + 1).padStart(2, '0');
+    const lastDay = new Date(y, today.getMonth() + 1, 0).getDate();
+    return { startDate: `${y}-${m}-01`, endDate: `${y}-${m}-${String(lastDay).padStart(2, '0')}` };
+  }
+  if (preset === 'LAST_MONTH') {
+    const d = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const lastDay = new Date(y, d.getMonth() + 1, 0).getDate();
+    return { startDate: `${y}-${m}-01`, endDate: `${y}-${m}-${String(lastDay).padStart(2, '0')}` };
+  }
+  if (preset === 'LAST_3M') {
+    const d = new Date(today);
+    d.setDate(d.getDate() - 90);
+    return { startDate: d.toISOString().split('T')[0], endDate: todayStr };
+  }
+  return { startDate: '', endDate: '' };
+}
+
 export const FieldAsManagement: React.FC = () => {
   const {
     fieldAsTickets, createFieldAsTicket, updateFieldAsTicketStatus, completeFieldAsTicket,
@@ -81,20 +117,27 @@ export const FieldAsManagement: React.FC = () => {
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
   });
 
-  // ─── [스튜디오 필터 상태] ───
+  // ─── [스튜디오 필터 상태: 합리적 기본값 최근 1개월 (Z-구텐버그 좌상단 스코프)] ───
+  const initialRange = useMemo(() => calculateDatePresetRange('LAST_1M'), []);
+  const [studioDatePreset, setStudioDatePreset] = useState<DatePreset>('LAST_1M');
+  const [studioStartDate, setStudioStartDate] = useState<string>(initialRange.startDate);
+  const [studioEndDate, setStudioEndDate] = useState<string>(initialRange.endDate);
   const [studioStatusFilter, setStudioStatusFilter] = useState<'ALL' | 'UNRESOLVED' | 'REQUESTED' | 'SCHEDULED' | 'REVISIT' | 'COMPLETED' | 'GUIDED'>('UNRESOLVED');
   const [studioCategoryFilter, setStudioCategoryFilter] = useState<string>('ALL');
   const [studioSearchTerm, setStudioSearchTerm] = useState<string>('');
   const [studioSelectedTicketId, setStudioSelectedTicketId] = useState<string>('');
+  const [studioDisplayLimit, setStudioDisplayLimit] = useState<number>(50);
 
-  // ─── [대장 필터 상태] ───
+  // ─── [대장 필터 상태: 합리적 기본값 최근 1개월] ───
+  const [ledgerDatePreset, setLedgerDatePreset] = useState<DatePreset>('LAST_1M');
+  const [ledgerStartDate, setLedgerStartDate] = useState<string>(initialRange.startDate);
+  const [ledgerEndDate, setLedgerEndDate] = useState<string>(initialRange.endDate);
   const [ledgerSearch, setLedgerSearch] = useState('');
   const [ledgerStatus, setLedgerStatus] = useState('ALL');
   const [ledgerCategory, setLedgerCategory] = useState('ALL');
   const [ledgerMechanic, setLedgerMechanic] = useState('ALL');
   const [ledgerBillable, setLedgerBillable] = useState('ALL');
-  const [ledgerStartDate, setLedgerStartDate] = useState('');
-  const [ledgerEndDate, setLedgerEndDate] = useState('');
+  const [ledgerDisplayLimit, setLedgerDisplayLimit] = useState<number>(100);
 
   // ─── [신규 AS 등록 모달 상태] ───
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -305,20 +348,27 @@ export const FieldAsManagement: React.FC = () => {
     }
   }, [eligibleAssignees, currentUser]);
 
-  // 스튜디오 필터링된 티켓 목록 (당면 미완결 과제 우선순위 정렬)
+  // 스튜디오 필터링된 티켓 목록 (당면 미완결 과제 우선순위 정렬 및 날짜 스코프)
   const studioFilteredTickets = useMemo(() => {
     const list = fieldAsTickets.filter(t => {
-      // 상태 필터
+      // 1. 날짜 기간 필터 (기본: 최근 1개월)
+      const ticketDate = t.requestDate || t.visitDate || t.completedDate || (t.createdAt ? t.createdAt.split('T')[0] : '');
+      if (ticketDate) {
+        if (studioStartDate && ticketDate < studioStartDate) return false;
+        if (studioEndDate && ticketDate > studioEndDate) return false;
+      }
+
+      // 2. 상태 필터
       if (studioStatusFilter === 'UNRESOLVED') {
         if (t.status === 'COMPLETED' || t.status === 'GUIDED' || t.status === 'CANCELED') return false;
       } else if (studioStatusFilter !== 'ALL') {
         if (t.status !== studioStatusFilter) return false;
       }
 
-      // 분류 필터
+      // 3. 분류 필터
       if (studioCategoryFilter !== 'ALL' && t.issueCategory !== studioCategoryFilter) return false;
 
-      // 검색어 필터
+      // 4. 검색어 필터
       if (studioSearchTerm.trim()) {
         const q = studioSearchTerm.toLowerCase();
         const match = 
@@ -344,9 +394,16 @@ export const FieldAsManagement: React.FC = () => {
       const aUnassigned = !a.assignedMechanicId ? 1 : 0;
       const bUnassigned = !b.assignedMechanicId ? 1 : 0;
       if (aUnassigned !== bUnassigned) return bUnassigned - aUnassigned;
-      return (b.requestDate || '').localeCompare(a.requestDate || '');
+      const aDate = a.requestDate || a.visitDate || a.createdAt || '';
+      const bDate = b.requestDate || b.visitDate || b.createdAt || '';
+      return bDate.localeCompare(aDate);
     });
-  }, [fieldAsTickets, studioStatusFilter, studioCategoryFilter, studioSearchTerm]);
+  }, [fieldAsTickets, studioStartDate, studioEndDate, studioStatusFilter, studioCategoryFilter, studioSearchTerm]);
+
+  // 대용량(7,000건+) DOM 부하 방어용 슬라이스 렌더링 (기본 50건 표시 후 더보기)
+  const visibleStudioTickets = useMemo(() => {
+    return studioFilteredTickets.slice(0, studioDisplayLimit);
+  }, [studioFilteredTickets, studioDisplayLimit]);
 
   // 선택된 티켓 정보 (현재 필터의 1순위 미완결 티켓 자동 포커스)
   const selectedTicket = useMemo(() => {
@@ -357,15 +414,19 @@ export const FieldAsManagement: React.FC = () => {
     return studioFilteredTickets[0] || fieldAsTickets[0] || null;
   }, [fieldAsTickets, studioSelectedTicketId, studioFilteredTickets]);
 
-  // 대장 필터링된 티켓 목록
+  // 대장 필터링된 티켓 목록 (날짜 스코프 및 복합 필터)
   const ledgerFilteredTickets = useMemo(() => {
     return fieldAsTickets.filter(t => {
       if (ledgerStatus !== 'ALL' && t.status !== ledgerStatus) return false;
       if (ledgerCategory !== 'ALL' && t.issueCategory !== ledgerCategory) return false;
       if (ledgerMechanic !== 'ALL' && t.assignedMechanicId !== ledgerMechanic) return false;
       if (ledgerBillable !== 'ALL' && t.billableType !== ledgerBillable) return false;
-      if (ledgerStartDate && t.requestDate < ledgerStartDate) return false;
-      if (ledgerEndDate && t.requestDate > ledgerEndDate) return false;
+
+      const ticketDate = t.requestDate || t.visitDate || t.completedDate || (t.createdAt ? t.createdAt.split('T')[0] : '');
+      if (ticketDate) {
+        if (ledgerStartDate && ticketDate < ledgerStartDate) return false;
+        if (ledgerEndDate && ticketDate > ledgerEndDate) return false;
+      }
 
       if (ledgerSearch.trim()) {
         const q = ledgerSearch.toLowerCase();
@@ -382,6 +443,11 @@ export const FieldAsManagement: React.FC = () => {
       return true;
     });
   }, [fieldAsTickets, ledgerStatus, ledgerCategory, ledgerMechanic, ledgerBillable, ledgerStartDate, ledgerEndDate, ledgerSearch]);
+
+  // 대장 대용량 슬라이스 렌더링 (기본 100건 표시 후 더보기)
+  const visibleLedgerTickets = useMemo(() => {
+    return ledgerFilteredTickets.slice(0, ledgerDisplayLimit);
+  }, [ledgerFilteredTickets, ledgerDisplayLimit]);
 
   // 특정 정비사의 특정 소모품 차량 잔여 수량 조회
   const getMechanicVehicleStock = (mechId: string, consId: string): number => {
@@ -1327,66 +1393,209 @@ showToast('밴드 과거 AS 빅데이터 탑재를 시작합니다.');
           {/* ◀ 좌측: AS 접수 피드 목록 (카드형 피드) */}
           <div style={{ display: 'flex', flexDirection: 'column', backgroundColor: 'var(--bg-card)', border: '1px solid var(--border-color)', borderRadius: '10px', overflow: 'hidden' }}>
             
-            {/* 좌측 상단: 상태 필터 & 검색바 */}
-            <div style={{ padding: '12px', borderBottom: '1px solid var(--border-color)', display: 'flex', flexDirection: 'column', gap: '8px', backgroundColor: 'var(--bg-app)' }}>
-              <div style={{ display: 'flex', gap: '4px', overflowX: 'auto', paddingBottom: '2px' }}>
-                {[
-                  { id: 'UNRESOLVED', label: '미처리 전체' },
-                  { id: 'REQUESTED', label: '접수대기' },
-                  { id: 'SCHEDULED', label: '방문예정' },
-                  { id: 'REVISIT', label: '재방문' },
-                  { id: 'COMPLETED', label: '완료' },
-                  { id: 'ALL', label: '전체' }
-                ].map(tab => (
-                  <button
-                    key={tab.id}
-                    onClick={() => setStudioStatusFilter(tab.id as any)}
-                    style={{
-                      padding: '4px 10px',
-                      borderRadius: '14px',
-                      fontSize: '12px',
-                      fontWeight: studioStatusFilter === tab.id ? 700 : 500,
-                      border: studioStatusFilter === tab.id ? '1px solid #2563eb' : '1px solid #cbd5e1',
-                      backgroundColor: studioStatusFilter === tab.id ? '#2563eb' : 'var(--bg-card)',
-                      color: studioStatusFilter === tab.id ? '#ffffff' : '#475569',
-                      cursor: 'pointer',
-                      whiteSpace: 'nowrap',
-                      flexShrink: 0
+            {/* 좌측 상단 [START / SCOPE]: 날짜 기간 & 상태 & 고장분류 필터 (헌장 3.4 상하 세로 스택) */}
+            <div style={{ padding: '14px', borderBottom: '1px solid var(--border-color)', display: 'flex', flexDirection: 'column', gap: '10px', backgroundColor: 'var(--bg-app)' }}>
+              
+              {/* 1. 조회 기간 (퀵 프리셋 + 날짜 직접 지정) */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <label style={{ fontSize: '11.5px', fontWeight: 700, color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>
+                    조회 기간 (기본: 최근 1개월)
+                  </label>
+                  <span style={{ fontSize: '11px', color: '#2563eb', fontWeight: 600 }}>
+                    {studioStartDate && studioEndDate ? `${studioStartDate} ~ ${studioEndDate}` : '전체 기간'}
+                  </span>
+                </div>
+                
+                {/* 5대 퀵 프리셋 버튼군 */}
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '4px' }}>
+                  {[
+                    { id: 'LAST_1M', label: '최근 1개월' },
+                    { id: 'THIS_MONTH', label: '당월' },
+                    { id: 'LAST_MONTH', label: '전월' },
+                    { id: 'LAST_3M', label: '최근 3개월' },
+                    { id: 'ALL', label: '전체' }
+                  ].map(p => {
+                    const isSelected = studioDatePreset === p.id;
+                    return (
+                      <button
+                        key={p.id}
+                        type="button"
+                        onClick={() => {
+                          setStudioDatePreset(p.id as DatePreset);
+                          const r = calculateDatePresetRange(p.id as DatePreset);
+                          setStudioStartDate(r.startDate);
+                          setStudioEndDate(r.endDate);
+                          setStudioDisplayLimit(50);
+                        }}
+                        style={{
+                          padding: '5px 2px',
+                          borderRadius: '5px',
+                          fontSize: '11px',
+                          fontWeight: isSelected ? 700 : 500,
+                          backgroundColor: isSelected ? '#2563eb' : 'var(--bg-card)',
+                          color: isSelected ? '#ffffff' : 'var(--text-main)',
+                          border: isSelected ? '1px solid #2563eb' : '1px solid var(--border-color)',
+                          cursor: 'pointer',
+                          whiteSpace: 'nowrap',
+                          textAlign: 'center'
+                        }}
+                      >
+                        {p.label}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {/* 날짜 직접 입력 (상하 세로 스택 인라인 래퍼) */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr', gap: '4px', alignItems: 'center', marginTop: '2px' }}>
+                  <input
+                    type="date"
+                    value={studioStartDate}
+                    onChange={(e) => {
+                      setStudioStartDate(e.target.value);
+                      setStudioDatePreset('ALL');
+                      setStudioDisplayLimit(50);
                     }}
-                  >
-                    {tab.label}
-                  </button>
-                ))}
+                    style={{
+                      padding: '4px 6px',
+                      borderRadius: '5px',
+                      border: '1px solid var(--border-color)',
+                      fontSize: '11.5px',
+                      backgroundColor: 'var(--bg-card)',
+                      color: 'var(--text-main)',
+                      width: '100%',
+                      boxSizing: 'border-box'
+                    }}
+                  />
+                  <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>~</span>
+                  <input
+                    type="date"
+                    value={studioEndDate}
+                    onChange={(e) => {
+                      setStudioEndDate(e.target.value);
+                      setStudioDatePreset('ALL');
+                      setStudioDisplayLimit(50);
+                    }}
+                    style={{
+                      padding: '4px 6px',
+                      borderRadius: '5px',
+                      border: '1px solid var(--border-color)',
+                      fontSize: '11.5px',
+                      backgroundColor: 'var(--bg-card)',
+                      color: 'var(--text-main)',
+                      width: '100%',
+                      boxSizing: 'border-box'
+                    }}
+                  />
+                </div>
               </div>
 
-              <div style={{ position: 'relative' }}>
-                <Search size={15} color="#94a3b8" style={{ position: 'absolute', left: '10px', top: '9px' }} />
-                <input
-                  type="text"
-                  value={studioSearchTerm}
-                  onChange={(e) => setStudioSearchTerm(e.target.value)}
-                  placeholder="현장명, 장비번호, 고장내용, 담당자명 검색..."
+              {/* 2. 진행 상태 필터 */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                <label style={{ fontSize: '11.5px', fontWeight: 700, color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>
+                  진행 상태
+                </label>
+                <div style={{ display: 'flex', gap: '4px', overflowX: 'auto', paddingBottom: '2px' }}>
+                  {[
+                    { id: 'UNRESOLVED', label: '미처리 전체' },
+                    { id: 'REQUESTED', label: '접수대기' },
+                    { id: 'SCHEDULED', label: '방문예정' },
+                    { id: 'REVISIT', label: '재방문' },
+                    { id: 'COMPLETED', label: '완료' },
+                    { id: 'ALL', label: '전체' }
+                  ].map(tab => (
+                    <button
+                      key={tab.id}
+                      onClick={() => {
+                        setStudioStatusFilter(tab.id as any);
+                        setStudioDisplayLimit(50);
+                      }}
+                      style={{
+                        padding: '4px 8px',
+                        borderRadius: '12px',
+                        fontSize: '11.5px',
+                        fontWeight: studioStatusFilter === tab.id ? 700 : 500,
+                        border: studioStatusFilter === tab.id ? '1px solid #2563eb' : '1px solid var(--border-color)',
+                        backgroundColor: studioStatusFilter === tab.id ? '#2563eb' : 'var(--bg-card)',
+                        color: studioStatusFilter === tab.id ? '#ffffff' : 'var(--text-main)',
+                        cursor: 'pointer',
+                        whiteSpace: 'nowrap',
+                        flexShrink: 0
+                      }}
+                    >
+                      {tab.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* 3. 고장분류 선택 및 통합 검색 */}
+              <div style={{ display: 'grid', gridTemplateColumns: '110px 1fr', gap: '6px' }}>
+                <select
+                  value={studioCategoryFilter}
+                  onChange={(e) => {
+                    setStudioCategoryFilter(e.target.value);
+                    setStudioDisplayLimit(50);
+                  }}
                   style={{
-                    width: '100%',
-                    padding: '7px 10px 7px 32px',
+                    padding: '6px 8px',
                     borderRadius: '6px',
                     border: '1px solid var(--border-color)',
-                    fontSize: '13px',
-                    boxSizing: 'border-box'
+                    fontSize: '12px',
+                    backgroundColor: 'var(--bg-card)',
+                    color: 'var(--text-main)'
                   }}
-                />
+                >
+                  <option value="ALL">전체 고장분류</option>
+                  {CATEGORIES.filter(c => c !== 'ALL').map(c => (
+                    <option key={c} value={c}>{c}</option>
+                  ))}
+                </select>
+
+                <div style={{ position: 'relative' }}>
+                  <Search size={14} color="#94a3b8" style={{ position: 'absolute', left: '8px', top: '8px' }} />
+                  <input
+                    type="text"
+                    value={studioSearchTerm}
+                    onChange={(e) => {
+                      setStudioSearchTerm(e.target.value);
+                      setStudioDisplayLimit(50);
+                    }}
+                    placeholder="현장, 장비번호, 고장, 담당자..."
+                    style={{
+                      width: '100%',
+                      padding: '6px 8px 6px 28px',
+                      borderRadius: '6px',
+                      border: '1px solid var(--border-color)',
+                      fontSize: '12px',
+                      boxSizing: 'border-box'
+                    }}
+                  />
+                </div>
+              </div>
+
+              {/* 건수 카운트 요약 바 */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '11px', color: 'var(--text-muted)' }}>
+                <span>
+                  조회 결과: <strong style={{ color: '#2563eb' }}>{studioFilteredTickets.length.toLocaleString()}</strong>건
+                </span>
+                <span>
+                  화면 표시: <strong>{visibleStudioTickets.length.toLocaleString()}</strong>건
+                </span>
               </div>
             </div>
 
-            {/* 카드 피드 스크롤 영역 */}
+            {/* 카드 피드 스크롤 영역 (대용량 7,000건+ 슬라이스 렌더링) */}
             <div style={{ flex: 1, overflowY: 'auto', padding: '10px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
-              {studioFilteredTickets.length === 0 ? (
+              {visibleStudioTickets.length === 0 ? (
                 <div style={{ textAlign: 'center', padding: '60px 20px', color: '#94a3b8' }}>
                   <CheckCircle2 size={36} style={{ margin: '0 auto 8px auto', opacity: 0.5 }} />
                   <p style={{ margin: 0, fontSize: '14px' }}>해당 조건의 AS 접수 건이 없습니다.</p>
                 </div>
               ) : (
-                studioFilteredTickets.map((t) => {
+                <>
+                  {visibleStudioTickets.map((t) => {
                   const isSelected = selectedTicket?.id === t.id;
                   const isUrgent = t.priority === 'URGENT';
                   const isRevisit = t.status === 'REVISIT';
@@ -1514,10 +1723,50 @@ showToast('밴드 과거 AS 빅데이터 탑재를 시작합니다.');
                       </div>
                     </div>
                   );
-                })
-              )}
-            </div>
+                })}
+
+                {/* 대용량 데이터 더보기 버튼군 (헌장 1.1 최대 편익 & 렌더링 최적화) */}
+                {studioFilteredTickets.length > studioDisplayLimit && (
+                  <div style={{ padding: '12px 6px', display: 'flex', flexDirection: 'column', gap: '6px', alignItems: 'center' }}>
+                    <button
+                      type="button"
+                      onClick={() => setStudioDisplayLimit(prev => prev + 50)}
+                      style={{
+                        width: '100%',
+                        padding: '9px',
+                        borderRadius: '6px',
+                        backgroundColor: '#2563eb',
+                        color: '#ffffff',
+                        fontSize: '12.5px',
+                        fontWeight: 700,
+                        border: 'none',
+                        cursor: 'pointer',
+                        whiteSpace: 'nowrap'
+                      }}
+                    >
+                      + 50건 더보기 ({visibleStudioTickets.length} / {studioFilteredTickets.length.toLocaleString()}건)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setStudioDisplayLimit(studioFilteredTickets.length)}
+                      style={{
+                        background: 'none',
+                        border: 'none',
+                        color: '#64748b',
+                        fontSize: '11.5px',
+                        textDecoration: 'underline',
+                        cursor: 'pointer',
+                        whiteSpace: 'nowrap'
+                      }}
+                    >
+                      전체 {studioFilteredTickets.length.toLocaleString()}건 한 번에 보기
+                    </button>
+                  </div>
+                )}
+              </>
+            )}
           </div>
+        </div>
 
           {/* ▶ 우측: 1-Click 현장 조치 & 검수 스튜디오 패널 */}
           <div style={{ display: 'flex', flexDirection: 'column', backgroundColor: 'var(--bg-card)', border: '1px solid var(--border-color)', borderRadius: '10px', overflowY: 'auto', padding: '20px' }}>
@@ -2518,87 +2767,205 @@ showToast('밴드 과거 AS 빅데이터 탑재를 시작합니다.');
       {mainTab === 'LEDGER' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', height: 'calc(100vh - 170px)' }}>
           
-          {/* 상단 검색 & 필터 바 */}
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px', backgroundColor: 'var(--bg-card)', padding: '14px', borderRadius: '8px', border: '1px solid var(--border-color)', alignItems: 'center', justifyContent: 'space-between' }}>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px', alignItems: 'center' }}>
-              <input
-                type="text"
-                value={ledgerSearch}
-                onChange={(e) => setLedgerSearch(e.target.value)}
-                placeholder="통합 검색 (현장, 장비, 고장, 담당자)..."
-                style={{ padding: '7px 12px', borderRadius: '6px', border: '1px solid var(--border-color)', fontSize: '13px', width: '220px' }}
-              />
+          {/* 상단 검색 & 필터 바 (Gutenberg Z-스코프 & 헌장 3.4 상하 세로 스택) */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', backgroundColor: 'var(--bg-card)', padding: '14px', borderRadius: '8px', border: '1px solid var(--border-color)' }}>
+            
+            {/* 1행: 좌상단 조회 기간 프리셋 및 날짜 직접 지정 */}
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', alignItems: 'flex-end', justifyContent: 'space-between' }}>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', alignItems: 'flex-end' }}>
+                
+                {/* 기간 퀵 프리셋 & 날짜 입력 */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                  <label style={{ fontSize: '11.5px', fontWeight: 700, color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>
+                    조회 기간 (기본: 최근 1개월)
+                  </label>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                    <div style={{ display: 'flex', gap: '3px' }}>
+                      {[
+                        { id: 'LAST_1M', label: '최근 1개월' },
+                        { id: 'THIS_MONTH', label: '당월' },
+                        { id: 'LAST_MONTH', label: '전월' },
+                        { id: 'LAST_3M', label: '최근 3개월' },
+                        { id: 'ALL', label: '전체' }
+                      ].map(p => {
+                        const isSelected = ledgerDatePreset === p.id;
+                        return (
+                          <button
+                            key={p.id}
+                            type="button"
+                            onClick={() => {
+                              setLedgerDatePreset(p.id as DatePreset);
+                              const r = calculateDatePresetRange(p.id as DatePreset);
+                              setLedgerStartDate(r.startDate);
+                              setLedgerEndDate(r.endDate);
+                              setLedgerDisplayLimit(100);
+                            }}
+                            style={{
+                              padding: '5px 8px',
+                              borderRadius: '4px',
+                              fontSize: '11px',
+                              fontWeight: isSelected ? 700 : 500,
+                              backgroundColor: isSelected ? '#2563eb' : 'var(--bg-app)',
+                              color: isSelected ? '#ffffff' : 'var(--text-main)',
+                              border: isSelected ? '1px solid #2563eb' : '1px solid var(--border-color)',
+                              cursor: 'pointer',
+                              whiteSpace: 'nowrap'
+                            }}
+                          >
+                            {p.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                      <input
+                        type="date"
+                        value={ledgerStartDate}
+                        onChange={(e) => {
+                          setLedgerStartDate(e.target.value);
+                          setLedgerDatePreset('ALL');
+                          setLedgerDisplayLimit(100);
+                        }}
+                        style={{ padding: '4px 6px', borderRadius: '4px', border: '1px solid var(--border-color)', fontSize: '12px', backgroundColor: 'var(--bg-app)', color: 'var(--text-main)' }}
+                      />
+                      <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>~</span>
+                      <input
+                        type="date"
+                        value={ledgerEndDate}
+                        onChange={(e) => {
+                          setLedgerEndDate(e.target.value);
+                          setLedgerDatePreset('ALL');
+                          setLedgerDisplayLimit(100);
+                        }}
+                        style={{ padding: '4px 6px', borderRadius: '4px', border: '1px solid var(--border-color)', fontSize: '12px', backgroundColor: 'var(--bg-app)', color: 'var(--text-main)' }}
+                      />
+                    </div>
+                  </div>
+                </div>
 
-              <select
-                value={ledgerStatus}
-                onChange={(e) => setLedgerStatus(e.target.value)}
-                style={{ padding: '7px 10px', borderRadius: '6px', border: '1px solid var(--border-color)', fontSize: '13px', backgroundColor: 'var(--bg-card)', color: 'var(--text-main)' }}
-              >
-                <option value="ALL">전체 상태</option>
-                <option value="REQUESTED">접수대기</option>
-                <option value="SCHEDULED">방문예정</option>
-                <option value="IN_PROGRESS">출동/처리중</option>
-                <option value="COMPLETED">완료</option>
-                <option value="REVISIT">재방문</option>
-                <option value="GUIDED">안내종결</option>
-              </select>
+              </div>
 
-              <select
-                value={ledgerCategory}
-                onChange={(e) => setLedgerCategory(e.target.value)}
-                style={{ padding: '7px 10px', borderRadius: '6px', border: '1px solid var(--border-color)', fontSize: '13px', backgroundColor: 'var(--bg-card)', color: 'var(--text-main)' }}
-              >
-                <option value="ALL">전체 고장분류</option>
-                {CATEGORIES.filter(c => c !== 'ALL').map(c => (
-                  <option key={c} value={c}>{c}</option>
-                ))}
-              </select>
-
-              <select
-                value={ledgerMechanic}
-                onChange={(e) => setLedgerMechanic(e.target.value)}
-                style={{ padding: '7px 10px', borderRadius: '6px', border: '1px solid var(--border-color)', fontSize: '13px', backgroundColor: 'var(--bg-card)', color: 'var(--text-main)' }}
-              >
-                <option value="ALL">전체 담당자</option>
-                {eligibleAssignees.map(m => (
-                  <option key={m.id} value={m.id}>{m.name}</option>
-                ))}
-              </select>
-
-              <select
-                value={ledgerBillable}
-                onChange={(e) => setLedgerBillable(e.target.value)}
-                style={{ padding: '7px 10px', borderRadius: '6px', border: '1px solid var(--border-color)', fontSize: '13px', backgroundColor: 'var(--bg-card)', color: 'var(--text-main)' }}
-              >
-                <option value="ALL">유/무상 전체</option>
-                <option value="FREE">무상 AS</option>
-                <option value="BILLABLE">유상 청구</option>
-              </select>
+              {/* 우측 상단 파이프라인: 건수 & 엑셀 다운로드 */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <span style={{ fontSize: '12.5px', fontWeight: 600, color: 'var(--text-secondary)' }}>
+                  조회 건수: <strong style={{ color: '#2563eb' }}>{ledgerFilteredTickets.length.toLocaleString()}</strong>건 (표시 <strong>{visibleLedgerTickets.length.toLocaleString()}</strong>건)
+                </span>
+                <button
+                  onClick={handleExportLedgerExcel}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    padding: '6px 12px',
+                    backgroundColor: 'var(--bg-card)',
+                    border: '1px solid var(--border-color)',
+                    borderRadius: '6px',
+                    fontSize: '12.5px',
+                    fontWeight: 600,
+                    color: 'var(--text-main)',
+                    cursor: 'pointer',
+                    whiteSpace: 'nowrap',
+                    flexShrink: 0
+                  }}
+                >
+                  <Download size={14} />
+                  엑셀 다운로드
+                </button>
+              </div>
             </div>
 
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-              <span style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-secondary)' }}>
-                조회 건수: <strong>{ledgerFilteredTickets.length.toLocaleString()}</strong>건
-              </span>
-              <button
-                onClick={handleExportLedgerExcel}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '6px',
-                  padding: '7px 14px',
-                  backgroundColor: 'var(--bg-card)',
-                  border: '1px solid var(--border-color)',
-                  borderRadius: '6px',
-                  fontSize: '13px',
-                  fontWeight: 600,
-                  color: 'var(--text-main)',
-                  cursor: 'pointer'
-                }}
-              >
-                <Download size={15} />
-                엑셀 다운로드
-              </button>
+            {/* 2행: 복합 필터 드롭다운 & 검색창 (헌장 3.4 상하 세로 스택) */}
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px', alignItems: 'center', borderTop: '1px solid var(--border-color)', paddingTop: '8px' }}>
+              
+              {/* 통합 검색 */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: 600 }}>통합 검색</span>
+                <input
+                  type="text"
+                  value={ledgerSearch}
+                  onChange={(e) => {
+                    setLedgerSearch(e.target.value);
+                    setLedgerDisplayLimit(100);
+                  }}
+                  placeholder="현장, 장비, 고장, 담당자..."
+                  style={{ padding: '5px 10px', borderRadius: '5px', border: '1px solid var(--border-color)', fontSize: '12px', width: '200px', backgroundColor: 'var(--bg-app)', color: 'var(--text-main)' }}
+                />
+              </div>
+
+              {/* 상태 필터 */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: 600 }}>진행 상태</span>
+                <select
+                  value={ledgerStatus}
+                  onChange={(e) => {
+                    setLedgerStatus(e.target.value);
+                    setLedgerDisplayLimit(100);
+                  }}
+                  style={{ padding: '5px 8px', borderRadius: '5px', border: '1px solid var(--border-color)', fontSize: '12px', backgroundColor: 'var(--bg-app)', color: 'var(--text-main)' }}
+                >
+                  <option value="ALL">전체 상태</option>
+                  <option value="REQUESTED">접수대기</option>
+                  <option value="SCHEDULED">방문예정</option>
+                  <option value="IN_PROGRESS">출동/처리중</option>
+                  <option value="COMPLETED">완료</option>
+                  <option value="REVISIT">재방문</option>
+                  <option value="GUIDED">안내종결</option>
+                </select>
+              </div>
+
+              {/* 고장 분류 */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: 600 }}>고장 분류</span>
+                <select
+                  value={ledgerCategory}
+                  onChange={(e) => {
+                    setLedgerCategory(e.target.value);
+                    setLedgerDisplayLimit(100);
+                  }}
+                  style={{ padding: '5px 8px', borderRadius: '5px', border: '1px solid var(--border-color)', fontSize: '12px', backgroundColor: 'var(--bg-app)', color: 'var(--text-main)' }}
+                >
+                  <option value="ALL">전체 고장분류</option>
+                  {CATEGORIES.filter(c => c !== 'ALL').map(c => (
+                    <option key={c} value={c}>{c}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* 담당자 */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: 600 }}>담당자</span>
+                <select
+                  value={ledgerMechanic}
+                  onChange={(e) => {
+                    setLedgerMechanic(e.target.value);
+                    setLedgerDisplayLimit(100);
+                  }}
+                  style={{ padding: '5px 8px', borderRadius: '5px', border: '1px solid var(--border-color)', fontSize: '12px', backgroundColor: 'var(--bg-app)', color: 'var(--text-main)' }}
+                >
+                  <option value="ALL">전체 담당자</option>
+                  {eligibleAssignees.map(m => (
+                    <option key={m.id} value={m.id}>{m.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* 유/무상 */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: 600 }}>유/무상 구분</span>
+                <select
+                  value={ledgerBillable}
+                  onChange={(e) => {
+                    setLedgerBillable(e.target.value);
+                    setLedgerDisplayLimit(100);
+                  }}
+                  style={{ padding: '5px 8px', borderRadius: '5px', border: '1px solid var(--border-color)', fontSize: '12px', backgroundColor: 'var(--bg-app)', color: 'var(--text-main)' }}
+                >
+                  <option value="ALL">유/무상 전체</option>
+                  <option value="FREE">무상 AS</option>
+                  <option value="BILLABLE">유상 청구</option>
+                </select>
+              </div>
+
             </div>
           </div>
 
@@ -2628,7 +2995,7 @@ showToast('밴드 과거 AS 빅데이터 탑재를 시작합니다.');
                 </tr>
               </thead>
               <tbody>
-                {ledgerFilteredTickets.map((t, idx) => (
+                {visibleLedgerTickets.map((t, idx) => (
                   <tr
                     key={t.id}
                     style={{
@@ -2710,19 +3077,18 @@ showToast('밴드 과거 AS 빅데이터 탑재를 시작합니다.');
                                   style={{
                                     padding: '2px 5px',
                                     borderRadius: '4px',
-                                    border: '1px solid rgba(239, 68, 68, 0.3)',
-                                    backgroundColor: 'rgba(239, 68, 68, 0.08)',
+                                    border: '1px solid var(--border-color)',
+                                    backgroundColor: 'var(--bg-card)',
                                     cursor: 'pointer',
                                     display: 'inline-flex',
                                     alignItems: 'center',
                                     gap: '2px',
                                     fontSize: '11px',
-                                    color: '#dc2626',
-                                    fontWeight: 600
+                                    color: '#2563eb'
                                   }}
                                 >
                                   <Navigation size={11} />
-                                  TMap
+                                  길안내
                                 </button>
                               </div>
                             )}
@@ -2730,32 +3096,36 @@ showToast('밴드 과거 AS 빅데이터 탑재를 시작합니다.');
                         );
                       })()}
                     </td>
-                    <td style={{ padding: '6px 12px', color: 'var(--text-secondary)' }}>{t.customerName}</td>
-                    <td style={{ padding: '6px 12px', fontWeight: 700, color: '#2563eb' }}>{t.assetNo}</td>
+                    <td style={{ padding: '6px 12px', color: 'var(--text-main)', whiteSpace: 'nowrap' }}>{t.customerName}</td>
+                    <td style={{ padding: '6px 12px', fontWeight: 600, color: '#2563eb' }}>{t.assetNo}</td>
                     <td style={{ padding: '6px 12px', color: 'var(--text-muted)' }}>{t.locationDetail || '-'}</td>
-                    <td style={{ padding: '6px 12px', color: 'var(--text-main)' }}>{t.issueCategory}</td>
-                    <td style={{ padding: '6px 12px', color: 'var(--text-main)', maxWidth: '240px', overflow: 'hidden', textOverflow: 'ellipsis' }} title={t.issueDescription}>
+                    <td style={{ padding: '6px 12px', color: 'var(--text-main)' }}>
+                      <span style={{ padding: '2px 6px', borderRadius: '4px', backgroundColor: 'var(--bg-app)', border: '1px solid var(--border-color)', fontSize: '12px' }}>
+                        {t.issueCategory}
+                      </span>
+                    </td>
+                    <td style={{ padding: '6px 12px', color: 'var(--text-main)', maxWidth: '280px', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                       {t.issueDescription}
                     </td>
                     <td style={{ padding: '6px 12px', textAlign: 'center' }}>
                       <span style={{
                         padding: '2px 8px',
-                        borderRadius: '4px',
+                        borderRadius: '10px',
                         fontSize: '11px',
                         fontWeight: 700,
-                        backgroundColor: t.status === 'COMPLETED' ? '#dcfce7' : (t.status === 'REVISIT' ? '#fef3c7' : '#f1f5f9'),
-                        color: t.status === 'COMPLETED' ? '#166534' : (t.status === 'REVISIT' ? '#92400e' : '#475569')
+                        backgroundColor: t.status === 'COMPLETED' ? '#dcfce7' : (t.status === 'REVISIT' ? '#fef3c7' : '#e0e7ff'),
+                        color: t.status === 'COMPLETED' ? '#166534' : (t.status === 'REVISIT' ? '#b45309' : '#3730a3')
                       }}>
-                        {t.status}
+                        {t.status === 'COMPLETED' ? '완료' : (t.status === 'REVISIT' ? '재방문' : t.status)}
                       </span>
                     </td>
                     <td style={{ padding: '6px 12px', color: 'var(--text-main)' }}>
-                      {users.find(u => u.id === t.assignedMechanicId)?.name || '-'}
+                      {users.find(u => u.id === t.assignedMechanicId)?.name || '미지정'}
                     </td>
-                    <td style={{ padding: '6px 12px', color: '#16a34a', fontWeight: 500, maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis' }} title={t.actionTaken}>
+                    <td style={{ padding: '6px 12px', color: 'var(--text-main)', maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                       {t.actionTaken || '-'}
                     </td>
-                    <td style={{ padding: '6px 12px', color: 'var(--text-secondary)' }}>
+                    <td style={{ padding: '6px 12px', color: 'var(--text-muted)' }}>
                       {(t.partsUsed || []).map(p => `${p.modelName} ${p.quantity}개`).join(', ') || '-'}
                     </td>
                     <td style={{ padding: '6px 12px', textAlign: 'center', fontSize: '11px', color: 'var(--text-muted)' }}>
@@ -2774,6 +3144,44 @@ showToast('밴드 과거 AS 빅데이터 탑재를 시작합니다.');
                 ))}
               </tbody>
             </table>
+            
+            {/* 대장 더보기 버튼 (대용량 7,000건+ 렌더링 보호) */}
+            {ledgerFilteredTickets.length > ledgerDisplayLimit && (
+              <div style={{ padding: '12px', display: 'flex', justifyContent: 'center', gap: '10px', backgroundColor: 'var(--bg-app)', borderTop: '1px solid var(--border-color)' }}>
+                <button
+                  type="button"
+                  onClick={() => setLedgerDisplayLimit(prev => prev + 100)}
+                  style={{
+                    padding: '7px 18px',
+                    borderRadius: '6px',
+                    backgroundColor: '#2563eb',
+                    color: '#ffffff',
+                    fontSize: '12.5px',
+                    fontWeight: 700,
+                    border: 'none',
+                    cursor: 'pointer'
+                  }}
+                >
+                  + 100건 더보기 ({visibleLedgerTickets.length} / {ledgerFilteredTickets.length.toLocaleString()}건)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setLedgerDisplayLimit(ledgerFilteredTickets.length)}
+                  style={{
+                    padding: '7px 14px',
+                    borderRadius: '6px',
+                    backgroundColor: 'var(--bg-card)',
+                    border: '1px solid var(--border-color)',
+                    color: 'var(--text-main)',
+                    fontSize: '12.5px',
+                    fontWeight: 600,
+                    cursor: 'pointer'
+                  }}
+                >
+                  전체 {ledgerFilteredTickets.length.toLocaleString()}건 한 번에 보기
+                </button>
+              </div>
+            )}
           </div>
 
           {/* ⚖️ Gutenberg Z-패턴 4단계 최하단 유상 AS 대사 검증 요약 바 (헌장 3.5) */}

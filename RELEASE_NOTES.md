@@ -1,3 +1,23 @@
+## [v1.12.0.Build.17] - 2026-09-09 21:15
+
+### 🚀 [배차 운송관리 메뉴 진입 시 TDZ 'Cannot access P before initialization' 크래시 오류 원천 해결]
+
+**배경**:
+1. 사용자 보고("배차 운송관리 메뉴 열때 오류") 및 시스템 일시 오류 복구 모달 (`Cannot access 'P' before initialization`) 크래시 이슈에 대해, 프로덕션 번들 역분석 및 코드 정밀 감사를 통해 JavaScript TDZ(Temporal Dead Zone) 호이스팅 오류를 원천 규명하고 해결함.
+
+**개편 내역**:
+1. **TDZ(Temporal Dead Zone) 호이스팅 에러 원천 차단 (`src/pages/TruckDispatch.tsx`)**:
+   - 컴포넌트 마운트 즉시 평가되는 상단 `const deliveryCounts = useMemo(...)`에서 컴포넌트 본문 하단에 선언되어 있던 `getNormalizedDeliveryStatus(d)`를 호출하여 브라우저에서 `ReferenceError: Cannot access 'P' before initialization` 크래시가 발생하던 결함 해결.
+   - 상태(state/props)에 의존하지 않는 순수 정규화 함수인 `getNormalizedDeliveryStatus` 및 화물 품목 파싱 함수 `parseCargoItems`를 `TruckDispatch` 컴포넌트 외부(파일 상단)로 완전히 이전 배치.
+   - 모듈 로드 시점에 이미 메모리에 정의되도록 조치하여 TDZ 발생 가능성을 원천 차단함.
+2. **중복 함수 선언 정리 및 SSOT 확립**:
+   - 컴포넌트 본문 내에 중복으로 존재하던 `getNormalizedDeliveryStatus` 및 `parseCargoItems` 선언부(기존 L436, L2348)를 완전 삭제하여 단일 함수 정의(SSOT)로 일원화.
+3. **검증 결과**:
+   - TypeScript 컴파일 및 프로덕션 번들 빌드 (`npm run build`): **0 Error 정상 통과 (`built in 1.42s`)**.
+   - 프로덕션 빌드 번들 AST 역분석 결과 `TruckDispatch` 진입 전 헬퍼 함수가 안전하게 초기화됨을 확인.
+
+---
+
 ## [v1.12.0.Build.16] - 2026-09-09 20:56
 
 ### 🚀 [OT 관리 임직원 단일/다중 선택 UX 개편(두 줄 입력 원천 방지) & '알수없음'/'미지정' 표출 원천 척결 & 더미 레코드 원격 DB 삭제]

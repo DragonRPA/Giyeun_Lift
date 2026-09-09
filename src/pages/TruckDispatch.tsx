@@ -75,6 +75,27 @@ export const getEffectiveDeliveryCost = (d?: Delivery | null): number => {
   return 0;
 };
 
+// 1. 배차 4단계 진행 상태 판정 헬퍼 (컴포넌트 외부 배치로 TDZ 호이스팅 오류 원천 방어)
+export const getNormalizedDeliveryStatus = (d?: Delivery | null): 'PENDING' | 'DISPATCHED' | 'DELIVERED' | 'CANCELLED' => {
+  if (!d) return 'PENDING';
+  if (d.status === 'DISPATCHED') return 'DISPATCHED';
+  if (d.status === 'DELIVERED' || d.status === 'COMPLETED') return 'DELIVERED';
+  if (d.status === 'CANCELLED') return 'CANCELLED';
+  return 'PENDING';
+};
+
+// 화물 품목 파싱 헬퍼 (컴포넌트 외부 배치로 TDZ 호이스팅 오류 원천 방어)
+export const parseCargoItems = (d?: Delivery | null): CargoItem[] => {
+  if (!d) return [{ modelName: '고소작업대 (장비 미지정)', count: 1 }];
+  if (d.cargoItems) {
+    try {
+      const parsed = JSON.parse(d.cargoItems);
+      if (Array.isArray(parsed)) return parsed;
+    } catch (e) {}
+  }
+  return [{ modelName: '고소작업대 (장비 미지정)', count: 1 }];
+};
+
 export const TruckDispatch: React.FC = () => {
   const { 
     currentUser,
@@ -432,14 +453,6 @@ export const TruckDispatch: React.FC = () => {
     }
   };
 
-  // 1. 배차 4단계 진행 상태 판정 헬퍼
-  const getNormalizedDeliveryStatus = (d: Delivery): 'PENDING' | 'DISPATCHED' | 'DELIVERED' | 'CANCELLED' => {
-    if (!d) return 'PENDING';
-    if (d.status === 'DISPATCHED') return 'DISPATCHED';
-    if (d.status === 'DELIVERED' || d.status === 'COMPLETED') return 'DELIVERED';
-    if (d.status === 'CANCELLED') return 'CANCELLED';
-    return 'PENDING';
-  };
 
   // 엑셀 날짜(시리얼 숫자 46174 등 또는 포맷팅 텍스트)를 YYYY-MM-DD로 변환하는 정규화 헬퍼
   const formatExcelDateStr = (rawVal: any): string => {
@@ -2348,15 +2361,6 @@ export const TruckDispatch: React.FC = () => {
     }
   };
 
-  const parseCargoItems = (d: Delivery): CargoItem[] => {
-    if (d.cargoItems) {
-      try {
-        const parsed = JSON.parse(d.cargoItems);
-        if (Array.isArray(parsed)) return parsed;
-      } catch (e) {}
-    }
-    return [{ modelName: '고소작업대 (장비 미지정)', count: 1 }];
-  };
 
   const getDeliveryStatusBadge = (status: string) => {
     switch (status) {

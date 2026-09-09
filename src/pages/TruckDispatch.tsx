@@ -1228,32 +1228,76 @@ export const TruckDispatch: React.FC = () => {
                  kl.includes('메모') || kl.includes('특이') || kl.includes('참고') || kl.includes('장비') || kl.includes('품명');
         };
 
-        // 4. 데이터 행 구성 (디토 상속 & 날짜/금액 정규화)
+        // 4. 데이터 행 구성 (디토 상속 & 날짜/금액 정규화 & 하단 서명/총액 방어)
         const parsedRows: any[] = [];
         let lastDate = '';
         let lastOrigin = '';
         let lastDest = '';
 
-        const isDitto = (val: string) =>
-          !val || val === '"' || val === '·' || val === '〃' || val === "''";
+        let activeYear = reconStartDate ? reconStartDate.split('-')[0] : String(new Date().getFullYear());
+        let activeMonth = reconStartDate ? reconStartDate.split('-')[1] : String(new Date().getMonth() + 1).padStart(2, '0');
 
-        const currentYear = reconStartDate ? reconStartDate.split('-')[0] : String(new Date().getFullYear());
-        const currentMonth = reconStartDate ? reconStartDate.split('-')[1] : String(new Date().getMonth() + 1).padStart(2, '0');
+        // 상단 10행 내에서 제목이나 날짜 헤더("< 08월달 >", "2026년 8월") 감지하여 기본 연월 보정
+        for (let r = 0; r < Math.min(10, rawRows.length); r++) {
+          const rowStr = (rawRows[r] || []).map((c: any) => String(c || '').trim()).join(' ');
+          const ymMatch = rowStr.match(/(\d{4})년\s*(\d{1,2})월/);
+          if (ymMatch) {
+            activeYear = ymMatch[1];
+            activeMonth = ymMatch[2].padStart(2, '0');
+            break;
+          }
+          const mOnlyMatch = rowStr.match(/<\s*(\d{1,2})월/);
+          if (mOnlyMatch) {
+            activeMonth = mOnlyMatch[1].padStart(2, '0');
+            break;
+          }
+        }
+
+        // 💡 [사장님 지시] "." 또는 따옴표/특수기호로 입력된 셀은 바로 윗행의 데이터와 동일(Ditto)한 것으로 처리
+        const isDitto = (val: string) => {
+          if (!val) return true;
+          const v = String(val).trim();
+          return (
+            v === '"' || v === '""' || v === "''" || v === "'" ||
+            v === '”' || v === '“' || v === '’' || v === '‘' ||
+            v === '.' || v === '..' || v === '...' ||
+            v === '·' || v === '〃' || v === '-' ||
+            v === '상동' || v === '동상' || v === '동일' || v === '상' || v === '동'
+          );
+        };
 
         for (let r = headerRowIndex + 1; r < rawRows.length; r++) {
           const rowArr = rawRows[r];
-          if (!rowArr || rowArr.every((cell: any) => String(cell).trim() === '')) continue;
+          if (!rowArr || rowArr.every((cell: any) => String(cell || '').trim() === '')) continue;
 
           const firstCellClean = String(rowArr[0] || '').replace(/\s+/g, '');
-          const fullRowTextClean = rowArr.map((cell: any) => String(cell).trim()).join(' ');
+          const fullRowTextClean = rowArr.map((cell: any) => String(cell || '').trim()).join(' ');
+          const cleanRowTextNoSpace = fullRowTextClean.replace(/\s+/g, '');
 
-          // 합계/소계/서명/입금계좌 행 제외
-          const isFooterRow =
-            firstCellClean.startsWith('합계') || firstCellClean.startsWith('소계') || firstCellClean.startsWith('총계') ||
-            fullRowTextClean.includes('공급가액') || fullRowTextClean.includes('합계금액') || fullRowTextClean.includes('부가세') ||
-            fullRowTextClean.includes('사업장주소') || fullRowTextClean.includes('등록번호') || fullRowTextClean.includes('입금계좌') ||
-            fullRowTextClean.includes('계좌번호');
-          if (isFooterRow) continue;
+          // 💡 [사장님 지시] 거래명세서 하단부 문서 서명, 날인, 결제계좌, 총계 등 비청구 데이터 철저 방어
+          const footerKeywords = [
+            '합계', '소계', '총계', '총액', '누계', '공급가액', '합계금액', '부가세', '세액',
+            '사업장주소', '등록번호', '상호:', '대표자', '대표:', '성명:', '입금계좌', '계좌번호',
+            '예금주', '청구합니다', '청구금액', '청구합계', '위와같이', '아래와같이', '서명',
+            '(인)', '(서명)', '확인자', '영수자', '수령자', '담당자날인', '귀하', '월달', '월분'
+          ];
+          if (footerKeywords.some(kw => cleanRowTextNoSpace.includes(kw))) continue;
+
+          // 셀 중 하나라도 합계/소계/총액/대표 등으로 시작하는 경우 제외
+          if (rowArr.some((c: any) => {
+            const s = String(c || '').replace(/\s+/g, '');
+            return s.startsWith('합계') || s.startsWith('소계') || s.startsWith('총계') || s.startsWith('총액');
+          })) continue;
+
+          // 누적 금액과 일치하는 행 방어 (문서 하단 Grand Total 요약 행 배제)
+          const runningSum = parsedRows.reduce((sum, pr) => sum + (Number(pr['정규금액']) || 0), 0);
+          if (parsedRows.length >= 2 && runningSum > 0) {
+            const hasTotalMatch = rowArr.some((c: any) => {
+              const num = Number(String(c || '').replace(/[^0-9.-]+/g, ''));
+              return num > 0 && Math.abs(num - runningSum) <= 50;
+            });
+            if (hasTotalMatch) continue;
+          }
 
           const rowObj: any = {};
           headerNames.forEach((hName, cIdx) => {
@@ -1262,12 +1306,10 @@ export const TruckDispatch: React.FC = () => {
 
           // 금액 추출 (공백 제거 정규화 매칭):
           let rawCost = 0;
-          // 1순위: 운송비, 청구금액, 청구액, 단가 등 명확한 운송비 헤더 (일자/날짜/번호 제외)
           const priorityCostKey = Object.keys(rowObj).find(k => {
             const ck = k.replace(/\s+/g, '');
             return (ck.includes('운송비') || ck.includes('청구') || ck.includes('단가')) && !ck.includes('일자') && !ck.includes('날짜') && !ck.toLowerCase().includes('no');
           });
-          // 2순위: 금액, 합계 (일자/날짜/번호 제외)
           const generalCostKey = Object.keys(rowObj).find(k => {
             const ck = k.replace(/\s+/g, '');
             return (ck.includes('금액') || ck.includes('합계')) && !ck.includes('일자') && !ck.includes('날짜') && !ck.toLowerCase().includes('no');
@@ -1278,7 +1320,6 @@ export const TruckDispatch: React.FC = () => {
             rawCost = Number(String(rowObj[costKey]).replace(/[^0-9.-]+/g, '')) || 0;
           }
           if (rawCost === 0) {
-            // 끝부분 컬럼에서 금액 역추적 (날짜 시리얼 35000~55000 제외)
             for (let c = rowArr.length - 1; c >= 0; c--) {
               const num = Number(String(rowArr[c]).replace(/[^0-9.-]+/g, ''));
               if (num >= 10000 && num <= 5000000 && !(num >= 40000 && num <= 50000 && c <= 2)) {
@@ -1305,8 +1346,16 @@ export const TruckDispatch: React.FC = () => {
           let rawOrigin = originKey ? String(rowObj[originKey]).trim() : '';
           let rawDest = destKey ? String(rowObj[destKey]).trim() : '';
 
+          // 💡 서명/하단 요약란 방어: 상차지/하차지/현장명 및 차량정보가 전무하고 금액만 거액인 행 배제
+          const hasLocation = rawOrigin || rawDest || String(rowObj['현장명'] || '').trim() || String(rowObj['상차지'] || '').trim() || String(rowObj['하차지'] || '').trim();
+          const hasCargoType = String(rowObj['차종'] || '').trim() || String(rowObj['톤수'] || '').trim() || String(rowObj['품명'] || '').trim() || String(rowObj['장비명'] || '').trim();
+          if (!hasLocation && !hasCargoType && rawCost > 1500000) {
+            continue;
+          }
+
           if (rawCost <= 0 && !rawDateCell && !rawOrigin && !rawDest) continue;
 
+          // 💡 "." 또는 디토 상속: 바로 윗행 데이터 동일 상속
           if (isDitto(rawDateCell) && lastDate) rawDateCell = lastDate;
           else if (rawDateCell && !isDitto(rawDateCell)) lastDate = rawDateCell;
 
@@ -1316,31 +1365,112 @@ export const TruckDispatch: React.FC = () => {
           if (isDitto(rawDest) && lastDest) rawDest = lastDest;
           else if (rawDest && !isDitto(rawDest)) lastDest = rawDest;
 
-          // 📅 날짜 정규화: "2026.07/01", "2일", "7/1", 엑셀 시리얼 넘버 등
+          // 📅 날짜 정규화: "08월 01일", "3일" (월 생략), "3", "8/1", "2026.08.01", 엑셀 시리얼 넘버 등 다변형 정규화
           let normDate = rawDateCell;
           if (rawDateCell) {
-            const numVal = Number(rawDateCell);
+            const cleanD = rawDateCell.trim();
+            const numVal = Number(cleanD);
             if (!isNaN(numVal) && numVal > 30000 && numVal < 60000) {
               const utcDays = Math.floor(numVal - 25569);
               const d = new Date(utcDays * 86400 * 1000);
-              normDate = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`;
-            } else if (rawDateCell.match(/^(\d{1,2})일$/)) {
-              const day = rawDateCell.replace('일', '').padStart(2, '0');
-              normDate = `${currentYear}-${currentMonth}-${day}`;
-            } else if (rawDateCell.includes('.') && rawDateCell.includes('/')) {
-              // "2026.07/01" 형태
-              const parts = rawDateCell.split(/[\.\/]/);
-              if (parts.length >= 3) {
-                normDate = `${parts[0]}-${parts[1].padStart(2, '0')}-${parts[2].padStart(2, '0')}`;
+              const y = String(d.getUTCFullYear());
+              const m = String(d.getUTCMonth() + 1).padStart(2, '0');
+              const day = String(d.getUTCDate()).padStart(2, '0');
+              normDate = `${y}-${m}-${day}`;
+              activeYear = y;
+              activeMonth = m;
+            } else if (cleanD.match(/(\d{2,4})년\s*(\d{1,2})월\s*(\d{1,2})일?/)) {
+              const m = cleanD.match(/(\d{2,4})년\s*(\d{1,2})월\s*(\d{1,2})일?/);
+              if (m) {
+                let y = m[1];
+                if (y.length === 2) y = '20' + y;
+                const mo = m[2].padStart(2, '0');
+                const d = m[3].padStart(2, '0');
+                normDate = `${y}-${mo}-${d}`;
+                activeYear = y;
+                activeMonth = mo;
               }
-            } else if (rawDateCell.includes('/')) {
-              const parts = rawDateCell.split('/');
-              if (parts.length === 2) normDate = `${currentYear}-${parts[0].padStart(2, '0')}-${parts[1].padStart(2, '0')}`;
-              else if (parts.length === 3) normDate = `${parts[0]}-${parts[1].padStart(2, '0')}-${parts[2].padStart(2, '0')}`;
-            } else if (rawDateCell.includes('-')) {
-              const parts = rawDateCell.split(' ')[0].split('-');
-              if (parts.length === 3) normDate = `${parts[0]}-${parts[1].padStart(2, '0')}-${parts[2].padStart(2, '0')}`;
+            } else if (cleanD.match(/(\d{1,2})월\s*(\d{1,2})일?/)) {
+              const m = cleanD.match(/(\d{1,2})월\s*(\d{1,2})일?/);
+              if (m) {
+                const mo = m[1].padStart(2, '0');
+                const d = m[2].padStart(2, '0');
+                normDate = `${activeYear}-${mo}-${d}`;
+                activeMonth = mo;
+              }
+            } else if (cleanD.match(/^(\d{1,2})일$/)) {
+              // 💡 [사장님 지시] "3일" (월 생략)이라도 상위 활성 월(8월 3일)로 정상 처리
+              const d = cleanD.replace('일', '').trim().padStart(2, '0');
+              normDate = `${activeYear}-${activeMonth}-${d}`;
+            } else if (cleanD.match(/^\d{1,2}$/) && Number(cleanD) >= 1 && Number(cleanD) <= 31) {
+              // 일자 숫자만 단독 입력된 경우
+              const d = cleanD.padStart(2, '0');
+              normDate = `${activeYear}-${activeMonth}-${d}`;
+            } else if (cleanD.includes('.') && cleanD.includes('/')) {
+              const parts = cleanD.split(/[\.\/]/).map(p => p.trim());
+              if (parts.length >= 3) {
+                let y = parts[0];
+                if (y.length === 2) y = '20' + y;
+                const mo = parts[1].padStart(2, '0');
+                const d = parts[2].padStart(2, '0');
+                normDate = `${y}-${mo}-${d}`;
+                activeYear = y;
+                activeMonth = mo;
+              }
+            } else if (cleanD.includes('/')) {
+              const parts = cleanD.split('/').map(p => p.trim());
+              if (parts.length === 2) {
+                const mo = parts[0].padStart(2, '0');
+                const d = parts[1].padStart(2, '0');
+                normDate = `${activeYear}-${mo}-${d}`;
+                activeMonth = mo;
+              } else if (parts.length === 3) {
+                let y = parts[0];
+                if (y.length === 2) y = '20' + y;
+                const mo = parts[1].padStart(2, '0');
+                const d = parts[2].padStart(2, '0');
+                normDate = `${y}-${mo}-${d}`;
+                activeYear = y;
+                activeMonth = mo;
+              }
+            } else if (cleanD.includes('.')) {
+              const parts = cleanD.split('.').map(p => p.trim()).filter(Boolean);
+              if (parts.length === 2 && Number(parts[0]) <= 12 && Number(parts[1]) <= 31) {
+                const mo = parts[0].padStart(2, '0');
+                const d = parts[1].padStart(2, '0');
+                normDate = `${activeYear}-${mo}-${d}`;
+                activeMonth = mo;
+              } else if (parts.length === 3) {
+                let y = parts[0];
+                if (y.length === 2) y = '20' + y;
+                const mo = parts[1].padStart(2, '0');
+                const d = parts[2].padStart(2, '0');
+                normDate = `${y}-${mo}-${d}`;
+                activeYear = y;
+                activeMonth = mo;
+              }
+            } else if (cleanD.includes('-')) {
+              const parts = cleanD.split(' ')[0].split('-').map(p => p.trim());
+              if (parts.length === 3) {
+                let y = parts[0];
+                if (y.length === 2) y = '20' + y;
+                const mo = parts[1].padStart(2, '0');
+                const d = parts[2].padStart(2, '0');
+                normDate = `${y}-${mo}-${d}`;
+                activeYear = y;
+                activeMonth = mo;
+              } else if (parts.length === 2 && Number(parts[0]) <= 12) {
+                const mo = parts[0].padStart(2, '0');
+                const d = parts[1].padStart(2, '0');
+                normDate = `${activeYear}-${mo}-${d}`;
+                activeMonth = mo;
+              }
             }
+          }
+
+          // 다음 행 ditto 상속을 위해 lastDate 업데이트
+          if (normDate && normDate.includes('-')) {
+            lastDate = normDate;
           }
 
           if (dateKey) rowObj[dateKey] = normDate;
@@ -1368,80 +1498,97 @@ export const TruckDispatch: React.FC = () => {
           return;
         }
 
-        // 5. 2단계 지능형 1:1 대사 매칭 엔진
+        // 5. 지능형 1:1 대사 매칭 엔진 (날짜/금액 우선 매칭 & 업체명 다소 불일치 허용)
         const remainingSystemDeliveries = [...completedDeliveriesForRecon];
         const pairs: ReconPairRow[] = [];
         let autoMatchedCount = 0;
         let mismatchCount = 0;
 
+        // 텍스트 유사도 헬퍼 (상차지, 하차지, 고객사명, 현장명, 주소 등 포괄)
+        const isTextSimilar = (a: string, b: string) => {
+          if (!a || !b) return false;
+          const ca = a.replace(/\s+/g, '').toLowerCase();
+          const cb = b.replace(/\s+/g, '').toLowerCase();
+          if (ca.includes(cb) || cb.includes(ca)) return true;
+          const wordsA = a.split(/[\s\(\)\/\-\_\[\],]+/).filter(w => w.length >= 2);
+          if (wordsA.some(w => cb.includes(w.toLowerCase()))) return true;
+          const wordsB = b.split(/[\s\(\)\/\-\_\[\],]+/).filter(w => w.length >= 2);
+          if (wordsB.some(w => ca.includes(w.toLowerCase()))) return true;
+          return false;
+        };
+
+        const isExactDate = (d1: string, d2: string) => Boolean(d1 && d2 && d1 === d2);
+        const isDateNear = (d1: string, d2: string) => {
+          if (!d1 || !d2) return false;
+          if (d1 === d2) return true;
+          try {
+            const t1 = new Date(d1).getTime();
+            const t2 = new Date(d2).getTime();
+            return Math.abs(t1 - t2) <= 86400000 * 1.5;
+          } catch {
+            return false;
+          }
+        };
+
         parsedRows.forEach((row, rIdx) => {
           const excelCost = row['정규금액'] || 0;
           const excelDate = row['정규일자'] || '';
-          const excelDest = row['정규하차지'] || row['현장명'] || '';
+          const excelOrigin = row['정규상차지'] || row['상차지'] || '';
+          const excelDest = row['정규하차지'] || row['하차지'] || row['현장명'] || '';
           const excelMemo = row['비고'] || '';
 
-          // 텍스트 유사도 헬퍼 (포함 관계 확인)
-          const isTextSimilar = (a: string, b: string) => {
-            if (!a || !b) return false;
-            const ca = a.replace(/\s+/g, '').toLowerCase();
-            const cb = b.replace(/\s+/g, '').toLowerCase();
-            if (ca.includes(cb) || cb.includes(ca)) return true;
-            // 핵심 2~3글자 단어 매칭
-            const words = a.split(/[\s\(\)\/]+/).filter(w => w.length >= 2);
-            return words.some(w => cb.includes(w.toLowerCase()));
-          };
+          const excelFullText = [
+            excelOrigin, excelDest, excelMemo,
+            row['현장명'], row['업체명'], row['상차지'], row['하차지'], row['비고'], row['차종'], row['품명']
+          ].filter(Boolean).join(' ');
 
-          // 날짜 일치도 헬퍼 (±1일 허용)
-          const isDateNear = (d1: string, d2: string) => {
-            if (!d1 || !d2) return false; // 💡 날짜가 없으면 임의 매칭 방지
-            if (d1 === d2) return true;
-            try {
-              const t1 = new Date(d1).getTime();
-              const t2 = new Date(d2).getTime();
-              return Math.abs(t1 - t2) <= 86400000 * 1.5;
-            } catch {
-              return false;
-            }
-          };
+          // 지능형 최적 후보 스코어링
+          let bestIdx = -1;
+          let bestScore = -1;
 
-          // 1단계: 날짜(±1일) + 현장/업체 유사도 + 금액 100% 일치
-          let matchIdx = remainingSystemDeliveries.findIndex(d => {
+          for (let i = 0; i < remainingSystemDeliveries.length; i++) {
+            const d = remainingSystemDeliveries[i];
             const sysDate = d.loadingDate || d.requestDate || '';
             const sysCost = getEffectiveDeliveryCost(d);
             const contract = contracts.find(c => c.id === d.contractId);
             const customer = contract ? customers.find(c => c.id === contract.customerId) : null;
-            const sysDest = d.destinationAddress || '';
+            const site = contract?.siteId ? sites.find(s => s.id === contract.siteId) : null;
             const custName = customer?.name || '';
+            const siteName = site?.name || '';
+            const sysDest = d.destinationAddress || '';
+            const sysPickup = d.originAddress || '';
+            const sysFullText = [custName, siteName, sysDest, sysPickup, d.driverName, d.transportCompany, d.memo, d.rawText].filter(Boolean).join(' ');
 
-            const dateMatch = isDateNear(sysDate, excelDate);
-            const textMatch = !excelDest || isTextSimilar(sysDest, excelDest) || isTextSimilar(custName, excelMemo) || isTextSimilar(sysDest, excelMemo);
-            const costMatch = excelCost > 0 && (sysCost === excelCost || d.finalCost === excelCost);
+            const dateExact = isExactDate(sysDate, excelDate);
+            const dateNear = isDateNear(sysDate, excelDate);
+            if (!dateNear) continue; // 날짜가 ±1일 이상 차이나면 후보 제외
 
-            return dateMatch && textMatch && costMatch;
-          });
+            const costExact = excelCost > 0 && (sysCost === excelCost || d.finalCost === excelCost);
+            const textOverlap = isTextSimilar(sysFullText, excelFullText);
 
-          // 2단계 (핵심 혁신): 날짜(±1일) + 현장/업체 유사도 + 금액 불일치 (할증/대기료 짝짓기!)
-          let isMismatch = false;
-          if (matchIdx === -1) {
-            matchIdx = remainingSystemDeliveries.findIndex(d => {
-              const sysDate = d.loadingDate || d.requestDate || '';
-              const contract = contracts.find(c => c.id === d.contractId);
-              const customer = contract ? customers.find(c => c.id === contract.customerId) : null;
-              const sysDest = d.destinationAddress || '';
-              const custName = customer?.name || '';
+            let score = 0;
+            if (costExact) {
+              // 💡 [사장님 지시] 날짜와 금액이 맞으면 업체명 표기가 다소 불일치 하더라도 허용
+              score += 100;
+              if (dateExact) score += 50; // 당일 일치 우선
+              else score += 20; // ±1일 일치
+              if (textOverlap) score += 30; // 텍스트까지 일치 시 최우선 가산점
+            } else {
+              // 금액 불일치 (할증/차액 후보): 날짜 일치 + 텍스트 겹침이 있는 경우만 후보
+              if (textOverlap) {
+                score += 40;
+                if (dateExact) score += 20;
+              }
+            }
 
-              const dateMatch = isDateNear(sysDate, excelDate);
-              const textMatch = (excelDest && isTextSimilar(sysDest, excelDest)) ||
-                                (excelMemo && isTextSimilar(custName, excelMemo)) ||
-                                (excelMemo && isTextSimilar(sysDest, excelMemo));
-
-              return dateMatch && textMatch;
-            });
-            if (matchIdx !== -1) isMismatch = true;
+            if (score > bestScore) {
+              bestScore = score;
+              bestIdx = i;
+            }
           }
 
-          if (matchIdx !== -1) {
-            const matchedDelivery = remainingSystemDeliveries.splice(matchIdx, 1)[0];
+          if (bestIdx !== -1) {
+            const matchedDelivery = remainingSystemDeliveries.splice(bestIdx, 1)[0];
             const sysCost = getEffectiveDeliveryCost(matchedDelivery);
             const diff = excelCost - sysCost;
 
@@ -1452,7 +1599,9 @@ export const TruckDispatch: React.FC = () => {
             else if (excelMemo.includes('회차')) detectedReason = '회차비';
             else if (diff > 0) detectedReason = `단가 차액 (+₩${diff.toLocaleString()})`;
 
-            if (isMismatch && diff !== 0) {
+            const isMatched = (bestScore >= 120) || (diff === 0 && excelCost > 0);
+
+            if (!isMatched && diff !== 0) {
               mismatchCount++;
               pairs.push({
                 pairId: `PAIR-${matchedDelivery.id}-${rIdx}`,
@@ -1468,6 +1617,11 @@ export const TruckDispatch: React.FC = () => {
               });
             } else {
               autoMatchedCount++;
+              const contract = contracts.find(c => c.id === matchedDelivery.contractId);
+              const customer = contract ? customers.find(c => c.id === contract.customerId) : null;
+              const custName = customer?.name || '';
+              const textOverlap = isTextSimilar([custName, matchedDelivery.destinationAddress, matchedDelivery.originAddress].filter(Boolean).join(' '), excelFullText);
+
               pairs.push({
                 pairId: `PAIR-${matchedDelivery.id}-${rIdx}`,
                 systemDelivery: matchedDelivery,
@@ -1477,7 +1631,7 @@ export const TruckDispatch: React.FC = () => {
                 excelCost,
                 diffCost: 0,
                 surchargeReason: detectedReason,
-                memo: excelMemo || '날짜/현장/금액 일치 (자동 매칭)',
+                memo: excelMemo || (textOverlap ? '날짜/현장/금액 일치 (자동 매칭)' : '날짜/금액 일치 (업체명 표기 허용 자동 매칭)'),
                 isReconciled: true
               });
             }

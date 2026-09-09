@@ -327,7 +327,7 @@ export const MobileYardRepairModal: React.FC<MobileYardRepairModalProps> = ({
                 <span className="text-sm font-bold text-slate-200">{asset.modelName}</span>
               </div>
               <div className="text-[11px] text-slate-400">
-                {asset.ownerType === 'RENTED' ? '타사임차' : '자사보유'} · 주기장 정비 스튜디오
+                {asset.ownerType === 'RENTED' ? '타사임차' : '자사보유'} · 주기장 정비입력
               </div>
             </div>
           </div>

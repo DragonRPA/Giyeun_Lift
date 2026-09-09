@@ -672,7 +672,7 @@ export const Repairs: React.FC = () => {
       'No': idx + 1,
       '접수번호': r.ticketNo || r.id,
       '정비일자': r.repairDate || r.requestDate || '-',
-      '정비구분': r.maintenanceType === 'EXTERNAL' ? '외주정비' : r.maintenanceType === 'PREVENTIVE' ? '정기예방' : '자체정비',
+      '정비구분': r.maintenanceType === 'EXTERNAL' ? '외주공업사 위탁' : r.maintenanceType === 'PREVENTIVE' ? '예방점검' : '주기장 내 정비',
       '자산번호': r.assetNo || getAssetNo(r.assetId),
       '모델명': r.modelName || getAssetModel(r.assetId),
       '정비내용': r.details || '-',
@@ -721,7 +721,7 @@ export const Repairs: React.FC = () => {
               flexShrink: 0
             }}
           >
-            <Wrench size={14} /> 정비 스튜디오
+            <Wrench size={14} /> 주기장 정비입력
           </button>
           <button
             type="button"
@@ -1118,9 +1118,9 @@ export const Repairs: React.FC = () => {
                       onChange={e => setMaintenanceType(e.target.value as any)}
                       style={{ padding: '6px 8px', fontSize: '12.5px' }}
                     >
-                      <option value="INHOUSE_REPAIR">야적장/주기장 자체수리 (INHOUSE)</option>
-                      <option value="PREVENTIVE">주기장 정기 예방점검 (PREVENTIVE)</option>
-                      <option value="EXTERNAL">외주 전문공업사 위탁 (EXTERNAL)</option>
+                      <option value="INHOUSE_REPAIR">주기장 내 정비</option>
+                      <option value="PREVENTIVE">예방점검</option>
+                      <option value="EXTERNAL">외주공업사 위탁</option>
                     </select>
                   </div>
 
@@ -1581,9 +1581,9 @@ export const Repairs: React.FC = () => {
                 style={{ padding: '6px', fontSize: '12px' }}
               >
                 <option value="ALL">전체 정비구분</option>
-                <option value="INHOUSE_REPAIR">야적장/자체정비</option>
-                <option value="PREVENTIVE">정기예방점검</option>
-                <option value="EXTERNAL">외주정비</option>
+                <option value="INHOUSE_REPAIR">주기장 내 정비</option>
+                <option value="PREVENTIVE">예방점검</option>
+                <option value="EXTERNAL">외주공업사 위탁</option>
               </select>
             </div>
 
@@ -1689,8 +1689,8 @@ export const Repairs: React.FC = () => {
                             r.maintenanceType === 'EXTERNAL' ? 'badge-warning' :
                             r.maintenanceType === 'PREVENTIVE' ? 'badge-info' : 'badge-secondary'
                           }`} style={{ fontSize: '10.5px' }}>
-                            {r.maintenanceType === 'EXTERNAL' ? '외주정비' :
-                             r.maintenanceType === 'PREVENTIVE' ? '정기예방' : '자체정비'}
+                            {r.maintenanceType === 'EXTERNAL' ? '외주공업사 위탁' :
+                             r.maintenanceType === 'PREVENTIVE' ? '예방점검' : '주기장 내 정비'}
                           </span>
                         </td>
                         <td style={{ padding: '8px', whiteSpace: 'nowrap' }}>
@@ -1891,7 +1891,7 @@ export const Repairs: React.FC = () => {
                 <div>
                   <div style={{ color: 'var(--text-muted)', fontSize: '11px' }}>정비구분 / 상태</div>
                   <span style={{ fontWeight: '700' }}>
-                    {selectedDetailRepair.maintenanceType === 'EXTERNAL' ? '외주정비' : selectedDetailRepair.maintenanceType === 'PREVENTIVE' ? '정기예방' : '자체정비'} ({selectedDetailRepair.status})
+                    {selectedDetailRepair.maintenanceType === 'EXTERNAL' ? '외주공업사 위탁' : selectedDetailRepair.maintenanceType === 'PREVENTIVE' ? '예방점검' : '주기장 내 정비'} ({selectedDetailRepair.status})
                   </span>
                 </div>
                 <div>

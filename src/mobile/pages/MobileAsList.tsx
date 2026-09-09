@@ -553,7 +553,7 @@ export const MobileAsList: React.FC<MobileAsListProps> = ({
                         {asset.note && !asset.note.startsWith('[정비완료') ? `정비요구: ${asset.note}` : asset.memo ? `비고: ${asset.memo}` : '정상 대기'}
                       </span>
                       <span className="text-red-400 font-bold flex items-center gap-0.5 shrink-0">
-                        정비 스튜디오 열기 <ChevronRight className="w-3.5 h-3.5" />
+                        주기장 정비입력 열기 <ChevronRight className="w-3.5 h-3.5" />
                       </span>
                     </div>
                   </div>

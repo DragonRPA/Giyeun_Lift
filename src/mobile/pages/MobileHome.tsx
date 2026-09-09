@@ -383,7 +383,7 @@ export const MobileHome: React.FC<MobileHomeProps> = ({
             </div>
             <div>
               <div className="text-sm font-bold text-white flex items-center gap-1.5">
-                <span>주기장 정비 스튜디오</span>
+                <span>주기장 정비입력</span>
                 {yardRepairAssets.length > 0 && (
                   <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-red-500/20 text-red-300 font-bold">
                     {yardRepairAssets.length}대 대기{inboundDefectCount > 0 ? ` (결함 ${inboundDefectCount})` : ''}
@@ -593,7 +593,7 @@ export const MobileHome: React.FC<MobileHomeProps> = ({
           </div>
           <div>
             <div className="text-sm font-bold text-white flex items-center gap-1.5">
-              <span>주기장 정비 스튜디오</span>
+              <span>주기장 정비입력</span>
               {yardRepairAssets.length > 0 && (
                 <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-red-500/20 text-red-300 font-bold">
                   {yardRepairAssets.length}대 대기{inboundDefectCount > 0 ? ` (결함 ${inboundDefectCount})` : ''}

@@ -1031,10 +1031,10 @@ export function parseInitialExcelWorkbook(
       });
     }
 
-    // (ownAssetNo, leaseAssetNo는 상단 중복 헤더 직접 인덱스 블록에서 이미 선언됨)
     const leaseVendorName = getCol(r, mainHeaderMap, ['임차업체', '매입처'], 15) ? String(getCol(r, mainHeaderMap, ['임차업체', '매입처'], 15)).trim() : '';
     const leasePrice = sanitizeNumber(getCol(r, mainHeaderMap, ['임차단가', '매입단가'], 16));
-    const leaseReturnDate = sanitizeExcelDate(getCol(r, mainHeaderMap, ['전대반납일', '반납일'], 17));
+    const leaseStartDate = sanitizeExcelDate(getCol(r, mainHeaderMap, ['전대개시일', '임차개시일'], 18));
+    const leaseReturnDate = sanitizeExcelDate(getCol(r, mainHeaderMap, ['전대반납일', '반납일'], 19));
 
     let matchedAsset: any = null;
 
@@ -1095,9 +1095,7 @@ export function parseInitialExcelWorkbook(
           cumRepairCost: 0,
           vendorId: null,           // 아래 leaseVendor 처리 후 주입
           renter: leaseVendorName || '미지정',
-          rentStart: (leaseReturnDate && sanitizeExcelDate(r[4]) && leaseReturnDate < (sanitizeExcelDate(r[4]) as string))
-            ? leaseReturnDate
-            : (sanitizeExcelDate(r[4]) || '2026-08-01'),
+          rentStart: leaseStartDate || sanitizeExcelDate(r[4]) || '2026-08-01',
           rentEnd: leaseReturnDate,
           monthlyRentFee: leasePrice,
           dailyRentFee: Math.round(leasePrice / 30),
@@ -1355,7 +1353,7 @@ export function parseInitialExcelWorkbook(
           custBill.details.push({
             contractAssetId: caId,
             assetId: matchedAsset?.id,
-            itemName: `${targetModel} (${ownAssetNo || leaseAssetNo || '가상'}) 렌탈료`,
+            itemName: `${targetModel}${ownAssetNo || leaseAssetNo ? ` (${ownAssetNo || leaseAssetNo})` : ''} 렌탈료`,
             itemType: 'RENTAL',
             quantity: days,
             unitPrice: Math.round(rentPortion / days),
@@ -1394,7 +1392,7 @@ export function parseInitialExcelWorkbook(
         custBill.details.push({
           contractAssetId: caId,
           assetId: matchedAsset?.id,
-          itemName: `${targetModel} (${ownAssetNo || leaseAssetNo || '가상'}) 렌탈료`,
+          itemName: `${targetModel}${ownAssetNo || leaseAssetNo ? ` (${ownAssetNo || leaseAssetNo})` : ''} 렌탈료`,
           itemType: 'RENTAL',
           quantity: days,
           unitPrice: Math.round(rowBillingTotal / days),

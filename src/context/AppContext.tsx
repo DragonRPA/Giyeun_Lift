@@ -190,7 +190,7 @@ interface AppContextType {
   disposeAsset: (assetId: string, disposalData: { disposalDate: string; disposalPrice: number; buyer: string; billingYm?: string }) => Promise<any>;
   executeAssetSale: (payload: AssetSalePayload) => Promise<{ success: boolean; contractId: string; billingId: string; contractNo: string }>;
   registerRentedAsset: (assetData: Partial<Asset>) => Promise<any>;
-  returnRentedAsset: (assetId: string, returnDate: string) => Promise<void>;
+  returnRentedAsset: (assetId: string, returnDate: string, options?: { isDirectReturn?: boolean; memo?: string }) => Promise<void>;
   createVendorClaimReceivable: (data: {
     contractId?: string;
     customerId?: string;
@@ -2618,18 +2618,18 @@ ${currentTenant?.corporateName || tenantCorp} 배상
     return result;
   };
 
-  const returnRentedAsset = async (assetId: string, returnDate: string): Promise<void> => {
+  const returnRentedAsset = async (assetId: string, returnDate: string, options?: { isDirectReturn?: boolean; memo?: string }): Promise<void> => {
     const target = db.assets.find(a => a.id === assetId);
     if (!target) return;
 
-    if (target.status === 'RENTED') {
-      showErrorModal(`⚠️ 해당 자산(${target.assetNo})은 현재 고객사 현장에 투입 중(대여중)입니다.\n고객사 회수(입고)를 먼저 진행한 후 임차처 반납이 가능합니다.`);
-      throw new Error(`대여중인 자산은 임차처 반납이 불가합니다.`);
-    }
     if (target.rentStart && returnDate < target.rentStart) {
       showErrorModal(`⚠️ 임차처 반납일(${returnDate})은 임차 시작일(${target.rentStart}) 이전일 수 없습니다.`);
       throw new Error(`임차처 반납일이 임차 시작일 이전입니다.`);
     }
+
+    const isDirect = options?.isDirectReturn || target.status === 'RENTED';
+    const cust = db.customers.find(c => c.id === target.currentCustomerId);
+    const site = db.sites.find(s => s.id === target.currentSiteId);
 
     try {
       db.updateRow<Asset>('assets', assetId, {
@@ -2637,6 +2637,8 @@ ${currentTenant?.corporateName || tenantCorp} 배상
         actualRentReturnDate: returnDate,
         currentCustomerId: '',
         currentSiteId: '',
+        contractStart: undefined,
+        contractEnd: undefined,
         updatedAt: new Date().toISOString()
       });
 
@@ -2646,8 +2648,14 @@ ${currentTenant?.corporateName || tenantCorp} 배상
         assetNo: target.assetNo,
         modelName: target.modelName,
         type: 'OUTBOUND',
+        customerId: target.currentCustomerId || undefined,
+        customerName: cust?.name,
+        siteId: target.currentSiteId || undefined,
+        siteName: site?.name,
         eventDate: returnDate,
-        memo: `[임차자산 최종 반납] 반납처: ${target.renter || '임차처'} (임차처번호: ${target.vendorAssetNo || '-'})`,
+        memo: options?.memo || (isDirect 
+          ? `[임차자산 현장 직반납] 고객사(${cust?.name || '-'}) 현장에서 임차처(${target.renter || '임차처'})로 직반납 처리`
+          : `[임차자산 주기장 반납] 당사 주기장에서 임차처(${target.renter || '임차처'})로 반납 처리`),
         createdAt: new Date().toISOString()
       });
 

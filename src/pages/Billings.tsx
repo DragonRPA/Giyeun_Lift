@@ -44,6 +44,7 @@ export const Billings: React.FC = () => {
   const [tempEndBillingYmFilter, setTempEndBillingYmFilter] = useState(initialYm);
   const [tempPaymentFilter, setTempPaymentFilter] = useState<'ALL' | 'PAID' | 'UNPAID_ANY'>('ALL');
   const [tempMailSentFilter, setTempMailSentFilter] = useState<'ALL' | 'SENT' | 'UNSENT'>('ALL');
+  const [tempInvoiceFilter, setTempInvoiceFilter] = useState<'ALL' | 'STANDALONE' | 'INTEGRATED'>('ALL');
 
   const [searchTerm, setSearchTerm] = useState('');
   const [contractNoFilter, setContractNoFilter] = useState('');
@@ -51,6 +52,7 @@ export const Billings: React.FC = () => {
   const [endBillingYmFilter, setEndBillingYmFilter] = useState(initialYm);
   const [paymentFilter, setPaymentFilter] = useState<'ALL' | 'PAID' | 'UNPAID_ANY'>('ALL');
   const [mailSentFilter, setMailSentFilter] = useState<'ALL' | 'SENT' | 'UNSENT'>('ALL');
+  const [invoiceFilter, setInvoiceFilter] = useState<'ALL' | 'STANDALONE' | 'INTEGRATED'>('ALL');
   // --- 명시적 조회(Snapshot) 상태: [조회] 버튼을 누를 때만 목록 갱신 ---
   const [searchedBillingIds, setSearchedBillingIds] = useState<string[] | null>(null);
 
@@ -246,7 +248,8 @@ export const Billings: React.FC = () => {
     startYm: string,
     endYm: string,
     pFilter: 'ALL' | 'PAID' | 'UNPAID_ANY',
-    mFilter: 'ALL' | 'SENT' | 'UNSENT'
+    mFilter: 'ALL' | 'SENT' | 'UNSENT',
+    invFilter: 'ALL' | 'STANDALONE' | 'INTEGRATED' = 'ALL'
   ) => {
     return billings.filter(b => {
       if (b.status === 'REJECTED') return false;
@@ -273,6 +276,10 @@ export const Billings: React.FC = () => {
       if (mFilter === 'SENT' && !isMailSent) return false;
       if (mFilter === 'UNSENT' && isMailSent) return false;
 
+      // 📑 통합 여부 필터 (단독 청구 vs 통합 인보이스 포함)
+      if (invFilter === 'STANDALONE' && b.invoiceId && b.invoiceId.trim() !== '') return false;
+      if (invFilter === 'INTEGRATED' && (!b.invoiceId || b.invoiceId.trim() === '')) return false;
+
       return true;
     }).map(b => b.id);
   };
@@ -291,7 +298,7 @@ export const Billings: React.FC = () => {
         setStartBillingYmFilter(effectiveStartYm);
         setEndBillingYmFilter(effectiveEndYm);
       }
-      const ids = computeMatchedBillingIds(searchTerm, contractNoFilter, effectiveStartYm, effectiveEndYm, paymentFilter, mailSentFilter);
+      const ids = computeMatchedBillingIds(searchTerm, contractNoFilter, effectiveStartYm, effectiveEndYm, paymentFilter, mailSentFilter, invoiceFilter);
       setSearchedBillingIds(ids);
     }
   }, [billings.length]);
@@ -303,6 +310,7 @@ export const Billings: React.FC = () => {
     setEndBillingYmFilter(tempEndBillingYmFilter);
     setPaymentFilter(tempPaymentFilter);
     setMailSentFilter(tempMailSentFilter);
+    setInvoiceFilter(tempInvoiceFilter);
 
     // [조회] 버튼을 누를 때만 최신 조건으로 스냅샷 갱신
     const matched = computeMatchedBillingIds(
@@ -311,7 +319,8 @@ export const Billings: React.FC = () => {
       tempStartBillingYmFilter,
       tempEndBillingYmFilter,
       tempPaymentFilter,
-      tempMailSentFilter
+      tempMailSentFilter,
+      tempInvoiceFilter
     );
     setSearchedBillingIds(matched);
   };
@@ -324,6 +333,7 @@ export const Billings: React.FC = () => {
     setTempEndBillingYmFilter(defaultYm);
     setTempPaymentFilter('ALL');
     setTempMailSentFilter('ALL');
+    setTempInvoiceFilter('ALL');
 
     setSearchTerm('');
     setContractNoFilter('');
@@ -331,8 +341,9 @@ export const Billings: React.FC = () => {
     setEndBillingYmFilter(defaultYm);
     setPaymentFilter('ALL');
     setMailSentFilter('ALL');
+    setInvoiceFilter('ALL');
 
-    const matched = computeMatchedBillingIds('', '', defaultYm, defaultYm, 'ALL', 'ALL');
+    const matched = computeMatchedBillingIds('', '', defaultYm, defaultYm, 'ALL', 'ALL', 'ALL');
     setSearchedBillingIds(matched);
   };
 
@@ -1907,6 +1918,20 @@ ${currentTenant?.tradeName || currentTenant?.corporateName || '임대인'} 올�
                 </select>
               </div>
 
+              {/* 📑 통합 여부 */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', flexShrink: 0 }}>
+                <label style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>통합 구분</label>
+                <select 
+                  value={tempInvoiceFilter} 
+                  onChange={e => setTempInvoiceFilter(e.target.value as any)} 
+                  style={{ width: '90px', padding: '5px 6px', fontSize: '12px', borderRadius: '5px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-card)', color: 'var(--text-main)' }}
+                >
+                  <option value="ALL">전체</option>
+                  <option value="STANDALONE">단독 청구</option>
+                  <option value="INTEGRATED">통합 포함</option>
+                </select>
+              </div>
+
               {/* 버튼 그룹 */}
               <div style={{ display: 'flex', gap: '4px', alignItems: 'center', flexShrink: 0, paddingBottom: '1px' }}>
                 <button 
@@ -2048,20 +2073,20 @@ ${currentTenant?.tradeName || currentTenant?.corporateName || '임대인'} 올�
                             {/* 2. 발송 버튼: REJECTED가 아닌 모든 청구서에서 거래명세서 메일 발송 */}
                             {b.status !== 'REJECTED' && (
                               <button 
-                                type="button"
+                                type="button" 
                                 className="btn-secondary" 
                                 onClick={() => handleOpenMail(b.id)} 
                                 style={{ padding: '3px 6px', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '2px', whiteSpace: 'nowrap' }}
-                                title="거래명세서 이메일 발송"
+                                title={b.invoiceId ? `통합 청구서(${b.invoiceId})에 포함됨 - 개별 명세서 발송` : "거래명세서 이메일 발송"}
                               >
-                                <Mail size={10} /> 발송
+                                <Mail size={10} /> {b.invoiceId ? '개별발송' : '발송'}
                               </button>
                             )}
 
                             {/* 3. 취소/재생성 버튼: 완납(PAID)이 아닌 상태에서 수정/재생성 */}
                             {canSave && b.status !== 'PAID' && (
                               <button 
-                                type="button"
+                                type="button" 
                                 className="btn-secondary" 
                                 onClick={(e) => handleOpenRegenerate(b.id, e)} 
                                 style={{ padding: '3px 6px', fontSize: '11px', color: 'var(--primary)', fontWeight: '600', whiteSpace: 'nowrap' }}
@@ -2074,7 +2099,7 @@ ${currentTenant?.tradeName || currentTenant?.corporateName || '임대인'} 올�
                             {/* 4. 청구 취소 버튼: 완납(PAID) 또는 이미 취소(REJECTED)가 아닌 상태 */}
                             {isAdmin && b.status !== 'PAID' && b.status !== 'REJECTED' && (
                               <button 
-                                type="button"
+                                type="button" 
                                 className="btn-danger" 
                                 onClick={(e) => handleCancel(b.id, e)} 
                                 style={{ padding: '3px 6px', fontSize: '11px', whiteSpace: 'nowrap' }}
@@ -2091,6 +2116,24 @@ ${currentTenant?.tradeName || currentTenant?.corporateName || '임대인'} 올�
                           {customers.find(c => c.id === b.customerId)?.transactionStatus === 'BLOCKED' && (
                             <span style={{ marginLeft: '6px', padding: '1px 5px', fontSize: '10px', backgroundColor: '#fee2e2', color: '#b91c1c', borderRadius: '3px', fontWeight: 800 }}>
                               출고제한
+                            </span>
+                          )}
+                          {b.invoiceId && (
+                            <span
+                              style={{
+                                marginLeft: '6px',
+                                padding: '1px 6px',
+                                fontSize: '10px',
+                                backgroundColor: '#e0e7ff',
+                                color: '#3730a3',
+                                border: '1px solid #c7d2fe',
+                                borderRadius: '3px',
+                                fontWeight: 700,
+                                whiteSpace: 'nowrap'
+                              }}
+                              title={`통합 인보이스: ${b.invoiceId}`}
+                            >
+                              통합: {b.invoiceId}
                             </span>
                           )}
                         </td>
@@ -2228,6 +2271,33 @@ ${currentTenant?.tradeName || currentTenant?.corporateName || '임대인'} 올�
                     <div style={{ padding: '10px 12px', backgroundColor: 'rgba(239, 68, 68, 0.1)', borderLeft: '4px solid var(--danger)', borderRadius: '4px' }}>
                       <strong style={{ color: 'var(--danger)', fontSize: '13px', display: 'block', marginBottom: '2px' }}>[취소/이의제기 사유]</strong>
                       <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>{activeBilling.rejectReason || '사유 미기재'}</span>
+                    </div>
+                  )}
+
+                  {/* 통합 인보이스 연결 알림 배너 */}
+                  {activeBilling.invoiceId && (
+                    <div style={{
+                      padding: '8px 12px',
+                      backgroundColor: 'rgba(99, 102, 241, 0.08)',
+                      border: '1px solid rgba(99, 102, 241, 0.25)',
+                      borderRadius: '6px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      fontSize: '12px'
+                    }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <Layers size={14} style={{ color: '#4f46e5' }} />
+                        <span>통합 인보이스: <strong style={{ color: '#4f46e5' }}>{activeBilling.invoiceId}</strong> (묶음 청구됨)</span>
+                      </div>
+                      <button
+                        type="button"
+                        className="btn-secondary"
+                        onClick={() => setActiveTab('INVOICE')}
+                        style={{ padding: '2px 8px', fontSize: '11px', whiteSpace: 'nowrap' }}
+                      >
+                        청구서통합 탭 이동 ➔
+                      </button>
                     </div>
                   )}
 

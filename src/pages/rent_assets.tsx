@@ -1038,6 +1038,7 @@ export const RentAssets: React.FC = () => {
   const [returnDate, setReturnDate] = useState(new Date().toISOString().split('T')[0]);
 
   // 반납 배차 옵션 상태
+  const [returnMode, setReturnMode] = useState<'DIRECT' | 'YARD'>('YARD');
   const [isDispatchRequested, setIsDispatchRequested] = useState(false);
   const [returnOrigin, setReturnOrigin] = useState('');
   const [returnDestination, setReturnDestination] = useState('');
@@ -1117,22 +1118,25 @@ export const RentAssets: React.FC = () => {
   };
 
   const handleOpenEdit = (a: Asset) => {
+    const resolvedRenter = a.renter || (a.vendorId ? vendors.find(v => v.id === a.vendorId)?.name : '') || '';
+    const resolvedVendorId = a.vendorId || (resolvedRenter ? vendors.find(v => v.name === resolvedRenter)?.id : undefined);
     setEditingAsset({
       ...a,
+      renter: resolvedRenter,
+      vendorId: resolvedVendorId,
       isReactivating: false
     } as any);
     setShowModal(true);
   };
 
   const handleOpenReturn = (asset: Asset) => {
-    if (asset.status === 'RENTED') {
-      showToast(`자산 ${asset.assetNo}은 현재 고객사에 대여중(RENTED)입니다. 회수 입고 전에는 임차처 반납이 불가합니다.`, 'error');
-      return;
-    }
     setReturnAssetId(asset.id);
     setReturnDate(new Date().toISOString().split('T')[0]);
     const cust = customers.find(c => c.id === asset.currentCustomerId);
-    setReturnOrigin(cust ? `${cust.name} 현장` : '당사 보관소');
+    const site = sites.find(s => s.id === asset.currentSiteId);
+    const isDirect = asset.status === 'RENTED';
+    setReturnMode(isDirect ? 'DIRECT' : 'YARD');
+    setReturnOrigin(isDirect && cust ? `${cust.name} ${site ? site.name : ''} (현장)` : '당사 주기장 (포곡)');
     setReturnDestination(asset.renter ? `${asset.renter} (임차처)` : '임차처 보관소');
     setIsDispatchRequested(false);
     setShowReturnModal(true);
@@ -1148,17 +1152,24 @@ export const RentAssets: React.FC = () => {
       showToast('임차 시작일이 만료예정일보다 늦을 수 없습니다.', 'error');
       return;
     }
-    if (!editingAsset.renter) {
+
+    const resolvedRenter = editingAsset.renter || (editingAsset.vendorId ? vendors.find(v => v.id === editingAsset.vendorId)?.name : '') || '';
+    if (!resolvedRenter) {
       showToast('임차처를 선택해 주세요.', 'error');
       return;
+    }
+    editingAsset.renter = resolvedRenter;
+    if (!editingAsset.vendorId) {
+      const v = vendors.find(item => item.name === resolvedRenter);
+      if (v) editingAsset.vendorId = v.id;
     }
 
     // 🔒 임차 중인 자산 수정 시 임차처 변조 방어
     if (editingAsset.id && editingAsset.status !== 'RENTED_RETURNED' && !(editingAsset as any).isReactivating) {
       const original = assets.find(a => a.id === editingAsset.id);
-      if (original && original.renter) {
-        editingAsset.renter = original.renter;
-        editingAsset.vendorId = original.vendorId;
+      if (original && (original.renter || original.vendorId)) {
+        editingAsset.renter = original.renter || resolvedRenter;
+        editingAsset.vendorId = original.vendorId || editingAsset.vendorId;
       }
     }
 
@@ -1189,10 +1200,6 @@ export const RentAssets: React.FC = () => {
     }
     const target = assets.find(a => a.id === returnAssetId);
     if (!target) return;
-    if (target.status === 'RENTED') {
-      showToast(`자산 ${target.assetNo}은 현재 고객사에 대여중(RENTED)입니다. 임차처 반납이 불가합니다.`, 'error');
-      return;
-    }
 
     if (isDispatchRequested) {
       db.insertRow<Delivery>('deliveries', {
@@ -1204,16 +1211,18 @@ export const RentAssets: React.FC = () => {
         deliveryCost: returnCost,
         originAddress: returnOrigin,
         destinationAddress: returnDestination,
-        memo: `[임차자산 반납 배차] 장비번호: ${target.assetNo} (${target.modelName}) / 임차처: ${target.renter || '미지정'}`,
+        memo: `[임차자산 ${returnMode === 'DIRECT' ? '현장 직반납' : '주기장 반납'} 배차] 장비번호: ${target.assetNo} (${target.modelName}) / 임차처: ${target.renter || '임차처'}`,
         isCostSettled: false,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString()
       });
     }
 
-    await returnRentedAsset(returnAssetId, returnDate);
+    await returnRentedAsset(returnAssetId, returnDate, {
+      isDirectReturn: returnMode === 'DIRECT'
+    });
     await db.awaitPendingWrites();
-    showToast(`임차 자산 ${target.assetNo} 반납 처리가 완결되었습니다.`);
+    showToast(`임차 자산 ${target.assetNo} ${returnMode === 'DIRECT' ? '현장 직반납' : '반납'} 처리가 완결되었습니다.`);
     setShowReturnModal(false);
   };
 
@@ -3199,11 +3208,20 @@ export const RentAssets: React.FC = () => {
                                 {canSave && !isReturned && (
                                   <button
                                     onClick={() => handleOpenReturn(a)}
-                                    disabled={a.status === 'RENTED'}
-                                    title={a.status === 'RENTED' ? '대여중인 자산은 임차처 반납이 불가합니다' : '임차처 반납'}
-                                    style={{ padding: '2px 5px', fontSize: '10.5px', backgroundColor: a.status === 'RENTED' ? 'var(--bg-card)' : 'var(--danger)', color: a.status === 'RENTED' ? 'var(--text-muted)' : '#fff', border: a.status === 'RENTED' ? '1px solid var(--border-color)' : 'none', borderRadius: '3px', cursor: a.status === 'RENTED' ? 'not-allowed' : 'pointer', opacity: a.status === 'RENTED' ? 0.6 : 1, whiteSpace: 'nowrap' }}
+                                    title={a.status === 'RENTED' ? '현장 ➔ 임차처 직반납' : '주기장 ➔ 임차처 반납'}
+                                    style={{
+                                      padding: '2px 5px',
+                                      fontSize: '10.5px',
+                                      backgroundColor: a.status === 'RENTED' ? '#4f46e5' : 'var(--danger)',
+                                      color: '#fff',
+                                      border: 'none',
+                                      borderRadius: '3px',
+                                      cursor: 'pointer',
+                                      fontWeight: 600,
+                                      whiteSpace: 'nowrap'
+                                    }}
                                   >
-                                    반납
+                                    {a.status === 'RENTED' ? '직반납' : '반납'}
                                   </button>
                                 )}
                                 {canSave && isReturned && (
@@ -3345,11 +3363,12 @@ export const RentAssets: React.FC = () => {
         );
       })()}
 
-{/* ========================================================================= */}
+      {/* ========================================================================= */}
       {/* 3. 모달: 임차 자산 등록 / 수정 모달 */}
       {/* ========================================================================= */}
       {showModal && editingAsset && (() => {
-        const isRenterDisabled = Boolean(editingAsset.id && editingAsset.status !== 'RENTED_RETURNED' && !(editingAsset as any).isReactivating);
+        const currentRenterVal = editingAsset.renter || (editingAsset.vendorId ? vendors.find(v => v.id === editingAsset.vendorId)?.name : '') || '';
+        const isRenterDisabled = Boolean(editingAsset.id && currentRenterVal && editingAsset.status !== 'RENTED_RETURNED' && !(editingAsset as any).isReactivating);
         return (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
           <div style={{ backgroundColor: 'var(--bg-card)', color: 'var(--text-main)', padding: '24px', borderRadius: '12px', width: '500px', maxWidth: '90%', maxHeight: '90vh', overflowY: 'auto', border: '1px solid var(--border-color)' }}>
@@ -3441,7 +3460,7 @@ export const RentAssets: React.FC = () => {
                 <select
                   required
                   disabled={isRenterDisabled}
-                  value={editingAsset.renter || ''}
+                  value={currentRenterVal}
                   onChange={e => {
                     if (isRenterDisabled) return;
                     const selectedName = e.target.value;
@@ -3499,15 +3518,34 @@ export const RentAssets: React.FC = () => {
                 </div>
               </div>
 
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                <label style={{ fontSize: '11px', fontWeight: '700', color: 'var(--text-muted)' }}>월 임차료 (원)</label>
-                <input
-                  type="number"
-                  placeholder="300000"
-                  value={editingAsset.monthlyRentFee || 0}
-                  onChange={e => setEditingAsset({ ...editingAsset, monthlyRentFee: Number(e.target.value) })}
-                  style={{ padding: '6px 10px', borderRadius: '6px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-app)', color: 'var(--text-main)', fontSize: '12px' }}
-                />
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                  <label style={{ fontSize: '11px', fontWeight: '700', color: 'var(--text-muted)' }}>월 임차료 (원)</label>
+                  <input
+                    type="number"
+                    placeholder="300000"
+                    value={editingAsset.monthlyRentFee || 0}
+                    onChange={e => setEditingAsset({ ...editingAsset, monthlyRentFee: Number(e.target.value) })}
+                    style={{ padding: '6px 10px', borderRadius: '6px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-app)', color: 'var(--text-main)', fontSize: '12px' }}
+                  />
+                </div>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                  <label style={{ fontSize: '11px', fontWeight: '700', color: 'var(--text-muted)' }}>실제 반납일 (반납 완료 시 입력)</label>
+                  <input
+                    type="date"
+                    value={editingAsset.actualRentReturnDate || ''}
+                    onChange={e => {
+                      const returnVal = e.target.value;
+                      setEditingAsset({
+                        ...editingAsset,
+                        actualRentReturnDate: returnVal || undefined,
+                        status: returnVal ? 'RENTED_RETURNED' : (editingAsset.status === 'RENTED_RETURNED' ? 'AVAILABLE' : editingAsset.status)
+                      });
+                    }}
+                    style={{ padding: '6px 10px', borderRadius: '6px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-app)', color: 'var(--text-main)', fontSize: '12px' }}
+                  />
+                </div>
               </div>
 
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '12px' }}>
@@ -3543,6 +3581,54 @@ export const RentAssets: React.FC = () => {
             </h2>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              {/* 반납 방식 선택 (직반납 vs 주기장 반납) */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                <label style={{ fontSize: '11px', fontWeight: '700', color: 'var(--text-muted)' }}>반납 방식 선택</label>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setReturnMode('DIRECT');
+                      const target = assets.find(a => a.id === returnAssetId);
+                      const cust = customers.find(c => c.id === target?.currentCustomerId);
+                      const site = sites.find(s => s.id === target?.currentSiteId);
+                      setReturnOrigin(cust ? `${cust.name} ${site ? site.name : ''} (현장)` : '고객사 현장');
+                    }}
+                    style={{
+                      padding: '8px',
+                      borderRadius: '6px',
+                      border: returnMode === 'DIRECT' ? '2px solid #4f46e5' : '1px solid var(--border-color)',
+                      backgroundColor: returnMode === 'DIRECT' ? 'rgba(79, 70, 229, 0.1)' : 'var(--bg-app)',
+                      color: returnMode === 'DIRECT' ? '#4f46e5' : 'var(--text-muted)',
+                      fontWeight: returnMode === 'DIRECT' ? 700 : 500,
+                      fontSize: '11.5px',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    🚀 현장 ➔ 임차처 직반납 (직송)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setReturnMode('YARD');
+                      setReturnOrigin('당사 주기장 (포곡)');
+                    }}
+                    style={{
+                      padding: '8px',
+                      borderRadius: '6px',
+                      border: returnMode === 'YARD' ? '2px solid #ef4444' : '1px solid var(--border-color)',
+                      backgroundColor: returnMode === 'YARD' ? 'rgba(239, 68, 68, 0.1)' : 'var(--bg-app)',
+                      color: returnMode === 'YARD' ? '#ef4444' : 'var(--text-muted)',
+                      fontWeight: returnMode === 'YARD' ? 700 : 500,
+                      fontSize: '11.5px',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    🏢 주기장 ➔ 임차처 반납
+                  </button>
+                </div>
+              </div>
+
               <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
                 <label style={{ fontSize: '11px', fontWeight: '700', color: 'var(--text-muted)' }}>실제 임차처 반납일자</label>
                 <input

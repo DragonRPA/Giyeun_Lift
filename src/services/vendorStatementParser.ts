@@ -352,9 +352,19 @@ export function parseVendorStatementExcel(
 
     // 각 필드 값 추출
     let rawAssetNo = colAssetNo !== -1 ? parseString(rowData[colAssetNo]) : '';
-    const rawSerialNo = colSerialNo !== -1 ? parseString(rowData[colSerialNo]) : '';
     let rawModelName = colModelName !== -1 ? parseString(rowData[colModelName]) : '';
-    const rawPeriod = colPeriod !== -1 ? parseString(rowData[colPeriod]) : '';
+    const rawSerialNo = colSerialNo !== -1 ? parseString(rowData[colSerialNo]) : '';
+    let rawPeriod = colPeriod !== -1 ? parseString(rowData[colPeriod]) : '';
+    // 롯데렌탈 등 인접 열에 '~' 종료일이 분할된 경우 자동 결합
+    if (colPeriod !== -1 && !rawPeriod.includes('~')) {
+      for (let offset = 1; offset <= 5; offset++) {
+        const nextCell = parseString(rowData[colPeriod + offset]);
+        if (nextCell.startsWith('~') || nextCell.includes('~')) {
+          rawPeriod = `${rawPeriod} ${nextCell}`.trim();
+          break;
+        }
+      }
+    }
     const rawRentStart = colRentStart !== -1 ? rowData[colRentStart] : '';
     const rawRentEnd = colRentEnd !== -1 ? rowData[colRentEnd] : '';
     const rawUnitPrice = colMonthlyRent !== -1 ? parseNumber(rowData[colMonthlyRent]) : undefined;

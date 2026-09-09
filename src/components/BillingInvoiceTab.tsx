@@ -17,6 +17,12 @@ import {
   fetchInvoiceDetail,
   type InvoiceGroupBy
 } from '../services/invoiceEngine';
+import {
+  generateTransactionStatementExcel,
+  generateTransactionStatementPdf,
+  type TransactionStatementPdfData,
+  type TransactionStatementItem
+} from '../services/excelTemplateEngine';
 import type { BillingInvoice, Billing, BillingDetail } from '../services/db';
 
 // ── 상태 배지 ──
@@ -232,7 +238,9 @@ export const BillingInvoiceTab: React.FC = () => {
       // 품목 요약 텍스트
       let itemSummary = '';
       if (details.length > 0) {
-        itemSummary = details.map(d => d.itemName || d.description || '품목').join(', ');
+        itemSummary = details
+          .map(d => (d.itemName || d.description || '품목').replace(/\(가상\)/g, '').replace(/\s+/g, ' ').trim())
+          .join(', ');
         if (itemSummary.length > 28) itemSummary = itemSummary.slice(0, 28) + '...';
       } else {
         itemSummary = category === 'REPAIR' ? '장비 파손 수리비'
@@ -354,9 +362,10 @@ export const BillingInvoiceTab: React.FC = () => {
         b.details.forEach(d => {
           const supply = d.amount || (d.unitPrice * d.quantity) || 0;
           const vat = d.vatAmount != null ? d.vatAmount : Math.floor(supply * 0.1);
+          const cleanItemName = (d.itemName || d.description || '품목').replace(/\(가상\)/g, '').replace(/\s+/g, ' ').trim();
           items.push({
             date: b.billingDate ? b.billingDate.slice(5) : '-',
-            itemName: d.itemName || d.description || '품목',
+            itemName: cleanItemName,
             spec: d.spec || d.assetNo || b.siteName || '-',
             qty: d.quantity || 1,
             unitPrice: d.unitPrice || supply,
@@ -373,7 +382,7 @@ export const BillingInvoiceTab: React.FC = () => {
           : `렌탈료 (${b.siteName || b.billingYm})`;
         items.push({
           date: b.billingDate ? b.billingDate.slice(5) : '-',
-          itemName: name,
+          itemName: name.replace(/\(가상\)/g, '').replace(/\s+/g, ' ').trim(),
           spec: b.contract?.contractNo || b.siteName || '-',
           qty: 1,
           unitPrice: supply,
@@ -505,48 +514,112 @@ export const BillingInvoiceTab: React.FC = () => {
     window.print();
   };
 
-  // ── 거래명세서 엑셀 다운로드 (XLSX) ──
-  const handleExportExcel = () => {
+  // ── 공통 거래명세서 주입 데이터 생성 헬퍼 ──
+  const buildStatementData = (): TransactionStatementPdfData => {
+    const custName = selectedCustomer?.name || '고객사';
+    const firstSiteName = selectedBillingsData[0]?.siteName || '';
+
+    const items: TransactionStatementItem[] = statementItems.map(item => {
+      const parts = (item.date || '').split('-');
+      const m = parts.length >= 2 ? parseInt(parts[0], 10) : parseInt(selectedYm.split('-')[1], 10);
+      const d = parts.length >= 2 ? parseInt(parts[1], 10) : 1;
+      return {
+        month: isNaN(m) ? (parseInt(selectedYm.split('-')[1], 10) || 8) : m,
+        day: isNaN(d) ? 1 : d,
+        itemDescription: item.itemName,
+        quantity: item.qty || 1,
+        unitPrice: item.unitPrice || 0,
+        supplyAmount: item.amount || 0,
+        vatAmount: item.vat || 0,
+        notes: item.memo || item.spec || ''
+      };
+    });
+
+    return {
+      billingDate: new Date().toISOString().split('T')[0],
+      billingYm: selectedYm || initialYm,
+      contractNo: selectedBillingsData[0]?.contract?.contractNo || '',
+      lessorBizNo: '138-81-83251',
+      lessorName: '주식회사 기연리프트',
+      lessorCeo: '이수용',
+      lessorAddress: '경기도 용인시 처인구 포곡읍 곡현로 254-3',
+      salespersonName: '영업부',
+      salespersonPhone: '031-334-5296',
+      billingManagerName: '정수아',
+      billingManagerPhone: '031-334-5295',
+      lessorEmail: 'giyeonlift@naver.com',
+      customerBizNo: selectedCustomer?.businessNumber || '',
+      customerName: selectedCustomer?.name || '',
+      customerCeo: selectedCustomer?.representativeName || '',
+      customerAddress: selectedCustomer?.address || '',
+      customerBizType: selectedCustomer?.bizType || '',
+      customerBizItem: selectedCustomer?.bizItem || '',
+      siteName: firstSiteName,
+      bankAccount: '신한은행 140-010-007060 (주식회사 기연리프트)',
+      items,
+      totalSupply: accountingSummary.supplyAmount,
+      totalVat: accountingSummary.vatAmount,
+      totalGrand: accountingSummary.grandTotal
+    };
+  };
+
+  // ── 정품 거래명세서 엑셀 다운로드 (00.거래명세서양식.xlsx 정품 서식 주입) ──
+  const handleExportExcel = async () => {
     if (statementItems.length === 0) {
-      showErrorModal?.('엑셀로 내보낼 항목이 없습니다.');
+      showErrorModal?.('엑셀로 내보낼 항목이 없습니다. 청구서를 1건 이상 선택해 주세요.');
       return;
     }
 
-    const rows = statementItems.map((item, idx) => ({
-      'No': idx + 1,
-      '일자': item.date,
-      '품목명': item.itemName,
-      '규격/현장': item.spec,
-      '수량': item.qty,
-      '단가': item.unitPrice,
-      '공급가액': item.amount,
-      '세액': item.vat,
-      '합계금액': item.amount + item.vat,
-      '비고': item.memo
-    }));
+    try {
+      const data = buildStatementData();
+      const buffer = await generateTransactionStatementExcel(data);
+      const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      const custName = selectedCustomer?.name || '통합청구';
+      const fileName = `거래명세서_${custName}_${selectedYm}_정품.xlsx`;
+      a.download = fileName;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      showSuccessToast?.(`정품 거래명세서 엑셀 파일이 다운로드되었습니다: ${fileName}`);
+    } catch (err: any) {
+      console.error('엑셀 생성 실패:', err);
+      showErrorModal?.(`거래명세서 엑셀 서식 생성 실패: ${err.message || err}`);
+    }
+  };
 
-    // 합계행 추가
-    rows.push({
-      'No': '합계',
-      '일자': '',
-      '품목명': '',
-      '규격/현장': '',
-      '수량': rows.reduce((s, r) => s + (typeof r.수량 === 'number' ? r.수량 : 0), 0),
-      '단가': 0,
-      '공급가액': accountingSummary.supplyAmount,
-      '세액': accountingSummary.vatAmount,
-      '합계금액': accountingSummary.grandTotal,
-      '비고': ''
-    });
+  // ── 정품 거래명세서 PDF 변환 다운로드 (COM 에이전트 연동) ──
+  const handleDownloadPdf = async () => {
+    if (statementItems.length === 0) {
+      showErrorModal?.('PDF로 변환할 항목이 없습니다. 청구서를 1건 이상 선택해 주세요.');
+      return;
+    }
 
-    const worksheet = XLSX.utils.json_to_sheet(rows);
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, '거래명세서');
-
-    const custName = selectedCustomer?.name || '통합청구';
-    const fileName = `거래명세서_${custName}_${selectedYm}_${new Date().toISOString().slice(0, 10)}.xlsx`;
-    XLSX.writeFile(workbook, fileName);
-    showSuccessToast?.(`거래명세서 엑셀 파일이 다운로드되었습니다: ${fileName}`);
+    try {
+      const data = buildStatementData();
+      const pdfBytes = await generateTransactionStatementPdf(data);
+      const blob = new Blob([pdfBytes], { type: 'application/pdf' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      const custName = selectedCustomer?.name || '통합청구';
+      const fileName = `거래명세서_${custName}_${selectedYm}.pdf`;
+      a.download = fileName;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      showSuccessToast?.(`거래명세서 PDF 파일이 생성 및 다운로드되었습니다: ${fileName}`);
+    } catch (err: any) {
+      console.warn('PDF 에이전트 연결 불가 안내:', err);
+      showErrorModal?.(
+        `${err.message || err}\n\n` +
+        `💡 [대안]: [정품 엑셀 다운로드]를 통해 엑셀 파일을 다운로드하신 후, 엑셀에서 바로 PDF로 저장하시거나 [인쇄] 기능을 사용하실 수 있습니다.`
+      );
+    }
   };
 
   // 고객사명 도우미
@@ -1018,7 +1091,7 @@ export const BillingInvoiceTab: React.FC = () => {
 
               {/* 공급자 & 공급받는자 2열 테이블 */}
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '10px' }}>
-                {/* 공급자 (기은리프트) */}
+                {/* 공급자 (주식회사 기연리프트 SSOT) */}
                 <table style={{ width: '100%', borderCollapse: 'collapse', border: '1px solid #9ca3af', fontSize: '10px' }}>
                   <tbody>
                     <tr>
@@ -1026,17 +1099,17 @@ export const BillingInvoiceTab: React.FC = () => {
                         공<br/>급<br/>자
                       </td>
                       <td style={{ backgroundColor: '#f9fafb', padding: '3px 4px', borderRight: '1px solid #e5e7eb', borderBottom: '1px solid #e5e7eb', width: '55px', fontWeight: 600 }}>등록번호</td>
-                      <td colSpan={3} style={{ padding: '3px 4px', borderBottom: '1px solid #e5e7eb', fontWeight: 700 }}>123-45-67890</td>
+                      <td colSpan={3} style={{ padding: '3px 4px', borderBottom: '1px solid #e5e7eb', fontWeight: 700 }}>138-81-83251</td>
                     </tr>
                     <tr>
                       <td style={{ backgroundColor: '#f9fafb', padding: '3px 4px', borderRight: '1px solid #e5e7eb', borderBottom: '1px solid #e5e7eb', fontWeight: 600 }}>상호</td>
-                      <td style={{ padding: '3px 4px', borderRight: '1px solid #e5e7eb', borderBottom: '1px solid #e5e7eb', fontWeight: 700 }}>(주)기은리프트</td>
+                      <td style={{ padding: '3px 4px', borderRight: '1px solid #e5e7eb', borderBottom: '1px solid #e5e7eb', fontWeight: 700 }}>주식회사 기연리프트</td>
                       <td style={{ backgroundColor: '#f9fafb', padding: '3px 4px', borderRight: '1px solid #e5e7eb', borderBottom: '1px solid #e5e7eb', width: '35px', fontWeight: 600 }}>성명</td>
-                      <td style={{ padding: '3px 4px', borderBottom: '1px solid #e5e7eb' }}>김기은</td>
+                      <td style={{ padding: '3px 4px', borderBottom: '1px solid #e5e7eb' }}>이수용</td>
                     </tr>
                     <tr>
                       <td style={{ backgroundColor: '#f9fafb', padding: '3px 4px', borderRight: '1px solid #e5e7eb', borderBottom: '1px solid #e5e7eb', fontWeight: 600 }}>사업장</td>
-                      <td colSpan={3} style={{ padding: '3px 4px', borderBottom: '1px solid #e5e7eb' }}>충남 천안시 서북구 직산읍</td>
+                      <td colSpan={3} style={{ padding: '3px 4px', borderBottom: '1px solid #e5e7eb' }}>경기도 용인시 처인구 포곡읍 곡현로 254-3</td>
                     </tr>
                     <tr>
                       <td style={{ backgroundColor: '#f9fafb', padding: '3px 4px', borderRight: '1px solid #e5e7eb', fontWeight: 600 }}>업태/종목</td>
@@ -1097,18 +1170,18 @@ export const BillingInvoiceTab: React.FC = () => {
                 </div>
               </div>
 
-              {/* ── 11행 정규 규격 그리드 ── */}
-              <table style={{ width: '100%', borderCollapse: 'collapse', border: '1px solid #9ca3af', fontSize: '10px' }}>
+              {/* ── 11행 정규 규격 그리드 (table-layout fixed, no-wrap 방어) ── */}
+              <table style={{ width: '100%', tableLayout: 'fixed', borderCollapse: 'collapse', border: '1px solid #9ca3af', fontSize: '10px' }}>
                 <thead>
                   <tr style={{ backgroundColor: '#e5e7eb', borderBottom: '1px solid #9ca3af' }}>
-                    <th style={{ padding: '4px 6px', borderRight: '1px solid #d1d5db', width: '38px', textAlign: 'center' }}>월/일</th>
-                    <th style={{ padding: '4px 6px', borderRight: '1px solid #d1d5db', textAlign: 'left' }}>품목명</th>
-                    <th style={{ padding: '4px 6px', borderRight: '1px solid #d1d5db', width: '80px', textAlign: 'left' }}>규격/현장</th>
-                    <th style={{ padding: '4px 6px', borderRight: '1px solid #d1d5db', width: '32px', textAlign: 'center' }}>수량</th>
-                    <th style={{ padding: '4px 6px', borderRight: '1px solid #d1d5db', width: '60px', textAlign: 'right' }}>단가</th>
-                    <th style={{ padding: '4px 6px', borderRight: '1px solid #d1d5db', width: '70px', textAlign: 'right' }}>공급가액</th>
-                    <th style={{ padding: '4px 6px', borderRight: '1px solid #d1d5db', width: '60px', textAlign: 'right' }}>세액</th>
-                    <th style={{ padding: '4px 6px', width: '60px', textAlign: 'left' }}>비고</th>
+                    <th style={{ padding: '4px 2px', borderRight: '1px solid #d1d5db', width: '34px', textAlign: 'center', whiteSpace: 'nowrap' }}>월/일</th>
+                    <th style={{ padding: '4px 4px', borderRight: '1px solid #d1d5db', textAlign: 'left', whiteSpace: 'nowrap' }}>품목명</th>
+                    <th style={{ padding: '4px 3px', borderRight: '1px solid #d1d5db', width: '65px', textAlign: 'left', whiteSpace: 'nowrap' }}>규격/현장</th>
+                    <th style={{ padding: '4px 2px', borderRight: '1px solid #d1d5db', width: '28px', textAlign: 'center', whiteSpace: 'nowrap' }}>수량</th>
+                    <th style={{ padding: '4px 3px', borderRight: '1px solid #d1d5db', width: '56px', textAlign: 'right', whiteSpace: 'nowrap' }}>단가</th>
+                    <th style={{ padding: '4px 3px', borderRight: '1px solid #d1d5db', width: '66px', textAlign: 'right', whiteSpace: 'nowrap' }}>공급가액</th>
+                    <th style={{ padding: '4px 3px', borderRight: '1px solid #d1d5db', width: '56px', textAlign: 'right', whiteSpace: 'nowrap' }}>세액</th>
+                    <th style={{ padding: '4px 3px', width: '50px', textAlign: 'left', whiteSpace: 'nowrap' }}>비고</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1117,28 +1190,28 @@ export const BillingInvoiceTab: React.FC = () => {
                     const item = statementItems[idx];
                     return (
                       <tr key={idx} style={{ height: '22px', borderBottom: '1px solid #e5e7eb' }}>
-                        <td style={{ padding: '2px 4px', borderRight: '1px solid #e5e7eb', textAlign: 'center', color: '#6b7280' }}>
+                        <td style={{ padding: '2px 2px', borderRight: '1px solid #e5e7eb', textAlign: 'center', color: '#6b7280', whiteSpace: 'nowrap' }}>
                           {item ? item.date : ''}
                         </td>
-                        <td style={{ padding: '2px 4px', borderRight: '1px solid #e5e7eb', fontWeight: item ? 600 : 400, color: '#111827' }}>
+                        <td style={{ padding: '2px 4px', borderRight: '1px solid #e5e7eb', fontWeight: item ? 600 : 400, color: '#111827', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={item?.itemName}>
                           {item ? item.itemName : ''}
                         </td>
-                        <td style={{ padding: '2px 4px', borderRight: '1px solid #e5e7eb', color: '#4b5563' }}>
+                        <td style={{ padding: '2px 3px', borderRight: '1px solid #e5e7eb', color: '#4b5563', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={item?.spec}>
                           {item ? item.spec : ''}
                         </td>
-                        <td style={{ padding: '2px 4px', borderRight: '1px solid #e5e7eb', textAlign: 'center' }}>
+                        <td style={{ padding: '2px 2px', borderRight: '1px solid #e5e7eb', textAlign: 'center', whiteSpace: 'nowrap' }}>
                           {item ? item.qty : ''}
                         </td>
-                        <td style={{ padding: '2px 4px', borderRight: '1px solid #e5e7eb', textAlign: 'right', color: '#4b5563' }}>
+                        <td style={{ padding: '2px 3px', borderRight: '1px solid #e5e7eb', textAlign: 'right', color: '#4b5563', whiteSpace: 'nowrap' }}>
                           {item ? item.unitPrice.toLocaleString() : ''}
                         </td>
-                        <td style={{ padding: '2px 4px', borderRight: '1px solid #e5e7eb', textAlign: 'right', fontWeight: 600 }}>
+                        <td style={{ padding: '2px 3px', borderRight: '1px solid #e5e7eb', textAlign: 'right', fontWeight: 600, whiteSpace: 'nowrap' }}>
                           {item ? item.amount.toLocaleString() : ''}
                         </td>
-                        <td style={{ padding: '2px 4px', borderRight: '1px solid #e5e7eb', textAlign: 'right', color: '#6b7280' }}>
+                        <td style={{ padding: '2px 3px', borderRight: '1px solid #e5e7eb', textAlign: 'right', color: '#6b7280', whiteSpace: 'nowrap' }}>
                           {item ? item.vat.toLocaleString() : ''}
                         </td>
-                        <td style={{ padding: '2px 4px', color: '#6b7280', fontSize: '9px' }}>
+                        <td style={{ padding: '2px 3px', color: '#6b7280', fontSize: '9px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                           {item ? item.memo : ''}
                         </td>
                       </tr>
@@ -1147,16 +1220,16 @@ export const BillingInvoiceTab: React.FC = () => {
                 </tbody>
                 <tfoot>
                   <tr style={{ backgroundColor: '#f3f4f6', borderTop: '2px solid #9ca3af', fontWeight: 700 }}>
-                    <td colSpan={5} style={{ padding: '4px 6px', borderRight: '1px solid #d1d5db', textAlign: 'center' }}>
+                    <td colSpan={5} style={{ padding: '4px 6px', borderRight: '1px solid #d1d5db', textAlign: 'center', whiteSpace: 'nowrap' }}>
                       소계 및 합계
                     </td>
-                    <td style={{ padding: '4px 6px', borderRight: '1px solid #d1d5db', textAlign: 'right', color: '#111827' }}>
+                    <td style={{ padding: '4px 3px', borderRight: '1px solid #d1d5db', textAlign: 'right', color: '#111827', whiteSpace: 'nowrap' }}>
                       {accountingSummary.supplyAmount.toLocaleString()}
                     </td>
-                    <td style={{ padding: '4px 6px', borderRight: '1px solid #d1d5db', textAlign: 'right', color: '#6b7280' }}>
+                    <td style={{ padding: '4px 3px', borderRight: '1px solid #d1d5db', textAlign: 'right', color: '#6b7280', whiteSpace: 'nowrap' }}>
                       {accountingSummary.vatAmount.toLocaleString()}
                     </td>
-                    <td style={{ padding: '4px 6px', textAlign: 'right', color: '#1d4ed8' }}>
+                    <td style={{ padding: '4px 3px', textAlign: 'right', color: '#1d4ed8', whiteSpace: 'nowrap' }}>
                       {accountingSummary.grandTotal.toLocaleString()}
                     </td>
                   </tr>
@@ -1165,8 +1238,113 @@ export const BillingInvoiceTab: React.FC = () => {
 
               {/* 하단 입금계좌 및 안내 */}
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '8px', fontSize: '10px', color: '#4b5563' }}>
-                <div>입금계좌: 기업은행 010-1234-5678 (예금주: (주)기은리프트)</div>
-                <div>납기일: {invoiceDueDate || '협의'}</div>
+                <div><strong>입금계좌:</strong> 신한은행 140-010-007060 (예금주: 주식회사 기연리프트)</div>
+                <div><strong>납기일:</strong> {invoiceDueDate || '협의 (당월말)'}</div>
+              </div>
+            </div>
+
+            {/* ── 우하단 터미널 액션 바 (Gutenberg Z-Pattern) ── */}
+            <div style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              padding: '12px 14px',
+              backgroundColor: 'var(--bg-app)',
+              borderRadius: '8px',
+              border: '1px solid var(--border-color)',
+              flexWrap: 'wrap',
+              gap: '10px'
+            }}>
+              {/* 좌측: 대차대조식 무결성 확정 요약 */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+                  청구 대상: <strong>{selectedBillingIds.length}</strong>건 선택됨
+                </span>
+                <span style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-main)', whiteSpace: 'nowrap' }}>
+                  공급가: {fmtAmt(accountingSummary.supplyAmount)} + 세액: {fmtAmt(accountingSummary.vatAmount)} = <span style={{ color: 'var(--primary)' }}>{fmtAmt(accountingSummary.grandTotal)}</span>
+                </span>
+              </div>
+
+              {/* 우측: 4대 액션 버튼군 */}
+              <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+                {/* 1. 정품 엑셀 서식 다운로드 */}
+                <button
+                  type="button"
+                  onClick={handleExportExcel}
+                  disabled={selectedBillingIds.length === 0}
+                  title="00.거래명세서양식.xlsx 정품 서식에 데이터 주입 엑셀 파일 다운로드"
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: '5px',
+                    padding: '8px 12px', borderRadius: '6px',
+                    backgroundColor: '#10b981', color: '#ffffff',
+                    border: 'none', fontSize: '12px', fontWeight: 700,
+                    cursor: selectedBillingIds.length === 0 ? 'not-allowed' : 'pointer',
+                    opacity: selectedBillingIds.length === 0 ? 0.5 : 1,
+                    whiteSpace: 'nowrap'
+                  }}
+                >
+                  <Download size={14} />
+                  정품 엑셀 다운로드
+                </button>
+
+                {/* 2. PDF 변환 / 다운로드 */}
+                <button
+                  type="button"
+                  onClick={handleDownloadPdf}
+                  disabled={selectedBillingIds.length === 0}
+                  title="MS Excel COM 에이전트 연동 정품 PDF 변환 다운로드"
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: '5px',
+                    padding: '8px 12px', borderRadius: '6px',
+                    backgroundColor: '#4f46e5', color: '#ffffff',
+                    border: 'none', fontSize: '12px', fontWeight: 700,
+                    cursor: selectedBillingIds.length === 0 ? 'not-allowed' : 'pointer',
+                    opacity: selectedBillingIds.length === 0 ? 0.5 : 1,
+                    whiteSpace: 'nowrap'
+                  }}
+                >
+                  <FileText size={14} />
+                  PDF 다운로드
+                </button>
+
+                {/* 3. 브라우저 인쇄 */}
+                <button
+                  type="button"
+                  onClick={handlePrintStatement}
+                  disabled={selectedBillingIds.length === 0}
+                  title="거래명세서 캔버스 브라우저 인쇄"
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: '5px',
+                    padding: '8px 12px', borderRadius: '6px',
+                    backgroundColor: 'var(--bg-card)', color: 'var(--text-main)',
+                    border: '1px solid var(--border-color)', fontSize: '12px', fontWeight: 600,
+                    cursor: selectedBillingIds.length === 0 ? 'not-allowed' : 'pointer',
+                    opacity: selectedBillingIds.length === 0 ? 0.5 : 1,
+                    whiteSpace: 'nowrap'
+                  }}
+                >
+                  <Printer size={14} />
+                  인쇄
+                </button>
+
+                {/* 4. 최종 완결 액션: 통합 인보이스 발행 확정 */}
+                <button
+                  type="button"
+                  onClick={handleIssueInvoice}
+                  disabled={isIssuing || selectedBillingIds.length === 0 || !selectedCustomerId}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: '5px',
+                    padding: '8px 16px', borderRadius: '6px',
+                    backgroundColor: 'var(--primary)', color: 'var(--text-on-primary)',
+                    border: 'none', fontSize: '12.5px', fontWeight: 700,
+                    cursor: (isIssuing || selectedBillingIds.length === 0 || !selectedCustomerId) ? 'not-allowed' : 'pointer',
+                    opacity: (isIssuing || selectedBillingIds.length === 0 || !selectedCustomerId) ? 0.5 : 1,
+                    whiteSpace: 'nowrap'
+                  }}
+                >
+                  <CheckCircle size={14} />
+                  {isIssuing ? '발행 처리 중...' : '통합 청구서 발행'}
+                </button>
               </div>
             </div>
 

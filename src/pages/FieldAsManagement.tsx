@@ -683,7 +683,7 @@ showToast('밴드 과거 AS 빅데이터 탑재를 시작합니다.');
             </h1>
           </div>
 
-          {/* 5대 메인 탭 전환 버튼 (헌장 3.1 & 사장님 지침) */}
+          {/* 5대 메인 탭 전환 버튼 (헌장 3.1 무수식어 건조 표준) */}
           <div style={{ display: 'flex', backgroundColor: 'var(--bg-secondary)', padding: '3px', borderRadius: '8px', gap: '4px' }}>
             <button
               onClick={() => setMainTab('STUDIO')}
@@ -697,10 +697,11 @@ showToast('밴드 과거 AS 빅데이터 탑재를 시작합니다.');
                 backgroundColor: mainTab === 'STUDIO' ? '#ffffff' : 'transparent',
                 color: mainTab === 'STUDIO' ? 'var(--primary)' : '#64748b',
                 boxShadow: mainTab === 'STUDIO' ? '0 1px 2px rgba(0,0,0,0.05)' : 'none',
-                whiteSpace: 'nowrap'
+                whiteSpace: 'nowrap',
+                flexShrink: 0
               }}
             >
-              AS 접수 / 출동 스튜디오
+              AS 접수 스튜디오
             </button>
             <button
               onClick={() => setMainTab('CALENDAR')}
@@ -714,10 +715,11 @@ showToast('밴드 과거 AS 빅데이터 탑재를 시작합니다.');
                 backgroundColor: mainTab === 'CALENDAR' ? '#ffffff' : 'transparent',
                 color: mainTab === 'CALENDAR' ? 'var(--primary)' : '#64748b',
                 boxShadow: mainTab === 'CALENDAR' ? '0 1px 2px rgba(0,0,0,0.05)' : 'none',
-                whiteSpace: 'nowrap'
+                whiteSpace: 'nowrap',
+                flexShrink: 0
               }}
             >
-              📅 출동 일정 캘린더
+              AS 방문 일정
             </button>
             <button
               onClick={() => setMainTab('ANALYTICS')}
@@ -731,10 +733,11 @@ showToast('밴드 과거 AS 빅데이터 탑재를 시작합니다.');
                 backgroundColor: mainTab === 'ANALYTICS' ? '#ffffff' : 'transparent',
                 color: mainTab === 'ANALYTICS' ? 'var(--primary)' : '#64748b',
                 boxShadow: mainTab === 'ANALYTICS' ? '0 1px 2px rgba(0,0,0,0.05)' : 'none',
-                whiteSpace: 'nowrap'
+                whiteSpace: 'nowrap',
+                flexShrink: 0
               }}
             >
-              📊 기간 성과 분석
+              AS 성과 분석
             </button>
             <button
               onClick={() => setMainTab('LEDGER')}
@@ -748,10 +751,11 @@ showToast('밴드 과거 AS 빅데이터 탑재를 시작합니다.');
                 backgroundColor: mainTab === 'LEDGER' ? '#ffffff' : 'transparent',
                 color: mainTab === 'LEDGER' ? 'var(--primary)' : '#64748b',
                 boxShadow: mainTab === 'LEDGER' ? '0 1px 2px rgba(0,0,0,0.05)' : 'none',
-                whiteSpace: 'nowrap'
+                whiteSpace: 'nowrap',
+                flexShrink: 0
               }}
             >
-              AS 처리 대장 ({fieldAsTickets.length.toLocaleString()}건)
+              AS 관리 대장 ({fieldAsTickets.length.toLocaleString()}건)
             </button>
             <button
               onClick={() => setMainTab('VEHICLE_STOCK')}
@@ -765,10 +769,11 @@ showToast('밴드 과거 AS 빅데이터 탑재를 시작합니다.');
                 backgroundColor: mainTab === 'VEHICLE_STOCK' ? '#ffffff' : 'transparent',
                 color: mainTab === 'VEHICLE_STOCK' ? 'var(--primary)' : '#64748b',
                 boxShadow: mainTab === 'VEHICLE_STOCK' ? '0 1px 2px rgba(0,0,0,0.05)' : 'none',
-                whiteSpace: 'nowrap'
+                whiteSpace: 'nowrap',
+                flexShrink: 0
               }}
             >
-              차량별 부품 적재
+              차량 재고 관리
             </button>
           </div>
         </div>
@@ -789,7 +794,8 @@ showToast('밴드 과거 AS 빅데이터 탑재를 시작합니다.');
               fontWeight: 600,
               color: 'var(--primary)',
               cursor: 'pointer',
-              whiteSpace: 'nowrap'
+              whiteSpace: 'nowrap',
+              flexShrink: 0
             }}
           >
             <ExternalLink size={15} />
@@ -810,11 +816,12 @@ showToast('밴드 과거 AS 빅데이터 탑재를 시작합니다.');
               fontWeight: 600,
               color: 'var(--text-secondary)',
               cursor: 'pointer',
-              whiteSpace: 'nowrap'
+              whiteSpace: 'nowrap',
+              flexShrink: 0
             }}
           >
             <Download size={15} />
-            과거 이력 업로드 (초기DB)
+            과거 이력 등록
           </button>
 
           <button
@@ -831,11 +838,12 @@ showToast('밴드 과거 AS 빅데이터 탑재를 시작합니다.');
               fontWeight: 700,
               color: '#ffffff',
               cursor: 'pointer',
-              whiteSpace: 'nowrap'
+              whiteSpace: 'nowrap',
+              flexShrink: 0
             }}
           >
             <Plus size={16} />
-            신규 AS 직접 등록
+            신규 AS 등록
           </button>
 
           {/* 모바일 / PC 뷰 전환 토글 */}
@@ -853,12 +861,12 @@ showToast('밴드 과거 AS 빅데이터 탑재를 시작합니다.');
               fontWeight: 700,
               color: isEffectiveMobile ? '#b45309' : '#475569',
               cursor: 'pointer',
-              whiteSpace: 'nowrap'
+              whiteSpace: 'nowrap',
+              flexShrink: 0
             }}
-            title="스마트폰 터치 뷰 및 PC 대화면 뷰 전환"
           >
             {isEffectiveMobile ? <Smartphone size={15} color="#d97706" /> : <Monitor size={15} />}
-            {isEffectiveMobile ? '모바일 전용 뷰' : 'PC 대화면 뷰'}
+            {isEffectiveMobile ? '모바일 뷰' : 'PC 뷰'}
           </button>
         </div>
       </div>
@@ -886,77 +894,77 @@ showToast('밴드 과거 AS 빅데이터 탑재를 시작합니다.');
                 justifyContent: 'center',
                 gap: '4px',
                 whiteSpace: 'nowrap'
-              }}
-            >
-              🚨 출동 ({studioFilteredTickets.filter(t => t.status !== 'COMPLETED').length})
-            </button>
-            <button
-              onClick={() => setMobileActiveTab('VAN_STOCK')}
-              style={{
-                padding: '10px 4px',
-                borderRadius: '8px',
-                fontSize: '13px',
-                fontWeight: 700,
-                border: 'none',
-                cursor: 'pointer',
-                backgroundColor: mobileActiveTab === 'VAN_STOCK' ? '#2563eb' : 'transparent',
-                color: mobileActiveTab === 'VAN_STOCK' ? '#ffffff' : '#475569',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: '4px',
-                whiteSpace: 'nowrap'
-              }}
-            >
-              🚐 내차부품
-            </button>
-            <button
-              onClick={() => setMobileActiveTab('HISTORY')}
-              style={{
-                padding: '10px 4px',
-                borderRadius: '8px',
-                fontSize: '13px',
-                fontWeight: 700,
-                border: 'none',
-                cursor: 'pointer',
-                backgroundColor: mobileActiveTab === 'HISTORY' ? '#2563eb' : 'transparent',
-                color: mobileActiveTab === 'HISTORY' ? '#ffffff' : '#475569',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: '4px',
-                whiteSpace: 'nowrap'
-              }}
-            >
-              📋 완료내역
-            </button>
-          </div>
+            }}
+          >
+            출동 ({studioFilteredTickets.filter(t => t.status !== 'COMPLETED').length})
+          </button>
+          <button
+            onClick={() => setMobileActiveTab('VAN_STOCK')}
+            style={{
+              padding: '10px 4px',
+              borderRadius: '8px',
+              fontSize: '13px',
+              fontWeight: 700,
+              border: 'none',
+              cursor: 'pointer',
+              backgroundColor: mobileActiveTab === 'VAN_STOCK' ? '#2563eb' : 'transparent',
+              color: mobileActiveTab === 'VAN_STOCK' ? '#ffffff' : '#475569',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '4px',
+              whiteSpace: 'nowrap'
+            }}
+          >
+            차량 부품
+          </button>
+          <button
+            onClick={() => setMobileActiveTab('HISTORY')}
+            style={{
+              padding: '10px 4px',
+              borderRadius: '8px',
+              fontSize: '13px',
+              fontWeight: 700,
+              border: 'none',
+              cursor: 'pointer',
+              backgroundColor: mobileActiveTab === 'HISTORY' ? '#2563eb' : 'transparent',
+              color: mobileActiveTab === 'HISTORY' ? '#ffffff' : '#475569',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '4px',
+              whiteSpace: 'nowrap'
+            }}
+          >
+            완료 내역
+          </button>
+        </div>
 
-          {/* 기본 내비 앱 설정 및 상태 뱃지 */}
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 12px', backgroundColor: 'var(--bg-app)', borderRadius: '8px', border: '1px solid var(--border-color)' }}>
-            <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
-              🚗 내 기본 내비: <strong style={{ color: '#2563eb' }}>{preferredNavApp === 'TMAP' ? 'T맵' : (preferredNavApp === 'KAKAO' ? '카카오내비' : (preferredNavApp === 'NAVER' ? '네이버지도' : '매번 선택'))}</strong>
-            </span>
-            <button
-              type="button"
-              onClick={() => {
-                const nextApp = preferredNavApp === 'TMAP' ? 'KAKAO' : (preferredNavApp === 'KAKAO' ? 'NAVER' : (preferredNavApp === 'NAVER' ? 'ASK' : 'TMAP'));
-                setPreferredNavApp(nextApp);
-                localStorage.setItem('preferred_nav_app', nextApp);
-              }}
-              style={{
-                padding: '3px 8px',
-                borderRadius: '4px',
-                border: '1px solid var(--border-color)',
-                backgroundColor: 'var(--bg-card)',
-                fontSize: '11px',
-                fontWeight: 700,
-                color: 'var(--text-main)',
-                cursor: 'pointer'
-              }}
-            >
-              내비 변경 ⚙️
-            </button>
+        {/* 기본 내비 앱 설정 및 상태 뱃지 */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 12px', backgroundColor: 'var(--bg-app)', borderRadius: '8px', border: '1px solid var(--border-color)' }}>
+          <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
+            기본 내비게이션: <strong style={{ color: '#2563eb' }}>{preferredNavApp === 'TMAP' ? 'T맵' : (preferredNavApp === 'KAKAO' ? '카카오내비' : (preferredNavApp === 'NAVER' ? '네이버지도' : '매번 선택'))}</strong>
+          </span>
+          <button
+            type="button"
+            onClick={() => {
+              const nextApp = preferredNavApp === 'TMAP' ? 'KAKAO' : (preferredNavApp === 'KAKAO' ? 'NAVER' : (preferredNavApp === 'NAVER' ? 'ASK' : 'TMAP'));
+              setPreferredNavApp(nextApp);
+              localStorage.setItem('preferred_nav_app', nextApp);
+            }}
+            style={{
+              padding: '3px 8px',
+              borderRadius: '4px',
+              border: '1px solid var(--border-color)',
+              backgroundColor: 'var(--bg-card)',
+              fontSize: '11px',
+              fontWeight: 700,
+              color: 'var(--text-main)',
+              cursor: 'pointer'
+            }}
+          >
+            내비 변경
+          </button>
           </div>
 
           {/* 1. 모바일 출동 티켓 피드 */}
@@ -1491,13 +1499,15 @@ showToast('밴드 과거 AS 빅데이터 탑재를 시작합니다.');
                           cursor: 'pointer',
                           display: 'flex',
                           alignItems: 'center',
-                          gap: '6px'
+                          gap: '6px',
+                          whiteSpace: 'nowrap',
+                          flexShrink: 0
                         }}
                       >
                         <Layers size={14} />
-                        {selectedTicket.assetNo} 과거 수리이력
+                        {selectedTicket.assetNo} 수리 이력 조회
                       </button>
-                      <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '4px' }}>
+                      <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '4px', whiteSpace: 'nowrap' }}>
                         접수자: {selectedTicket.reporterName || '미입력'} ({selectedTicket.reporterContact || '연락처없음'})
                       </div>
                     </div>
@@ -1505,15 +1515,15 @@ showToast('밴드 과거 AS 빅데이터 탑재를 시작합니다.');
 
                   {/* 고장 원문 박스 */}
                   <div style={{ backgroundColor: 'var(--bg-card)', border: '1px solid var(--border-color)', borderRadius: '6px', padding: '12px' }}>
-                    <div style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-secondary)', marginBottom: '4px' }}>
-                      🚨 접수된 고장 증상:
+                    <div style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-secondary)', marginBottom: '4px', whiteSpace: 'nowrap' }}>
+                      고장 증상:
                     </div>
                     <div style={{ fontSize: '14px', color: 'var(--text-main)', lineHeight: '1.5', whiteSpace: 'pre-wrap' }}>
                       {selectedTicket.issueDescription}
                     </div>
                     {selectedTicket.errorCode && (
-                      <div style={{ marginTop: '6px', fontSize: '12px', color: '#dc2626', fontWeight: 700 }}>
-                        계기판 에러코드: {selectedTicket.errorCode}
+                      <div style={{ marginTop: '6px', fontSize: '12px', color: '#dc2626', fontWeight: 700, whiteSpace: 'nowrap' }}>
+                        에러 코드: {selectedTicket.errorCode}
                       </div>
                     )}
                   </div>
@@ -1561,7 +1571,7 @@ showToast('밴드 과거 AS 빅데이터 탑재를 시작합니다.');
                   </div>
                 </div>
 
-                {/* 3. 현장 조치 내용 입력 (다빈도 빠른 태그 연동) */}
+                {/* 3. 현장 조치 내용 입력 (프리셋 태그 연동) */}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <label style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-main)', whiteSpace: 'nowrap' }}>
@@ -1569,7 +1579,7 @@ showToast('밴드 과거 AS 빅데이터 탑재를 시작합니다.');
                     </label>
                   </div>
 
-                  {/* 원클릭 조치 프리셋 버튼 */}
+                  {/* 조치 프리셋 버튼 */}
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: '5px', marginBottom: '4px' }}>
                     {QUICK_ACTION_TAGS.map((tag, idx) => (
                       <button
@@ -1587,7 +1597,8 @@ showToast('밴드 과거 AS 빅데이터 탑재를 시작합니다.');
                           fontSize: '11px',
                           color: 'var(--text-main)',
                           cursor: 'pointer',
-                          whiteSpace: 'nowrap'
+                          whiteSpace: 'nowrap',
+                          flexShrink: 0
                         }}
                       >
                         + {tag}
@@ -1640,7 +1651,7 @@ showToast('밴드 과거 AS 빅데이터 탑재를 시작합니다.');
 
                 {/* 4. 처리 결과 판정 및 재방문 연계 설정 */}
                 <div style={{ backgroundColor: 'var(--bg-app)', border: '1px solid var(--border-color)', borderRadius: '8px', padding: '16px' }}>
-                  <label style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-main)', display: 'block', marginBottom: '10px' }}>
+                  <label style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-main)', display: 'block', marginBottom: '10px', whiteSpace: 'nowrap' }}>
                     처리 결과 판정
                   </label>
 
@@ -1655,10 +1666,11 @@ showToast('밴드 과거 AS 빅데이터 탑재를 시작합니다.');
                         backgroundColor: actionResolutionType === 'REPAIR_DONE' ? '#dcfce7' : 'var(--bg-card)',
                         fontWeight: actionResolutionType === 'REPAIR_DONE' ? 700 : 500,
                         color: actionResolutionType === 'REPAIR_DONE' ? '#166534' : '#475569',
-                        cursor: 'pointer'
+                        cursor: 'pointer',
+                        whiteSpace: 'nowrap'
                       }}
                     >
-                      🟢 조치완료 (정상종결)
+                      조치 완료
                     </button>
 
                     <button
@@ -1671,10 +1683,11 @@ showToast('밴드 과거 AS 빅데이터 탑재를 시작합니다.');
                         backgroundColor: actionResolutionType === 'REVISIT_NEEDED' ? '#fef3c7' : 'var(--bg-card)',
                         fontWeight: actionResolutionType === 'REVISIT_NEEDED' ? 700 : 500,
                         color: actionResolutionType === 'REVISIT_NEEDED' ? '#92400e' : '#475569',
-                        cursor: 'pointer'
+                        cursor: 'pointer',
+                        whiteSpace: 'nowrap'
                       }}
                     >
-                      🔄 익일/재방문 예정
+                      재방문 예정
                     </button>
 
                     <button
@@ -1687,22 +1700,23 @@ showToast('밴드 과거 AS 빅데이터 탑재를 시작합니다.');
                         backgroundColor: actionResolutionType === 'GUIDED_END' ? '#e0e7ff' : 'var(--bg-card)',
                         fontWeight: actionResolutionType === 'GUIDED_END' ? 700 : 500,
                         color: actionResolutionType === 'GUIDED_END' ? '#3730a3' : '#475569',
-                        cursor: 'pointer'
+                        cursor: 'pointer',
+                        whiteSpace: 'nowrap'
                       }}
                     >
-                      💬 단순안내종결 (부품미사용)
+                      단순 안내 종결
                     </button>
                   </div>
 
                   {/* 재방문 선택 시 후속 일정 입력창 노출 */}
                   {actionResolutionType === 'REVISIT_NEEDED' && (
                     <div style={{ backgroundColor: '#fffbeb', border: '1px solid #fde68a', borderRadius: '6px', padding: '12px', marginTop: '10px' }}>
-                      <div style={{ fontSize: '13px', fontWeight: 700, color: '#92400e', marginBottom: '8px' }}>
-                        📅 후속 재방문 일정 자동 연계 생성
+                      <div style={{ fontSize: '13px', fontWeight: 700, color: '#92400e', marginBottom: '8px', whiteSpace: 'nowrap' }}>
+                        후속 재방문 일정
                       </div>
                       <div style={{ display: 'grid', gridTemplateColumns: '160px 1fr', gap: '10px' }}>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                          <label style={{ fontSize: '12px', fontWeight: 600, color: '#78350f' }}>재방문 희망일</label>
+                          <label style={{ fontSize: '12px', fontWeight: 600, color: '#78350f', whiteSpace: 'nowrap' }}>재방문 희망일</label>
                           <input
                             type="date"
                             value={actionRevisitDate}
@@ -1711,7 +1725,7 @@ showToast('밴드 과거 AS 빅데이터 탑재를 시작합니다.');
                           />
                         </div>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                          <label style={{ fontSize: '12px', fontWeight: 600, color: '#78350f' }}>재방문 사유</label>
+                          <label style={{ fontSize: '12px', fontWeight: 600, color: '#78350f', whiteSpace: 'nowrap' }}>재방문 사유</label>
                           <input
                             type="text"
                             value={actionRevisitReason}
@@ -1732,21 +1746,21 @@ showToast('밴드 과거 AS 빅데이터 탑재를 시작합니다.');
                       checked={actionExchangeSuggested}
                       onChange={(e) => setActionExchangeSuggested(e.target.checked)}
                     />
-                    <label htmlFor="chkExchange" style={{ fontSize: '13px', color: '#b91c1c', fontWeight: 600, cursor: 'pointer' }}>
-                      ⚠️ 현장 수리 불가하여 대차(장비 교체) 필요 건의 (영업팀 알림)
+                    <label htmlFor="chkExchange" style={{ fontSize: '13px', color: '#b91c1c', fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                      현장 수리 불가 대차(장비 교체) 건의
                     </label>
                   </div>
                 </div>
 
-                {/* 5. 🔩 소모품 차량 재고 연동 선택기 */}
+                {/* 5. 소모품 차량 재고 연동 선택기 */}
                 <div style={{ border: '1px solid var(--border-color)', borderRadius: '8px', padding: '16px' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
-                    <label style={{ fontSize: '14px', fontWeight: 700, color: 'var(--text-main)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <label style={{ fontSize: '14px', fontWeight: 700, color: 'var(--text-main)', display: 'flex', alignItems: 'center', gap: '6px', whiteSpace: 'nowrap' }}>
                       <Truck size={16} color="#2563eb" />
                       사용 소모품 등록
                     </label>
-                    <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
-                      차량 재고 잔여량 확인
+                    <span style={{ fontSize: '12px', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
+                      차량 잔여 재고 확인
                     </span>
                   </div>
 
@@ -1793,7 +1807,9 @@ showToast('밴드 과거 AS 빅데이터 탑재를 시작합니다.');
                         fontSize: '13px',
                         fontWeight: 700,
                         color: '#ffffff',
-                        cursor: 'pointer'
+                        cursor: 'pointer',
+                        whiteSpace: 'nowrap',
+                        flexShrink: 0
                       }}
                     >
                       추가
@@ -1816,11 +1832,11 @@ showToast('밴드 과거 AS 빅데이터 탑재를 시작합니다.');
                             border: '1px solid var(--border-color)'
                           }}
                         >
-                          <span style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-main)' }}>
+                          <span style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-main)', whiteSpace: 'nowrap' }}>
                             {p.modelName} × {p.quantity}개
                           </span>
                           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                            <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
+                            <span style={{ fontSize: '12px', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
                               {(p.unitPrice * p.quantity).toLocaleString()}원
                             </span>
                             <button
@@ -1835,16 +1851,16 @@ showToast('밴드 과거 AS 빅데이터 탑재를 시작합니다.');
                       ))}
                     </div>
                   ) : (
-                    <div style={{ fontSize: '12px', color: '#94a3b8', textAlign: 'center', padding: '10px 0' }}>
+                    <div style={{ fontSize: '12px', color: '#94a3b8', textAlign: 'center', padding: '10px 0', whiteSpace: 'nowrap' }}>
                       사용된 부품이 없습니다. (부품 미사용 단순 점검)
                     </div>
                   )}
                 </div>
 
-                {/* 6. 📦 현장 수거(고장) 부품 관리 */}
+                {/* 6. 현장 수거 부품 관리 */}
                 <div style={{ border: '1px solid var(--border-color)', borderRadius: '8px', padding: '16px' }}>
-                  <label style={{ fontSize: '14px', fontWeight: 700, color: 'var(--text-main)', display: 'block', marginBottom: '10px' }}>
-                    현장 수거(고장) 부품 이력 관리
+                  <label style={{ fontSize: '14px', fontWeight: 700, color: 'var(--text-main)', display: 'block', marginBottom: '10px', whiteSpace: 'nowrap' }}>
+                    현장 수거 부품 관리
                   </label>
 
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 80px 120px 70px', gap: '8px', marginBottom: '10px' }}>
@@ -1867,14 +1883,14 @@ showToast('밴드 과거 AS 빅데이터 탑재를 시작합니다.');
                       onChange={(e) => setTempCollectedStatus(e.target.value as any)}
                       style={{ padding: '8px 10px', borderRadius: '6px', border: '1px solid var(--border-color)', fontSize: '13px', backgroundColor: 'var(--bg-card)', color: 'var(--text-main)' }}
                     >
-                      <option value="IN_VEHICLE">차량 보관중</option>
+                      <option value="IN_VEHICLE">차량 보관</option>
                       <option value="YARD_RETURNED">주기장 반납</option>
                       <option value="DISPOSED">현장 폐기</option>
                     </select>
                     <button
                       type="button"
                       onClick={handleAddCollectedPart}
-                      style={{ padding: '8px', backgroundColor: '#475569', border: 'none', borderRadius: '6px', fontSize: '13px', fontWeight: 700, color: '#ffffff', cursor: 'pointer' }}
+                      style={{ padding: '8px', backgroundColor: '#475569', border: 'none', borderRadius: '6px', fontSize: '13px', fontWeight: 700, color: '#ffffff', cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0 }}
                     >
                       등록
                     </button>
@@ -1884,8 +1900,8 @@ showToast('밴드 과거 AS 빅데이터 탑재를 시작합니다.');
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                       {actionCollectedParts.map((cp, idx) => (
                         <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: 'var(--bg-app)', padding: '6px 12px', borderRadius: '6px', border: '1px solid var(--border-color)' }}>
-                          <span style={{ fontSize: '13px', color: 'var(--text-main)' }}>
-                            {cp.partName} × {cp.quantity}개 ({cp.status === 'IN_VEHICLE' ? '차량보관중' : (cp.status === 'YARD_RETURNED' ? '주기장반납' : '폐기')})
+                          <span style={{ fontSize: '13px', color: 'var(--text-main)', whiteSpace: 'nowrap' }}>
+                            {cp.partName} × {cp.quantity}개 ({cp.status === 'IN_VEHICLE' ? '차량 보관' : (cp.status === 'YARD_RETURNED' ? '주기장 반납' : '현장 폐기')})
                           </span>
                           <button type="button" onClick={() => handleRemoveCollectedPart(idx)} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer' }}>
                             <X size={14} />
@@ -1915,14 +1931,14 @@ showToast('밴드 과거 AS 빅데이터 탑재를 시작합니다.');
                         color: actionBillableType === 'BILLABLE' ? '#c2410c' : '#334155'
                       }}
                     >
-                      <option value="FREE">무상 AS (정상 마모 / 회사 비용)</option>
-                      <option value="BILLABLE">유상 AS (고객 과실 파손 / 청구 대상)</option>
+                      <option value="FREE">무상 AS (회사 부담)</option>
+                      <option value="BILLABLE">유상 AS (고객 청구)</option>
                     </select>
                   </div>
 
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
                     <label style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>
-                      유상 수리비 청구예정액 (원)
+                      청구 금액 (원)
                     </label>
                     <input
                       type="number"
@@ -1944,7 +1960,7 @@ showToast('밴드 과거 AS 빅데이터 탑재를 시작합니다.');
                 {/* 8. 고객 확인자 성명 및 서명 (선택) */}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
                   <label style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>
-                    현장 고객 확인자 성명 / 직급 (선택)
+                    현장 확인자 성명 / 직급
                   </label>
                   <input
                     type="text"
@@ -1968,10 +1984,12 @@ showToast('밴드 과거 AS 빅데이터 탑재를 시작합니다.');
                       fontSize: '14px',
                       fontWeight: 600,
                       color: 'var(--text-secondary)',
-                      cursor: 'pointer'
+                      cursor: 'pointer',
+                      whiteSpace: 'nowrap',
+                      flexShrink: 0
                     }}
                   >
-                    출동중으로 상태 변경
+                    출동중 상태 변경
                   </button>
 
                   <button
@@ -1989,11 +2007,13 @@ showToast('밴드 과거 AS 빅데이터 탑재를 시작합니다.');
                       fontWeight: 700,
                       color: '#ffffff',
                       cursor: 'pointer',
-                      boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)'
+                      boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
+                      whiteSpace: 'nowrap',
+                      flexShrink: 0
                     }}
                   >
                     <Check size={18} />
-                    AS 조치 완료 및 차량 재고 차감 확정
+                    AS 조치 완료
                   </button>
                 </div>
               </div>

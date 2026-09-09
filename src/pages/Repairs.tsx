@@ -590,15 +590,12 @@ export const Repairs: React.FC = () => {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', height: '100%' }}>
-      {/* ─── 상단 헤더 & 탭 네비게이션 (무수식어 건조한 명사 단일 표준) ─── */}
+      {/* ─── 상단 헤더 & 탭 네비게이션 (무수식어 건조 표준) ─── */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border-color)', paddingBottom: '10px' }}>
         <div>
-          <h2 style={{ fontSize: '18px', fontWeight: '800', margin: 0, color: 'var(--text-main)' }}>
+          <h2 style={{ fontSize: '18px', fontWeight: '800', margin: 0, color: 'var(--text-main)', whiteSpace: 'nowrap' }}>
             주기장 정비 관리
           </h2>
-          <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '2px' }}>
-            본사 주기장 내 비임대 자산 수리·점검·소모품 투입 및 임대가능(AVAILABLE) 복귀 관리
-          </div>
         </div>
 
         {/* 탭 버튼군 */}
@@ -618,10 +615,11 @@ export const Repairs: React.FC = () => {
               display: 'flex',
               alignItems: 'center',
               gap: '6px',
-              whiteSpace: 'nowrap'
+              whiteSpace: 'nowrap',
+              flexShrink: 0
             }}
           >
-            <Wrench size={14} /> 주기장 정비 스튜디오
+            <Wrench size={14} /> 정비 스튜디오
           </button>
           <button
             type="button"
@@ -638,10 +636,11 @@ export const Repairs: React.FC = () => {
               display: 'flex',
               alignItems: 'center',
               gap: '6px',
-              whiteSpace: 'nowrap'
+              whiteSpace: 'nowrap',
+              flexShrink: 0
             }}
           >
-            <FileText size={14} /> 주기장 정비 대장 ({repairs.length}건)
+            <FileText size={14} /> 정비 관리 대장 ({repairs.length}건)
           </button>
         </div>
       </div>
@@ -655,10 +654,10 @@ export const Repairs: React.FC = () => {
           {/* ── 좌측: 수리 대기 자산 큐 ── */}
           <div className="card" style={{ margin: 0, padding: '12px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <div style={{ fontSize: '13px', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <div style={{ fontSize: '13px', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '6px', whiteSpace: 'nowrap' }}>
                 <Package size={15} color="var(--primary)" /> 정비 대상 자산 ({yardAssets.length}대)
               </div>
-              <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+              <span style={{ fontSize: '11px', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
                 총 비임대 {queueCounts.all}대
               </span>
             </div>
@@ -667,8 +666,8 @@ export const Repairs: React.FC = () => {
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
               {[
                 { key: 'ALL', label: '전체', count: queueCounts.all },
-                { key: 'INBOUND_DEFECT', label: '입고불량', count: queueCounts.inboundDefects, color: '#ef4444' },
-                { key: 'RENTED_RETURNED', label: '입고검수대기', count: queueCounts.returned, color: '#f59e0b' },
+                { key: 'INBOUND_DEFECT', label: '입고결함', count: queueCounts.inboundDefects, color: '#ef4444' },
+                { key: 'RENTED_RETURNED', label: '반납검수', count: queueCounts.returned, color: '#f59e0b' },
                 { key: 'REPAIRING', label: '수리중', count: queueCounts.repairing, color: '#f97316' },
                 { key: 'EXTERNAL', label: '외주위탁', count: queueCounts.external, color: '#8b5cf6' },
                 { key: 'AVAILABLE', label: '점검대상', count: queueCounts.available, color: '#10b981' },
@@ -686,7 +685,8 @@ export const Repairs: React.FC = () => {
                     backgroundColor: yardQueueFilter === f.key ? 'var(--primary)' : 'var(--bg-app)',
                     color: yardQueueFilter === f.key ? '#ffffff' : 'var(--text-secondary)',
                     cursor: 'pointer',
-                    whiteSpace: 'nowrap'
+                    whiteSpace: 'nowrap',
+                    flexShrink: 0
                   }}
                 >
                   {f.label} ({f.count})
@@ -1078,10 +1078,10 @@ export const Repairs: React.FC = () => {
                   </div>
                 )}
 
-                {/* 3. 10대 자주 쓰는 정비 작업 프리셋 칩 */}
+                {/* 3. 정비 항목 프리셋 칩 */}
                 <div>
                   <label style={{ fontSize: '11px', fontWeight: '600', marginBottom: '6px', display: 'block', whiteSpace: 'nowrap' }}>
-                    자주 쓰는 정비 항목 (원클릭 입력)
+                    정비 항목 프리셋
                   </label>
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: '5px' }}>
                     {QUICK_WORK_TAGS.map(tag => (
@@ -1099,7 +1099,9 @@ export const Repairs: React.FC = () => {
                           color: 'var(--text-main)',
                           display: 'flex',
                           alignItems: 'center',
-                          gap: '3px'
+                          gap: '3px',
+                          whiteSpace: 'nowrap',
+                          flexShrink: 0
                         }}
                       >
                         <Plus size={10} color="var(--primary)" /> {tag}
@@ -1120,13 +1122,13 @@ export const Repairs: React.FC = () => {
                   />
                 </div>
 
-                {/* 5. 본사 중앙창고 소모품 투입 차감 그리드 */}
+                {/* 5. 소모품 투입 관리 그리드 */}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', padding: '12px', backgroundColor: 'var(--bg-app)', borderRadius: '6px', border: '1px solid var(--border-color)' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <label style={{ fontSize: '12px', fontWeight: '700', display: 'flex', alignItems: 'center', gap: '6px', margin: 0, whiteSpace: 'nowrap' }}>
-                      <Layers size={14} color="var(--primary)" /> 본사 중앙창고 소모품 투입 차감
+                      <Layers size={14} color="var(--primary)" /> 소모품 투입 관리
                     </label>
-                    <span style={{ fontSize: '12px', fontWeight: '700', color: 'var(--primary)' }}>
+                    <span style={{ fontSize: '12px', fontWeight: '700', color: 'var(--primary)', whiteSpace: 'nowrap' }}>
                       소모품 투입 합계: {totalConsumablesCost.toLocaleString()}원
                     </span>
                   </div>
@@ -1164,7 +1166,7 @@ export const Repairs: React.FC = () => {
                       type="button"
                       className="btn-secondary"
                       onClick={handleAddConsumable}
-                      style={{ padding: '6px 12px', height: '33px', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '4px' }}
+                      style={{ padding: '6px 12px', height: '33px', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '4px', whiteSpace: 'nowrap', flexShrink: 0 }}
                     >
                       <Plus size={13} /> 투입
                     </button>
@@ -1175,11 +1177,11 @@ export const Repairs: React.FC = () => {
                     <table style={{ width: '100%', fontSize: '11.5px', borderCollapse: 'collapse', marginTop: '4px' }}>
                       <thead>
                         <tr style={{ borderBottom: '1px solid var(--border-color)', color: 'var(--text-muted)' }}>
-                          <th style={{ textAlign: 'left', padding: '4px' }}>품목명</th>
-                          <th style={{ textAlign: 'center', padding: '4px' }}>수량</th>
-                          <th style={{ textAlign: 'right', padding: '4px' }}>단가</th>
-                          <th style={{ textAlign: 'right', padding: '4px' }}>금액</th>
-                          <th style={{ textAlign: 'center', padding: '4px', width: '40px' }}>삭제</th>
+                          <th style={{ textAlign: 'left', padding: '4px', whiteSpace: 'nowrap' }}>품목명</th>
+                          <th style={{ textAlign: 'center', padding: '4px', whiteSpace: 'nowrap' }}>수량</th>
+                          <th style={{ textAlign: 'right', padding: '4px', whiteSpace: 'nowrap' }}>단가</th>
+                          <th style={{ textAlign: 'right', padding: '4px', whiteSpace: 'nowrap' }}>금액</th>
+                          <th style={{ textAlign: 'center', padding: '4px', width: '40px', whiteSpace: 'nowrap' }}>삭제</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -1188,10 +1190,10 @@ export const Repairs: React.FC = () => {
                           const subtotal = (item?.unitPrice || 0) * uc.quantity;
                           return (
                             <tr key={uc.consumableId} style={{ borderBottom: '1px solid rgba(0,0,0,0.05)' }}>
-                              <td style={{ padding: '4px', fontWeight: '600' }}>{item?.modelName || uc.consumableId}</td>
-                              <td style={{ textAlign: 'center', padding: '4px' }}>{uc.quantity} {item?.unit}</td>
-                              <td style={{ textAlign: 'right', padding: '4px' }}>{(item?.unitPrice || 0).toLocaleString()}원</td>
-                              <td style={{ textAlign: 'right', padding: '4px', fontWeight: '600' }}>{subtotal.toLocaleString()}원</td>
+                              <td style={{ padding: '4px', fontWeight: '600', whiteSpace: 'nowrap' }}>{item?.modelName || uc.consumableId}</td>
+                              <td style={{ textAlign: 'center', padding: '4px', whiteSpace: 'nowrap' }}>{uc.quantity} {item?.unit}</td>
+                              <td style={{ textAlign: 'right', padding: '4px', whiteSpace: 'nowrap' }}>{(item?.unitPrice || 0).toLocaleString()}원</td>
+                              <td style={{ textAlign: 'right', padding: '4px', fontWeight: '600', whiteSpace: 'nowrap' }}>{subtotal.toLocaleString()}원</td>
                               <td style={{ textAlign: 'center', padding: '4px' }}>
                                 <button
                                   type="button"
@@ -1240,7 +1242,7 @@ export const Repairs: React.FC = () => {
 
                 {/* 7. 우측 하단 최종 종결 액션 (헌장 3.5 Gutenberg Z-패턴 4단계 종결) */}
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid var(--border-color)', paddingTop: '12px', marginTop: '4px' }}>
-                  <div style={{ fontSize: '13px', fontWeight: '700' }}>
+                  <div style={{ fontSize: '13px', fontWeight: '700', whiteSpace: 'nowrap' }}>
                     총 정비 원가: <strong style={{ color: 'var(--primary)', fontSize: '15px' }}>{totalCost.toLocaleString()}</strong>원
                   </div>
 
@@ -1250,9 +1252,9 @@ export const Repairs: React.FC = () => {
                       className="btn-secondary"
                       onClick={handleHoldRepair}
                       disabled={!canSave}
-                      style={{ padding: '8px 14px', fontSize: '12.5px', display: 'flex', alignItems: 'center', gap: '4px' }}
+                      style={{ padding: '8px 14px', fontSize: '12.5px', display: 'flex', alignItems: 'center', gap: '4px', whiteSpace: 'nowrap', flexShrink: 0 }}
                     >
-                      <Clock size={14} /> 부품대기 (수리중 유지)
+                      <Clock size={14} /> 부품 대기 등록
                     </button>
 
                     {maintenanceType === 'EXTERNAL' ? (
@@ -1262,9 +1264,9 @@ export const Repairs: React.FC = () => {
                           className="btn-primary"
                           onClick={handleCompleteRepair}
                           disabled={!canSave || isProcessingImage}
-                          style={{ padding: '8px 18px', fontSize: '13.5px', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '6px', backgroundColor: '#16a34a', borderColor: '#16a34a' }}
+                          style={{ padding: '8px 18px', fontSize: '13.5px', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '6px', backgroundColor: '#16a34a', borderColor: '#16a34a', whiteSpace: 'nowrap', flexShrink: 0 }}
                         >
-                          <CheckCircle size={15} /> 외주 입고 검수 완료 (임대가능 AVAILABLE 복원)
+                          <CheckCircle size={15} /> 외주 정비 완료 (임대가능 복원)
                         </button>
                       ) : (
                         <button
@@ -1272,7 +1274,7 @@ export const Repairs: React.FC = () => {
                           className="btn-primary"
                           onClick={handleOutsourceRepair}
                           disabled={!canSave || isProcessingImage}
-                          style={{ padding: '8px 16px', fontSize: '13px', fontWeight: '700', backgroundColor: '#7c3aed', borderColor: '#7c3aed', display: 'flex', alignItems: 'center', gap: '6px' }}
+                          style={{ padding: '8px 16px', fontSize: '13px', fontWeight: '700', backgroundColor: '#7c3aed', borderColor: '#7c3aed', display: 'flex', alignItems: 'center', gap: '6px', whiteSpace: 'nowrap', flexShrink: 0 }}
                         >
                           <Truck size={14} /> 외주 위탁 등록
                         </button>
@@ -1283,9 +1285,9 @@ export const Repairs: React.FC = () => {
                         className="btn-primary"
                         onClick={handleCompleteRepair}
                         disabled={!canSave || isProcessingImage}
-                        style={{ padding: '8px 18px', fontSize: '13.5px', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '6px', backgroundColor: '#16a34a', borderColor: '#16a34a' }}
+                        style={{ padding: '8px 18px', fontSize: '13.5px', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '6px', backgroundColor: '#16a34a', borderColor: '#16a34a', whiteSpace: 'nowrap', flexShrink: 0 }}
                       >
-                        <CheckCircle size={15} /> 정비 완료 (임대가능 AVAILABLE 전환)
+                        <CheckCircle size={15} /> 정비 완료 (임대가능 복원)
                       </button>
                     )}
                   </div>

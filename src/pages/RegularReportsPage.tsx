@@ -1,4 +1,4 @@
-﻿// @ts-nocheck
+// @ts-nocheck
 import React, { useState, useMemo, useEffect } from 'react';
 import { 
   FileBarChart2, Download, Printer, RefreshCw, CheckCircle2, 
@@ -415,7 +415,7 @@ export const RegularReportsPage: React.FC = () => {
                   <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                     <thead>
                       <tr>
-                        {['규격 그룹', '총보유', '대여중', '유휴(가용)', '수리중', '가동률'].map((h, i) => (
+                        {['규격 그룹', '총보유', '대여중', '유휴(가용)', '정비중', '가동률'].map((h, i) => (
                           <th key={h} style={{ ...S.tableHeader, textAlign: i === 0 ? 'left' : i === 5 ? 'right' : 'center', padding: '5px 6px 7px' }}>{h}</th>
                         ))}
                       </tr>

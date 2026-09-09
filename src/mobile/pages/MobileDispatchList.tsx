@@ -636,7 +636,7 @@ export const MobileDispatchList: React.FC = () => {
                 <option value="">-- 배차건 선택 --</option>
                 {pendingDeliveries.map((d) => (
                   <option key={d.id} value={d.id}>
-                    [{d.dispatchCategory || d.type}] {d.destinationAddress || '현장'} ({d.loadingDate || d.requestDate})
+                    {d.dispatchCategory || d.type} {d.destinationAddress || '현장'} ({d.loadingDate || d.requestDate})
                   </option>
                 ))}
               </select>

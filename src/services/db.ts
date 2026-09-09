@@ -1009,7 +1009,7 @@ export interface RepairPartUsed {
   modelName: string;
   quantity: number;
   unitPrice: number;
-  stockSource?: 'VEHICLE_VAN' | 'CENTRAL_HQ';
+  stockSource?: 'VEHICLE_VAN' | 'YARD_STOCK' | 'CENTRAL_HQ';
 }
 
 export interface RepairCollectedPart {
@@ -1028,7 +1028,7 @@ export interface Repair {
   // 1. 업무 분류 및 장소
   workCategory?: 'FIELD_AS' | 'YARD_INTERNAL' | 'PREVENTIVE' | 'EXTERNAL_VENDOR'; // 외근AS | 주기장정비 | 예방정비 | 외주정비
   workLocation?: 'SITE' | 'YARD' | 'VENDOR_SHOP';                                  // 현장 | 주기장 | 외주처
-  stockSource?: 'VEHICLE_VAN' | 'CENTRAL_HQ' | 'DIRECT_PURCHASE';                  // 기사차량 | 본사창고 | 현장구매
+  stockSource?: 'VEHICLE_VAN' | 'YARD_STOCK' | 'DIRECT_PURCHASE' | 'CENTRAL_HQ';  // 기사차량 | 주기장재고 | 현장구매 (레거시 호환)
   source?: 'SALES_REQUEST' | 'DIRECT_INTAKE' | 'INBOUND_INSPECTION' | 'BAND_IMPORT';
   repairType?: 'INTERNAL' | 'EXTERNAL';
   maintenanceType?: 'EMERGENCY_AS' | 'PREVENTIVE' | 'INHOUSE_REPAIR' | 'EXTERNAL'; // 레거시 호환
@@ -1053,8 +1053,11 @@ export interface Repair {
   
   // 4. 고장 증상 및 정비 내용
   issueCategory?: string;
-  inspectionItemCode?: string; // [NEW] 정비 항목 코드 맵핑 (e.g. CHK-000003)
+  inspectionItemId?: string;   // [NEW] 정비 항목 마스터 ID 매핑 (InspectionChecklistItem.id)
+  inspectionItemCode?: string; // [NEW] 정비 항목 코드 맵핑 (e.g. CHK-0000001)
   degradationScore?: number;   // [NEW] 자산 노후도 누적 점수 (e.g. +15)
+  durationMinutes?: number;    // [NEW] 실제 정비 소요시간 (분 단위, 예: 30, 45, 60, 90)
+  spentManHours?: number;      // [NEW] 실제 투입 공수 (M/H 단위 = durationMinutes / 60)
   issueDescription?: string;
   details: string; // 레거시 details 호환
   errorCode?: string;

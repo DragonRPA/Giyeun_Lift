@@ -262,8 +262,11 @@ interface AppContextType {
     revisitDate?: string;
     revisitReason?: string;
     exchangeSuggested?: boolean;
+    inspectionItemId?: string;
     inspectionItemCode?: string;
     degradationScore?: number;
+    durationMinutes?: number;
+    spentManHours?: number;
   }) => Promise<void>;
   createRevisitAsTicket: (parentTicketId: string, revisitDate: string, revisitReason: string, mechanicId?: string) => Promise<FieldAsTicket>;
   importBandAsHistory: (records: any[]) => Promise<number>;
@@ -3580,8 +3583,11 @@ ${currentTenant?.corporateName || tenantCorp} 배상
     revisitDate?: string;
     revisitReason?: string;
     exchangeSuggested?: boolean;
+    inspectionItemId?: string;
     inspectionItemCode?: string;
     degradationScore?: number;
+    durationMinutes?: number;
+    spentManHours?: number;
   }): Promise<void> => {
     try {
       const ticket = db.repairs.find(t => t.id === ticketId);
@@ -3720,8 +3726,11 @@ ${currentTenant?.corporateName || tenantCorp} 배상
         revisitRepairId: revisitRepairId || ticket.revisitRepairId,
         revisitTicketId: revisitRepairId || ticket.revisitTicketId,
         exchangeSuggested: !!data.exchangeSuggested,
+        inspectionItemId: data.inspectionItemId !== undefined ? data.inspectionItemId : ticket.inspectionItemId,
         inspectionItemCode: data.inspectionItemCode !== undefined ? data.inspectionItemCode : ticket.inspectionItemCode,
         degradationScore: data.degradationScore !== undefined ? data.degradationScore : ticket.degradationScore,
+        durationMinutes: data.durationMinutes !== undefined ? data.durationMinutes : ticket.durationMinutes,
+        spentManHours: data.spentManHours !== undefined ? data.spentManHours : ticket.spentManHours,
         completedDate: new Date().toISOString(),
         updatedAt: new Date().toISOString()
       });
@@ -6938,7 +6947,7 @@ ${currentTenant?.corporateName || tenantCorp} 배상
         workCategory: 'YARD_INTERNAL',
         workLocation: 'YARD',
         source: 'INBOUND_INSPECTION',
-        details: `[입고검수 자동 정비 접수 - ${assignedInboundNo}]\n정비 필요 항목: ${fullDefectSummary}\n비고: ${data.memo || '이상 무'}`,
+        details: `입고검수 자동 정비 접수: ${assignedInboundNo}\n정비 필요 항목: ${fullDefectSummary}\n비고: ${data.memo || '이상 무'}`,
         totalCost: 0,
         billableToCustomer: false,
         inboundNo: assignedInboundNo,
@@ -7104,13 +7113,16 @@ ${currentTenant?.corporateName || tenantCorp} 배상
         billableType: repairData.billableType || (repairData.billableToCustomer ? 'BILLABLE' : 'FREE'),
         billableAmount: repairData.billableAmount || 0,
         billableToCustomer: repairData.billableType === 'BILLABLE' || repairData.billableToCustomer || false,
+        inspectionItemId: repairData.inspectionItemId,
         inspectionItemCode: repairData.inspectionItemCode,
         degradationScore: repairData.degradationScore || 0,
+        durationMinutes: repairData.durationMinutes,
+        spentManHours: repairData.spentManHours ?? (repairData.durationMinutes ? repairData.durationMinutes / 60 : undefined),
         beforeImage: repairData.beforeImage || '',
         afterImage: repairData.afterImage || '',
         evidenceImages: repairData.evidenceImages || [],
         workLocation: repairData.workLocation || 'YARD',
-        stockSource: repairData.stockSource || 'CENTRAL_HQ',
+        stockSource: repairData.stockSource || 'YARD_STOCK',
         customerName: resolvedCustomerName,
         siteName: resolvedSiteName,
         createdAt: new Date().toISOString(),
@@ -7118,8 +7130,8 @@ ${currentTenant?.corporateName || tenantCorp} 배상
       });
     }
 
-    // 소모품 재고 차감: 주기장 정비(YARD)이거나 stockSource가 CENTRAL_HQ인 경우 주기장 재고에서 우선 차감
-    const isYardDepotRepair = repairData.workLocation === 'YARD' || repairData.stockSource === 'CENTRAL_HQ' || maintenanceType === 'INHOUSE_REPAIR';
+    // 소모품 재고 차감: 주기장 정비(YARD)이거나 stockSource가 YARD_STOCK/CENTRAL_HQ인 경우 주기장 재고에서 우선 차감
+    const isYardDepotRepair = repairData.workLocation === 'YARD' || repairData.stockSource === 'YARD_STOCK' || repairData.stockSource === 'CENTRAL_HQ' || maintenanceType === 'INHOUSE_REPAIR';
     const effectiveMechanicId = repairData.mechanicId || currentUser?.id;
     const mechanic = db.users.find(u => u.id === effectiveMechanicId);
     const mechanicName = mechanic?.name || '정비사';
@@ -7790,7 +7802,7 @@ ${currentTenant?.corporateName || tenantCorp} 배상
           settlementId,
           sourceType: 'REPAIR' as any,
           sourceId: r.id,
-          itemDescription: `외주 정비 [${asset?.assetNo || '자산'}] ${r.details.slice(0, 30)}`,
+          itemDescription: `외주 정비 ${asset?.assetNo || '자산'} ${r.details.slice(0, 30)}`,
           quantity: 1,
           unitPrice: r.totalCost || 0,
           amount: r.totalCost || 0,

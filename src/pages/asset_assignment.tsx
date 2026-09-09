@@ -2,7 +2,8 @@
 import React, { useState, useMemo } from 'react';
 import { useApp } from '../context/AppContext';
 import { Asset } from '../services/db';
-import { Wrench, CheckCircle, PackageSearch, Layers, Truck, ChevronDown, Check, Activity, Search, AlertTriangle, CheckSquare, Square, Zap, X } from 'lucide-react';
+import { Wrench, CheckCircle, PackageSearch, Layers, Truck, ChevronDown, Check, Activity, Search, AlertTriangle, CheckSquare, Square, Zap, X, Download } from 'lucide-react';
+import { exportToExcel } from '../services/excel';
 
 export const AssetAssignment: React.FC = () => {
   const { hasPermission, contractAssets, contracts, customers, assets, assignAssetToContract, batchAssignAssetsToContract, unassignAssetFromContract, batchUnassignAssetsFromContract, contractHistory } = useApp();
@@ -367,7 +368,7 @@ export const AssetAssignment: React.FC = () => {
     setIsAssigning(true);
     try {
       await unassignAssetFromContract(caId);
-      showToast(`[${assetNo || '장비'}] 할당이 취소되어 임대가능 상태로 복원되었습니다.`);
+      showToast(`${assetNo || '장비'} 할당이 취소되어 임대가능 상태로 복원되었습니다.`);
     } catch (err: any) {
       console.error('할당 취소 실패:', err);
       showToast(`할당 취소 실패: ${err?.message || err}`, 'error');
@@ -396,17 +397,61 @@ export const AssetAssignment: React.FC = () => {
     }
   };
 
+  // ─── 장비 할당 현황 대장 엑셀 내보내기 ───
+  const handleExportAssignmentStatus = () => {
+    if (contractAssets.length === 0) {
+      showToast('내보낼 장비 할당 데이터가 없습니다.', 'error');
+      return;
+    }
+
+    const exportRows: any[] = [];
+    contractAssets.forEach((ca, idx) => {
+      const contract = contracts.find(c => c.id === ca.contractId);
+      const cust = contract ? customers.find(c => c.id === contract.customerId) : undefined;
+      const assignedAsset = ca.assetId ? assets.find(a => a.id === ca.assetId) : undefined;
+      const isExchange = exchangeContractIds.includes(ca.contractId);
+      
+      exportRows.push({
+        'No': idx + 1,
+        '구분': isExchange ? '대차/교체' : '일반계약',
+        '계약번호': contract?.contractNo || '미등록',
+        '고객사명': cust?.name || '미등록',
+        '계약시작일': contract?.startDate || '',
+        '계약종료일': contract?.endDate || '',
+        '요구모델명': ca.expectedModel || '미지정',
+        '할당상태': ca.assetId ? '할당완료' : '미할당',
+        '할당장비번호': assignedAsset?.assetNo || '-',
+        '할당장비모델': assignedAsset?.modelName || '-',
+        '장비상태': assignedAsset?.status === 'AVAILABLE' ? '임대가능' : assignedAsset?.status === 'RENTED' ? '대여중' : assignedAsset?.status === 'ASSIGNED' ? '배정완료' : assignedAsset?.status === 'REPAIRING' ? '정비중' : (assignedAsset?.status || '-'),
+        '월임대료(원)': ca.monthlyRentalFee || 0,
+        '일임대료(원)': ca.dailyRentalFee || 0,
+        '슬롯ID': ca.id
+      });
+    });
+
+    exportToExcel(exportRows, `장비할당현황대장_${new Date().toISOString().split('T')[0]}`, '장비할당현황');
+    showToast(`총 ${exportRows.length}건의 장비 할당 현황이 엑셀로 내보내기 되었습니다.`);
+  };
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', fontSize: '13px' }}>
       
       {/* 타이틀 및 설명 헤더 */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
         <div>
           <h2 style={{ fontWeight: '800', marginBottom: '4px', fontSize: '18px', letterSpacing: '-0.5px' }}>장비 할당</h2>
           <p style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
             계약의 모델명 × 수량별 요구 슬롯에 가용 장비를 다중 선택 및 관리번호 빠른 입력으로 일괄 매핑합니다.
           </p>
         </div>
+        <button
+          type="button"
+          className="btn-secondary"
+          onClick={handleExportAssignmentStatus}
+          style={{ height: '32px', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '6px', whiteSpace: 'nowrap', borderColor: 'var(--success)', color: 'var(--success)' }}
+        >
+          <Download size={13} /> 엑셀 내보내기
+        </button>
       </div>
 
       {/* 📊 현황 요약 바 */}

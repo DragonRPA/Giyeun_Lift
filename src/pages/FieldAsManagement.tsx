@@ -46,7 +46,8 @@ export const FieldAsManagement: React.FC = () => {
     fieldAsTickets, createFieldAsTicket, updateFieldAsTicketStatus, completeFieldAsTicket,
     createRevisitAsTicket, importBandAsHistory, logFieldAsTimelineEvent,
     users, customers, sites, assets, consumables, mechanicConsumableStocks,
-    transferConsumableToMechanic, currentUser, hasPermission, showErrorModal, setActiveTab
+    transferConsumableToMechanic, currentUser, hasPermission, showErrorModal, setActiveTab,
+    inspectionChecklistItems
   } = useApp();
 
   const canSave = hasPermission('field_as', 'save');
@@ -149,6 +150,7 @@ export const FieldAsManagement: React.FC = () => {
   const [actionAfterImage, setActionAfterImage] = useState('');
   const [actionInspectionItemCode, setActionInspectionItemCode] = useState('');
   const [actionDegradationScore, setActionDegradationScore] = useState<number>(0);
+  const [actionDurationMinutes, setActionDurationMinutes] = useState<number>(30);
 
   // 소모품 선택 임시 목록
   const [actionPartsUsed, setActionPartsUsed] = useState<FieldAsPartUsed[]>([]);
@@ -349,7 +351,7 @@ export const FieldAsManagement: React.FC = () => {
     const availableStock = getMechanicVehicleStock(actionAssignMechanicId, tempConsumableId);
     if (availableStock < tempPartQty) {
       const mechName = users.find(u => u.id === actionAssignMechanicId)?.name || '기사';
-      showErrorModal(`⚠️ [차량 재고 부족] ${mechName} 기사의 차량 재고에 "${item.modelName}"이(가) 부족합니다.\n(현재 차량 적재: ${availableStock}개 / 요청: ${tempPartQty}개)\n\n상단의 [차량 부품 적재] 탭 또는 [소모품 관리] 메뉴에서 차량으로 먼저 보충 이동(불출) 등록을 진행해 주세요.`);
+      showErrorModal(`⚠️ [차량 재고 부족] ${mechName} 기사의 차량 재고에 "${item.modelName}"이(가) 부족합니다.\n(현재 차량 적재: ${availableStock}개 / 요청: ${tempPartQty}개)\n\n상단의 [차량 소모품 적재] 탭 또는 [소모품 관리] 메뉴에서 차량으로 먼저 보충 이동(불출) 등록을 진행해 주세요.`);
       return;
     }
 
@@ -485,6 +487,8 @@ export const FieldAsManagement: React.FC = () => {
         revisitReason: actionResolutionType === 'REVISIT_NEEDED' ? actionRevisitReason : undefined,
         exchangeSuggested: actionExchangeSuggested,
         inspectionItemCode: actionInspectionItemCode,
+        durationMinutes: actionDurationMinutes,
+        spentManHours: actionDurationMinutes > 0 ? Number((actionDurationMinutes / 60).toFixed(2)) : undefined,
         degradationScore: actionDegradationScore
       });
       showToast('AS 현장 조치가 성공적으로 등록되고 차량 소모품 재고가 차감되었습니다.');
@@ -701,7 +705,7 @@ showToast('밴드 과거 AS 빅데이터 탑재를 시작합니다.');
                 flexShrink: 0
               }}
             >
-              AS 접수 스튜디오
+              AS 접수
             </button>
             <button
               onClick={() => setMainTab('CALENDAR')}
@@ -916,7 +920,7 @@ showToast('밴드 과거 AS 빅데이터 탑재를 시작합니다.');
               whiteSpace: 'nowrap'
             }}
           >
-            차량 부품
+            차량 소모품
           </button>
           <button
             onClick={() => setMobileActiveTab('HISTORY')}
@@ -1624,15 +1628,32 @@ showToast('밴드 과거 AS 빅데이터 탑재를 시작합니다.');
                       <label style={{ fontSize: '11px', fontWeight: '600', whiteSpace: 'nowrap' }}>정비 항목 분류 코드</label>
                       <select
                         value={actionInspectionItemCode}
-                        onChange={(e) => setActionInspectionItemCode(e.target.value)}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setActionInspectionItemCode(val);
+                          const matched = (inspectionChecklistItems || []).find(item => item.code === val);
+                          if (matched && matched.standardManHours) {
+                            setActionDurationMinutes(Math.round(matched.standardManHours * 60));
+                          }
+                        }}
                         style={{ padding: '8px', fontSize: '13px', borderRadius: '6px', border: '1px solid var(--border-color)' }}
                       >
                         <option value="">분류 선택</option>
-                        <option value="CHK-000001">외관/바디 (CHK-000001)</option>
-                        <option value="CHK-000002">유압/동력 (CHK-000002)</option>
-                        <option value="CHK-000003">전기/배터리 (CHK-000003)</option>
-                        <option value="CHK-000004">주행/타이어 (CHK-000004)</option>
-                        <option value="CHK-000005">기타/접수 (CHK-000005)</option>
+                        {inspectionChecklistItems && inspectionChecklistItems.length > 0 ? (
+                          inspectionChecklistItems.map(item => (
+                            <option key={item.id} value={item.code}>
+                              [{item.category}] {item.name} ({item.code})
+                            </option>
+                          ))
+                        ) : (
+                          <>
+                            <option value="CHK-000001">외관/바디 (CHK-000001)</option>
+                            <option value="CHK-000002">유압/동력 (CHK-000002)</option>
+                            <option value="CHK-000003">전기/배터리 (CHK-000003)</option>
+                            <option value="CHK-000004">주행/타이어 (CHK-000004)</option>
+                            <option value="CHK-000005">기타/접수 (CHK-000005)</option>
+                          </>
+                        )}
                       </select>
                     </div>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
@@ -1645,6 +1666,48 @@ showToast('밴드 과거 AS 빅데이터 탑재를 시작합니다.');
                         placeholder="0"
                         style={{ padding: '8px', fontSize: '13px', borderRadius: '6px', border: '1px solid var(--border-color)' }}
                       />
+                    </div>
+                  </div>
+
+                  {/* 정비 소요시간 (분) */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginTop: '10px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <label style={{ fontSize: '11px', fontWeight: '600', whiteSpace: 'nowrap' }}>정비 소요시간 (분)</label>
+                      <span style={{ fontSize: '11px', color: '#64748b' }}>
+                        {actionDurationMinutes > 0 ? `${actionDurationMinutes}분 (${(actionDurationMinutes / 60).toFixed(1)} M/H)` : '0분'}
+                      </span>
+                    </div>
+                    <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                      <input
+                        type="number"
+                        min={0}
+                        step={5}
+                        value={actionDurationMinutes}
+                        onChange={(e) => setActionDurationMinutes(parseInt(e.target.value) || 0)}
+                        style={{ padding: '8px', fontSize: '13px', borderRadius: '6px', border: '1px solid var(--border-color)', width: '80px' }}
+                      />
+                      <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
+                        {[15, 30, 45, 60, 90, 120].map(m => (
+                          <button
+                            key={m}
+                            type="button"
+                            onClick={() => setActionDurationMinutes(m)}
+                            style={{
+                              padding: '4px 8px',
+                              borderRadius: '4px',
+                              fontSize: '11.5px',
+                              fontWeight: actionDurationMinutes === m ? 700 : 500,
+                              border: actionDurationMinutes === m ? '1px solid #2563eb' : '1px solid var(--border-color)',
+                              backgroundColor: actionDurationMinutes === m ? '#eff6ff' : 'var(--bg-card)',
+                              color: actionDurationMinutes === m ? '#2563eb' : 'var(--text-main)',
+                              cursor: 'pointer',
+                              whiteSpace: 'nowrap'
+                            }}
+                          >
+                            {m}분
+                          </button>
+                        ))}
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -2209,7 +2272,7 @@ showToast('밴드 과거 AS 빅데이터 탑재를 시작합니다.');
                             }}
                             style={{ padding: '2px 8px', fontSize: '11px' }}
                           >
-                            스튜디오에서 조치 ➔
+                            현장 조치 ➔
                           </button>
                         </div>
                       </div>
@@ -2709,7 +2772,7 @@ showToast('밴드 과거 AS 빅데이터 탑재를 시작합니다.');
               }}
             >
               <Plus size={16} />
-              주기장 ➔ 차량 부품 보충(이동) 등록
+              주기장 ➔ 차량 소모품 보충(이동) 등록
             </button>
           </div>
 
@@ -2987,6 +3050,46 @@ showToast('밴드 과거 AS 빅데이터 탑재를 시작합니다.');
                 rows={2}
                 style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid var(--border-color)', fontSize: '14px', boxSizing: 'border-box' }}
               />
+
+              {/* 정비 소요시간 (분) */}
+              <div style={{ marginTop: '8px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                  <span style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-main)' }}>⏱️ 정비 소요시간</span>
+                  <span style={{ fontSize: '12px', color: '#2563eb', fontWeight: 600 }}>
+                    {actionDurationMinutes > 0 ? `${actionDurationMinutes}분 (${(actionDurationMinutes / 60).toFixed(1)} M/H)` : '0분'}
+                  </span>
+                </div>
+                <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                  {[15, 30, 45, 60, 90].map(m => (
+                    <button
+                      key={m}
+                      type="button"
+                      onClick={() => setActionDurationMinutes(m)}
+                      style={{
+                        flex: 1,
+                        height: '36px',
+                        borderRadius: '6px',
+                        border: actionDurationMinutes === m ? '2px solid #2563eb' : '1px solid var(--border-color)',
+                        backgroundColor: actionDurationMinutes === m ? '#eff6ff' : 'var(--bg-card)',
+                        color: actionDurationMinutes === m ? '#2563eb' : 'var(--text-main)',
+                        fontSize: '12px',
+                        fontWeight: actionDurationMinutes === m ? 700 : 500,
+                        cursor: 'pointer'
+                      }}
+                    >
+                      {m}분
+                    </button>
+                  ))}
+                  <input
+                    type="number"
+                    min={0}
+                    step={5}
+                    value={actionDurationMinutes}
+                    onChange={e => setActionDurationMinutes(parseInt(e.target.value) || 0)}
+                    style={{ width: '56px', height: '36px', padding: '0 6px', borderRadius: '6px', border: '1px solid var(--border-color)', fontSize: '13px', textAlign: 'center' }}
+                  />
+                </div>
+              </div>
             </div>
 
             {/* 3️⃣ 처리 판정 버튼 (48px) */}
@@ -3391,7 +3494,7 @@ showToast('밴드 과거 AS 빅데이터 탑재를 시작합니다.');
               <div>
                 <h3 style={{ fontSize: '18px', fontWeight: 700, color: 'var(--text-main)', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
                   <Layers size={20} color="#2563eb" />
-                  장비번호 [{historyModalAssetNo}] AS 수리 이력 대장
+                  장비번호 {historyModalAssetNo} AS 수리 이력 대장
                 </h3>
                 <p style={{ margin: '4px 0 0 0', fontSize: '13px', color: 'var(--text-muted)' }}>
                   해당 장비에 누적 기록된 총 <strong>{assetHistoryTickets.length}건</strong>의 AS 이력입니다.
@@ -3464,7 +3567,7 @@ showToast('밴드 과거 AS 빅데이터 탑재를 시작합니다.');
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', borderBottom: '1px solid var(--border-color)', paddingBottom: '10px' }}>
               <h3 style={{ fontSize: '17px', fontWeight: 700, color: 'var(--text-main)', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <Truck size={18} color="#2563eb" />
-                주기장 ➔ 차량 부품 보충(이동)
+                주기장 ➔ 차량 소모품 보충(이동)
               </h3>
               <button onClick={() => setShowTransferModal(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}>
                 <X size={20} />
@@ -3496,7 +3599,7 @@ showToast('밴드 과거 AS 빅데이터 탑재를 시작합니다.');
                   <option value="">소모품 선택</option>
                   {consumables.map(c => (
                     <option key={c.id} value={c.id}>
-                      {c.modelName} (주기장 본사 현재고: {c.stockQty}개)
+                      {c.modelName} (주기장 가용 재고: {c.stockQty}개)
                     </option>
                   ))}
                 </select>
@@ -3711,7 +3814,7 @@ showToast('밴드 과거 AS 빅데이터 탑재를 시작합니다.');
               <span>|</span>
               <span>재방문 요청: <strong style={{ color: '#d97706' }}>총 {revisitCount}건</strong></span>
               <span>|</span>
-              <span>누적 투입 부품비: <strong style={{ color: 'var(--text-main)' }}>₩{totalPartsCost.toLocaleString()}원</strong></span>
+              <span>누적 투입 소모품비: <strong style={{ color: 'var(--text-main)' }}>₩{totalPartsCost.toLocaleString()}원</strong></span>
             </div>
             <span style={{
               padding: '2px 8px',
@@ -3721,7 +3824,7 @@ showToast('밴드 과거 AS 빅데이터 탑재를 시작합니다.');
               fontWeight: 700,
               fontSize: '11px'
             }}>
-              ⚖️ 대차 정상 (현장AS-기사배정-차량부품차감 100% 무결)
+              ⚖️ 대차 정상 (현장AS-기사배정-차량소모품차감 100% 무결)
             </span>
           </div>
         );

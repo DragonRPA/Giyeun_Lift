@@ -1,8 +1,9 @@
 // src/pages/users_permissions.tsx
 import React, { useState, useEffect, useMemo } from 'react';
 import { useApp } from '../context/AppContext';
-import { Shield, Check, Lock, Save, FolderKanban, ChevronDown, ChevronRight } from 'lucide-react';
+import { Shield, Check, Lock, Save, FolderKanban, ChevronDown, ChevronRight, Download } from 'lucide-react';
 import { MenuPermission, User, createMenuPermission, db, Department } from '../services/db';
+import { exportToExcel } from '../services/excel';
 
 import { SYSTEM_MENU_CONFIG, getAllSystemMenuIds, MenuGroupConfig, normalizeMenuId } from '../config/menu_config';
 import { getRoleTemplatePermission } from '../config/role_templates';
@@ -475,6 +476,40 @@ export const UsersPermissions: React.FC = () => {
     }
   };
 
+  // 사용자 권한 대장 엑셀 내보내기
+  const handleExportPermissionsExcel = () => {
+    if (localUsers.length === 0) {
+      showToast('내보낼 사용자 데이터가 없습니다.', 'error');
+      return;
+    }
+    const rows = localUsers.map((u, idx) => {
+      const userPerms = localPermissions.filter(p => p.userId === u.id);
+      const viewCount = userPerms.filter(p => p.canView).length;
+      const saveCount = userPerms.filter(p => p.canSave).length;
+      const hasPayroll = userPerms.some(p => p.menuId === 'payroll' && p.canView);
+      const deptName = getDeptName(u);
+
+      return {
+        'No': idx + 1,
+        '사용자ID': u.id,
+        '로그인ID': u.loginId || '-',
+        '성명': u.name,
+        '소속부서': deptName,
+        '직급': u.position || '-',
+        '시스템역할': u.role || 'USER',
+        '조회권한수': viewCount,
+        '저장권한수': saveCount,
+        '급여열람권한': hasPayroll ? '보유' : '미보유',
+        '관리자여부': u.role === 'ADMIN' ? '관리자' : '일반',
+        '상태': u.status === 'ACTIVE' ? '재직' : u.status === 'RETIRED' ? '퇴사' : '휴직'
+      };
+    });
+
+    const todayStr = new Date().toISOString().slice(0, 10);
+    exportToExcel(rows, `사용자권한대장_${todayStr}`, '사용자권한');
+    showToast(`사용자 권한 대장 ${rows.length}건 엑셀 내보내기 완료`);
+  };
+
   return (
     <div style={{ position: 'relative' }}>
       {/* 🔔 인앱 토스트 알림 (헌장 5.2) */}
@@ -518,6 +553,14 @@ export const UsersPermissions: React.FC = () => {
             }}
           >
             🔍 고스트 권한 진단 {ghostPermissions.length > 0 && `(${ghostPermissions.length}건 발각)`}
+          </button>
+          <button
+            type="button"
+            className="btn-secondary"
+            onClick={handleExportPermissionsExcel}
+            style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', whiteSpace: 'nowrap' }}
+          >
+            <Download size={14} /> 엑셀 내보내기
           </button>
           {canSave && (
             <button 

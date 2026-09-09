@@ -31,7 +31,7 @@ export const ASSET_STATUS_SSOT: Record<AssetStatusKey, AssetStatusDetail> = {
   },
   REPAIRING: {
     code: 'REPAIRING',
-    label: '수리중',
+    label: '정비중',
     badgeClass: 'badge-danger',
     description: '입고 정비 또는 현장 수리 진행 중인 장비'
   },

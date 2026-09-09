@@ -47,8 +47,8 @@ export function calcServicePeriod(d: any, billing: any, contract: any): string {
 }
 
 /**
- * 💡 [새 서식 표준] 품목 포맷 헬퍼: {모델명}[{관리번호}]_{청구시작일}~{청구종료일}
- * 예: JCPT1012AC[K10304]_2026-08-01~2026-08-31
+ * 💡 [새 서식 표준] 품목 포맷 헬퍼: {모델명}_{관리번호}_{청구시작일}~{청구종료일}
+ * 예: JCPT1012AC_K10304_2026-08-01~2026-08-31
  */
 export function formatStatementItemName(d: any, billing: any, contract: any): string {
   const period = calcServicePeriod(d, billing, contract);
@@ -58,7 +58,7 @@ export function formatStatementItemName(d: any, billing: any, contract: any): st
   const assetNo = d.assetNo ? String(d.assetNo).trim() : '';
 
   if (assetNo) {
-    return `${modelName}[${assetNo}]_${compactPeriod}`;
+    return `${modelName}_${assetNo}_${compactPeriod}`;
   } else {
     return `${modelName}_${compactPeriod}`;
   }

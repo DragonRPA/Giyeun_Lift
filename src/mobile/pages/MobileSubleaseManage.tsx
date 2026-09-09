@@ -178,7 +178,7 @@ export const MobileSubleaseManage: React.FC<MobileSubleaseManageProps> = ({
       await refreshAllData();
       setIsDeployModalOpen(false);
       setTargetAssetForDeploy(null);
-      showToast(`[${targetAssetForDeploy.assetNo}] 장비가 ${custName} 현장으로 정상 투입 매핑되었습니다.`);
+      showToast(`${targetAssetForDeploy.assetNo} 장비가 ${custName} 현장으로 정상 투입 매핑되었습니다.`);
     } catch (err: any) {
       showErrorModal(`현장 투입 매핑 실패: ${err?.message || err}`);
     } finally {
@@ -317,7 +317,7 @@ export const MobileSubleaseManage: React.FC<MobileSubleaseManageProps> = ({
         dailyRentFee: Math.floor(sanitizedMonthlyFee / 30),
       });
 
-      showToast(`[${cleanAssetNo}] 원사 장비가 등록되었습니다. (임대가능 가용재고 편입)`);
+      showToast(`${cleanAssetNo} 원사 장비가 등록되었습니다. (임대가능 가용재고 편입)`);
       setIsRegisterSheetOpen(false);
       // 폼 초기화
       setNewVendorAssetNo('');
@@ -333,7 +333,7 @@ export const MobileSubleaseManage: React.FC<MobileSubleaseManageProps> = ({
   // [액션 2] 원사 반납 마감 바텀시트 오픈
   const handleOpenReturnModal = (asset: Asset) => {
     if (asset.status === 'RENTED' || (asset as any).isDeployedToCustomer) {
-      showErrorModal(`자산 [${asset.assetNo}]은 현재 고객사 현장에 대여중(RENTED)입니다. 현장 회수 입고 전에는 원사 반납이 불가합니다.`, '반납 차단');
+      showErrorModal(`자산 ${asset.assetNo}은 현재 고객사 현장에 대여중(RENTED)입니다. 현장 회수 입고 전에는 원사 반납이 불가합니다.`, '반납 차단');
       return;
     }
     setTargetAssetForReturn(asset);
@@ -345,7 +345,7 @@ export const MobileSubleaseManage: React.FC<MobileSubleaseManageProps> = ({
   const handleConfirmReturn = async () => {
     if (!targetAssetForReturn) return;
     if (targetAssetForReturn.status === 'RENTED') {
-      showErrorModal(`자산 [${targetAssetForReturn.assetNo}]은 현재 고객사에 대여중입니다. 회수 입고 전에는 원사 반납이 불가합니다.`, '반납 차단');
+      showErrorModal(`자산 ${targetAssetForReturn.assetNo}은 현재 고객사에 대여중입니다. 회수 입고 전에는 원사 반납이 불가합니다.`, '반납 차단');
       return;
     }
     if (!actualReturnDate) {
@@ -356,7 +356,7 @@ export const MobileSubleaseManage: React.FC<MobileSubleaseManageProps> = ({
     setIsReturning(true);
     try {
       await returnRentedAsset(targetAssetForReturn.id, actualReturnDate);
-      showToast(`[${targetAssetForReturn.assetNo}] 원사 반납 마감이 완료되었습니다.`);
+      showToast(`${targetAssetForReturn.assetNo} 원사 반납 마감이 완료되었습니다.`);
       setIsReturnSheetOpen(false);
       setTargetAssetForReturn(null);
     } catch (err: any) {
@@ -1020,7 +1020,7 @@ export const MobileSubleaseManage: React.FC<MobileSubleaseManageProps> = ({
                   <span>전대 장비 현장 투입 매핑</span>
                 </span>
                 <div className="text-xs text-slate-400 mt-0.5">
-                  [{targetAssetForDeploy.assetNo}] {targetAssetForDeploy.modelName}
+                  {targetAssetForDeploy.assetNo} {targetAssetForDeploy.modelName}
                 </div>
               </div>
               <button

@@ -996,7 +996,7 @@ export const SmartReturn: React.FC = () => {
                               {isChecked && <Check size={13} style={{ strokeWidth: 3.5, color: '#ffffff' }} />}
                             </div>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                              <strong style={{ color: 'var(--primary)' }}>[{asset.assetNo}]</strong>
+                              <strong style={{ color: 'var(--primary)' }}>{asset.assetNo}</strong>
                               <span style={{ fontWeight: 600 }}>{asset.modelName}</span>
                               {asset.serialNo && <span style={{ fontSize: '11.5px', color: 'var(--text-muted)' }}>(S/N: {asset.serialNo})</span>}
                             </div>
@@ -1507,7 +1507,7 @@ export const SmartReturn: React.FC = () => {
                             onChange={() => handleMaintAssetCheckboxChange(r.id)}
                           />
                           <span>
-                            <strong>[{asset.assetNo}]</strong> {asset.modelName} (수리의뢰내역: {r.details || '내용없음'})
+                            <strong>{asset.assetNo}</strong> {asset.modelName} (수리의뢰내역: {r.details || '내용없음'})
                           </span>
                         </label>
                       );

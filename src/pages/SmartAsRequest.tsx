@@ -329,7 +329,7 @@ export const SmartAsRequest: React.FC = () => {
       }
 
       setSubmitSuccessTicket(ticket);
-      showToast(`[${finalAssetNo}] 현장 AS 의뢰가 접수되었습니다.`);
+      showToast(`${finalAssetNo} 현장 AS 의뢰가 접수되었습니다.`);
     } catch (err: any) {
       // showErrorModal handled in context
     } finally {

@@ -3,8 +3,9 @@ import { useApp } from '../context/AppContext';
 import { db } from '../services/db';
 import { 
   CreditCard, FileText, CheckCircle, AlertTriangle, Send, 
-  Upload, CheckSquare, RefreshCw, Lock, LockOpen 
+  Upload, CheckSquare, RefreshCw, Lock, LockOpen, Download 
 } from 'lucide-react';
+import { exportToExcel } from '../services/excel';
 
 export const PayrollPage: React.FC = () => {
   const { users, leaveUsages, overtimeRecords, payrollClosings, currentUser, hasPermission, setPayrollClosingStatus, saveUser } = useApp();
@@ -285,6 +286,63 @@ export const PayrollPage: React.FC = () => {
     }, 1500);
   };
 
+  const filteredPayrollList = useMemo(() => {
+    return payrollList.filter(p => {
+      const matchName = !empSearch || (p.name || '').includes(empSearch);
+      const matchDept = deptFilter === 'ALL' || p.deptName === deptFilter;
+      const matchRole = roleFilter === 'ALL' || p.role === roleFilter;
+      return matchName && matchDept && matchRole;
+    });
+  }, [payrollList, empSearch, deptFilter, roleFilter]);
+
+  // 급여 정산 대장 엑셀 내보내기
+  const handleExportPayrollExcel = () => {
+    if (filteredPayrollList.length === 0) {
+      showToast('내보낼 급여 데이터가 없습니다.', 'error');
+      return;
+    }
+    const rows = filteredPayrollList.map((p, idx) => {
+      const overtimeAllowance = Math.round(p.overtimeHours * p.ordinaryHourly * 1.5);
+      const holidayAllowance = Math.round((p.holidayHours || 0) * p.ordinaryHourly * 1.5);
+      const nightAllowance = Math.round((p.nightHours || 0) * p.ordinaryHourly * 0.5);
+      const totalAllowances = overtimeAllowance + holidayAllowance + nightAllowance;
+      const unpaidLeaveDeduction = Math.round((p.unpaidLeaveDays || 0) * p.ordinaryDaily);
+      const totalGross = p.baseSalary + totalAllowances + (p.manualAdjustmentAmount || 0) - unpaidLeaveDeduction;
+      const taxSum = (p.nationalPension || 0) + (p.healthInsurance || 0) + (p.careInsurance || 0) + 
+                     (p.employmentInsurance || 0) + (p.earnedIncomeTax || 0) + (p.localIncomeTax || 0);
+      const netSalary = Math.round(totalGross - taxSum);
+
+      return {
+        'No': idx + 1,
+        '귀속연월': selectedMonth,
+        '사원명': p.name,
+        '부서': p.deptName || '-',
+        '직급(역할)': ROLE_LABELS[p.role] || p.role || '-',
+        '기본급(원)': p.baseSalary,
+        '통상시급(원)': p.ordinaryHourly,
+        '연장근로(시간)': p.overtimeHours,
+        '연장수당(원)': overtimeAllowance,
+        '휴일수당(원)': holidayAllowance,
+        '야간수당(원)': nightAllowance,
+        '수당합계(원)': totalAllowances,
+        '무급휴가(일)': p.unpaidLeaveDays || 0,
+        '수동조정액(원)': p.manualAdjustmentAmount || 0,
+        '지급총액(원)': totalGross,
+        '국민연금(원)': p.nationalPension || 0,
+        '건강보험(원)': p.healthInsurance || 0,
+        '장기요양(원)': p.careInsurance || 0,
+        '고용보험(원)': p.employmentInsurance || 0,
+        '소득세(원)': p.earnedIncomeTax || 0,
+        '지방소득세(원)': p.localIncomeTax || 0,
+        '공제총액(원)': taxSum,
+        '실수령액(원)': netSalary
+      };
+    });
+
+    exportToExcel(rows, `급여정산대장_${selectedMonth}`, '급여정산');
+    showToast(`급여 정산 대장 ${rows.length}명 엑셀 내보내기 완료`);
+  };
+
   return (
     <div style={{ position: 'relative' }}>
       {/* 🔔 인앱 토스트 알림 (헌장 5.2) */}
@@ -356,6 +414,15 @@ export const PayrollPage: React.FC = () => {
                 <Send size={16} /> 급여명세서 이메일 일괄 전송
               </>
             )}
+          </button>
+
+          <button
+            type="button"
+            className="btn-secondary"
+            onClick={handleExportPayrollExcel}
+            style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 14px', fontSize: '13px', fontWeight: 'bold', whiteSpace: 'nowrap' }}
+          >
+            <Download size={15} /> 엑셀 내보내기
           </button>
         </div>
       </div>

@@ -678,7 +678,7 @@ export const AssetHistory: React.FC = () => {
         memo: combinedMemo
       });
 
-      showToast(`[입고 등록 완결] 자산 [${inboundTargetAsset.assetNo}] 입고 등록 및 자산 상태 갱신이 완료되었습니다.`);
+      showToast(`[입고 등록 완결] 자산 ${inboundTargetAsset.assetNo} 입고 등록 및 자산 상태 갱신이 완료되었습니다.`);
       
       setSelectedInboundAssetId('');
       setInboundAssetNoInput('');
@@ -715,7 +715,7 @@ export const AssetHistory: React.FC = () => {
 
     try {
       await cancelInboundAsset(log.id, reason || '사용자 입력 오타로 인한 입고 취소 롤백');
-      showToast(`[입고 취소 롤백 성공] 자산 [${log.assetNo}] 상태가 [대여중(RENTED)]으로 안전하게 원복 되었습니다.`);
+      showToast(`[입고 취소 롤백 성공] 자산 ${log.assetNo} 상태가 대여중(RENTED)으로 안전하게 원복 되었습니다.`);
     } catch (err: any) {
       showErrorModal(`⚠️ 입고 취소 롤백 실패: ${err?.message || err}`);
     }
@@ -1063,7 +1063,7 @@ export const AssetHistory: React.FC = () => {
                 
                 <div style={{ padding: '12px', backgroundColor: 'var(--bg-card)', borderRadius: '8px', border: '1px solid var(--border-color)' }}>
                   <div style={{ fontWeight: 'bold', fontSize: '14px', color: 'var(--primary)', marginBottom: '4px' }}>
-                    [{inboundTargetAsset.assetNo}] {inboundTargetAsset.modelName}
+                    {inboundTargetAsset.assetNo} {inboundTargetAsset.modelName}
                   </div>
                   <div><strong>시리얼번호(S/N):</strong> {inboundTargetAsset.serialNo || '-'}</div>
                   <div><strong>소유형태:</strong> {inboundTargetAsset.ownerType === 'OWNED' ? '당사 자산' : '외부 임차 장비'}</div>
@@ -1305,7 +1305,7 @@ export const AssetHistory: React.FC = () => {
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border-color)', paddingBottom: '12px', marginBottom: '16px' }}>
             <h3 style={{ margin: 0, fontWeight: '700', fontSize: '15px', color: 'var(--primary)', display: 'flex', alignItems: 'center', gap: '8px' }}>
               <Layers size={18} />
-              자산 통합 이력 연대기: [{selectedAsset.assetNo}] {selectedAsset.modelName}
+              자산 통합 이력 연대기: {selectedAsset.assetNo} {selectedAsset.modelName}
             </h3>
             <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
               <span className={`badge ${
@@ -1497,7 +1497,7 @@ export const AssetHistory: React.FC = () => {
                         </td>
 
                         <td style={{ whiteSpace: 'nowrap' }}>
-                          <strong style={{ color: 'var(--primary)', fontSize: '13px' }}>[{item.assetNo}]</strong>
+                          <strong style={{ color: 'var(--primary)', fontSize: '13px' }}>{item.assetNo}</strong>
                         </td>
 
                         {/* 🌟 100% 정밀 보정된 세부 모델명 */}
@@ -1624,7 +1624,7 @@ export const AssetHistory: React.FC = () => {
                           {activeTab === 'OUTBOUND' && (
                             <>
                               <td style={{ whiteSpace: 'nowrap' }}>{log.eventDate}</td>
-                              <td style={{ whiteSpace: 'nowrap' }}><strong style={{ color: 'var(--primary)' }}>[{log.assetNo}]</strong></td>
+                              <td style={{ whiteSpace: 'nowrap' }}><strong style={{ color: 'var(--primary)' }}>{log.assetNo}</strong></td>
                               <td style={{ whiteSpace: 'nowrap', fontWeight: 600 }}>{precisionModel}</td>
                               <td style={{ whiteSpace: 'nowrap' }}><strong>{log.customerName || '-'}</strong></td>
                               <td style={{ whiteSpace: 'nowrap' }}>{log.siteName || '-'}</td>
@@ -1638,7 +1638,7 @@ export const AssetHistory: React.FC = () => {
                                 {log.inboundNo || '-'}
                               </td>
                               <td style={{ whiteSpace: 'nowrap' }}>{log.eventDate}</td>
-                              <td style={{ whiteSpace: 'nowrap' }}><strong style={{ color: 'var(--primary)' }}>[{log.assetNo}]</strong></td>
+                              <td style={{ whiteSpace: 'nowrap' }}><strong style={{ color: 'var(--primary)' }}>{log.assetNo}</strong></td>
                               <td style={{ whiteSpace: 'nowrap', fontWeight: 600 }}>{precisionModel}</td>
                               <td style={{ whiteSpace: 'nowrap' }}><strong>{log.customerName || '-'}</strong></td>
                               <td style={{ whiteSpace: 'nowrap' }}>{log.siteName || '-'}</td>
@@ -1726,7 +1726,7 @@ export const AssetHistory: React.FC = () => {
               <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                 <Wrench size={20} className="text-primary" />
                 <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 700 }}>
-                  정비 이력 상세 정보 [{selectedDetailRecord.assetNo}]
+                  정비 이력 상세 정보 {selectedDetailRecord.assetNo}
                 </h3>
                 <span className={`badge ${
                   selectedDetailRecord.workCategory === 'FIELD_AS' ? 'badge-primary' :
@@ -1756,7 +1756,7 @@ export const AssetHistory: React.FC = () => {
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '12px', padding: '14px', backgroundColor: 'var(--bg-app)', borderRadius: '8px', border: '1px solid var(--border-color)' }}>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
                   <span style={{ fontSize: '11px', color: 'var(--text-secondary)', fontWeight: 600 }}>장비 관리번호</span>
-                  <strong style={{ fontSize: '14px', color: 'var(--primary)' }}>[{selectedDetailRecord.assetNo}]</strong>
+                  <strong style={{ fontSize: '14px', color: 'var(--primary)' }}>{selectedDetailRecord.assetNo}</strong>
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
                   <span style={{ fontSize: '11px', color: 'var(--text-secondary)', fontWeight: 600 }}>정밀 기종 (모델명)</span>
@@ -2062,7 +2062,7 @@ export const AssetHistory: React.FC = () => {
           <div style={{ backgroundColor: 'var(--bg-card)', borderRadius: '10px', padding: '20px', maxWidth: '440px', width: '90%', border: '1px solid var(--border-color)', boxShadow: '0 8px 24px rgba(0,0,0,0.3)' }}>
             <h4 style={{ margin: '0 0 10px 0', fontSize: '15px', color: '#ef4444' }}>입고 취소 롤백</h4>
             <p style={{ fontSize: '13px', color: 'var(--text-secondary)', marginBottom: '12px' }}>
-              자산번호 [<strong>{cancelModal.log.assetNo}</strong>] 입고 건을 취소하고 자산 상태를 대여중(RENTED)으로 복원하시겠습니까?
+              자산번호 <strong>{cancelModal.log.assetNo}</strong> 입고 건을 취소하고 자산 상태를 대여중(RENTED)으로 복원하시겠습니까?
             </p>
             <div style={{ marginBottom: '16px' }}>
               <label style={{ fontSize: '11.5px', color: 'var(--text-muted)', display: 'block', marginBottom: '4px' }}>취소 사유</label>

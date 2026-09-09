@@ -315,7 +315,7 @@ export const MobileAssetAssignment: React.FC<MobileAssetAssignmentProps> = ({
     );
 
     if (!matched) {
-      showToast(`가용 장비 중 [${quickInputText}]에 해당하는 장비가 없습니다.`, 'error');
+      showToast(`가용 장비 중 ${quickInputText}에 해당하는 장비가 없습니다.`, 'error');
       return;
     }
 
@@ -331,7 +331,7 @@ export const MobileAssetAssignment: React.FC<MobileAssetAssignmentProps> = ({
 
     setSelectedAssetIds(prev => [...prev, matched.id]);
     setQuickInputText('');
-    showToast(`[${matched.assetNo} / ${matched.modelName}] 선택 완료`);
+    showToast(`${matched.assetNo} / ${matched.modelName} 선택 완료`);
   };
 
   // 16. 장비 할당 실행 (헌장 5.2 무음 실패 방지)
@@ -402,7 +402,7 @@ export const MobileAssetAssignment: React.FC<MobileAssetAssignmentProps> = ({
     try {
       await unassignAssetFromContract(caId);
       await refreshAllData();
-      showToast(`[${assetNo || '장비'}] 할당 취소 완료 (임대가능 복원)`, 'success');
+      showToast(`${assetNo || '장비'} 할당 취소 완료 (임대가능 복원)`, 'success');
     } catch (err: any) {
       console.error('할당 취소 실패:', err);
       showErrorModal(err?.message || '할당 취소 중 오류가 발생했습니다.');

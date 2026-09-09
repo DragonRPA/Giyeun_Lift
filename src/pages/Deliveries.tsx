@@ -1006,7 +1006,7 @@ export const Deliveries: React.FC = () => {
                             style={{ width: '130px', padding: '4px', fontSize: '12px' }}
                           >
                             <option value="AVAILABLE">정상 (대기중)</option>
-                            <option value="REPAIRING">정비요망 (수리중)</option>
+                            <option value="REPAIRING">정비요망 (정비중)</option>
                           </select>
                         </div>
 

@@ -4,6 +4,7 @@ import {
   CreditCard, Upload, Download, CheckCircle2, AlertTriangle, ArrowRight, 
   HelpCircle, RefreshCw, FileText, Settings, Plus, Trash2, Edit3, Save, X, Lightbulb
 } from 'lucide-react';
+import { exportToExcel } from '../services/excel';
 
 interface PurchaseCategory {
   categoryId: string;
@@ -219,6 +220,49 @@ export const CorporateCardPage: React.FC = () => {
       }
       return tx;
     }));
+  };
+
+  // 법인카드 매입정산 및 이용내역 엑셀 내보내기
+  const handleExportCardExcel = () => {
+    if (transactions.length === 0) {
+      // 업로드된 카드 내역이 없을 때는 매입유형별 정산 현황 내보내기
+      const catRows = categories.map((c, idx) => {
+        const actual = actualAmounts[c.categoryId] || 0;
+        const diff = c.defaultExpectedAmount - actual;
+        return {
+          'No': idx + 1,
+          '매입항목명': c.categoryName,
+          '회계계정과목': c.accountCode,
+          '지급수단': c.paymentMethod === 'TAX_INVOICE' ? '세금계산서' : c.paymentMethod === 'CARD' ? '법인카드' : '자동이체',
+          '증빙필수여부': c.isRequiredProof ? '필수' : '선택',
+          '월예상액(원)': c.defaultExpectedAmount,
+          '실제집행액(원)': actual,
+          '차액(원)': diff,
+          '집행상태': actual === 0 ? '미집행' : actual >= c.defaultExpectedAmount ? '초과/달성' : '집행중',
+          '사용여부': c.isActive ? '사용' : '미사용'
+        };
+      });
+      exportToExcel(catRows, `매입유형정산현황_${selectedMonth}`, '매입유형');
+      showToast(`매입 유형 정산 현황 ${catRows.length}건 엑셀 내보내기 완료`);
+      return;
+    }
+
+    // 카드 내역이 있을 때는 카드 이용내역 상세 내보내기
+    const rows = transactions.map((tx, idx) => ({
+      'No': idx + 1,
+      '승인번호': tx.approvalNo,
+      '거래일시': tx.transactionDate,
+      '사용사원': tx.employeeName,
+      '가맹점명': tx.merchantName,
+      '사업자번호': tx.bizNo || '-',
+      '승인금액(원)': tx.amount,
+      '부가세(원)': tx.vat || 0,
+      '매칭상태': tx.status === 'MAPPED' ? '전표매칭완료' : tx.status === 'GENERAL_EXPENSE' ? '일반경비' : '미매칭',
+      '회계계정과목': tx.category || '미지정',
+      '연결전표명세': tx.relatedId || '-'
+    }));
+    exportToExcel(rows, `법인카드이용내역_${selectedMonth}`, '카드이용내역');
+    showToast(`법인카드 이용내역 ${rows.length}건 엑셀 내보내기 완료`);
   };
 
   // 신규 매입유형 등록
@@ -492,11 +536,21 @@ export const CorporateCardPage: React.FC = () => {
           <div className="card" style={{ margin: 0, overflowX: 'auto' }}>
             <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <h3 className="card-title">이용대금 명세 리스트</h3>
-              {isUploaded && (
-                <button className="btn-success" onClick={handleAutoMatch} style={{ padding: '4px 10px', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                  <RefreshCw size={12} /> 자동 매칭
+              <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  onClick={handleExportCardExcel}
+                  style={{ padding: '4px 10px', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '4px', whiteSpace: 'nowrap' }}
+                >
+                  <Download size={12} /> 엑셀 내보내기
                 </button>
-              )}
+                {isUploaded && (
+                  <button className="btn-success" onClick={handleAutoMatch} style={{ padding: '4px 10px', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                    <RefreshCw size={12} /> 자동 매칭
+                  </button>
+                )}
+              </div>
             </div>
 
             {!isUploaded ? (

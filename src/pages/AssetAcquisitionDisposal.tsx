@@ -3,6 +3,7 @@ import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
 import { calculateAssetDepreciation, Asset, Product, Vendor, Customer, SaleContractTerms } from '../services/db';
 import * as XLSX from 'xlsx';
+import { exportToExcel } from '../services/excel';
 import {
   ShoppingBag,
   TrendingDown,
@@ -341,14 +342,14 @@ export const AssetAcquisitionDisposal: React.FC = () => {
       }
       const lower = item.no.toLowerCase();
       if (seenNos.has(lower)) {
-        showErrorModal(`입력된 관리번호 중 중복 번호 [${item.no}]가 존재합니다.`);
+        showErrorModal(`입력된 관리번호 중 중복 번호 ${item.no}가 존재합니다.`);
         return;
       }
       seenNos.add(lower);
 
       const existingAsset = assets.find(a => a.assetNo?.trim().toLowerCase() === lower);
       if (existingAsset) {
-        showErrorModal(`관리번호 [${item.no}]는 이미 시스템에 등록되어 있습니다.`);
+        showErrorModal(`관리번호 ${item.no}는 이미 시스템에 등록되어 있습니다.`);
         return;
       }
     }
@@ -382,7 +383,7 @@ export const AssetAcquisitionDisposal: React.FC = () => {
 
       if (multiSlots.length === 0) {
         await acquireAsset(mainPayload);
-        showToast(`자산 [${singleAssetNo}] 취득 등록 완료 (임대가능 AVAILABLE 입고)`);
+        showToast(`자산 ${singleAssetNo} 취득 등록 완료 (임대가능 AVAILABLE 입고)`);
       } else {
         const batchPayload: Partial<Asset>[] = [mainPayload];
         for (const slot of multiSlots) {
@@ -511,9 +512,9 @@ export const AssetAcquisitionDisposal: React.FC = () => {
           if (!assetNo) {
             errors.push({ row: rowNum, error: '관리번호가 누락되었습니다.' });
           } else if (existingNos.has(assetNo.toLowerCase())) {
-            errors.push({ row: rowNum, error: `관리번호 [${assetNo}]가 기존 자산과 중복됩니다.` });
+            errors.push({ row: rowNum, error: `관리번호 ${assetNo}가 기존 자산과 중복됩니다.` });
           } else if (fileNos.has(assetNo.toLowerCase())) {
-            errors.push({ row: rowNum, error: `엑셀 파일 내에서 관리번호 [${assetNo}]가 중복 등장합니다.` });
+            errors.push({ row: rowNum, error: `엑셀 파일 내에서 관리번호 ${assetNo}가 중복 등장합니다.` });
           }
           fileNos.add(assetNo.toLowerCase());
 
@@ -815,6 +816,63 @@ export const AssetAcquisitionDisposal: React.FC = () => {
       return { ...b, bookValue: bv, salePrice: bv };
     }));
     showToast('바구니의 모든 자산 매각단가가 현재 장부가치로 일괄 설정되었습니다.');
+  };
+
+  // ─── 매각 가용 자산 목록 엑셀 내보내기 ───
+  const handleExportDisposalAssets = () => {
+    if (filteredDisposalAssets.length === 0) {
+      showToast('내보낼 매각 가용 자산 데이터가 없습니다.', 'error');
+      return;
+    }
+
+    const exportRows = filteredDisposalAssets.map((a, idx) => {
+      const bookVal = assetDepreciationMap.get(a.id) ?? 0;
+      const inBasket = basketAssetIdSet.has(a.id);
+      return {
+        'No': idx + 1,
+        '관리번호': a.assetNo || '',
+        '모델명': a.modelName || '',
+        '제조번호(SN)': a.serialNo || '',
+        '제조사': a.manufacturer || '',
+        '제조년도': a.manufactureYear ? `${a.manufactureYear}년` : '',
+        '취득일자': a.acquisitionDate || '',
+        '취득원가': a.acquisitionPrice || 0,
+        '현재장부가치': bookVal,
+        '정비점수': a.maintenanceScore ?? 0,
+        '상태': a.status === 'AVAILABLE' ? '임대가능' : a.status === 'REPAIRING' ? '정비중' : a.status,
+        '바구니담김여부': inBasket ? '담김' : '미담김'
+      };
+    });
+
+    exportToExcel(exportRows, `매각가용자산대장_${selectedDisposalModel}_${new Date().toISOString().split('T')[0]}`, '매각가용자산');
+    showToast(`총 ${filteredDisposalAssets.length}대의 매각 가용 자산 목록이 엑셀로 내보내기 되었습니다.`);
+  };
+
+  const handleExportDisposalBasket = () => {
+    if (disposalBasket.length === 0) {
+      showToast('내보낼 매각 바구니 자산이 없습니다.', 'error');
+      return;
+    }
+
+    const exportRows = disposalBasket.map((b, idx) => {
+      const margin = b.salePrice - b.bookValue;
+      return {
+        'No': idx + 1,
+        '관리번호': b.assetNo,
+        '모델명': b.modelName,
+        '제조번호(SN)': b.serialNo || '',
+        '제조년도': b.manufactureYear ? `${b.manufactureYear}년` : '',
+        '취득원가': b.acquisitionPrice || 0,
+        '장부가액': b.bookValue,
+        '매각제안단가': b.salePrice,
+        '예상처분손익': margin,
+        '정비점수': b.maintenanceScore ?? 0,
+        '상태': b.status === 'AVAILABLE' ? '임대가능' : b.status === 'REPAIRING' ? '정비중' : b.status
+      };
+    });
+
+    exportToExcel(exportRows, `매각확정바구니_${new Date().toISOString().split('T')[0]}`, '매각바구니');
+    showToast(`총 ${disposalBasket.length}대의 매각 바구니 목록이 엑셀로 내보내기 되었습니다.`);
   };
 
   // 구입처 (제조공급사 + 거래처 딜러) 통합 검색 필터링
@@ -2114,14 +2172,24 @@ export const AssetAcquisitionDisposal: React.FC = () => {
                   </span>
                 </div>
 
-                <label style={{ fontSize: '11px', display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer', color: 'var(--text-secondary)' }}>
-                  <input
-                    type="checkbox"
-                    checked={includeRepairing}
-                    onChange={e => setIncludeRepairing(e.target.checked)}
-                  />
-                  정비중(REPAIRING) 포함
-                </label>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <label style={{ fontSize: '11px', display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer', color: 'var(--text-secondary)' }}>
+                    <input
+                      type="checkbox"
+                      checked={includeRepairing}
+                      onChange={e => setIncludeRepairing(e.target.checked)}
+                    />
+                    정비중(REPAIRING) 포함
+                  </label>
+                  <button
+                    type="button"
+                    className="btn-secondary"
+                    onClick={handleExportDisposalAssets}
+                    style={{ padding: '4px 10px', fontSize: '11.5px', display: 'flex', alignItems: 'center', gap: '4px', whiteSpace: 'nowrap', borderColor: 'var(--success)', color: 'var(--success)' }}
+                  >
+                    <Download size={13} /> 엑셀 내보내기
+                  </button>
+                </div>
               </div>
 
               {/* 1단계: 모델 선택 & 검색 필터 (상하 세로 스택: 헌장 3.4) */}
@@ -2314,6 +2382,14 @@ export const AssetAcquisitionDisposal: React.FC = () => {
 
                   {disposalBasket.length > 0 && (
                     <div style={{ display: 'flex', gap: '6px' }}>
+                      <button
+                        type="button"
+                        onClick={handleExportDisposalBasket}
+                        className="btn-secondary"
+                        style={{ padding: '3px 8px', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '4px', borderColor: 'var(--success)', color: 'var(--success)' }}
+                      >
+                        <Download size={11} /> 엑셀 내보내기
+                      </button>
                       <button
                         type="button"
                         onClick={handleResetBasketPriceToBookValue}

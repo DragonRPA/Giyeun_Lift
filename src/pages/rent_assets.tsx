@@ -168,7 +168,7 @@ export const RentAssets: React.FC = () => {
     db.subleaseNegotiations = updatedNegos;
     await db.awaitPendingWrites();
     refreshAllData();
-    showToast(`임차 자산 대장에 [${newAsset.assetNo} / ${nego.modelName}] 장비가 등록되었습니다.`);
+    showToast(`임차 자산 대장에 ${newAsset.assetNo} / ${nego.modelName} 장비가 등록되었습니다.`);
   };
 
   // 토스트 알림 상태
@@ -815,7 +815,7 @@ export const RentAssets: React.FC = () => {
 
   const handleOpenReturn = (asset: Asset) => {
     if (asset.status === 'RENTED') {
-      showToast(`자산 [${asset.assetNo}]은 현재 고객사에 대여중(RENTED)입니다. 회수 입고 전에는 원사 반납이 불가합니다.`, 'error');
+      showToast(`자산 ${asset.assetNo}은 현재 고객사에 대여중(RENTED)입니다. 회수 입고 전에는 원사 반납이 불가합니다.`, 'error');
       return;
     }
     setReturnAssetId(asset.id);
@@ -847,7 +847,7 @@ export const RentAssets: React.FC = () => {
         ...editingAsset,
         dailyRentFee: calculatedDailyFee
       });
-      showToast(`임차 자산 [${editingAsset.assetNo}] 등록/수정이 완료되었습니다.`);
+      showToast(`임차 자산 ${editingAsset.assetNo} 등록/수정이 완료되었습니다.`);
       setShowModal(false);
       setEditingAsset(null);
     } catch (err: any) {
@@ -863,7 +863,7 @@ export const RentAssets: React.FC = () => {
     const target = assets.find(a => a.id === returnAssetId);
     if (!target) return;
     if (target.status === 'RENTED') {
-      showToast(`자산 [${target.assetNo}]은 현재 고객사에 대여중(RENTED)입니다. 원사 반납이 불가합니다.`, 'error');
+      showToast(`자산 ${target.assetNo}은 현재 고객사에 대여중(RENTED)입니다. 원사 반납이 불가합니다.`, 'error');
       return;
     }
 
@@ -886,7 +886,7 @@ export const RentAssets: React.FC = () => {
 
     await returnRentedAsset(returnAssetId, returnDate);
     await db.awaitPendingWrites();
-    showToast(`임차 자산 [${target.assetNo}] 반납 처리가 완결되었습니다.`);
+    showToast(`임차 자산 ${target.assetNo} 반납 처리가 완결되었습니다.`);
     setShowReturnModal(false);
   };
 
@@ -1035,11 +1035,8 @@ export const RentAssets: React.FC = () => {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
         <div>
           <h1 style={{ fontSize: '20px', fontWeight: '800', margin: 0, display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-main)' }}>
-            <Layers className="text-primary" size={22} /> 임차 자산 관리 및 전대 손익 정산
+            <Layers className="text-primary" size={22} /> 임차 장비 관리
           </h1>
-          <p style={{ fontSize: '12px', color: 'var(--text-muted)', margin: '4px 0 0 0' }}>
-            외부 원사 임차 장비 라이프사이클, 대차대조 손익 원장 및 거래명세서 1:1 대사 승인 시스템
-          </p>
         </div>
 
         {activeTab === 'CURRENT' && canSave && (
@@ -2471,7 +2468,7 @@ export const RentAssets: React.FC = () => {
                                 ) : a.status === 'ASSIGNED' ? (
                                   <span className="badge badge-warning" style={{ fontSize: '10px' }}>출고대기</span>
                                 ) : a.status === 'REPAIRING' ? (
-                                  <span className="badge badge-danger" style={{ fontSize: '10px' }}>수리중</span>
+                                  <span className="badge badge-danger" style={{ fontSize: '10px' }}>정비중</span>
                                 ) : (
                                   <span className="badge badge-success" style={{ fontSize: '10px' }}>임대가능 (보관중)</span>
                                 )}
@@ -3279,7 +3276,7 @@ export const RentAssets: React.FC = () => {
             }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <span style={{ fontSize: '15px', fontWeight: 700, color: 'var(--text-main)' }}>
-                  [{a.assetNo}] 임차 자산 상세 원장
+                  {a.assetNo} 임차 자산 상세 원장
                 </span>
                 {isReturned ? (
                   <span className="badge badge-secondary" style={{ fontSize: '10px' }}>반납완료</span>

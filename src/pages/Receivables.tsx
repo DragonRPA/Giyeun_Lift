@@ -869,7 +869,7 @@ export const Receivables: React.FC = () => {
                           const s = sites.find(x => x.id === c.siteId);
                           return (
                             <option key={c.id} value={c.id}>
-                              [{c.contractNo}] {cu?.name || '고객사'} - {s?.name || '현장미지정'}
+                              {c.contractNo} {cu?.name || '고객사'} - {s?.name || '현장미지정'}
                             </option>
                           );
                         })}

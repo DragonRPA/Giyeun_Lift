@@ -323,11 +323,11 @@ export const Contracts: React.FC = () => {
       let changeDesc = '';
 
       if (isMonthlyChanged && isDailyChanged) {
-        changeDesc = `월/일 렌탈료 단가 수정 [${assetTag}]: (월 ${oldMonthly.toLocaleString()}원 ➔ ${editMonthlyFee.toLocaleString()}원, 일 ${oldDaily.toLocaleString()}원 ➔ ${editDailyFee.toLocaleString()}원) (사유: ${feeChangeReason || '단가 조정'})`;
+        changeDesc = `월/일 렌탈료 단가 수정 ${assetTag}: (월 ${oldMonthly.toLocaleString()}원 ➔ ${editMonthlyFee.toLocaleString()}원, 일 ${oldDaily.toLocaleString()}원 ➔ ${editDailyFee.toLocaleString()}원) (사유: ${feeChangeReason || '단가 조정'})`;
       } else if (isDailyChanged) {
-        changeDesc = `일 렌탈료 단가 수정 [${assetTag}]: ${oldDaily.toLocaleString()}원 ➔ ${editDailyFee.toLocaleString()}원 (사유: ${feeChangeReason || '단가 조정'})`;
+        changeDesc = `일 렌탈료 단가 수정 ${assetTag}: ${oldDaily.toLocaleString()}원 ➔ ${editDailyFee.toLocaleString()}원 (사유: ${feeChangeReason || '단가 조정'})`;
       } else {
-        changeDesc = `월 렌탈료 단가 수정 [${assetTag}]: ${oldMonthly.toLocaleString()}원 ➔ ${editMonthlyFee.toLocaleString()}원 (사유: ${feeChangeReason || '단가 조정'})`;
+        changeDesc = `월 렌탈료 단가 수정 ${assetTag}: ${oldMonthly.toLocaleString()}원 ➔ ${editMonthlyFee.toLocaleString()}원 (사유: ${feeChangeReason || '단가 조정'})`;
       }
 
       db.insertRow<ContractHistory>('contractHistory', {
@@ -579,7 +579,7 @@ export const Contracts: React.FC = () => {
       const totalMonthlyRent = cas.reduce((sum, ca) => sum + (ca.monthlyRentalFee || 0), 0);
       const assetSummary = cas.map(ca => {
         const a = assets.find(ast => ast.id === ca.assetId);
-        return a ? `${a.modelName}[${a.assetNo}]` : (ca.expectedModel || '미배정');
+        return a ? `${a.modelName} (${a.assetNo})` : (ca.expectedModel || '미배정');
       }).join(', ');
 
       return {

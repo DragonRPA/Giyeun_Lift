@@ -4,6 +4,7 @@
 import React, { useState, useMemo } from 'react';
 import { useApp } from '../context/AppContext';
 import { PurchaseSettlement, PurchaseSettlementItem, PurchaseSettlementType, db } from '../services/db';
+import { exportToExcel } from '../services/excel';
 import {
   Truck, ShoppingBag, Building2, Plus, CheckCircle2, CreditCard,
   ChevronDown, ChevronUp, FileText, AlertCircle, RefreshCw, X, Download, ExternalLink, Eye, Wrench
@@ -158,6 +159,42 @@ export const PurchaseSettlementPage: React.FC = () => {
     return { total, paid, remaining: total - paid, count: filtered.length };
   }, [filtered]);
 
+  const handleExportSettlementExcel = () => {
+    if (filtered.length === 0) {
+      showToast('내보낼 매입 정산 데이터가 없습니다.', 'error');
+      return;
+    }
+    const rows = filtered.map((p, idx) => {
+      const typeStr = TYPE_LABEL[p.settlementType] || p.settlementType;
+      const statusStr = STATUS_LABEL[p.status]?.label || p.status;
+      const itemsCount = purchaseSettlementItems.filter(item => item.settlementId === p.id).length;
+      const supplyAmt = Math.round((p.totalAmount || 0) / 1.1);
+      const taxAmt = (p.totalAmount || 0) - supplyAmt;
+      return {
+        'No': idx + 1,
+        '정산ID': p.id,
+        '정산연월': p.settlementYm,
+        '매입유형': typeStr,
+        '거래처(매입처)': p.vendorName,
+        '품목수': itemsCount,
+        '공급가액': supplyAmt,
+        '세액': taxAmt,
+        '총정산액': p.totalAmount || 0,
+        '지급완료액': p.paidAmount || 0,
+        '미지급잔액': (p.totalAmount || 0) - (p.paidAmount || 0),
+        '지급상태': statusStr,
+        '지급수단': p.paymentMethod || '-',
+        '지급계좌': p.bankAccount || '-',
+        '확정자': p.confirmedBy || '-',
+        '확정일시': p.confirmedAt ? p.confirmedAt.replace('T', ' ').substring(0, 19) : '-',
+        '비고/메모': p.memo || ''
+      };
+    });
+
+    exportToExcel(rows, `매입정산대장_${selectedYm}`, '매입정산');
+    showToast(`매입 정산 대장 ${rows.length}건 엑셀 내보내기 완료`);
+  };
+
   const handleGenerate = async () => {
     setIsGenerating(true);
     setGenerateResult(null);
@@ -261,6 +298,28 @@ export const PurchaseSettlementPage: React.FC = () => {
         >
           {isGenerating ? <RefreshCw size={14} className="animate-spin" /> : <Plus size={14} />}
           {selectedYm} 자동 집계
+        </button>
+
+        <button
+          onClick={handleExportSettlementExcel}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '6px',
+            height: '36px',
+            padding: '0 14px',
+            background: 'var(--bg-card)',
+            color: 'var(--text-primary)',
+            border: '1px solid var(--border)',
+            borderRadius: '6px',
+            fontWeight: '700',
+            fontSize: '13px',
+            cursor: 'pointer',
+            whiteSpace: 'nowrap'
+          }}
+        >
+          <Download size={14} />
+          엑셀 내보내기
         </button>
 
         {generateResult && (

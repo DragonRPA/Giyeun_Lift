@@ -26,8 +26,10 @@ import {
   Calendar,
   RotateCcw,
   MessageSquare,
-  X
+  X,
+  Download
 } from 'lucide-react';
+import { exportToExcel } from '../services/excel';
 
 interface CheckPoint {
   id: string;
@@ -51,13 +53,13 @@ function getGroupCheckpoints(
     if (ca?.expectedModel) {
       checkpoints.push({
         id: `model_${item.id}`,
-        label: `모델 확인: 계약 요구 [${ca.expectedModel}] ↔ 실출고 [${asset?.modelName || '미배정'}]`,
+        label: `모델 확인: 계약 요구 ${ca.expectedModel} ↔ 실출고 ${asset?.modelName || '미배정'}`,
         type: 'MODEL'
       });
     } else if (asset) {
       checkpoints.push({
         id: `model_${item.id}`,
-        label: `모델 확인: [${asset.modelName}] (${asset.assetNo}) 출고 준비 상태`,
+        label: `모델 확인: ${asset.modelName} (${asset.assetNo}) 출고 준비 상태`,
         type: 'MODEL'
       });
     }
@@ -531,7 +533,7 @@ export const OutboundInspections: React.FC = () => {
             modelName: targetAsset?.modelName || '',
             workCategory: 'YARD_INTERNAL',
             workLocation: 'YARD',
-            stockSource: 'CENTRAL_HQ',
+            stockSource: 'YARD_STOCK',
             source: 'INBOUND_INSPECTION',
             repairType: 'INTERNAL',
             status: 'PENDING',
@@ -724,6 +726,79 @@ export const OutboundInspections: React.FC = () => {
     }
   };
 
+  // 출고 검수 대장 엑셀 내보내기
+  const handleExportInspectionExcel = () => {
+    if (filteredGroups.length === 0) {
+      showToast('내보낼 출고 검수 데이터가 없습니다.', 'error');
+      return;
+    }
+    const rows: any[] = [];
+    let rowNo = 1;
+    filteredGroups.forEach(g => {
+      const statusLabel = g.status === 'COMPLETED' ? '검수완료'
+        : g.status === 'IN_PROGRESS' ? '검수진행'
+        : g.status === 'REJECTED' ? '검수반려' : '검수대기';
+      
+      if (g.items.length === 0) {
+        rows.push({
+          'No': rowNo++,
+          '그룹ID': g.groupId,
+          '계약번호': g.contractNo || '-',
+          '고객사': g.customerName || '-',
+          '현장명': g.siteName || '-',
+          '출고요청일': g.requestDate || '-',
+          '상차예정일': g.loadingDate || '-',
+          '배차ID': g.deliveryId || '-',
+          '검수상태': statusLabel,
+          '관리번호': '-',
+          '모델명': g.equipmentsSummary || '-',
+          '검수항목수': g.checkpoints.length,
+          '검수자': '-',
+          '승인일시': '-',
+          '특이사항': g.specialNote || '',
+          '검수메모': '-'
+        });
+      } else {
+        g.items.forEach(item => {
+          const asset = g.assets.find(a => a.id === item.assetId) || db.assets.find(a => a.id === item.assetId);
+          const itemStatus = item.status === 'COMPLETED' ? '검수완료'
+            : item.status === 'IN_PROGRESS' ? '검수진행'
+            : item.status === 'REJECTED' ? '검수반려' : '검수대기';
+          
+          let parsedSpecs: any = null;
+          if (item.specsJson) {
+            try { parsedSpecs = JSON.parse(item.specsJson); } catch (e) {}
+          }
+          const checkedCount = parsedSpecs?.checkedCount ?? (item.status === 'COMPLETED' ? g.checkpoints.length : 0);
+
+          rows.push({
+            'No': rowNo++,
+            '검수ID': item.id,
+            '계약번호': g.contractNo || '-',
+            '고객사': g.customerName || '-',
+            '현장명': g.siteName || '-',
+            '출고요청일': g.requestDate || '-',
+            '상차예정일': g.loadingDate || '-',
+            '배차ID': g.deliveryId || '-',
+            '검수상태': itemStatus,
+            '관리번호': asset?.assetNo || '-',
+            '모델명': asset?.modelName || g.equipmentsSummary || '-',
+            '전체항목수': g.checkpoints.length,
+            '확인항목수': checkedCount,
+            '검수자': item.inspectorId || '-',
+            '승인일시': item.approvedAt ? item.approvedAt.replace('T', ' ').substring(0, 19) : '-',
+            '특이사항': g.specialNote || '',
+            '검수메모': item.note || '-'
+          });
+        });
+      }
+    });
+
+    const todayStr = new Date().toISOString().split('T')[0];
+    exportToExcel(rows, `출고검수대장_${todayStr}`, '출고검수');
+    showToast(`출고 검수 대장 ${rows.length}건 엑셀 내보내기 완료`);
+  };
+
   return (
     <div style={{ padding: '24px', maxWidth: '1400px', margin: '0 auto', color: 'var(--text-primary)' }}>
       {/* 헤더 영역 */}
@@ -732,7 +807,30 @@ export const OutboundInspections: React.FC = () => {
           <h2 style={{ fontWeight: 800, fontSize: '22px', display: 'flex', alignItems: 'center', gap: '10px', margin: 0 }}>
             <CheckSquare size={24} color="var(--primary)" /> 출고 검수 관리
           </h2>
-          
+        </div>
+        <div>
+          <button
+            onClick={handleExportInspectionExcel}
+            style={{
+              padding: '8px 14px',
+              borderRadius: '8px',
+              border: '1px solid var(--border-color)',
+              backgroundColor: 'var(--bg-card)',
+              color: 'var(--text-primary)',
+              fontWeight: 700,
+              fontSize: '12.5px',
+              cursor: 'pointer',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+              whiteSpace: 'nowrap',
+              flexShrink: 0,
+              boxShadow: '0 1px 2px rgba(0,0,0,0.05)'
+            }}
+          >
+            <Download size={14} />
+            엑셀 내보내기
+          </button>
         </div>
       </div>
 
@@ -1343,14 +1441,14 @@ export const OutboundInspections: React.FC = () => {
               <ArrowRightLeft size={20} color="var(--primary)" /> 출고 의뢰 장비 교체
             </h3>
             <p style={{ fontSize: '13px', color: 'var(--text-muted)', marginBottom: '16px' }}>
-              기존 장비 <strong style={{ color: 'var(--primary)' }}>[{exchangeModalAsset.assetNo}] ({exchangeModalAsset.modelName})</strong>를 대체 가능한 동급 장비로 교체합니다.
+              기존 장비 <strong style={{ color: 'var(--primary)' }}>{exchangeModalAsset.assetNo} ({exchangeModalAsset.modelName})</strong>를 대체 가능한 동급 장비로 교체합니다.
             </p>
 
             {/* 기존 장비 수리정비중 전환 토글 */}
             <div style={{ marginBottom: '16px', padding: '10px 14px', backgroundColor: 'var(--bg-body)', borderRadius: '10px', border: '1px solid var(--border-color)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <div>
                 <div style={{ fontSize: '13px', fontWeight: 800, color: 'var(--text-primary)' }}>
-                  🛠️ 기존 교체 대상 장비 [{exchangeModalAsset.assetNo}]를 [수리정비중 (REPAIRING)]으로 전환
+                  🛠️ 기존 교체 대상 장비 {exchangeModalAsset.assetNo}를 [수리정비중 (REPAIRING)]으로 전환
                 </div>
                 <div style={{ fontSize: '11.5px', color: 'var(--text-muted)' }}>
                   꺼짐(OFF) 선택 시 임대가능(AVAILABLE) 재고 상태로 유지됩니다.

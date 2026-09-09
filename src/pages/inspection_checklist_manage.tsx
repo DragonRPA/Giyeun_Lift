@@ -33,6 +33,7 @@ import {
 } from 'lucide-react';
 import { InspectionChecklistItem, EquipmentManual, extractYoutubeVideoId, db } from '../services/db';
 import { extractManualMetadataWithAI } from '../services/manualAiEngine';
+import { exportToExcel } from '../services/excel';
 
 const Youtube: React.FC<{ size?: number; className?: string; style?: React.CSSProperties }> = ({ size = 16, className, style }) => (
   <svg
@@ -248,37 +249,32 @@ export const InspectionChecklistManage: React.FC = () => {
 
   // 엑셀 내보내기 (마스터 대장)
   const exportMasterToExcel = () => {
-    const headers = ['No', '카테고리', '항목코드', '항목명', '배점', '표준공수(M/H)', '추천부품', '누적발생건수', '조치가이드', '상세설명'];
+    if (filteredMasterItems.length === 0) {
+      showToast('내보낼 정비 항목 데이터가 없습니다.', 'error');
+      return;
+    }
     const rows = filteredMasterItems.map((item, idx) => {
       const partsNames = (item.recommendedConsumableIds || [])
         .map(cid => consumableMap.get(cid)?.modelName || cid)
         .join(', ');
       const stat = repairMappingStats[item.code] || { count: 0 };
-      return [
-        idx + 1,
-        item.category,
-        item.code,
-        item.name,
-        item.score,
-        item.standardManHours || 0.5,
-        partsNames || '-',
-        stat.count,
-        (item.actionGuide || '-').replace(/"/g, '""'),
-        (item.description || '-').replace(/"/g, '""')
-      ];
+      return {
+        'No': idx + 1,
+        '카테고리': item.category,
+        '항목코드': item.code,
+        '항목명': item.name,
+        '배점': item.score,
+        '표준공수(M/H)': item.standardManHours || 0.5,
+        '추천부품': partsNames || '-',
+        '누적발생건수': stat.count,
+        '조치가이드': item.actionGuide || '-',
+        '상세설명': item.description || '-'
+      };
     });
 
-    const csvContent =
-      '\uFEFF' +
-      [headers.join(','), ...rows.map(row => row.map(cell => `"${cell}"`).join(','))].join('\n');
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `정비항목_마스터대장_${new Date().toISOString().slice(0, 10)}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
-    showToast('정비 항목 마스터 대장 CSV 내보내기 완료');
+    const todayStr = new Date().toISOString().slice(0, 10);
+    exportToExcel(rows, `정비항목_마스터대장_${todayStr}`, '정비항목');
+    showToast(`정비 항목 마스터 대장 ${rows.length}건 엑셀 내보내기 완료`);
   };
 
   // ═════════════════════════════════════════════════════════════════
@@ -355,6 +351,7 @@ export const InspectionChecklistManage: React.FC = () => {
 
     let totalRepairCount = 0;
     let grandTotalManHours = 0;
+    let grandTotalStandardManHours = 0;
     let grandPartCost = 0;
     let grandExternalCost = 0;
     let grandTotalCost = 0;
@@ -369,6 +366,7 @@ export const InspectionChecklistManage: React.FC = () => {
       const category = masterItem?.category || r.issueCategory || '기타/검수';
       const itemName = masterItem?.name || r.details || '미분류 정비';
       const stdMH = masterItem?.standardManHours || 0.5;
+      const actualMH = r.spentManHours ?? (r.durationMinutes ? r.durationMinutes / 60 : stdMH);
 
       // 부품비 계산
       let repairPartCost = 0;
@@ -414,7 +412,7 @@ export const InspectionChecklistManage: React.FC = () => {
       };
 
       existing.count += 1;
-      existing.totalManHours += stdMH;
+      existing.totalManHours += actualMH;
       existing.partCost += repairPartCost;
       existing.externalCost += repairExternalCost;
       existing.totalCost += repairTotalCost;
@@ -422,7 +420,8 @@ export const InspectionChecklistManage: React.FC = () => {
       existing.companyCost += compCost;
       itemAggMap.set(code, existing);
 
-      grandTotalManHours += stdMH;
+      grandTotalManHours += actualMH;
+      grandTotalStandardManHours += stdMH;
       grandPartCost += repairPartCost;
       grandExternalCost += repairExternalCost;
       grandTotalCost += repairTotalCost;
@@ -441,6 +440,7 @@ export const InspectionChecklistManage: React.FC = () => {
       items,
       totalRepairCount,
       grandTotalManHours: grandTotalManHours.toFixed(1),
+      grandTotalStandardManHours: grandTotalStandardManHours.toFixed(1),
       grandPartCost,
       grandExternalCost,
       grandTotalCost,
@@ -460,52 +460,32 @@ export const InspectionChecklistManage: React.FC = () => {
 
   // 분석 데이터 엑셀 내보내기
   const exportAnalyticsToExcel = () => {
-    const headers = [
-      '항목코드',
-      '정비항목명',
-      '카테고리',
-      '발생건수',
-      '표준공수(M/H)',
-      '누적공수(M/H)',
-      '자체부품비(원)',
-      '외주정비비(원)',
-      '총소요비용(원)',
-      '고객청구액(원)',
-      '회사순부담(원)',
-      '비용비중(%)'
-    ];
-
+    if (!analyticsData.items || analyticsData.items.length === 0) {
+      showToast('내보낼 분석 데이터가 없습니다.', 'error');
+      return;
+    }
     const rows = analyticsData.items.map(item => {
       const share = analyticsData.grandTotalCost > 0
         ? ((item.totalCost / analyticsData.grandTotalCost) * 100).toFixed(1)
         : '0.0';
-      return [
-        item.itemCode,
-        item.itemName,
-        item.category,
-        item.count,
-        item.standardManHours,
-        item.totalManHours.toFixed(1),
-        item.partCost,
-        item.externalCost,
-        item.totalCost,
-        item.billableAmount,
-        item.companyCost,
-        `${share}%`
-      ];
+      return {
+        '항목코드': item.itemCode,
+        '정비항목명': item.itemName,
+        '카테고리': item.category,
+        '발생건수': item.count,
+        '표준공수(M/H)': item.standardManHours,
+        '누적공수(M/H)': Number(item.totalManHours.toFixed(1)),
+        '자체부품비(원)': item.partCost,
+        '외주정비비(원)': item.externalCost,
+        '총소요비용(원)': item.totalCost,
+        '고객청구액(원)': item.billableAmount,
+        '회사순부담(원)': item.companyCost,
+        '비용비중': `${share}%`
+      };
     });
 
-    const csvContent =
-      '\uFEFF' +
-      [headers.join(','), ...rows.map(row => row.map(cell => `"${cell}"`).join(','))].join('\n');
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `정비조직역량_비용분석_${analyticsStartDate}_${analyticsEndDate}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
-    showToast('정비 역량 및 비용 분석 데이터 CSV 내보내기 완료');
+    exportToExcel(rows, `정비조직역량_비용분석_${analyticsStartDate}_${analyticsEndDate}`, '비용분석');
+    showToast(`정비 역량 및 비용 분석 대장 ${rows.length}건 엑셀 내보내기 완료`);
   };
 
   // ═════════════════════════════════════════════════════════════════
@@ -605,6 +585,30 @@ export const InspectionChecklistManage: React.FC = () => {
 
     return { total, partsBookCount, errorCodeCount, wiringCount, operatorCount, pdfCount, youtubeCount, webLinkCount, aiIndexedCount, aiPendingCount };
   }, [equipmentManuals]);
+
+  // 장비 매뉴얼 엑셀 내보내기
+  const exportManualsToExcel = () => {
+    if (filteredManuals.length === 0) {
+      showToast('내보낼 매뉴얼 데이터가 없습니다.', 'error');
+      return;
+    }
+    const rows = filteredManuals.map((m, idx) => ({
+      'No': idx + 1,
+      '매뉴얼명': m.title,
+      '카테고리': m.category,
+      '제조사': m.manufacturer || '-',
+      '적용모델': m.modelName || '-',
+      '규격피트': m.targetSpecFt ? `${m.targetSpecFt}ft` : '-',
+      '버전/연식': m.version || '-',
+      '자료구분': m.mediaType || (m.youtubeVideoId ? '동영상(유튜브)' : 'PDF'),
+      'URL/경로': m.externalUrl || m.fileUrl || m.fileName || '-',
+      '등록일': m.uploadDate || (m.createdAt ? m.createdAt.slice(0, 10) : '-'),
+      '설명/비고': m.memo || m.aiSummary || '-'
+    }));
+    const todayStr = new Date().toISOString().slice(0, 10);
+    exportToExcel(rows, `장비매뉴얼목록_${todayStr}`, '매뉴얼');
+    showToast(`장비 매뉴얼 목록 ${rows.length}건 엑셀 내보내기 완료`);
+  };
 
   // 단건 AI 색인 실행
   const handleSingleManualAI = async (manual: EquipmentManual) => {
@@ -906,13 +910,10 @@ export const InspectionChecklistManage: React.FC = () => {
         }}
       >
         <div>
-          <h2 style={{ fontWeight: '700', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <ShieldCheck className="text-primary" size={22} /> 정비 항목 & 역량 관리 스튜디오
+          <h2 style={{ fontWeight: '700', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <ShieldCheck className="text-primary" size={22} /> 정비 항목 관리
           </h2>
-          <p style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
-            정비 항목 마스터(SOP·부품연동), 기간별 조직역량 및 비용 분석, 장비 매뉴얼 라이브러리 통합
-          </p
-        ></div>
+        </div>
 
         {/* 3대 탭 스위처 */}
         <div
@@ -1379,7 +1380,7 @@ export const InspectionChecklistManage: React.FC = () => {
                 {analyticsData.totalRepairCount.toLocaleString()}건
               </strong>
               <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
-                투입 공수: {analyticsData.grandTotalManHours} M/H
+                실제 {analyticsData.grandTotalManHours} M/H (표준 {analyticsData.grandTotalStandardManHours} M/H)
               </span>
             </div>
 
@@ -1402,7 +1403,7 @@ export const InspectionChecklistManage: React.FC = () => {
                 ₩{analyticsData.grandTotalCost.toLocaleString()}
               </strong>
               <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
-                부품비 + 외주비 합계
+                소모품비 + 외주비 합계
               </span>
             </div>
 
@@ -1418,8 +1419,8 @@ export const InspectionChecklistManage: React.FC = () => {
               }}
             >
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ fontSize: '11.5px', color: 'var(--text-secondary)', fontWeight: 600 }}>자체 부품 소모액</span>
-                <span style={{ fontSize: '12px', color: '#16a34a', fontWeight: 700 }}>부품</span>
+                <span style={{ fontSize: '11.5px', color: 'var(--text-secondary)', fontWeight: 600 }}>자체 소모품비</span>
+                <span style={{ fontSize: '12px', color: '#16a34a', fontWeight: 700 }}>소모품</span>
               </div>
               <strong style={{ fontSize: '18px', color: '#16a34a' }}>
                 ₩{analyticsData.grandPartCost.toLocaleString()}
@@ -1486,7 +1487,7 @@ export const InspectionChecklistManage: React.FC = () => {
                     <th style={{ whiteSpace: 'nowrap', minWidth: '160px' }}>정비 항목명</th>
                     <th style={{ whiteSpace: 'nowrap', width: '80px', textAlign: 'right' }}>발생 건수</th>
                     <th style={{ whiteSpace: 'nowrap', width: '90px', textAlign: 'right' }}>소요 공수</th>
-                    <th style={{ whiteSpace: 'nowrap', width: '100px', textAlign: 'right' }}>자체 부품비</th>
+                    <th style={{ whiteSpace: 'nowrap', width: '100px', textAlign: 'right' }}>자체 소모품비</th>
                     <th style={{ whiteSpace: 'nowrap', width: '100px', textAlign: 'right' }}>외주 정비비</th>
                     <th style={{ whiteSpace: 'nowrap', width: '110px', textAlign: 'right' }}>정비 총비용</th>
                     <th style={{ whiteSpace: 'nowrap', width: '100px', textAlign: 'right' }}>고객 청구액</th>
@@ -1805,6 +1806,15 @@ export const InspectionChecklistManage: React.FC = () => {
               >
                 <Sparkles size={14} style={{ color: manualSummary.aiPendingCount > 0 ? '#ea580c' : 'var(--text-muted)' }} />
                 {isIndexingAI ? 'AI 색인 진행 중...' : `일괄 AI 색인 (미처리 ${manualSummary.aiPendingCount}건)`}
+              </button>
+
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={exportManualsToExcel}
+                style={{ display: 'flex', alignItems: 'center', gap: '5px', padding: '6px 12px', fontSize: '12px', fontWeight: 600, whiteSpace: 'nowrap' }}
+              >
+                <Download size={14} /> 엑셀 내보내기
               </button>
 
               <button
@@ -3421,7 +3431,7 @@ export const InspectionChecklistManage: React.FC = () => {
           <div style={{ display: 'flex', alignItems: 'center', gap: '14px', overflowX: 'auto', whiteSpace: 'nowrap' }}>
             <span>📄 <strong>정비총비용:</strong> ₩{analyticsData.grandTotalCost.toLocaleString()}</span>
             <span style={{ color: 'var(--border-color)' }}>=</span>
-            <span style={{ color: '#16a34a' }}>🟢 <strong>부품비:</strong> ₩{analyticsData.grandPartCost.toLocaleString()}</span>
+            <span style={{ color: '#16a34a' }}>🟢 <strong>소모품비:</strong> ₩{analyticsData.grandPartCost.toLocaleString()}</span>
             <span>+</span>
             <span style={{ color: '#d97706' }}>🏢 <strong>외주비:</strong> ₩{analyticsData.grandExternalCost.toLocaleString()}</span>
             <span style={{ color: 'var(--border-color)' }}>=</span>

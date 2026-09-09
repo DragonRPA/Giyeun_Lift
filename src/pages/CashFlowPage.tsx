@@ -8,6 +8,7 @@ import {
   ChevronLeft, ChevronRight, BarChart2, X, Info,
   Download, ExternalLink, ShieldAlert, DollarSign
 } from 'lucide-react';
+import { exportToExcel } from '../services/excel';
 
 interface DailyForecastItem {
   date: string;
@@ -469,41 +470,55 @@ export const CashFlowPage: React.FC = () => {
     }
   };
 
-  // ─── 8. 엑셀(CSV) 내보내기 핸들러 (BOM 가산 무결성) ───
-  const handleDownloadExcel = () => {
+  // ─── 8. 엑셀 내보내기 핸들러 (전사 표준 exportToExcel 적용) ───
+  const handleExportCashFlowExcel = () => {
     if (forecastList.length === 0) {
       showToast('내보낼 데이터가 없습니다.', 'error');
       return;
     }
 
-    const headers = ['일자', '구분', '수납예정(원)', '수납상세', '운영지출(원)', '지출상세', '투자지출(원)', '투자상세', '일일수지차(원)', '예상누적잔고(원)', '상태'];
-    const rows = forecastList.map(item => {
+    const exportRows = forecastList.map((item, idx) => {
       const statusStr = item.status === 'CRITICAL' ? '부도위험' : item.status === 'WARNING' ? '자금주의' : '안전';
       const isPastStr = item.isPast ? '실적' : '예정';
-      return [
-        item.date,
-        isPastStr,
-        item.inflow,
-        `"${item.inflowDetail.replace(/"/g, '""')}"`,
-        item.opex,
-        `"${item.opexDetail.replace(/"/g, '""')}"`,
-        item.capex,
-        `"${item.capexDetail.replace(/"/g, '""')}"`,
-        item.net,
-        item.cumulative,
-        statusStr
-      ];
+      return {
+        'No': idx + 1,
+        '일자': item.date,
+        '실적구분': isPastStr,
+        '수납예정(원)': item.inflow,
+        '수납상세': item.inflowDetail,
+        '운영지출(원)': item.opex,
+        '운영지출상세': item.opexDetail,
+        '투자지출(원)': item.capex,
+        '투자상세': item.capexDetail,
+        '일일순유출입(원)': item.net,
+        '예상누적잔고(원)': item.cumulative,
+        '유동성상태': statusStr
+      };
     });
 
-    const csvContent = '\uFEFF' + [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.setAttribute('href', url);
-    link.setAttribute('download', `cashflow_forecast_${baseDate}_${forecastDays}d.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    exportToExcel(exportRows, `유동성전망대장_${baseDate}_${forecastDays}일`, '유동성전망');
+    showToast(`총 ${forecastList.length}건의 유동성 전망 데이터가 엑셀로 내보내기 되었습니다.`);
+  };
+
+  const handleExportSnapshotHistory = () => {
+    if (cashFlowSnapshots.length === 0) {
+      showToast('내보낼 스냅샷 이력이 없습니다.', 'error');
+      return;
+    }
+
+    const exportRows = cashFlowSnapshots.map((snap, idx) => ({
+      'No': idx + 1,
+      '스냅샷기준일': snap.snapshotDate,
+      '기초통장잔고(원)': snap.startingBalance,
+      '수납예정액(원)': snap.projectedInflow,
+      '일반지출액(원)': snap.projectedOpex,
+      '설비투자액(원)': snap.projectedCapex,
+      '최종예상잔고(원)': snap.projectedFinalBalance,
+      '경영분석메모': snap.notes || ''
+    }));
+
+    exportToExcel(exportRows, `자금계획스냅샷이력_${new Date().toISOString().substring(0, 10)}`, '스냅샷이력');
+    showToast(`총 ${cashFlowSnapshots.length}건의 스냅샷 이력이 엑셀로 내보내기 되었습니다.`);
   };
 
   // ─── 9. 슬림 SVG 유동성 밴드 차트 렌더링 좌표 계산 ───
@@ -748,7 +763,7 @@ export const CashFlowPage: React.FC = () => {
 
                 <button
                   className="btn-secondary"
-                  onClick={handleDownloadExcel}
+                  onClick={handleExportCashFlowExcel}
                   style={{ height: '32px', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '6px', whiteSpace: 'nowrap', borderColor: 'var(--success)', color: 'var(--success)' }}
                 >
                   <Download size={13} /> 엑셀 내보내기
@@ -1165,7 +1180,7 @@ export const CashFlowPage: React.FC = () => {
       {/* ─── 스냅샷 이력 대장 탭 ─── */}
       {activeSubTab === 'HISTORY' && (
         <div className="card" style={{ margin: 0, padding: 0 }}>
-          <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--border-color)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--border-color)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
             <div>
               <h2 style={{ fontSize: '15px', fontWeight: '800', margin: 0 }}>
                 자금 계획 스냅샷 동결 이력 대장
@@ -1173,6 +1188,16 @@ export const CashFlowPage: React.FC = () => {
               <span style={{ fontSize: '11.5px', color: 'var(--text-secondary)' }}>
                 경영진 의사결정 시점별 동결된 유동성 지표 및 경영지시 메모 영구 보존
               </span>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={handleExportSnapshotHistory}
+                style={{ height: '32px', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '6px', whiteSpace: 'nowrap', borderColor: 'var(--success)', color: 'var(--success)' }}
+              >
+                <Download size={13} /> 엑셀 내보내기
+              </button>
             </div>
           </div>
 

@@ -59,7 +59,7 @@ function getInspectionCheckpoints(
   if (contractAsset?.expectedModel) {
     checkpoints.push({
       id: 'model_match',
-      label: `장비 모델 확인: 계약 요구 [${contractAsset.expectedModel}] ↔ 실출고 [${asset?.modelName || '미배정'}]`,
+      label: `장비 모델 확인: 계약 요구 ${contractAsset.expectedModel} ↔ 실출고 ${asset?.modelName || '미배정'}`,
       type: 'MODEL'
     });
   }

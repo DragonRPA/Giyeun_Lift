@@ -703,7 +703,7 @@ showToast('모든 수납 내역 일괄 취소 및 통장 잔액을 복원합니�
         paymentDate: payDate,
         amount: cardAmount,
         method: 'CARD',
-        memo: payMemo ? `${payMemo} [카드승인: ${cardApprovalNo.trim()}]` : `카드결제 [승인번호: ${cardApprovalNo.trim()}]`
+        memo: payMemo ? `${payMemo} (카드승인: ${cardApprovalNo.trim()})` : `카드결제 (승인번호: ${cardApprovalNo.trim()})`
       });
     }
 
@@ -3194,7 +3194,7 @@ ${currentTenant?.tradeName || currentTenant?.corporateName || '임대인'} 올�
                             return (
                               <div key={d.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '12px', backgroundColor: 'var(--bg-card)', padding: '6px 10px', borderRadius: '6px' }}>
                                 <div>
-                                  <strong>[운송 {d.dispatchCategory || d.type}]</strong> {d.originAddress || '주기장'} ➔ {d.destinationAddress || '현장'} ({cost.toLocaleString()}원)
+                                  <strong>운송 {d.dispatchCategory || d.type}</strong> {d.originAddress || '주기장'} ➔ {d.destinationAddress || '현장'} ({cost.toLocaleString()}원)
                                 </div>
                                 <div style={{ display: 'flex', gap: '6px' }}>
                                   <button

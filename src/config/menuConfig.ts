@@ -27,7 +27,7 @@ export const SYSTEM_MENU_CONFIG: MenuGroupConfig[] = [
       { id: 'contract', name: '계약 관리' },
       { id: 'billing', name: '청구/수납 관리' },
       { id: 'smart_dispatch', name: '출고 요청' },
-      { id: 'smart_dispatch4', name: '출고의뢰 (통합)' },
+      { id: 'smart_dispatch4', name: '출고 의뢰' },
       { id: 'smart_return', name: '회수 요청' },
       { id: 'smart_as_request', name: 'AS 요청' }
     ]
@@ -39,7 +39,7 @@ export const SYSTEM_MENU_CONFIG: MenuGroupConfig[] = [
       { id: 'product', name: '제품 관리' },
       { id: 'asset', name: '자산 관리 (대장)' },
       { id: 'acquisition_disposal', name: '당사자산 취득/매각' },
-      { id: 'rent_asset', name: '임차자산 관리' }
+      { id: 'rent_asset', name: '임차 장비 관리' }
     ]
   },
   {
@@ -47,7 +47,7 @@ export const SYSTEM_MENU_CONFIG: MenuGroupConfig[] = [
     name: '배차 / 운송관리',
     items: [
       { id: 'delivery', name: '배차/운송 관리 (비용정산)' },
-      { id: 'transport_master', name: '운송 거래처/기사 관리' }
+      { id: 'transport_master', name: '운송 거래처 관리' }
     ]
   },
   {
@@ -56,7 +56,7 @@ export const SYSTEM_MENU_CONFIG: MenuGroupConfig[] = [
     items: [
       { id: 'asset_inout_history', name: '자산 입출고/정비 이력' },
       { id: 'dispatch_assign', name: '장비 할당 (매핑)' },
-      { id: 'outbound_inspections', name: '출고 검수 의뢰 관리' }
+      { id: 'outbound_inspections', name: '출고 검수 관리' }
     ]
   },
   {
@@ -68,7 +68,7 @@ export const SYSTEM_MENU_CONFIG: MenuGroupConfig[] = [
       { id: 'consumable_stock', name: '소모품 재고' },
       { id: 'field_as', name: '현장 AS 관리' },
       { id: 'repair', name: '주기장 정비 관리' },
-      { id: 'inspection_checklist_manage', name: '정비항목관리' }
+      { id: 'inspection_checklist_manage', name: '정비 항목 관리' }
     ]
   },
   {

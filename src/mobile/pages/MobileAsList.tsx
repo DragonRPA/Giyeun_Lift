@@ -420,7 +420,7 @@ export const MobileAsList: React.FC<MobileAsListProps> = ({
                   : 'text-slate-400 hover:text-white'
               }`}
             >
-              수리중
+              정비중
             </button>
             <button
               onClick={() => setYardFilter('UNRESOLVED')}
@@ -430,7 +430,7 @@ export const MobileAsList: React.FC<MobileAsListProps> = ({
                   : 'text-slate-400 hover:text-white'
               }`}
             >
-              부품대기
+              소모품대기
             </button>
           </div>
 
@@ -478,11 +478,11 @@ export const MobileAsList: React.FC<MobileAsListProps> = ({
                           </span>
                         ) : unresolvedRepair ? (
                           <span className="text-[11px] px-2 py-0.5 rounded-full font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30">
-                            ⏸️ 부품대기
+                            ⏸️ 소모품대기
                           </span>
                         ) : (
                           <span className="text-[11px] px-2 py-0.5 rounded-full font-bold bg-slate-800 text-slate-300 border border-slate-700">
-                            {asset.status === 'REPAIRING' ? '수리중' : '입고검수'}
+                            {asset.status === 'REPAIRING' ? '정비중' : '입고검수'}
                           </span>
                         )}
 

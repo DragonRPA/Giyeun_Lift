@@ -2,11 +2,12 @@
 import React, { useState, useMemo } from 'react';
 import { useApp } from '../context/AppContext';
 import { db, Todo, DelinquencyActionLog, Customer, Billing } from '../services/db';
+import { exportToExcel } from '../services/excel';
 import { 
   AlertTriangle, PhoneCall, Mail, CheckCircle, 
   Clock, Plus, Upload, Trash2, ArrowRight, UserCheck, ShieldAlert,
   Calendar, DollarSign, Award, ThumbsUp, ThumbsDown, Lock, Unlock, Search,
-  Send, AlertCircle, FileText, Check, Printer, FileCheck, Save, Eye
+  Send, AlertCircle, FileText, Check, Printer, FileCheck, Save, Eye, Download
 } from 'lucide-react';
 
 interface CalculatedDelinquency {
@@ -345,6 +346,43 @@ export const DelinquencyPage: React.FC = () => {
     setPromiseContactPerson('');
   };
 
+  // 미수 채권 연체 대장 엑셀 내보내기
+  const handleExportDelinquencyExcel = () => {
+    if (filteredDelinquencies.length === 0) {
+      showToast('내보낼 연체 채권 데이터가 없습니다.', 'warning');
+      return;
+    }
+    const rows = filteredDelinquencies.map((del, idx) => {
+      const cust = customers.find(c => c.id === del.customerId);
+      const riskTierLabel = del.riskTier === 'HIGH' ? '고위험' : del.riskTier === 'MID' ? '중위험' : '일반/저위험';
+      const statusLabel = del.transactionStatus === 'BLOCKED' ? '거래차단' : '정상거래';
+      return {
+        'No': idx + 1,
+        '위험등급': riskTierLabel,
+        '고객사명': del.customerName,
+        '사업자번호': del.bizRegNo || cust?.bizRegNo || '-',
+        '대표자': cust?.representative || '-',
+        '대표연락처': cust?.repContact || (cust as any)?.phone || '-',
+        '거래상태': statusLabel,
+        '담당영업': del.responsibleEmployeeName || '-',
+        '연체총액(원)': del.totalOverdueAmount,
+        '최초연체일': del.oldestOverdueDueDate || '-',
+        '연체경과일': `${del.overdueDays}일`,
+        '결제약정조건': del.paymentDueConditionText || '-',
+        '미수청구건수': del.unpaidBillingCount,
+        '연체계산서수': del.overdueInvoicesCount,
+        '약속위반건수': del.brokenPromisesCount,
+        '최근조치일': del.lastActionDate || '-',
+        '최근조치유형': del.lastActionType || '-',
+        '경영진지시방치': del.hasPendingDirective ? `${del.directiveNeglectedDays}일 방치` : '없음'
+      };
+    });
+
+    const todayStr = new Date().toISOString().slice(0, 10);
+    exportToExcel(rows, `미수채권_연체대장_${todayStr}`, '연체대장');
+    showToast(`미수 채권 연체 대장 ${rows.length}건 엑셀 내보내기 완료`);
+  };
+
   // 📜 내용증명 작성 스튜디오 오픈
   const handleOpenNoticeModal = (del: CalculatedDelinquency) => {
     if (!isExecutive) {
@@ -419,7 +457,7 @@ export const DelinquencyPage: React.FC = () => {
       await saveDelinquencyAction({
         customerId: noticeTargetDel.customerId,
         actionType: 'NOTICE_SENT',
-        actionDetails: `[내용증명/최고장 발송] ${noticeTitle.trim()} (최고금액: ₩${noticeTargetDel.totalOverdueAmount.toLocaleString()}원, 최고기한: ${noticeDeadlineDays}일)${noticeTrackingNo ? ` [등기번호: ${noticeTrackingNo}]` : ''}`,
+        actionDetails: `[내용증명/최고장 발송] ${noticeTitle.trim()} (최고금액: ₩${noticeTargetDel.totalOverdueAmount.toLocaleString()}원, 최고기한: ${noticeDeadlineDays}일)${noticeTrackingNo ? ` (등기번호: ${noticeTrackingNo})` : ''}`,
         recordedBy: currentUser?.name || '경영진',
         mandateType: 'CEO_AUTO_MANDATE'
       });
@@ -427,7 +465,7 @@ export const DelinquencyPage: React.FC = () => {
       await db.awaitPendingWrites();
       refreshAllData();
 
-      showToast(`[${noticeTargetDel.customerName}] 내용증명 발송 이력이 저장되고 고객관리 및 연체대장에 반영되었습니다.`);
+      showToast(`${noticeTargetDel.customerName} 내용증명 발송 이력이 저장되고 고객관리 및 연체대장에 반영되었습니다.`);
       setShowNoticeModal(false);
       setNoticeTargetDel(null);
     } catch (err: any) {
@@ -744,6 +782,14 @@ export const DelinquencyPage: React.FC = () => {
                 style={{ fontSize: '11px', padding: '3px 8px', color: 'var(--danger)' }}
               >
                 거래차단
+              </button>
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={handleExportDelinquencyExcel}
+                style={{ fontSize: '11px', padding: '3px 8px', display: 'flex', alignItems: 'center', gap: '3px', whiteSpace: 'nowrap' }}
+              >
+                <Download size={11} /> 엑셀 내보내기
               </button>
             </div>
           </div>

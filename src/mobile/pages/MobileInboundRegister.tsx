@@ -216,7 +216,7 @@ export const MobileInboundRegister: React.FC<MobileInboundRegisterProps> = ({
         targetAssetStatus: isInboundGood ? 'AVAILABLE' : 'REPAIRING',
       });
 
-      setSuccessToast(`[${currentAsset?.assetNo}] 입고 등록이 완료되었습니다. (${isInboundGood ? '임대가능 전환' : '정비중 전환 및 정비티켓 발행'})`);
+      setSuccessToast(`${currentAsset?.assetNo} 입고 등록이 완료되었습니다. (${isInboundGood ? '임대가능 전환' : '정비중 전환 및 정비티켓 발행'})`);
       
       setTimeout(() => {
         setSuccessToast(null);

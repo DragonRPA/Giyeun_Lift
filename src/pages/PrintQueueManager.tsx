@@ -26,8 +26,10 @@ import {
   FileText,
   Edit2,
   Check,
-  X
+  X,
+  Download
 } from 'lucide-react';
+import { exportToExcel } from '../services/excel';
 
 export const PrintQueueManager: React.FC = () => {
   const {
@@ -260,6 +262,65 @@ export const PrintQueueManager: React.FC = () => {
     });
   }, [printQueue, filterStatus, filterDocType, filterStation]);
 
+  // ─── 인쇄 대기열 대장 엑셀 내보내기 ───
+  const handleExportQueueExcel = () => {
+    if (filteredQueue.length === 0) {
+      alert('내보낼 인쇄 대기열 데이터가 없습니다.');
+      return;
+    }
+
+    const stationMap = new Map<string, string>();
+    printStations.forEach(st => stationMap.set(st.id, st.stationName));
+
+    const exportRows = filteredQueue.map((item, idx) => {
+      const docTypeLabel = item.docType === 'DISPATCH_ORDER' ? '출고요청서' : item.docType === 'RETURN_ORDER' ? '회수요청서' : item.docType;
+      const statusLabel = 
+        item.status === 'COMPLETED' ? '출력완료' :
+        item.status === 'PRINTING' ? '출력중' :
+        item.status === 'PENDING' ? '대기중' :
+        item.status === 'FAILED' ? '출력오류' : '취소됨';
+
+      return {
+        'No': idx + 1,
+        '작업ID': item.id,
+        '발행시각': item.createdAt ? item.createdAt.replace('T', ' ').substring(0, 19) : '',
+        '문서구분': docTypeLabel,
+        '문서번호': item.docNo || '',
+        '제목': item.title || '',
+        '타겟스테이션': stationMap.get(item.stationId) || item.stationId || '미지정',
+        '요청자': item.requestedByName || item.requestedById || '시스템',
+        '상태': statusLabel,
+        '시도횟수': item.attempts || 0,
+        '오류메시지': item.errorMessage || '-',
+        '완료시각': item.completedAt ? item.completedAt.replace('T', ' ').substring(0, 19) : '-'
+      };
+    });
+
+    exportToExcel(exportRows, `인쇄대기열대장_${new Date().toISOString().split('T')[0]}`, '인쇄대기열');
+  };
+
+  // ─── 프린터 스테이션 목록 엑셀 내보내기 ───
+  const handleExportStationsExcel = () => {
+    if (printStations.length === 0) {
+      alert('내보낼 프린터 스테이션 데이터가 없습니다.');
+      return;
+    }
+
+    const exportRows = printStations.map((st, idx) => ({
+      'No': idx + 1,
+      '스테이션명': st.stationName,
+      '연결프린터드라이버': st.localPrinterName,
+      '전담문서종류': st.docTypeDefault === 'DISPATCH_ORDER' ? '출고요청서 전담' : st.docTypeDefault === 'RETURN_ORDER' ? '회수요청서 전담' : '공용 복합기',
+      '설치PC식별자': st.machineName || '-',
+      '온라인상태': isStationOnline(st) ? '온라인' : '오프라인',
+      '최종통신시각': st.lastHeartbeat ? st.lastHeartbeat.replace('T', ' ').substring(0, 19) : '-',
+      '설명비고': st.description || '-',
+      '상태': st.status
+    }));
+
+    exportToExcel(exportRows, `프린터스테이션목록_${new Date().toISOString().split('T')[0]}`, '스테이션목록');
+  };
+
   return (
     <div
       style={{
@@ -464,24 +525,44 @@ export const PrintQueueManager: React.FC = () => {
                 </span>
               </div>
 
-              {/* + 새 프린터 등록 퀵 액션 버튼 */}
-              <button
-                type="button"
-                className="btn-primary"
-                onClick={handleResetFormForNew}
-                style={{
-                  padding: '5px 12px',
-                  fontSize: '12px',
-                  fontWeight: '700',
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '4px',
-                  whiteSpace: 'nowrap'
-                }}
-              >
-                <Plus size={13} />
-                <span>새 프린터 등록</span>
-              </button>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  onClick={handleExportStationsExcel}
+                  style={{
+                    padding: '5px 12px',
+                    fontSize: '12px',
+                    fontWeight: '700',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                    whiteSpace: 'nowrap',
+                    borderColor: 'var(--success)',
+                    color: 'var(--success)'
+                  }}
+                >
+                  <Download size={13} />
+                  <span>엑셀 내보내기</span>
+                </button>
+                <button
+                  type="button"
+                  className="btn-primary"
+                  onClick={handleResetFormForNew}
+                  style={{
+                    padding: '5px 12px',
+                    fontSize: '12px',
+                    fontWeight: '700',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                    whiteSpace: 'nowrap'
+                  }}
+                >
+                  <Plus size={13} />
+                  <span>새 프린터 등록</span>
+                </button>
+              </div>
             </div>
 
             {printStations.length === 0 ? (
@@ -1076,6 +1157,25 @@ export const PrintQueueManager: React.FC = () => {
               <span style={{ fontSize: '12px', fontWeight: '700', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>
                 조회 {filteredQueue.length}건
               </span>
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={handleExportQueueExcel}
+                style={{
+                  padding: '6px 12px',
+                  fontSize: '12px',
+                  fontWeight: '700',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                  whiteSpace: 'nowrap',
+                  borderColor: 'var(--success)',
+                  color: 'var(--success)'
+                }}
+              >
+                <Download size={13} />
+                <span>엑셀 내보내기</span>
+              </button>
               <button
                 type="button"
                 className="btn-secondary"

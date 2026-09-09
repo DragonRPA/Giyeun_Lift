@@ -204,7 +204,7 @@ export const ConsumableInOutPage: React.FC = () => {
     // 횡령/부정 방지 1차 가드: 가용 재고 초과 출고 원천 차단
     const item = consumables.find(c => c.id === useConsumableId);
     if (!item || item.stockQty < useQty) {
-      showErrorModal(`본사 가용 재고(${item?.stockQty || 0}개)를 초과하여 ${useQty}개를 출고할 수 없습니다.`);
+      showErrorModal(`주기장 가용 재고(${item?.stockQty || 0}개)를 초과하여 ${useQty}개를 출고할 수 없습니다.`);
       return;
     }
 
@@ -243,7 +243,7 @@ export const ConsumableInOutPage: React.FC = () => {
         '구분': l.type === 'INBOUND' ? '구매입고' :
                 l.type === 'OUTBOUND' ? '현장출고' :
                 l.type === 'TRANSFER_TO_VEHICLE' ? '차량불출' :
-                l.type === 'RETURN_TO_HQ' ? '본사반납' : '재고조정',
+                l.type === 'RETURN_TO_HQ' ? '주기장반납' : '재고조정',
         '품목명': item?.modelName || '삭제된 품목',
         '수량': l.quantity,
         '단가': `${(l.unitPrice || 0).toLocaleString()}원`,
@@ -516,7 +516,7 @@ export const ConsumableInOutPage: React.FC = () => {
                   marginTop: '8px'
                 }}
               >
-                {isUploading ? '증빙 업로드 및 입고 확정 중...' : '본사 창고 입고 확정'}
+                {isUploading ? '증빙 업로드 및 입고 확정 중...' : '주기장 입고 확정'}
               </button>
             </form>
           </div>
@@ -552,13 +552,13 @@ export const ConsumableInOutPage: React.FC = () => {
                   <option value="">-- 출고할 품목을 선택하세요 --</option>
                   {consumables.map(c => (
                     <option key={c.id} value={c.id}>
-                      {c.modelName} (본사 가용재고: {c.stockQty}개 | 단가: {c.unitPrice.toLocaleString()}원)
+                      {c.modelName} (주기장 가용재고: {c.stockQty}개 | 단가: {c.unitPrice.toLocaleString()}원)
                     </option>
                   ))}
                 </select>
                 {targetConsumable && (
                   <div style={{ fontSize: '11.5px', color: targetConsumable.stockQty > 0 ? '#059669' : '#dc2626', fontWeight: 600, marginTop: '2px' }}>
-                    현재 본사 중앙 가용재고: {targetConsumable.stockQty} {targetConsumable.unit || '개'} 
+                    현재 주기장 가용재고: {targetConsumable.stockQty} {targetConsumable.unit || '개'} 
                     {targetConsumable.stockQty <= 0 && ' (재고 부족 - 출고 불가)'}
                   </div>
                 )}
@@ -734,7 +734,7 @@ export const ConsumableInOutPage: React.FC = () => {
                     <option value="INBOUND">구매입고</option>
                     <option value="OUTBOUND">현장출고</option>
                     <option value="TRANSFER_TO_VEHICLE">차량불출</option>
-                    <option value="RETURN_TO_HQ">본사반납</option>
+                    <option value="RETURN_TO_HQ">주기장반납</option>
                     <option value="ADJUST">재고조정</option>
                   </select>
                 </div>
@@ -828,7 +828,7 @@ export const ConsumableInOutPage: React.FC = () => {
                               {l.type === 'INBOUND' ? '구매입고' :
                                l.type === 'OUTBOUND' ? '현장출고' :
                                l.type === 'TRANSFER_TO_VEHICLE' ? '차량불출' :
-                               l.type === 'RETURN_TO_HQ' ? '본사반납' : '재고조정'}
+                               l.type === 'RETURN_TO_HQ' ? '주기장반납' : '재고조정'}
                             </span>
                           </td>
                           <td><strong style={{ color: 'var(--primary)' }}>{item?.modelName || '품목'}</strong></td>
@@ -876,7 +876,7 @@ export const ConsumableInOutPage: React.FC = () => {
                 <strong style={{ color: 'var(--primary)' }}>₩{auditBalance.transferSum.toLocaleString()}</strong>
               </div>
               <div style={{ fontSize: '12px' }}>
-                <span style={{ color: 'var(--text-muted)' }}>🔄 본사반납: </span>
+                <span style={{ color: 'var(--text-muted)' }}>🔄 주기장반납: </span>
                 <strong style={{ color: '#d97706' }}>₩{auditBalance.returnSum.toLocaleString()}</strong>
               </div>
               <div style={{

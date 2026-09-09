@@ -137,7 +137,7 @@ export const Assets: React.FC = () => {
         siteId: r.siteId,
         siteName: r.siteName || (r as any).site,
         repairId: r.id,
-        memo: `[${r.ticketNo || 'AS'}] ${r.issueDescription || r.details || '정비점검'} ➔ ${r.actionTaken || '조치완료'} (정비사: ${r.mechanicName || '-'})`,
+        memo: `${r.ticketNo || 'AS'} ${r.issueDescription || r.details || '정비점검'} ➔ ${r.actionTaken || '조치완료'} (정비사: ${r.mechanicName || '-'})`,
         createdAt: r.createdAt || new Date().toISOString()
       }));
 
@@ -180,7 +180,7 @@ export const Assets: React.FC = () => {
     }));
 
     exportToExcel(dataToExport, `자산이력_${asset.assetNo}_${new Date().toISOString().split('T')[0]}`);
-    showToast(`자산 [${asset.assetNo}] 이력 엑셀 파일이 다운로드되었습니다.`);
+    showToast(`자산 ${asset.assetNo} 이력 엑셀 파일이 다운로드되었습니다.`);
   };
 
   // 실시간 KPI 통계
@@ -315,7 +315,7 @@ export const Assets: React.FC = () => {
       await (saveAsset as any)(updated);
       setSelectedAsset(updated);
       setIsEditing(false);
-      showToast(`자산 [${updated.assetNo}] 정보가 저장되었습니다.`);
+      showToast(`자산 ${updated.assetNo} 정보가 저장되었습니다.`);
     } catch (err: any) {
       showErrorModal(`자산 정보 저장 실패: ${err?.message || err}`, '자산 저장 오류');
     }
@@ -998,7 +998,7 @@ export const Assets: React.FC = () => {
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <Layers className="text-primary" size={16} />
                 <span style={{ fontSize: '15px', fontWeight: 700, color: 'var(--text-main)' }}>
-                  [{selectedAsset.assetNo}] {isEditing ? '자산 정보 수정' : '자산 상세 명세서'}
+                  {selectedAsset.assetNo} {isEditing ? '자산 정보 수정' : '자산 상세 명세서'}
                 </span>
                 {isReturned ? (
                   <span className="badge badge-secondary" style={{ fontSize: '10px' }}>반납완료</span>

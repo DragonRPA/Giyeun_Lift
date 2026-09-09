@@ -576,7 +576,7 @@ export const MobileHome: React.FC<MobileHomeProps> = ({
                   .reduce((sum, s) => sum + s.stockQty, 0)}개 적재
               </span>
             </div>
-            <div className="text-xs text-slate-400">보충 수령, 본사 반납 및 실사 관리</div>
+            <div className="text-xs text-slate-400">보충 수령, 주기장 반납 및 실사 관리</div>
           </div>
         </div>
         <ArrowRight className="w-5 h-5 text-slate-500" />

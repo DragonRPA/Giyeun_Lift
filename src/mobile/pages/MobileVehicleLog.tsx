@@ -342,7 +342,7 @@ export const MobileVehicleLog: React.FC<MobileVehicleLogProps> = ({ onBack }) =>
         memo: fuelMemo.trim() || undefined
       });
 
-      showToast(`[⛽ ${vehicleNo}] 주유 기록(${volume}L / ₩${amount.toLocaleString()})이 정상 저장되었습니다.`);
+      showToast(`⛽ ${vehicleNo} 주유 기록(${volume}L / ₩${amount.toLocaleString()})이 정상 저장되었습니다.`);
       // 폼 초기화
       setFuelVolumeStr('');
       setFuelAmountStr('');
@@ -416,7 +416,7 @@ export const MobileVehicleLog: React.FC<MobileVehicleLogProps> = ({ onBack }) =>
         status: 'SUBMITTED'
       });
 
-      showToast(`[🚗 ${vehicleNo}] 운행일지(${driveDistance} km)가 정상 등록되었습니다.`);
+      showToast(`🚗 ${vehicleNo} 운행일지(${driveDistance} km)가 정상 등록되었습니다.`);
       setArrivalLocation('');
       setEndMileageStr('');
       setPurposeDetail('');

@@ -1,8 +1,9 @@
 // src/pages/depreciation_execution.tsx
 import React, { useState, useMemo } from 'react';
 import { useApp } from '../context/AppContext';
-import { TrendingUp, Calculator, Calendar, CheckCircle2, History, AlertCircle, ShieldAlert } from 'lucide-react';
+import { TrendingUp, Calculator, Calendar, CheckCircle2, History, AlertCircle, ShieldAlert, Download } from 'lucide-react';
 import { calculateAssetDepreciation, db } from '../services/db';
+import { exportToExcel } from '../services/excel';
 
 export const DepreciationExecution: React.FC = () => {
   const { assets, depreciationLogs, executeMonthlyDepreciation, cancelMonthlyDepreciation, currentUser, hasPermission, showErrorModal } = useApp();
@@ -167,6 +168,68 @@ export const DepreciationExecution: React.FC = () => {
     });
   };
 
+  // 1. 당월 감가상각 대상 자산 명세 대장 엑셀 내보내기
+  const handleExportDepreciationAssetList = () => {
+    if (ownedAssets.length === 0) {
+      showToast('내보낼 당사 자산 데이터가 없습니다.', 'error');
+      return;
+    }
+    const rows = ownedAssets.map((asset, idx) => {
+      const cost = asset.acquisitionPrice || 0;
+      const residualRate = asset.residualValueRate ?? 0;
+      const residualValue = Math.round(cost * (residualRate / 100));
+      const depreciableAmount = Math.max(0, cost - residualValue);
+      const monthlyDepn = (asset.depreciationMonths && asset.depreciationMonths > 0)
+        ? Math.round(depreciableAmount / asset.depreciationMonths)
+        : 0;
+      const accum = asset.accumDepreciation || 0;
+      const bookVal = asset.bookValue ?? (cost - accum);
+
+      return {
+        'No': idx + 1,
+        '관리번호': asset.assetNo,
+        '장비모델명': asset.modelName,
+        '시리얼번호': asset.serialNo || '-',
+        '자산상태': asset.status,
+        '취득일자': asset.acquisitionDate || '-',
+        '취득원가(원)': cost,
+        '내용연수(개월)': asset.depreciationMonths || 0,
+        '잔존율(%)': residualRate,
+        '잔존가치(원)': residualValue,
+        '상각대상액(원)': depreciableAmount,
+        '월상각액(원)': monthlyDepn,
+        '누적상각액(원)': accum,
+        '장부가치(원)': bookVal,
+        '비고': asset.memo || ''
+      };
+    });
+
+    exportToExcel(rows, `감가상각_자산명세대장_${selectedYm}`, '자산상각명세');
+    showToast(`감가상각 자산 명세 대장 ${rows.length}건 엑셀 내보내기 완료`);
+  };
+
+  // 2. 결산 마감 이력 대장 엑셀 내보내기
+  const handleExportDepreciationLogs = () => {
+    if (depreciationLogs.length === 0) {
+      showToast('내보낼 결산 마감 이력이 없습니다.', 'error');
+      return;
+    }
+    const rows = depreciationLogs.map((log, idx) => ({
+      'No': idx + 1,
+      '이력ID': log.id,
+      '마감연월': log.depreciationYm,
+      '마감실행일시': log.executedAt ? log.executedAt.substring(0, 19).replace('T', ' ') : '-',
+      '실행자': log.executedBy || '-',
+      '대상자산수(대)': log.targetAssetCount,
+      '당월상각총액(원)': log.totalDepreciationAmount,
+      '비고메모': log.note || '-'
+    }));
+
+    const todayStr = new Date().toISOString().slice(0, 10);
+    exportToExcel(rows, `감가상각_결산마감이력_${todayStr}`, '결산마감이력');
+    showToast(`결산 마감 이력 ${rows.length}건 엑셀 내보내기 완료`);
+  };
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', fontSize: '13px', position: 'relative' }}>
       {/* 🔔 인앱 토스트 알림 (헌장 5.2) */}
@@ -197,6 +260,16 @@ export const DepreciationExecution: React.FC = () => {
           <p style={{ fontSize: '12px', color: 'var(--text-muted)', margin: '4px 0 0 0' }}>
             자사 소유 자산 정액법 감가상각 월말 결산 및 장부가치 확정 대장
           </p>
+        </div>
+        <div>
+          <button
+            type="button"
+            className="btn-secondary"
+            onClick={handleExportDepreciationAssetList}
+            style={{ padding: '6px 12px', fontSize: '12px', display: 'inline-flex', alignItems: 'center', gap: '4px', whiteSpace: 'nowrap' }}
+          >
+            <Download size={13} /> 상각 대상 자산 엑셀
+          </button>
         </div>
       </div>
 
@@ -310,9 +383,19 @@ export const DepreciationExecution: React.FC = () => {
 
       {/* 하단: 감가상각 결산 이력 대장 테이블 */}
       <div className="card" style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
-        <h3 style={{ fontSize: '14px', fontWeight: '800', margin: 0, display: 'flex', alignItems: 'center', gap: '6px' }}>
-          <History size={16} /> 월별 감가상각 결산 마감 이력 ({depreciationLogs.length}건)
-        </h3>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <h3 style={{ fontSize: '14px', fontWeight: '800', margin: 0, display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <History size={16} /> 월별 감가상각 결산 마감 이력 ({depreciationLogs.length}건)
+          </h3>
+          <button
+            type="button"
+            className="btn-secondary"
+            onClick={handleExportDepreciationLogs}
+            style={{ padding: '4px 10px', fontSize: '11.5px', display: 'inline-flex', alignItems: 'center', gap: '4px', whiteSpace: 'nowrap' }}
+          >
+            <Download size={12} /> 결산 이력 엑셀
+          </button>
+        </div>
 
         <div style={{ overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12.5px' }}>

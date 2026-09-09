@@ -211,7 +211,7 @@ export const MobileVehicleStock: React.FC = () => {
 
     try {
       if (processType === 'RESTOCK') {
-        // [유형 1: 본사창고 보충 수령]
+        // [유형 1: 주기장 보충 수령]
         if (hqQty < processQty) {
           throw new Error(`주기장 잔여 재고 수량(${hqQty}개)이 부족합니다.`);
         }
@@ -222,7 +222,7 @@ export const MobileVehicleStock: React.FC = () => {
           processMemo || `[차량 보충] ${mechName} 탑차 보충 수령 (${processQty}개)`
         );
       } else if (processType === 'RETURN') {
-        // [유형 2: 본사창고 반납]
+        // [유형 2: 주기장 반납]
         if (vQty < processQty) {
           throw new Error(`차량 보유 수량(${vQty}개)을 초과하여 반납할 수 없습니다.`);
         }
@@ -230,7 +230,7 @@ export const MobileVehicleStock: React.FC = () => {
           effectiveMechanicId,
           processingConsumable.id,
           processQty,
-          processMemo || `[차량 반납] ${mechName} 탑차 ➔ 본사창고 반납 (${processQty}개)`
+          processMemo || `[차량 반납] ${mechName} 탑차 ➔ 주기장 반납 (${processQty}개)`
         );
       } else if (processType === 'USE') {
         // [유형 3: 현장 AS 즉시 소모]
@@ -262,7 +262,7 @@ export const MobileVehicleStock: React.FC = () => {
         await db.awaitPendingWrites();
         refreshAllData();
       } else if (processType === 'DEFECTIVE') {
-        // [유형 4: 고품 회수 및 본사 격리 등록]
+        // [유형 4: 고품 회수 및 주기장 격리 등록]
         const disp = defectiveCondition === 'REPAIRABLE' ? 'REBUILD' : 'SCRAP';
         if (vQty >= processQty) {
           await returnConsumableToHq(
@@ -581,7 +581,7 @@ export const MobileVehicleStock: React.FC = () => {
                           차량 {vQty} {c.unit || '개'}
                         </span>
                         <span className="text-[10px] text-slate-400 font-mono whitespace-nowrap">
-                          본사 {hqQty}개 보유
+                          주기장 {hqQty}개 보유
                         </span>
                       </div>
                     </div>
@@ -598,7 +598,7 @@ export const MobileVehicleStock: React.FC = () => {
                         <span>보충</span>
                       </button>
 
-                      {/* 2. 본사 반납 */}
+                      {/* 2. 주기장 반납 */}
                       <button
                         type="button"
                         disabled={vQty <= 0}
@@ -743,7 +743,7 @@ export const MobileVehicleStock: React.FC = () => {
                   processType === 'RETURN' ? 'bg-amber-600 text-white shadow' : 'text-slate-400 hover:text-white'
                 }`}
               >
-                본사반납
+                주기장반납
               </button>
               <button
                 type="button"
@@ -783,7 +783,7 @@ export const MobileVehicleStock: React.FC = () => {
                 </strong>
               </div>
               <div>
-                <span className="text-slate-400">본사 잔여재고: </span>
+                <span className="text-slate-400">주기장 잔여재고: </span>
                 <strong className="text-emerald-400 font-mono font-bold">
                   {processingConsumable.stockQty || 0}개
                 </strong>
@@ -853,7 +853,7 @@ export const MobileVehicleStock: React.FC = () => {
                       onClick={() => setProcessQty(processingConsumable.stockQty || 0)}
                       className="py-1 px-2 rounded-lg bg-blue-950/60 text-blue-300 border border-blue-800/40 text-[11px] font-bold"
                     >
-                      본사 전량
+                      주기장 전량
                     </button>
                   )}
                 </div>

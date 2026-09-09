@@ -10,6 +10,7 @@ import {
   UserCheck, FileAudio, Volume2, Sparkles, UploadCloud, Loader2
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
+import { exportToExcel } from '../services/excel';
 import { Delivery, TransportCompany, TransportDriver, TransportNegotiation, db, DeliveryStatus, Asset } from '../services/db';
 import { DestinationWeatherModal } from '../components/DestinationWeatherModal';
 import { matchHangul } from '../utils/hangulSearch';
@@ -929,7 +930,7 @@ export const TruckDispatch: React.FC = () => {
 
       setShowCostEditModal(false);
       setEditingDelivery(null);
-      setReconNotificationMsg(`💰 [${editingDelivery.id}] 배차 운송료가 ₩${newCost.toLocaleString()}원으로 수정되어 DB에 반영되었습니다.`);
+      setReconNotificationMsg(`💰 ${editingDelivery.id} 배차 운송료가 ₩${newCost.toLocaleString()}원으로 수정되어 DB에 반영되었습니다.`);
     } catch (err: any) {
       showErrorModal('금액 수정 중 오류가 발생하였습니다: ' + err.message);
     }
@@ -982,7 +983,7 @@ export const TruckDispatch: React.FC = () => {
 
     setSelectedSystemDeliveryId(null);
     setSelectedExcelRowIndex(null);
-    setReconNotificationMsg(`✅ [${sysD.id}] 배차건과 엑셀 행이 1:1 수동 대사 완료 처리되었습니다.`);
+    setReconNotificationMsg(`✅ ${sysD.id} 배차건과 엑셀 행이 1:1 수동 대사 완료 처리되었습니다.`);
   };
 
   // 📅 기간 선택 피커 헬퍼 (월별 정산 원클릭 지원)
@@ -2374,6 +2375,56 @@ export const TruckDispatch: React.FC = () => {
     }
   };
 
+  const handleExportDispatchExcel = () => {
+    if (filteredDeliveries.length === 0) {
+      showToast('내보낼 배차 데이터가 없습니다.', 'warning');
+      return;
+    }
+    const rows = filteredDeliveries.map((d, index) => {
+      const contract = getContract(d.contractId);
+      const customer = contract ? getCustomer(contract.customerId) : null;
+      const site = sites.find(s => s.id === contract?.siteId);
+      const cargoItems = parseCargoItems(d);
+      const cargoStr = cargoItems.map(c => `${c.modelName} ${c.count}대`).join(', ') || (d as any).equipmentSummary || '-';
+      const normStatus = getNormalizedDeliveryStatus(d);
+      const statusLabel = normStatus === 'PENDING' ? '배차대기'
+        : normStatus === 'DISPATCHED' ? '배차완료'
+        : normStatus === 'DELIVERED' ? '운송완료'
+        : normStatus === 'CANCELLED' ? '배차취소' : normStatus;
+      const effCost = getEffectiveDeliveryCost(d);
+      
+      return {
+        'No': index + 1,
+        '배차번호': d.id,
+        '구분': d.dispatchCategory || d.type || '출고',
+        '상태': statusLabel,
+        '요청일자': d.requestDate || '-',
+        '배차(상차)일': d.loadingDate || d.scheduledDate || '-',
+        '하차(도착)일': d.unloadingDate || '-',
+        '계약번호': contract?.contractNo || '-',
+        '고객사': customer?.name || (d as any).customerName || '-',
+        '현장명': site?.name || (d as any).siteName || '-',
+        '운송장비': cargoStr,
+        '출발지(상차지)': d.originAddress || '당사 보관소',
+        '도착지(하차지)': d.destinationAddress || site?.address || '-',
+        '운송사': d.transportCompany || '-',
+        '차종': d.vehicleType || '-',
+        '차량번호': d.vehicleNo || '-',
+        '기사명': d.driverName || '-',
+        '기사연락처': d.driverContact || '-',
+        '예상운송비': d.expectedCost || 0,
+        '확정운송비': effCost,
+        '고객청구여부': d.billableToCustomer ? '청구' : '당사부담',
+        '청구대상고객사': d.billableCustomerId ? (getCustomer(d.billableCustomerId)?.name || '-') : '-',
+        '특이사항/메모': d.memo || '',
+        '마감비고': d.closingMemo || ''
+      };
+    });
+    const todayStr = new Date().toISOString().split('T')[0];
+    exportToExcel(rows, `배차대장_${todayStr}`, '배차목록');
+    showToast(`배차 대장 ${rows.length}건 엑셀 내보내기 완료`);
+  };
+
   return (
     <div style={{ padding: '24px', maxWidth: '1400px', margin: '0 auto', color: 'var(--text-primary)', position: 'relative' }}>
       {/* 알림 토스트 배너 (헌장 5.2) */}
@@ -2694,6 +2745,30 @@ export const TruckDispatch: React.FC = () => {
                 </span>
               </button>
             ))}
+            <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center' }}>
+              <button
+                onClick={handleExportDispatchExcel}
+                style={{
+                  padding: '8px 14px',
+                  borderRadius: '8px',
+                  border: '1px solid var(--border-color)',
+                  backgroundColor: 'var(--bg-card)',
+                  color: 'var(--text-primary)',
+                  fontWeight: 700,
+                  fontSize: '12.5px',
+                  cursor: 'pointer',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  whiteSpace: 'nowrap',
+                  flexShrink: 0,
+                  boxShadow: '0 1px 2px rgba(0,0,0,0.05)'
+                }}
+              >
+                <Download size={14} />
+                엑셀 내보내기
+              </button>
+            </div>
           </div>
 
           {/* 2열 메인 레이아웃 (좌: 배차 목록 + 📅 기간조회 | 우: 기사 배정 폼) */}

@@ -309,7 +309,7 @@ export const Dashboard: React.FC = () => {
         } catch (e) {}
       }
 
-      alert(`🎉 [계약: ${targetContract.contractNo}] 3대 핵심 서류 + 드라이브 원본 결합 성공!\n\n총 ${mergedPdf.getPageCount()}페이지 단일 PDF로 완벽하게 병합 다운로드되었습니다.${localSaveMsg}`);
+      alert(`🎉 계약 ${targetContract.contractNo} 3대 핵심 서류 + 드라이브 원본 결합 성공!\n\n총 ${mergedPdf.getPageCount()}페이지 단일 PDF로 완벽하게 병합 다운로드되었습니다.${localSaveMsg}`);
     } catch (err: any) {
       alert(`⚠️ 서류 팩 생성 실패: ${err?.message || err}`);
     } finally {
@@ -381,7 +381,7 @@ export const Dashboard: React.FC = () => {
     activities.push({
       id: `act-r-${r.id}`,
       type: '정비',
-      text: `정비 등록: [${asset?.assetNo || '자산'}] ${r.details.substring(0, 20)}...`,
+      text: `정비 등록: ${asset?.assetNo || '자산'} ${r.details.substring(0, 20)}...`,
       date: r.createdAt.substring(0, 10),
       icon: <Wrench size={16} className="text-warning" />
     });

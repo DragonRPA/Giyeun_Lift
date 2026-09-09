@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
-import { Settings, Users, Truck, Plus, Trash2, Edit2, Copy, Check, X, CreditCard, Building } from 'lucide-react';
+import { Settings, Users, Truck, Plus, Trash2, Edit2, Copy, Check, X, CreditCard, Building, Download } from 'lucide-react';
 import { TransportCompany, TransportDriver, db } from '../services/db';
+import { exportToExcel } from '../services/excel';
 
 export const TransportMaster: React.FC = () => {
   const { transportCompanies, transportDrivers, hasPermission, refreshAllData, showErrorModal } = useApp();
@@ -207,11 +208,59 @@ export const TransportMaster: React.FC = () => {
     setTimeout(() => setCopiedId(null), 2000);
   };
 
+  // 운송사 대장 엑셀 내보내기
+  const handleExportCompanies = () => {
+    if (transportCompanies.length === 0) {
+      showToast('내보낼 운송사 데이터가 없습니다.', 'warning');
+      return;
+    }
+    const rows = transportCompanies.map((c, index) => ({
+      'No': index + 1,
+      '운송사명': c.name,
+      '사업자번호': c.businessNo || '-',
+      '대표연락처': c.contact || '-',
+      '은행명': c.bankName || '-',
+      '계좌번호': c.bankAccount || '-',
+      '예금주': c.bankHolder || '-',
+      '소속기사수': transportDrivers.filter(d => d.companyId === c.id).length,
+      '등록일시': c.createdAt ? c.createdAt.substring(0, 10) : '-'
+    }));
+    const todayStr = new Date().toISOString().split('T')[0];
+    exportToExcel(rows, `운송사목록_${todayStr}`, '운송사');
+    showToast(`운송사 ${rows.length}개사 엑셀 내보내기 완료`);
+  };
+
+  // 소속 기사 대장 엑셀 내보내기
+  const handleExportDrivers = () => {
+    if (filteredDrivers.length === 0) {
+      showToast('내보낼 기사 데이터가 없습니다.', 'warning');
+      return;
+    }
+    const rows = filteredDrivers.map((d, index) => {
+      const comp = transportCompanies.find(c => c.id === d.companyId);
+      return {
+        'No': index + 1,
+        '기사명': d.driverName,
+        '소속운송사': comp?.name || '미상',
+        '주민번호': d.idNo ? `${d.idNo}******` : '-',
+        '연락처': d.driverContact || '-',
+        '차종/톤수': d.vehicleType || '-',
+        '차량번호': d.vehicleNo || '-',
+        '차량색상': d.vehicleColor || '-',
+        '주소': d.address || '-',
+        '등록일시': d.createdAt ? d.createdAt.substring(0, 10) : '-'
+      };
+    });
+    const todayStr = new Date().toISOString().split('T')[0];
+    exportToExcel(rows, `운송기사목록_${todayStr}`, '운송기사');
+    showToast(`기사 ${rows.length}명 엑셀 내보내기 완료`);
+  };
+
   return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
         <h2 style={{ fontWeight: '700', fontSize: '20px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <Settings size={22} color="var(--primary)" /> 운송 거래처 및 기사 마스터 관리
+          <Settings size={22} color="var(--primary)" /> 운송 거래처 관리
         </h2>
       </div>
 
@@ -235,11 +284,20 @@ export const TransportMaster: React.FC = () => {
             <h3 className="card-title" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
               <Truck size={16} /> 운송 거래처 (물류사)
             </h3>
-            {canSave && (
-              <button className="btn-primary" onClick={() => handleOpenCompanyModal()} style={{ padding: '4px 8px', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                <Plus size={14} /> 신규 등록
+            <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+              <button
+                className="btn-secondary"
+                onClick={handleExportCompanies}
+                style={{ padding: '4px 8px', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '4px', whiteSpace: 'nowrap' }}
+              >
+                <Download size={13} /> 엑셀 내보내기
               </button>
-            )}
+              {canSave && (
+                <button className="btn-primary" onClick={() => handleOpenCompanyModal()} style={{ padding: '4px 8px', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '4px', whiteSpace: 'nowrap' }}>
+                  <Plus size={14} /> 신규 등록
+                </button>
+              )}
+            </div>
           </div>
           
           <div style={{ marginTop: '12px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
@@ -314,11 +372,20 @@ export const TransportMaster: React.FC = () => {
             <h3 className="card-title" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
               <Users size={16} /> 소속 운송 기사 및 차량 정보 (주민번호 / 주소 / 색상)
             </h3>
-            {canSave && (
-              <button className="btn-primary" onClick={() => handleOpenDriverModal()} style={{ padding: '4px 8px', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                <Plus size={14} /> 기사 신규 등록
+            <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+              <button
+                className="btn-secondary"
+                onClick={handleExportDrivers}
+                style={{ padding: '4px 8px', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '4px', whiteSpace: 'nowrap' }}
+              >
+                <Download size={13} /> 엑셀 내보내기
               </button>
-            )}
+              {canSave && (
+                <button className="btn-primary" onClick={() => handleOpenDriverModal()} style={{ padding: '4px 8px', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '4px', whiteSpace: 'nowrap' }}>
+                  <Plus size={14} /> 기사 신규 등록
+                </button>
+              )}
+            </div>
           </div>
 
           <div className="table-container" style={{ marginTop: '16px' }}>

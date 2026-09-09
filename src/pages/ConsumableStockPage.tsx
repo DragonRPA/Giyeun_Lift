@@ -63,14 +63,14 @@ export const ConsumableStockPage: React.FC = () => {
   const [vehicleStockSearch, setVehicleStockSearch] = useState('');
   const [selectedMechanicFilter, setSelectedMechanicFilter] = useState('ALL');
 
-  // 본사 ➔ 차량 불출 모달
+  // 주기장 ➔ 차량 불출 모달
   const [showTransferModal, setShowTransferModal] = useState(false);
   const [transferMechanicId, setTransferMechanicId] = useState('');
   const [transferConsumableId, setTransferConsumableId] = useState('');
   const [transferQty, setTransferQty] = useState(1);
   const [transferMemo, setTransferMemo] = useState('');
 
-  // 차량 ➔ 본사 반납 모달
+  // 차량 ➔ 주기장 반납 모달
   const [showReturnModal, setShowReturnModal] = useState(false);
   const [returnMechanicId, setReturnMechanicId] = useState('');
   const [returnConsumableId, setReturnConsumableId] = useState('');
@@ -79,7 +79,7 @@ export const ConsumableStockPage: React.FC = () => {
   const [isReturnDefective, setIsReturnDefective] = useState(false);
   const [returnDisposition, setReturnDisposition] = useState<'REBUILD' | 'SCRAP' | 'VENDOR_WARRANTY'>('REBUILD');
 
-  // 차량 간(P2P) 이동 모달
+  // 차량 간 이동 모달
   const [showP2PModal, setShowP2PModal] = useState(false);
   const [p2pFromMechanicId, setP2pFromMechanicId] = useState('');
   const [p2pToMechanicId, setP2pToMechanicId] = useState('');
@@ -136,8 +136,8 @@ export const ConsumableStockPage: React.FC = () => {
 
       return {
         'No': idx + 1,
-        '자재 품목명': c.modelName,
-        '주기장(본사) 재고': c.stockQty,
+        '소모품 품목명': c.modelName,
+        '주기장 재고': c.stockQty,
         '차량 이동 재고': totalVehicleQty,
         '전사 총 재고': c.stockQty + totalVehicleQty,
         '단위': c.unit || '개',
@@ -233,7 +233,7 @@ export const ConsumableStockPage: React.FC = () => {
     }
   };
 
-  // --- 본사 ➔ 차량 불출 핸들러 ---
+  // --- 주기장 ➔ 차량 불출 핸들러 ---
   const handleTransferSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!transferMechanicId || !transferConsumableId || transferQty <= 0) {
@@ -243,14 +243,14 @@ export const ConsumableStockPage: React.FC = () => {
     const targetItem = consumables.find(c => c.id === transferConsumableId);
     if (!targetItem) return;
     if (transferQty > targetItem.stockQty) {
-      showErrorModal(`불출 요청 수량(${transferQty}개)이 본사 가용 재고(${targetItem.stockQty}개)를 초과할 수 없습니다.`);
+      showErrorModal(`불출 요청 수량(${transferQty}개)이 주기장 가용 재고(${targetItem.stockQty}개)를 초과할 수 없습니다.`);
       return;
     }
 
     try {
       await transferConsumableToMechanic(transferMechanicId, transferConsumableId, transferQty, transferMemo);
       await db.awaitPendingWrites();
-      showToast('본사 창고에서 정비사 차량으로 소모품 불출 이동이 완료되었습니다.');
+      showToast('주기장에서 정비사 차량으로 소모품 불출 이동이 완료되었습니다.');
       setShowTransferModal(false);
       setTransferQty(1);
       setTransferMemo('');
@@ -259,7 +259,7 @@ export const ConsumableStockPage: React.FC = () => {
     }
   };
 
-  // --- 차량 ➔ 본사 반납 핸들러 ---
+  // --- 차량 ➔ 주기장 반납 핸들러 ---
   const handleReturnSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!returnMechanicId || !returnConsumableId || returnQty <= 0) {
@@ -280,7 +280,7 @@ export const ConsumableStockPage: React.FC = () => {
       await db.awaitPendingWrites();
       showToast(isReturnDefective 
         ? `수거 고품(${returnDisposition === 'REBUILD' ? '재생' : returnDisposition === 'SCRAP' ? '폐기' : '무상보증'}) 반납 격리 처리가 완료되었습니다.`
-        : '정비사 차량에서 본사 창고로 정상 소모품 반납이 완료되었습니다.');
+        : '정비사 차량에서 주기장으로 정상 소모품 반납이 완료되었습니다.');
       setShowReturnModal(false);
       setReturnQty(1);
       setReturnMemo('');
@@ -291,11 +291,11 @@ export const ConsumableStockPage: React.FC = () => {
     }
   };
 
-  // --- 차량 간(P2P) 이동 핸들러 ---
+  // --- 차량 간 이동 핸들러 ---
   const handleP2PSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!p2pFromMechanicId || !p2pToMechanicId || !p2pConsumableId || p2pQty <= 0) {
-      showToast('양도/양수 정비사 및 부품, 수량을 올바르게 지정해 주세요.', 'error');
+      showToast('양도/양수 정비사 및 소모품, 수량을 올바르게 지정해 주세요.', 'error');
       return;
     }
     if (p2pFromMechanicId === p2pToMechanicId) {
@@ -314,12 +314,12 @@ export const ConsumableStockPage: React.FC = () => {
     try {
       await transferConsumableBetweenMechanics(p2pFromMechanicId, p2pToMechanicId, p2pConsumableId, p2pQty, p2pMemo);
       await db.awaitPendingWrites();
-      showToast('정비사 차량 간 부품 융통 이동이 성공적으로 완료되었습니다.');
+      showToast('정비사 차량 간 소모품 이동이 완료되었습니다.');
       setShowP2PModal(false);
       setP2pQty(1);
       setP2pMemo('');
     } catch (err: any) {
-      showErrorModal(err?.message || '차량 간 부품 이동 중 오류가 발생했습니다.');
+      showErrorModal(err?.message || '차량 간 소모품 이동 중 오류가 발생했습니다.');
     }
   };
 
@@ -417,12 +417,6 @@ export const ConsumableStockPage: React.FC = () => {
           <h2 style={{ fontSize: '20px', fontWeight: 800, margin: 0, color: 'var(--text-primary)', whiteSpace: 'nowrap' }}>
             소모품 재고 관리
           </h2>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '4px' }}>
-            <ShieldCheck size={14} style={{ color: '#059669' }} />
-            <span style={{ fontSize: '12px', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
-              주기장 창고 재고, 기사 차량 적재 재고, 고품 수거 격리 및 재고 실사 감사 스튜디오
-            </span>
-          </div>
         </div>
 
         {/* 탭 버튼군 (무수식어 건조 표준) */}
@@ -679,7 +673,7 @@ export const ConsumableStockPage: React.FC = () => {
                       }}
                       style={{ padding: '7px 12px', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '4px' }}
                     >
-                      <ArrowUpRight size={14} /> 본사 ➔ 차량 불출
+                      <ArrowUpRight size={14} /> 주기장 ➔ 차량 불출
                     </button>
                     <button
                       type="button"
@@ -692,7 +686,7 @@ export const ConsumableStockPage: React.FC = () => {
                       }}
                       style={{ padding: '7px 12px', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '4px' }}
                     >
-                      <ArrowDownLeft size={14} /> 차량 ➔ 본사 반납
+                      <ArrowDownLeft size={14} /> 차량 ➔ 주기장 반납
                     </button>
                     <button
                       type="button"
@@ -706,7 +700,7 @@ export const ConsumableStockPage: React.FC = () => {
                       }}
                       style={{ padding: '7px 12px', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '4px' }}
                     >
-                      <ArrowRightLeft size={14} /> 차량 간 P2P 이동
+                      <ArrowRightLeft size={14} /> 차량 간 이동
                     </button>
                   </>
                 )}
@@ -804,7 +798,7 @@ export const ConsumableStockPage: React.FC = () => {
                                   }}
                                   style={{ padding: '2px 6px', fontSize: '11px' }}
                                 >
-                                  본사반납
+                                  주기장반납
                                 </button>
                               </div>
                             )}
@@ -1126,7 +1120,7 @@ export const ConsumableStockPage: React.FC = () => {
                   <div>
                     <h3 className="card-title" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                       <FileCheck size={16} style={{ color: 'var(--primary)' }} />
-                      전표 [{currentAudit.auditNo}] 실사 검증 대장
+                      전표 {currentAudit.auditNo} 실사 검증 대장
                     </h3>
                     <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
                       전산재고 ↔ 실사수량 1:1 인라인 검증 및 차이 사유 확정
@@ -1301,7 +1295,7 @@ export const ConsumableStockPage: React.FC = () => {
       )}
 
       {/* ──────────────────────────────────────────────────────────────────────── */}
-      {/* 본사 ➔ 차량 불출 모달 */}
+      {/* 주기장 ➔ 차량 불출 모달 */}
       {/* ──────────────────────────────────────────────────────────────────────── */}
       {showTransferModal && (
         <div style={{
@@ -1311,7 +1305,7 @@ export const ConsumableStockPage: React.FC = () => {
           <form onSubmit={handleTransferSubmit} className="card" style={{ width: '90%', maxWidth: '450px', backgroundColor: 'var(--bg-card)', margin: 0 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
               <h3 style={{ fontSize: '16px', fontWeight: 700, margin: 0, display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <ArrowUpRight size={16} style={{ color: 'var(--primary)' }} /> 본사 창고 ➔ 차량 소모품 불출
+                <ArrowUpRight size={16} style={{ color: 'var(--primary)' }} /> 주기장 ➔ 차량 소모품 불출
               </h3>
               <button type="button" onClick={() => setShowTransferModal(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}>
                 <X size={18} />
@@ -1335,7 +1329,7 @@ export const ConsumableStockPage: React.FC = () => {
                   <option value="">-- 품목 선택 --</option>
                   {consumables.map(c => (
                     <option key={c.id} value={c.id}>
-                      {c.modelName} (본사재고: {c.stockQty}개 | ₩{c.unitPrice.toLocaleString()})
+                      {c.modelName} (주기장재고: {c.stockQty}개 | ₩{c.unitPrice.toLocaleString()})
                     </option>
                   ))}
                 </select>
@@ -1378,7 +1372,7 @@ export const ConsumableStockPage: React.FC = () => {
       )}
 
       {/* ──────────────────────────────────────────────────────────────────────── */}
-      {/* 차량 ➔ 본사 반납 모달 (고품 격리 토글 포함) */}
+      {/* 차량 ➔ 주기장 반납 모달 (고품 격리 토글 포함) */}
       {/* ──────────────────────────────────────────────────────────────────────── */}
       {showReturnModal && (
         <div style={{
@@ -1388,7 +1382,7 @@ export const ConsumableStockPage: React.FC = () => {
           <form onSubmit={handleReturnSubmit} className="card" style={{ width: '90%', maxWidth: '450px', backgroundColor: 'var(--bg-card)', margin: 0 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
               <h3 style={{ fontSize: '16px', fontWeight: 700, margin: 0, display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <ArrowDownLeft size={16} style={{ color: '#d97706' }} /> 차량 소모품 ➔ 본사 창고 반납
+                <ArrowDownLeft size={16} style={{ color: '#d97706' }} /> 차량 소모품 ➔ 주기장 반납
               </h3>
               <button type="button" onClick={() => setShowReturnModal(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}>
                 <X size={18} />
@@ -1480,7 +1474,7 @@ export const ConsumableStockPage: React.FC = () => {
       )}
 
       {/* ──────────────────────────────────────────────────────────────────────── */}
-      {/* 차량 간(P2P) 이동 모달 */}
+      {/* 차량 간 이동 모달 */}
       {/* ──────────────────────────────────────────────────────────────────────── */}
       {showP2PModal && (
         <div style={{
@@ -1490,7 +1484,7 @@ export const ConsumableStockPage: React.FC = () => {
           <form onSubmit={handleP2PSubmit} className="card" style={{ width: '90%', maxWidth: '450px', backgroundColor: 'var(--bg-card)', margin: 0 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
               <h3 style={{ fontSize: '16px', fontWeight: 700, margin: 0, display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <ArrowRightLeft size={16} style={{ color: 'var(--primary)' }} /> 정비 차량 간(P2P) 부품 이동
+                <ArrowRightLeft size={16} style={{ color: 'var(--primary)' }} /> 정비 차량 간 소모품 이동
               </h3>
               <button type="button" onClick={() => setShowP2PModal(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}>
                 <X size={18} />

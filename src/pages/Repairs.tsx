@@ -10,19 +10,7 @@ import { Repair, Asset, InboundDefectDetail, db } from '../services/db';
 import { exportToExcel } from '../services/excel';
 import { compressFileIfNeeded } from '../utils/imageCompressor';
 
-// 10대 자주 쓰는 정비 작업 퀵 태그
-const QUICK_WORK_TAGS = [
-  '유압유(작동유) 보충',
-  '배터리 증류수 보충 및 단자 청소',
-  '상하강 리밋 스위치 교체',
-  '상부 조종기 레버 센서 점검 및 수리',
-  '배터리 충전기 및 전원선 점검',
-  '구동 모터 브러시 점검',
-  '경광등 및 후진 부저 수리',
-  '상승 체인 및 와이어 장력 조절',
-  '주요 관절부 그리스 주유',
-  '비상 수동 하강 밸브 점검'
-];
+
 
 export const Repairs: React.FC = () => {
   const {
@@ -96,8 +84,15 @@ export const Repairs: React.FC = () => {
   const [ledgerEndDate, setLedgerEndDate] = useState(thisMonthEnd);
   const [ledgerMechanicFilter, setLedgerMechanicFilter] = useState('ALL');
 
+  const [durationMinutes, setDurationMinutes] = useState<number>(30); // 실제 정비 소요시간 (기본값: 30분)
+  const [selectedInspectionItemId, setSelectedInspectionItemId] = useState<string>('');
+  const [selectedInspectionItemActionGuide, setSelectedInspectionItemActionGuide] = useState<string>('');
+  const [inspectionCategoryFilter, setInspectionCategoryFilter] = useState<string>('전체');
+
   // 대장 상세 팝업 모달
   const [selectedDetailRepair, setSelectedDetailRepair] = useState<Repair | null>(null);
+  // 대장 사진 라이트박스 뷰어 모달
+  const [viewingPhotoRepair, setViewingPhotoRepair] = useState<Repair | null>(null);
 
   // =========================================================================
   // [3] 연산 및 필터링
@@ -248,7 +243,7 @@ export const Repairs: React.FC = () => {
       const defectSummary = parsedDefects.length > 0
         ? parsedDefects.map(d => `• [${d.checkitemName}] 점검 및 부품 교체/수리 조치 완료`).join('\n')
         : '• 입고 결함 항목 점검 및 정상 작동 확인 완료';
-      setRepairDetails(`[입고결함 정비 - ${pendingInbound.inboundNo || '검수'}]\n${defectSummary}\n• 장비 기능 및 안전장치 시운전 테스트 완료`);
+      setRepairDetails(`입고결함 정비: ${pendingInbound.inboundNo || '검수'}\n${defectSummary}\n• 장비 기능 및 안전장치 시운전 테스트 완료`);
     } else if (activeExternal) {
       setInboundDefects([]);
       setInboundPhotos([]);
@@ -264,7 +259,7 @@ export const Repairs: React.FC = () => {
       setMaintenanceType(unresolvedRepair.maintenanceType === 'EXTERNAL' ? 'EXTERNAL' : unresolvedRepair.maintenanceType === 'PREVENTIVE' ? 'PREVENTIVE' : 'INHOUSE_REPAIR');
       setSelectedVendorId(unresolvedRepair.vendorId || '');
       setExternalCost(unresolvedRepair.totalCost || 0);
-      setRepairDetails(`[부품대기 해제 및 정비 재개]\n• 보류사유: ${unresolvedRepair.unresolvedReason || '부품 대기'}\n• 부품 장착 및 정비 완료 조치`);
+      setRepairDetails(`[소모품대기 해제 및 정비 재개]\n• 보류사유: ${unresolvedRepair.unresolvedReason || '소모품 대기'}\n• 소모품 투입 및 정비 완료 조치`);
     } else {
       setInboundDefects([]);
       setInboundPhotos([]);
@@ -284,7 +279,7 @@ export const Repairs: React.FC = () => {
       const sop = chk?.actionGuide ? ` (SOP: ${chk.actionGuide})` : '';
       return `• [${d.checkitemName}] 점검 및 부품 교체/정비 완료${sop}`;
     });
-    const prefix = `[입고결함 정비 - ${inboundMeta?.inboundNo || '검수'}]\n`;
+    const prefix = `입고결함 정비: ${inboundMeta?.inboundNo || '검수'}\n`;
     setRepairDetails(prefix + lines.join('\n') + '\n• 이상 부위 시운전 및 안전 기능 검증 완료');
     showToast('입고 결함 항목 조치 내용이 입력되었습니다.');
   };
@@ -355,12 +350,22 @@ export const Repairs: React.FC = () => {
     }
   };
 
-  const handleAddQuickTag = (tag: string) => {
+  const handleSelectInspectionItem = (item: (typeof inspectionChecklistItems)[0]) => {
+    setSelectedInspectionItemId(item.id);
+    setInspectionItemCode(item.code);
+    if (item.score) setDegradationScore(item.score);
+    if (item.standardManHours) {
+      setDurationMinutes(Math.round(item.standardManHours * 60));
+    }
+    if (item.actionGuide) {
+      setSelectedInspectionItemActionGuide(item.actionGuide);
+    }
     setRepairDetails(prev => {
+      const tagText = `[${item.category}] ${item.name} (${item.code})`;
       const trimmed = prev.trim();
-      if (!trimmed) return `• ${tag}`;
-      if (trimmed.includes(tag)) return prev;
-      return `${trimmed}\n• ${tag}`;
+      if (!trimmed) return `• ${tagText}`;
+      if (trimmed.includes(item.name)) return prev;
+      return `${trimmed}\n• ${tagText}`;
     });
   };
 
@@ -371,7 +376,7 @@ export const Repairs: React.FC = () => {
     const qty = Math.max(1, tempConsumableQty);
     const existingUsed = usedConsumables.find(item => item.consumableId === tempConsumableId)?.quantity || 0;
     if (existingUsed + qty > (targetItem.stockQty || 0)) {
-      showToast(`소모품 [${targetItem.modelName}] 본사 가용 재고(${targetItem.stockQty || 0}개)를 초과하여 추가할 수 없습니다.`, 'error');
+      showToast(`소모품 [${targetItem.modelName}] 주기장 가용 재고(${targetItem.stockQty || 0}개)를 초과하여 추가할 수 없습니다.`, 'error');
       return;
     }
     setUsedConsumables(prev => {
@@ -431,7 +436,7 @@ export const Repairs: React.FC = () => {
       assetNo: selectedAsset.assetNo,
       modelName: selectedAsset.modelName,
       workLocation: 'YARD',
-      stockSource: 'CENTRAL_HQ',
+      stockSource: 'YARD_STOCK',
       maintenanceType,
       repairType: maintenanceType === 'EXTERNAL' ? 'EXTERNAL' : 'INTERNAL',
       status: 'COMPLETED',
@@ -448,14 +453,17 @@ export const Repairs: React.FC = () => {
       billableType,
       billableAmount: billableType === 'BILLABLE' ? billableAmount : 0,
       billableToCustomer: billableType === 'BILLABLE',
-      inspectionItemCode,
+      durationMinutes: Number(durationMinutes) || 30,
+      spentManHours: (Number(durationMinutes) || 30) / 60,
+      inspectionItemId: selectedInspectionItemId || undefined,
+      inspectionItemCode: inspectionItemCode || undefined,
       degradationScore,
       inboundNo: inboundMeta?.inboundNo
     };
 
     await registerRepair(payload, usedConsumables);
     await db.awaitPendingWrites();
-    showToast(`[${selectedAsset.assetNo}] 정비 완료: 임대가능(AVAILABLE) 복원 및 소모품 차감 완료`);
+    showToast(`${selectedAsset.assetNo} 정비 완료: 임대가능(AVAILABLE) 복원 및 소모품 차감 완료`);
 
     // 폼 초기화
     setSelectedAssetId('');
@@ -468,6 +476,9 @@ export const Repairs: React.FC = () => {
     setBeforeImage('');
     setAfterImage('');
     setInspectionItemCode('');
+    setSelectedInspectionItemId('');
+    setSelectedInspectionItemActionGuide('');
+    setDurationMinutes(30);
     setDegradationScore(0);
     setBillableType('FREE');
     setBillableAmount(0);
@@ -491,7 +502,7 @@ export const Repairs: React.FC = () => {
       assetNo: selectedAsset.assetNo,
       modelName: selectedAsset.modelName,
       workLocation: 'YARD',
-      stockSource: 'CENTRAL_HQ',
+      stockSource: 'YARD_STOCK',
       maintenanceType,
       repairType: maintenanceType === 'EXTERNAL' ? 'EXTERNAL' : 'INTERNAL',
       status: 'UNRESOLVED',
@@ -517,7 +528,7 @@ export const Repairs: React.FC = () => {
 
     await registerRepair(payload, usedConsumables);
     await db.awaitPendingWrites();
-    showToast(`[${selectedAsset.assetNo}] 장비가 수리정비중(REPAIRING) 상태로 보존되었습니다.`);
+    showToast(`${selectedAsset.assetNo} 장비가 수리정비중(REPAIRING) 상태로 보존되었습니다.`);
     setShowUnresolvedModal(false);
     setSelectedAssetId('');
     setSelectedRepairId('');
@@ -560,7 +571,7 @@ export const Repairs: React.FC = () => {
 
     await registerRepair(payload, []);
     await db.awaitPendingWrites();
-    showToast(`[${selectedAsset.assetNo}] 외주 정비 위탁 등록 완료`);
+    showToast(`${selectedAsset.assetNo} 외주 정비 위탁 등록 완료`);
     setSelectedAssetId('');
     setRepairDetails('');
   };
@@ -575,11 +586,12 @@ export const Repairs: React.FC = () => {
       '자산번호': r.assetNo || getAssetNo(r.assetId),
       '모델명': r.modelName || getAssetModel(r.assetId),
       '정비내용': r.details || '-',
+      '소요시간': r.durationMinutes ? `${r.durationMinutes}분 (${(r.durationMinutes / 60).toFixed(1)}M/H)` : (r.spentManHours ? `${r.spentManHours.toFixed(1)} M/H` : '-'),
       '미완료사유': r.unresolvedReason || '-',
       '총비용(원)': r.totalCost || 0,
       '담당정비사': getMechanicName(r.mechanicId),
       '외주거래처': r.vendorId ? getVendorName(r.vendorId) : '-',
-      '진행상태': r.status === 'COMPLETED' ? '정비완료' : r.status === 'UNRESOLVED' ? '부품대기' : '진행중',
+      '진행상태': r.status === 'COMPLETED' ? '정비완료' : r.status === 'UNRESOLVED' ? '소모품대기' : '진행중',
       '점검코드': r.inspectionItemCode || '-',
       '노후도점수': r.degradationScore ? `${r.degradationScore}점` : '0점',
       '유무상구분': r.billableType === 'BILLABLE' ? '유상' : '무상',
@@ -668,7 +680,7 @@ export const Repairs: React.FC = () => {
                 { key: 'ALL', label: '전체', count: queueCounts.all },
                 { key: 'INBOUND_DEFECT', label: '입고결함', count: queueCounts.inboundDefects, color: '#ef4444' },
                 { key: 'RENTED_RETURNED', label: '반납검수', count: queueCounts.returned, color: '#f59e0b' },
-                { key: 'REPAIRING', label: '수리중', count: queueCounts.repairing, color: '#f97316' },
+                { key: 'REPAIRING', label: '정비중', count: queueCounts.repairing, color: '#f97316' },
                 { key: 'EXTERNAL', label: '외주위탁', count: queueCounts.external, color: '#8b5cf6' },
                 { key: 'AVAILABLE', label: '점검대상', count: queueCounts.available, color: '#10b981' },
               ].map(f => (
@@ -742,7 +754,7 @@ export const Repairs: React.FC = () => {
                     >
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                          <strong style={{ fontSize: '13px', color: 'var(--primary)' }}>[{asset.assetNo}]</strong>
+                          <strong style={{ fontSize: '13px', color: 'var(--primary)' }}>{asset.assetNo}</strong>
                           <span style={{ fontSize: '12px', fontWeight: '600', color: 'var(--text-main)' }}>{asset.modelName}</span>
                         </div>
                         <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
@@ -756,7 +768,7 @@ export const Repairs: React.FC = () => {
                             </span>
                           ) : unresolvedRepair ? (
                             <span className="badge badge-warning" style={{ fontSize: '10px', padding: '2px 6px' }}>
-                              부품대기
+                              소모품대기
                             </span>
                           ) : (
                             <span className={`badge ${
@@ -764,7 +776,7 @@ export const Repairs: React.FC = () => {
                               isReturned ? 'badge-warning' :
                               isAvailable ? 'badge-success' : 'badge-secondary'
                             }`} style={{ fontSize: '10px', padding: '2px 6px' }}>
-                              {isRepairing ? '수리중' : isReturned ? '입고검수대기' : isAvailable ? '임대가능' : asset.status}
+                              {isRepairing ? '정비중' : isReturned ? '입고검수대기' : isAvailable ? '임대가능' : asset.status}
                             </span>
                           )}
                           {(asset.maintenanceScore || 0) > 0 && (
@@ -782,13 +794,13 @@ export const Repairs: React.FC = () => {
 
                       {pendingInbound && (
                         <div style={{ fontSize: '11px', color: '#b91c1c', backgroundColor: 'rgba(239, 68, 68, 0.08)', padding: '3px 6px', borderRadius: '4px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                          🚨 입고결함 [{pendingInbound.inboundNo || '검수'}]: {pendingInbound.details.split('\n')[1] || '수리 요망'}
+                          🚨 입고결함 {pendingInbound.inboundNo || '검수'}: {pendingInbound.details.split('\n')[1] || '수리 요망'}
                         </div>
                       )}
 
                       {unresolvedRepair && unresolvedRepair.unresolvedReason && (
                         <div style={{ fontSize: '11px', color: '#b45309', backgroundColor: 'rgba(245, 158, 11, 0.1)', padding: '2px 6px', borderRadius: '4px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                          ⏸️ 부품대기: {unresolvedRepair.unresolvedReason}
+                          ⏸️ 소모품대기: {unresolvedRepair.unresolvedReason}
                         </div>
                       )}
 
@@ -820,13 +832,13 @@ export const Repairs: React.FC = () => {
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', padding: '10px 14px', backgroundColor: 'var(--bg-app)', borderRadius: '6px', border: '1px solid var(--border-color)' }}>
                   <div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <span style={{ fontSize: '16px', fontWeight: '800', color: 'var(--primary)' }}>[{selectedAsset.assetNo}]</span>
+                      <span style={{ fontSize: '16px', fontWeight: '800', color: 'var(--primary)' }}>{selectedAsset.assetNo}</span>
                       <span style={{ fontSize: '15px', fontWeight: '700' }}>{selectedAsset.modelName}</span>
                       <span className={`badge ${
                         selectedAsset.status === 'REPAIRING' ? 'badge-danger' :
                         selectedAsset.status === 'RENTED_RETURNED' ? 'badge-warning' : 'badge-success'
                       }`} style={{ fontSize: '11px' }}>
-                        현재: {selectedAsset.status === 'REPAIRING' ? '수리중' : selectedAsset.status === 'RENTED_RETURNED' ? '입고검수대기' : '임대가능'}
+                        현재: {selectedAsset.status === 'REPAIRING' ? '정비중' : selectedAsset.status === 'RENTED_RETURNED' ? '입고검수대기' : '임대가능'}
                       </span>
                     </div>
                     <div style={{ fontSize: '11.5px', color: 'var(--text-muted)', marginTop: '4px', display: 'flex', gap: '12px' }}>
@@ -847,11 +859,11 @@ export const Repairs: React.FC = () => {
                         <strong>외주정비 위탁 진행 중:</strong> 협력업체 정비 완료 후 수리내역 확인 및 [외주 입고 검수 완료]를 실행하면 임대가능(AVAILABLE)으로 복원됩니다.
                       </div>
                     )}
-                    {/* 부품대기 안내 배너 */}
+                    {/* 소모품대기 안내 배너 */}
                     {repairs.some(r => r.assetId === selectedAsset.id && r.status === 'UNRESOLVED') && (
                       <div style={{ marginTop: '6px', fontSize: '11.5px', color: '#b45309', backgroundColor: 'rgba(245, 158, 11, 0.12)', padding: '5px 10px', borderRadius: '4px', display: 'flex', alignItems: 'center', gap: '6px' }}>
                         <AlertTriangle size={14} />
-                        <strong>부품 수급 대기 중인 장비:</strong> 입고된 부품을 아래 소모품 목록에서 투입한 후 [정비 완료]를 실행하면 정상 임대가능으로 전환됩니다.
+                        <strong>소모품 수급 대기 중인 장비:</strong> 입고된 소모품을 아래 소모품 투입 관리에서 선택한 후 [정비 완료]를 실행하면 정상 임대가능으로 전환됩니다.
                       </div>
                     )}
                   </div>
@@ -1078,35 +1090,133 @@ export const Repairs: React.FC = () => {
                   </div>
                 )}
 
-                {/* 3. 정비 항목 프리셋 칩 */}
-                <div>
-                  <label style={{ fontSize: '11px', fontWeight: '600', marginBottom: '6px', display: 'block', whiteSpace: 'nowrap' }}>
-                    정비 항목 프리셋
-                  </label>
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '5px' }}>
-                    {QUICK_WORK_TAGS.map(tag => (
+                {/* 3. 정비 항목 마스터 연동 (정비항목관리 DB 동적 연동) */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <label style={{ fontSize: '11px', fontWeight: '600', whiteSpace: 'nowrap' }}>
+                      정비 항목 선택 (정비항목관리 마스터 DB)
+                    </label>
+                    {inspectionItemCode && (
+                      <span style={{ fontSize: '11px', color: 'var(--primary)', fontWeight: 700 }}>
+                        선택 코드: {inspectionItemCode}
+                      </span>
+                    )}
+                  </div>
+
+                  {/* 카테고리 필터 탭 */}
+                  {inspectionChecklistItems && inspectionChecklistItems.length > 0 ? (
+                    <>
+                      <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
+                        {['전체', ...Array.from(new Set(inspectionChecklistItems.map(i => i.category || '기타/검수')))].map(cat => (
+                          <button
+                            key={cat}
+                            type="button"
+                            onClick={() => setInspectionCategoryFilter(cat)}
+                            style={{
+                              padding: '3px 8px',
+                              fontSize: '11px',
+                              borderRadius: '4px',
+                              border: '1px solid var(--border-color)',
+                              backgroundColor: inspectionCategoryFilter === cat ? 'var(--primary)' : 'var(--bg-app)',
+                              color: inspectionCategoryFilter === cat ? '#fff' : 'var(--text-main)',
+                              cursor: 'pointer',
+                              whiteSpace: 'nowrap'
+                            }}
+                          >
+                            {cat}
+                          </button>
+                        ))}
+                      </div>
+
+                      {/* 항목 칩 목록 */}
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '5px', maxHeight: '130px', overflowY: 'auto', padding: '4px', backgroundColor: 'var(--bg-app)', borderRadius: '4px', border: '1px solid var(--border-color)' }}>
+                        {inspectionChecklistItems
+                          .filter(item => inspectionCategoryFilter === '전체' || item.category === inspectionCategoryFilter)
+                          .map(item => {
+                            const isSelected = selectedInspectionItemId === item.id || inspectionItemCode === item.code;
+                            return (
+                              <button
+                                key={item.id}
+                                type="button"
+                                onClick={() => handleSelectInspectionItem(item)}
+                                style={{
+                                  padding: '4px 8px',
+                                  fontSize: '11px',
+                                  backgroundColor: isSelected ? 'rgba(59, 130, 246, 0.15)' : 'var(--bg-card)',
+                                  border: isSelected ? '1.5px solid var(--primary)' : '1px solid var(--border-color)',
+                                  borderRadius: '4px',
+                                  cursor: 'pointer',
+                                  color: isSelected ? 'var(--primary)' : 'var(--text-main)',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: '3px',
+                                  fontWeight: isSelected ? 700 : 400,
+                                  whiteSpace: 'nowrap',
+                                  flexShrink: 0
+                                }}
+                              >
+                                <Plus size={10} color="var(--primary)" />
+                                [{item.category}] {item.name} ({item.standardManHours || 0.5} M/H)
+                              </button>
+                            );
+                          })}
+                      </div>
+                    </>
+                  ) : (
+                    <div style={{ fontSize: '11.5px', color: 'var(--text-muted)', padding: '6px 10px', backgroundColor: 'var(--bg-app)', borderRadius: '4px', border: '1px dashed var(--border-color)' }}>
+                      등록된 정비 항목 마스터가 없습니다. [정비 항목 관리] 메뉴에서 표준 항목을 등록하면 여기에 자동 연동됩니다.
+                    </div>
+                  )}
+
+                  {/* SOP 조치 가이드 배너 */}
+                  {selectedInspectionItemActionGuide && (
+                    <div style={{ fontSize: '11.5px', padding: '6px 10px', backgroundColor: 'rgba(59, 130, 246, 0.08)', borderRadius: '4px', border: '1px solid rgba(59, 130, 246, 0.2)', color: 'var(--text-main)' }}>
+                      📘 <strong>표준 조치 가이드(SOP):</strong> {selectedInspectionItemActionGuide}
+                    </div>
+                  )}
+                </div>
+
+                {/* 3-1. 정비 소요시간 입력 (분 단위) */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', padding: '10px', backgroundColor: 'var(--bg-app)', borderRadius: '6px', border: '1px solid var(--border-color)' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <label style={{ fontSize: '11px', fontWeight: '700', whiteSpace: 'nowrap' }}>
+                      정비 소요시간 *
+                    </label>
+                    <span style={{ fontSize: '11px', color: 'var(--primary)', fontWeight: 700 }}>
+                      투입 공수: {(durationMinutes / 60).toFixed(1)} M/H ({durationMinutes}분)
+                    </span>
+                  </div>
+                  <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap' }}>
+                    {[15, 30, 45, 60, 90, 120, 180].map(mins => (
                       <button
-                        key={tag}
+                        key={mins}
                         type="button"
-                        onClick={() => handleAddQuickTag(tag)}
+                        onClick={() => setDurationMinutes(mins)}
                         style={{
-                          padding: '4px 8px',
+                          padding: '3px 8px',
                           fontSize: '11px',
-                          backgroundColor: 'var(--bg-app)',
-                          border: '1px solid var(--border-color)',
                           borderRadius: '4px',
+                          border: '1px solid var(--border-color)',
+                          backgroundColor: durationMinutes === mins ? 'var(--primary)' : 'var(--bg-card)',
+                          color: durationMinutes === mins ? '#fff' : 'var(--text-main)',
                           cursor: 'pointer',
-                          color: 'var(--text-main)',
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '3px',
-                          whiteSpace: 'nowrap',
-                          flexShrink: 0
+                          fontWeight: durationMinutes === mins ? 700 : 400
                         }}
                       >
-                        <Plus size={10} color="var(--primary)" /> {tag}
+                        {mins}분
                       </button>
                     ))}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginLeft: 'auto' }}>
+                      <input
+                        type="number"
+                        min={1}
+                        max={1440}
+                        value={durationMinutes || ''}
+                        onChange={e => setDurationMinutes(Math.max(1, Number(e.target.value) || 0))}
+                        style={{ width: '65px', padding: '4px 6px', fontSize: '12px', textAlign: 'right' }}
+                      />
+                      <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>분 직접입력</span>
+                    </div>
                   </div>
                 </div>
 
@@ -1340,7 +1450,7 @@ export const Repairs: React.FC = () => {
               >
                 <option value="ALL">전체 상태</option>
                 <option value="COMPLETED">정비완료</option>
-                <option value="UNRESOLVED">미완료(부품대기)</option>
+                <option value="UNRESOLVED">미완료(소모품대기)</option>
                 <option value="IN_PROGRESS">진행중</option>
               </select>
             </div>
@@ -1399,10 +1509,12 @@ export const Repairs: React.FC = () => {
                   <th style={{ padding: '8px 10px', whiteSpace: 'nowrap' }}>자산번호</th>
                   <th style={{ padding: '8px 10px', whiteSpace: 'nowrap' }}>모델명</th>
                   <th style={{ padding: '8px 10px' }}>정비 상세 내용</th>
+                  <th style={{ padding: '8px 10px', textAlign: 'right', whiteSpace: 'nowrap' }}>소요시간</th>
                   <th style={{ padding: '8px 10px', textAlign: 'right', whiteSpace: 'nowrap' }}>정비비용</th>
                   <th style={{ padding: '8px 10px', textAlign: 'center', whiteSpace: 'nowrap' }}>점검코드</th>
                   <th style={{ padding: '8px 10px', textAlign: 'center', whiteSpace: 'nowrap' }}>노후도</th>
                   <th style={{ padding: '8px 10px', whiteSpace: 'nowrap' }}>담당정비사</th>
+                  <th style={{ padding: '8px 10px', textAlign: 'center', whiteSpace: 'nowrap' }}>증빙사진</th>
                   <th style={{ padding: '8px 10px', textAlign: 'center', whiteSpace: 'nowrap' }}>상태</th>
                   <th style={{ padding: '8px 10px', textAlign: 'center', whiteSpace: 'nowrap', width: '60px' }}>상세</th>
                 </tr>
@@ -1410,70 +1522,105 @@ export const Repairs: React.FC = () => {
               <tbody>
                 {filteredLedgerRepairs.length === 0 ? (
                   <tr>
-                    <td colSpan={12} style={{ padding: '40px 0', textAlign: 'center', color: 'var(--text-muted)' }}>
+                    <td colSpan={14} style={{ padding: '40px 0', textAlign: 'center', color: 'var(--text-muted)' }}>
                       조회 조건에 해당하는 주기장 정비 이력이 없습니다.
                     </td>
                   </tr>
                 ) : (
-                  filteredLedgerRepairs.map((r, idx) => (
-                    <tr
-                      key={r.id}
-                      onDoubleClick={() => setSelectedDetailRepair(r)}
-                      style={{ borderBottom: '1px solid var(--border-color)', cursor: 'pointer' }}
-                    >
-                      <td style={{ textAlign: 'center', padding: '8px', color: 'var(--text-muted)' }}>{idx + 1}</td>
-                      <td style={{ padding: '8px', whiteSpace: 'nowrap' }}>{r.repairDate || r.requestDate}</td>
-                      <td style={{ padding: '8px', whiteSpace: 'nowrap' }}>
-                        <span className={`badge ${
-                          r.maintenanceType === 'EXTERNAL' ? 'badge-warning' :
-                          r.maintenanceType === 'PREVENTIVE' ? 'badge-info' : 'badge-secondary'
-                        }`} style={{ fontSize: '10.5px' }}>
-                          {r.maintenanceType === 'EXTERNAL' ? '외주정비' :
-                           r.maintenanceType === 'PREVENTIVE' ? '정기예방' : '자체정비'}
-                        </span>
-                      </td>
-                      <td style={{ padding: '8px', whiteSpace: 'nowrap' }}>
-                        <strong style={{ color: 'var(--primary)' }}>[{r.assetNo || getAssetNo(r.assetId)}]</strong>
-                      </td>
-                      <td style={{ padding: '8px', whiteSpace: 'nowrap' }}>{r.modelName || getAssetModel(r.assetId)}</td>
-                      <td style={{ padding: '8px', maxWidth: '300px' }}>
-                        {r.unresolvedReason && (
-                          <span style={{ fontSize: '11px', color: 'var(--danger)', fontWeight: '700', marginRight: '6px' }}>
-                            [부품대기: {r.unresolvedReason}]
+                  filteredLedgerRepairs.map((r, idx) => {
+                    const photos = [r.beforeImage, r.afterImage, ...(r.evidenceImages || []), r.faultImageUrl].filter(Boolean) as string[];
+
+                    return (
+                      <tr
+                        key={r.id}
+                        onDoubleClick={() => setSelectedDetailRepair(r)}
+                        style={{ borderBottom: '1px solid var(--border-color)', cursor: 'pointer' }}
+                      >
+                        <td style={{ textAlign: 'center', padding: '8px', color: 'var(--text-muted)' }}>{idx + 1}</td>
+                        <td style={{ padding: '8px', whiteSpace: 'nowrap' }}>{r.repairDate || r.requestDate}</td>
+                        <td style={{ padding: '8px', whiteSpace: 'nowrap' }}>
+                          <span className={`badge ${
+                            r.maintenanceType === 'EXTERNAL' ? 'badge-warning' :
+                            r.maintenanceType === 'PREVENTIVE' ? 'badge-info' : 'badge-secondary'
+                          }`} style={{ fontSize: '10.5px' }}>
+                            {r.maintenanceType === 'EXTERNAL' ? '외주정비' :
+                             r.maintenanceType === 'PREVENTIVE' ? '정기예방' : '자체정비'}
                           </span>
-                        )}
-                        <span style={{ fontSize: '12px' }}>{r.details}</span>
-                      </td>
-                      <td style={{ padding: '8px', textAlign: 'right', fontWeight: '700', whiteSpace: 'nowrap' }}>
-                        {(r.totalCost || 0).toLocaleString()}원
-                      </td>
-                      <td style={{ padding: '8px', textAlign: 'center', fontSize: '11px', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
-                        {r.inspectionItemCode || '-'}
-                      </td>
-                      <td style={{ padding: '8px', textAlign: 'center', fontSize: '11px', color: r.degradationScore ? '#d97706' : 'var(--text-muted)', fontWeight: r.degradationScore ? 700 : 400, whiteSpace: 'nowrap' }}>
-                        {r.degradationScore ? `${r.degradationScore}점` : '-'}
-                      </td>
-                      <td style={{ padding: '8px', whiteSpace: 'nowrap' }}>{getMechanicName(r.mechanicId)}</td>
-                      <td style={{ padding: '8px', textAlign: 'center', whiteSpace: 'nowrap' }}>
-                        <span className={`badge ${
-                          r.status === 'COMPLETED' ? 'badge-success' :
-                          r.status === 'UNRESOLVED' ? 'badge-danger' : 'badge-warning'
-                        }`} style={{ fontSize: '10.5px' }}>
-                          {r.status === 'COMPLETED' ? '완료' : r.status === 'UNRESOLVED' ? '미완료' : '진행중'}
-                        </span>
-                      </td>
-                      <td style={{ padding: '8px', textAlign: 'center', whiteSpace: 'nowrap' }}>
-                        <button
-                          type="button"
-                          className="btn-secondary"
-                          onClick={() => setSelectedDetailRepair(r)}
-                          style={{ padding: '3px 8px', fontSize: '11px' }}
-                        >
-                          상세
-                        </button>
-                      </td>
-                    </tr>
-                  ))
+                        </td>
+                        <td style={{ padding: '8px', whiteSpace: 'nowrap' }}>
+                          <strong style={{ color: 'var(--primary)' }}>{r.assetNo || getAssetNo(r.assetId)}</strong>
+                        </td>
+                        <td style={{ padding: '8px', whiteSpace: 'nowrap' }}>{r.modelName || getAssetModel(r.assetId)}</td>
+                        <td style={{ padding: '8px', maxWidth: '300px' }}>
+                          {r.unresolvedReason && (
+                            <span style={{ fontSize: '11px', color: 'var(--danger)', fontWeight: '700', marginRight: '6px' }}>
+                              [소모품대기: {r.unresolvedReason}]
+                            </span>
+                          )}
+                          <span style={{ fontSize: '12px' }}>{r.details}</span>
+                        </td>
+                        <td style={{ padding: '8px', textAlign: 'right', whiteSpace: 'nowrap', fontSize: '11.5px' }}>
+                          {r.durationMinutes
+                            ? `${r.durationMinutes}분 (${(r.durationMinutes / 60).toFixed(1)}M/H)`
+                            : (r.spentManHours ? `${r.spentManHours.toFixed(1)} M/H` : '-')}
+                        </td>
+                        <td style={{ padding: '8px', textAlign: 'right', fontWeight: '700', whiteSpace: 'nowrap' }}>
+                          {(r.totalCost || 0).toLocaleString()}원
+                        </td>
+                        <td style={{ padding: '8px', textAlign: 'center', fontSize: '11px', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
+                          {r.inspectionItemCode || '-'}
+                        </td>
+                        <td style={{ padding: '8px', textAlign: 'center', fontSize: '11px', color: r.degradationScore ? '#d97706' : 'var(--text-muted)', fontWeight: r.degradationScore ? 700 : 400, whiteSpace: 'nowrap' }}>
+                          {r.degradationScore ? `${r.degradationScore}점` : '-'}
+                        </td>
+                        <td style={{ padding: '8px', whiteSpace: 'nowrap' }}>{getMechanicName(r.mechanicId)}</td>
+                        <td style={{ padding: '8px', textAlign: 'center', whiteSpace: 'nowrap' }}>
+                          {photos.length > 0 ? (
+                            <button
+                              type="button"
+                              onClick={(e) => { e.stopPropagation(); setViewingPhotoRepair(r); }}
+                              style={{
+                                padding: '2px 7px',
+                                fontSize: '11px',
+                                fontWeight: 600,
+                                borderRadius: '4px',
+                                backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                                border: '1px solid rgba(59, 130, 246, 0.3)',
+                                color: '#2563eb',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '3px',
+                                cursor: 'pointer'
+                              }}
+                              title="정비 및 결함 증빙 사진 열람"
+                            >
+                              <Camera size={12} /> {photos.length}매
+                            </button>
+                          ) : (
+                            <span style={{ color: 'var(--text-muted)', fontSize: '11px' }}>-</span>
+                          )}
+                        </td>
+                        <td style={{ padding: '8px', textAlign: 'center', whiteSpace: 'nowrap' }}>
+                          <span className={`badge ${
+                            r.status === 'COMPLETED' ? 'badge-success' :
+                            r.status === 'UNRESOLVED' ? 'badge-danger' : 'badge-warning'
+                          }`} style={{ fontSize: '10.5px' }}>
+                            {r.status === 'COMPLETED' ? '완료' : r.status === 'UNRESOLVED' ? '미완료(소모품대기)' : '진행중'}
+                          </span>
+                        </td>
+                        <td style={{ padding: '8px', textAlign: 'center', whiteSpace: 'nowrap' }}>
+                          <button
+                            type="button"
+                            className="btn-secondary"
+                            onClick={() => setSelectedDetailRepair(r)}
+                            style={{ padding: '3px 8px', fontSize: '11px' }}
+                          >
+                            상세
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })
                 )}
               </tbody>
             </table>
@@ -1503,7 +1650,7 @@ export const Repairs: React.FC = () => {
             flexShrink: 0
           }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '14px', flexWrap: 'wrap' }}>
-              <span>수리정비중(REPAIRING): <strong style={{ color: 'var(--danger)' }}>총 {repairingAssets}대</strong></span>
+              <span>정비중(REPAIRING): <strong style={{ color: 'var(--danger)' }}>총 {repairingAssets}대</strong></span>
               <span>|</span>
               <span>임대가능(AVAILABLE): <strong style={{ color: 'var(--success)' }}>총 {availableAssets}대</strong></span>
               <span>|</span>
@@ -1526,14 +1673,14 @@ export const Repairs: React.FC = () => {
       })()}
 
       {/* ──────────────────────────────────────────────────────────────────────── */}
-      {/* 모달 1: 부품대기 (수리중 유지) 사유 입력 모달                             */}
+      {/* 모달 1: 소모품대기 (정비중 유지) 사유 입력 모달                           */}
       {/* ──────────────────────────────────────────────────────────────────────── */}
       {showUnresolvedModal && (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
           <div className="card" style={{ width: '100%', maxWidth: '420px', backgroundColor: 'var(--bg-card)', margin: 0, padding: '18px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
               <h3 style={{ fontSize: '15px', fontWeight: '800', margin: 0, display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <Clock size={16} color="var(--danger)" /> 부품대기 (수리중 유지) 등록
+                <Clock size={16} color="var(--danger)" /> 소모품대기 (정비중 유지) 등록
               </h3>
               <button type="button" onClick={() => setShowUnresolvedModal(false)} style={{ background: 'none', border: 'none', cursor: 'pointer' }}>
                 <X size={16} />
@@ -1542,7 +1689,7 @@ export const Repairs: React.FC = () => {
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
               <div style={{ fontSize: '12.5px', color: 'var(--text-secondary)' }}>
-                <strong>[{selectedAsset?.assetNo}]</strong> 장비를 수리 완료하지 않고 '수리정비중(REPAIRING)' 상태로 유지합니다.
+                <strong>{selectedAsset?.assetNo}</strong> 장비를 정비 완료하지 않고 '정비중(REPAIRING)' 상태로 유지합니다.
               </div>
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
@@ -1552,9 +1699,9 @@ export const Repairs: React.FC = () => {
                   onChange={e => setUnresolvedReason(e.target.value)}
                   style={{ padding: '6px', fontSize: '12.5px' }}
                 >
-                  <option value="부품 수급 대기">부품 수급 대기</option>
+                  <option value="소모품 수급 대기">소모품 수급 대기</option>
                   <option value="배터리 재생/충전 대기">배터리 재생/충전 대기</option>
-                  <option value="외주 공업사 견적 대기">외주 공업사 견적 대기</option>
+                  <option value="외주 정비처 견적 대기">외주 정비처 견적 대기</option>
                   <option value="정밀 계측 및 추가 점검 필요">정밀 계측 및 추가 점검 필요</option>
                   <option value="기타 사유">기타 사유</option>
                 </select>
@@ -1565,7 +1712,7 @@ export const Repairs: React.FC = () => {
                   취소
                 </button>
                 <button type="button" className="btn-primary" onClick={handleConfirmHoldRepair} style={{ padding: '6px 14px', fontSize: '12px', backgroundColor: 'var(--danger)', borderColor: 'var(--danger)' }}>
-                  수리중 유지 등록
+                  정비중 유지 등록
                 </button>
               </div>
             </div>
@@ -1593,7 +1740,7 @@ export const Repairs: React.FC = () => {
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', backgroundColor: 'var(--bg-app)', padding: '10px', borderRadius: '6px' }}>
                 <div>
                   <div style={{ color: 'var(--text-muted)', fontSize: '11px' }}>자산번호 / 모델</div>
-                  <strong style={{ fontSize: '13px', color: 'var(--primary)' }}>[{selectedDetailRepair.assetNo || getAssetNo(selectedDetailRepair.assetId)}]</strong> {selectedDetailRepair.modelName || getAssetModel(selectedDetailRepair.assetId)}
+                  <strong style={{ fontSize: '13px', color: 'var(--primary)' }}>{selectedDetailRepair.assetNo || getAssetNo(selectedDetailRepair.assetId)}</strong> {selectedDetailRepair.modelName || getAssetModel(selectedDetailRepair.assetId)}
                 </div>
                 <div>
                   <div style={{ color: 'var(--text-muted)', fontSize: '11px' }}>정비구분 / 상태</div>
@@ -1630,7 +1777,7 @@ export const Repairs: React.FC = () => {
 
               {selectedDetailRepair.unresolvedReason && (
                 <div style={{ color: 'var(--danger)', backgroundColor: 'rgba(239, 68, 68, 0.08)', padding: '8px', borderRadius: '6px' }}>
-                  ⚠️ <strong>미완료/부품대기 사유:</strong> {selectedDetailRepair.unresolvedReason}
+                  ⚠️ <strong>미완료/소모품대기 사유:</strong> {selectedDetailRepair.unresolvedReason}
                 </div>
               )}
 
@@ -1667,6 +1814,64 @@ export const Repairs: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* ──────────────────────────────────────────────────────────────────────── */}
+      {/* 모달 3: 정비 증빙 사진 라이트박스 뷰어                                   */}
+      {/* ──────────────────────────────────────────────────────────────────────── */}
+      {viewingPhotoRepair && (() => {
+        const photos = [
+          { label: '정비 전 사진', url: viewingPhotoRepair.beforeImage },
+          { label: '정비 후 사진', url: viewingPhotoRepair.afterImage },
+          ...(viewingPhotoRepair.evidenceImages || []).map((img, i) => ({ label: `입고/결함 증빙 ${i + 1}`, url: img })),
+          { label: '결함 사진', url: viewingPhotoRepair.faultImageUrl }
+        ].filter(p => !!p.url);
+
+        return (
+          <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '20px' }}>
+            <div className="card" style={{ width: '100%', maxWidth: '800px', backgroundColor: 'var(--bg-card)', margin: 0, padding: '18px', maxHeight: '90vh', display: 'flex', flexDirection: 'column' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', borderBottom: '1px solid var(--border-color)', paddingBottom: '8px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <Camera size={18} color="var(--primary)" />
+                  <h3 style={{ fontSize: '15px', fontWeight: '800', margin: 0 }}>
+                    정비 증빙 사진 열람 {viewingPhotoRepair.assetNo || getAssetNo(viewingPhotoRepair.assetId)} ({photos.length}매)
+                  </h3>
+                </div>
+                <button type="button" onClick={() => setViewingPhotoRepair(null)} style={{ background: 'none', border: 'none', cursor: 'pointer' }}>
+                  <X size={18} />
+                </button>
+              </div>
+
+              <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '10px' }}>
+                <strong>정비일자:</strong> {viewingPhotoRepair.repairDate || viewingPhotoRepair.requestDate} | <strong>모델:</strong> {viewingPhotoRepair.modelName || getAssetModel(viewingPhotoRepair.assetId)} | <strong>담당:</strong> {getMechanicName(viewingPhotoRepair.mechanicId)}
+              </div>
+
+              <div style={{ flex: 1, overflowY: 'auto', display: 'grid', gridTemplateColumns: photos.length === 1 ? '1fr' : 'repeat(auto-fit, minmax(320px, 1fr))', gap: '14px', padding: '4px' }}>
+                {photos.map((p, idx) => (
+                  <div key={idx} style={{ backgroundColor: 'var(--bg-app)', border: '1px solid var(--border-color)', borderRadius: '6px', padding: '8px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ fontSize: '11.5px', fontWeight: 700, color: 'var(--primary)' }}>{p.label}</span>
+                      <a href={p.url} target="_blank" rel="noreferrer" style={{ fontSize: '11px', color: 'var(--text-muted)', textDecoration: 'underline' }}>
+                        새 창 확대 ↗
+                      </a>
+                    </div>
+                    <img
+                      src={p.url}
+                      alt={p.label}
+                      style={{ width: '100%', height: '260px', objectFit: 'contain', backgroundColor: '#000', borderRadius: '4px' }}
+                    />
+                  </div>
+                ))}
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '12px', borderTop: '1px solid var(--border-color)', paddingTop: '10px' }}>
+                <button type="button" className="btn-secondary" onClick={() => setViewingPhotoRepair(null)} style={{ padding: '6px 14px', fontSize: '12px' }}>
+                  닫기
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 };

@@ -16,18 +16,6 @@ export interface MobileYardRepairModalProps {
   onCompleted: () => void;
 }
 
-const QUICK_WORK_TAGS = [
-  '유압유(작동유) 보충',
-  '배터리 증류수 보충 및 단자 청소',
-  '상하강 리밋 스위치 교체',
-  '상부 조종기 레버 센서 점검 및 수리',
-  '배터리 충전기 및 전원선 점검',
-  '구동 모터 브러시 점검',
-  '경광등 및 후진 부저 수리',
-  '상승 체인 및 와이어 장력 조절',
-  '주요 관절부 그리스 주유',
-  '비상 수동 하강 밸브 점검'
-];
 
 export const MobileYardRepairModal: React.FC<MobileYardRepairModalProps> = ({
   isOpen,
@@ -51,7 +39,11 @@ export const MobileYardRepairModal: React.FC<MobileYardRepairModalProps> = ({
   const [afterImages, setAfterImages] = useState<string[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showHoldInput, setShowHoldInput] = useState(false);
-  const [holdReason, setHoldReason] = useState('부품 수급 대기');
+  const [holdReason, setHoldReason] = useState('소모품 수급 대기');
+  const [durationMinutes, setDurationMinutes] = useState<number>(30); // 정비 소요시간 (기본값: 30분)
+  const [selectedInspectionItemId, setSelectedInspectionItemId] = useState<string>('');
+  const [selectedInspectionItemCode, setSelectedInspectionItemCode] = useState<string>('');
+  const [selectedInspectionItemActionGuide, setSelectedInspectionItemActionGuide] = useState<string>('');
 
   // 입고 결함 파싱
   const inboundDefects = useMemo<InboundDefectDetail[]>(() => {
@@ -76,7 +68,7 @@ export const MobileYardRepairModal: React.FC<MobileYardRepairModalProps> = ({
         ? inboundDefects.map(d => `• [${d.checkitemName}] 점검 및 부품 교체/수리 조치 완료`).join('\n')
         : '• 입고 결함 항목 점검 및 정상 작동 확인 완료';
       setRepairDetails(
-        `[입고결함 정비 - ${pendingRepair?.inboundNo || '주기장검수'}]\n${defectSummary}\n• 시운전 및 안전장치 점검 완료`
+        `입고결함 정비: ${pendingRepair?.inboundNo || '주기장검수'}\n${defectSummary}\n• 시운전 및 안전장치 점검 완료`
       );
       setBillableType('FREE');
       setBillableAmount(0);
@@ -96,13 +88,22 @@ export const MobileYardRepairModal: React.FC<MobileYardRepairModalProps> = ({
     return sum + ((c?.unitPrice || 0) * item.quantity);
   }, 0);
 
-  // 퀵 태그 추가
-  const handleAddQuickTag = (tag: string) => {
+  // 정비 항목 마스터 동적 선택 핸들러
+  const handleSelectInspectionItem = (item: (typeof inspectionChecklistItems)[0]) => {
+    setSelectedInspectionItemId(item.id);
+    setSelectedInspectionItemCode(item.code);
+    if (item.standardManHours) {
+      setDurationMinutes(Math.round(item.standardManHours * 60));
+    }
+    if (item.actionGuide) {
+      setSelectedInspectionItemActionGuide(item.actionGuide);
+    }
     setRepairDetails(prev => {
+      const tagText = `[${item.category}] ${item.name} (${item.code})`;
       const trimmed = prev.trim();
-      if (!trimmed) return `• ${tag}`;
-      if (trimmed.includes(tag)) return prev;
-      return `${trimmed}\n• ${tag}`;
+      if (!trimmed) return `• ${tagText}`;
+      if (trimmed.includes(item.name)) return prev;
+      return `${trimmed}\n• ${tagText}`;
     });
   };
 
@@ -115,7 +116,7 @@ export const MobileYardRepairModal: React.FC<MobileYardRepairModalProps> = ({
       return `• [${d.checkitemName}] 수리 및 교체 완료${sop}`;
     });
     setRepairDetails(
-      `[입고결함 정비 - ${pendingRepair?.inboundNo || '검수'}]\n` +
+      `입고결함 정비: ${pendingRepair?.inboundNo || '검수'}\n` +
       lines.join('\n') +
       '\n• 이상 부위 시운전 및 안전 기능 검증 완료'
     );
@@ -222,7 +223,7 @@ export const MobileYardRepairModal: React.FC<MobileYardRepairModalProps> = ({
         assetNo: asset.assetNo,
         modelName: asset.modelName,
         workLocation: 'YARD',
-        stockSource: 'CENTRAL_HQ',
+        stockSource: 'YARD_STOCK',
         maintenanceType: 'INHOUSE_REPAIR',
         repairType: 'INTERNAL',
         status: 'COMPLETED',
@@ -238,7 +239,10 @@ export const MobileYardRepairModal: React.FC<MobileYardRepairModalProps> = ({
         billableType,
         billableAmount: billableType === 'BILLABLE' ? billableAmount : 0,
         billableToCustomer: billableType === 'BILLABLE',
-        inspectionItemCode: pendingRepair?.inspectionItemCode,
+        durationMinutes: Number(durationMinutes) || 30,
+        spentManHours: (Number(durationMinutes) || 30) / 60,
+        inspectionItemId: selectedInspectionItemId || undefined,
+        inspectionItemCode: selectedInspectionItemCode || pendingRepair?.inspectionItemCode,
         degradationScore: pendingRepair?.degradationScore,
         inboundNo: pendingRepair?.inboundNo
       };
@@ -253,7 +257,7 @@ export const MobileYardRepairModal: React.FC<MobileYardRepairModalProps> = ({
     }
   };
 
-  // ⏸️ 부품 수급 대기 보류
+  // ⏸️ 소모품 수급 대기 보류
   const handleHold = async () => {
     if (!holdReason.trim()) {
       showErrorModal('보류 사유를 입력해 주십시오.');
@@ -268,7 +272,7 @@ export const MobileYardRepairModal: React.FC<MobileYardRepairModalProps> = ({
         assetNo: asset.assetNo,
         modelName: asset.modelName,
         workLocation: 'YARD',
-        stockSource: 'CENTRAL_HQ',
+        stockSource: 'YARD_STOCK',
         maintenanceType: 'INHOUSE_REPAIR',
         repairType: 'INTERNAL',
         status: 'UNRESOLVED',
@@ -278,7 +282,7 @@ export const MobileYardRepairModal: React.FC<MobileYardRepairModalProps> = ({
         mechanicId: currentUser?.id,
         repairDate: nowIsoDate,
         requestDate: nowIsoDate,
-        details: (repairDetails ? repairDetails + '\n' : '') + `[부품대기 사유: ${holdReason}]`,
+        details: (repairDetails ? repairDetails + '\n' : '') + `[소모품대기 사유: ${holdReason}]`,
         totalCost: totalConsumablesCost,
         beforeImage: beforeImages[0] || '',
         afterImage: afterImages[0] || '',
@@ -286,7 +290,7 @@ export const MobileYardRepairModal: React.FC<MobileYardRepairModalProps> = ({
         billableType,
         billableAmount: billableType === 'BILLABLE' ? billableAmount : 0,
         billableToCustomer: billableType === 'BILLABLE',
-        inspectionItemCode: pendingRepair?.inspectionItemCode,
+        inspectionItemCode: selectedInspectionItemCode || pendingRepair?.inspectionItemCode,
         degradationScore: pendingRepair?.degradationScore,
         inboundNo: pendingRepair?.inboundNo
       };
@@ -312,7 +316,7 @@ export const MobileYardRepairModal: React.FC<MobileYardRepairModalProps> = ({
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <span className="font-mono text-base font-black text-white">[{asset.assetNo}]</span>
+                <span className="font-mono text-base font-black text-white">{asset.assetNo}</span>
                 <span className="text-sm font-bold text-slate-200">{asset.modelName}</span>
               </div>
               <div className="text-[11px] text-slate-400">
@@ -400,20 +404,84 @@ export const MobileYardRepairModal: React.FC<MobileYardRepairModalProps> = ({
             </div>
           )}
 
-          {/* 2. 10대 자주 쓰는 정비 퀵 태그 (원클릭) */}
+          {/* 2. 정비 항목 마스터 연동 (정비항목관리 DB) */}
           <div className="flex flex-col gap-1.5">
-            <span className="font-bold text-slate-300">자주 쓰는 정비 항목 (원클릭 추가)</span>
-            <div className="flex flex-wrap gap-1.5">
-              {QUICK_WORK_TAGS.map(tag => (
+            <div className="flex items-center justify-between">
+              <span className="font-bold text-slate-300">정비 항목 선택</span>
+              {selectedInspectionItemCode && (
+                <span className="text-[11px] font-mono text-blue-400 font-bold">
+                  선택: {selectedInspectionItemCode}
+                </span>
+              )}
+            </div>
+
+            {inspectionChecklistItems && inspectionChecklistItems.length > 0 ? (
+              <div className="flex flex-wrap gap-1.5 max-h-28 overflow-y-auto p-1.5 rounded-xl bg-slate-950 border border-slate-800">
+                {inspectionChecklistItems.map(item => {
+                  const isSelected = selectedInspectionItemId === item.id || selectedInspectionItemCode === item.code;
+                  return (
+                    <button
+                      key={item.id}
+                      type="button"
+                      onClick={() => handleSelectInspectionItem(item)}
+                      className={`px-2 py-1 rounded-lg text-[11px] border active:scale-95 transition-all flex items-center gap-1 ${
+                        isSelected
+                          ? 'bg-blue-600/30 text-blue-300 border-blue-500 font-bold'
+                          : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-700'
+                      }`}
+                    >
+                      <span>+</span> [{item.category}] {item.name} ({item.standardManHours || 0.5}M/H)
+                    </button>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="p-2 rounded-lg bg-slate-900 border border-slate-800 text-[11px] text-slate-400">
+                등록된 정비 항목 마스터가 없습니다. (정비 항목 관리 메뉴 연동)
+              </div>
+            )}
+
+            {selectedInspectionItemActionGuide && (
+              <div className="p-2 rounded-lg bg-blue-950/40 border border-blue-800/60 text-blue-300 text-[11px]">
+                📘 <strong>SOP:</strong> {selectedInspectionItemActionGuide}
+              </div>
+            )}
+          </div>
+
+          {/* 2-1. 정비 소요시간 (분) */}
+          <div className="p-3 rounded-2xl bg-slate-950 border border-slate-800 flex flex-col gap-2">
+            <div className="flex items-center justify-between">
+              <span className="font-bold text-slate-200 text-xs">정비 소요시간 *</span>
+              <span className="text-xs font-mono font-bold text-blue-400">
+                {(durationMinutes / 60).toFixed(1)} M/H ({durationMinutes}분)
+              </span>
+            </div>
+            <div className="flex flex-wrap gap-1.5 items-center">
+              {[15, 30, 45, 60, 90, 120].map(mins => (
                 <button
-                  key={tag}
+                  key={mins}
                   type="button"
-                  onClick={() => handleAddQuickTag(tag)}
-                  className="px-2 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 text-[11px] active:scale-95 transition-all"
+                  onClick={() => setDurationMinutes(mins)}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-medium border transition-all ${
+                    durationMinutes === mins
+                      ? 'bg-blue-600 text-white border-blue-500 font-bold'
+                      : 'bg-slate-900 text-slate-300 border-slate-700'
+                  }`}
                 >
-                  + {tag}
+                  {mins}분
                 </button>
               ))}
+              <div className="flex items-center gap-1 ml-auto">
+                <input
+                  type="number"
+                  min={1}
+                  max={1440}
+                  value={durationMinutes || ''}
+                  onChange={e => setDurationMinutes(Math.max(1, Number(e.target.value) || 0))}
+                  className="w-14 rounded-lg bg-slate-900 border border-slate-700 py-1 px-1.5 text-white text-xs text-right focus:outline-none"
+                />
+                <span className="text-[11px] text-slate-400">분</span>
+              </div>
             </div>
           </div>
 
@@ -574,7 +642,7 @@ export const MobileYardRepairModal: React.FC<MobileYardRepairModalProps> = ({
                 disabled={isSubmitting}
                 className="w-full py-2 rounded-xl bg-amber-600 text-white font-bold text-xs active:scale-95 transition-all"
               >
-                {isSubmitting ? '처리 중...' : '보류 저장 (수리중 REPAIRING 유지)'}
+                {isSubmitting ? '처리 중...' : '보류 저장 (정비중 REPAIRING 유지)'}
               </button>
             </div>
           )}

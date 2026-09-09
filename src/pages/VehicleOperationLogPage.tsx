@@ -863,7 +863,7 @@ export const VehicleOperationLogPage: React.FC = () => {
                               type: 'OPERATION_LOG',
                               id: log.id,
                               title: '운행일지 기록 삭제',
-                              message: `${log.operationDate} [${log.vehicleNo}] ${log.driverName} 님의 운행기록을 삭제하시겠습니까?`
+                              message: `${log.operationDate} ${log.vehicleNo} ${log.driverName} 님의 운행기록을 삭제하시겠습니까?`
                             })}
                             style={{
                               border: 'none',
@@ -1054,7 +1054,7 @@ export const VehicleOperationLogPage: React.FC = () => {
                               type: 'FUEL_LOG',
                               id: fuel.id,
                               title: '주유 영수증 기록 삭제',
-                              message: `${fuel.fuelDate} [${fuel.vehicleNo}] ₩${fuel.fuelAmount.toLocaleString()} 주유 기록을 삭제하시겠습니까?`
+                              message: `${fuel.fuelDate} ${fuel.vehicleNo} ₩${fuel.fuelAmount.toLocaleString()} 주유 기록을 삭제하시겠습니까?`
                             })}
                             style={{
                               border: 'none',
@@ -1259,7 +1259,7 @@ export const VehicleOperationLogPage: React.FC = () => {
                               type: 'VEHICLE',
                               id: veh.id,
                               title: '법인 차량 삭제',
-                              message: `차량 [${veh.vehicleNo} - ${veh.modelName}] 정보를 삭제하시겠습니까?`
+                              message: `차량 ${veh.vehicleNo} (${veh.modelName}) 정보를 삭제하시겠습니까?`
                             })}
                             style={{
                               border: '1px solid rgba(239,68,68,0.4)',

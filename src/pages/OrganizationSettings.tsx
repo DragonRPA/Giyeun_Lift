@@ -2,10 +2,11 @@ import React, { useState, useEffect, useRef } from 'react';
 import { 
   Network, Plus, Trash2, Edit2, AlertCircle, GripVertical, ChevronRight, 
   ChevronDown, CheckCircle, Upload, Save, X, User as UserIcon, Calendar, 
-  MapPin, Phone, Mail 
+  MapPin, Phone, Mail, Download 
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { db } from '../services/db';
+import { exportToExcel } from '../services/excel';
 
 // --- Type Definitions ---
 interface Department {
@@ -454,6 +455,41 @@ const enforceManagerPolicies = (usersList: UserNode[], deptList: Department[]) =
     }
   };
 
+  // 임직원 대장 엑셀 내보내기
+  const handleExportOrgExcel = () => {
+    if (users.length === 0) {
+      showToast('내보낼 임직원 데이터가 없습니다.', 'error');
+      return;
+    }
+    const deptMap = new Map(departments.map(d => [d.id, d.name]));
+    const rows = users.map((u, idx) => {
+      const deptName = u.departmentId ? (deptMap.get(u.departmentId) || u.department || '미지정') : (u.department || '미배치');
+      const statusLabel = u.status === 'ACTIVE' ? '재직' : u.status === 'RETIRED' ? '퇴사' : '휴직';
+      const row: any = {
+        'No': idx + 1,
+        '성명': u.name || '-',
+        '아이디': u.loginId || '-',
+        '소속부서': deptName,
+        '직급': u.position || '-',
+        '역할/권한': u.role || 'USER',
+        '재직상태': statusLabel,
+        '입사일': u.joinDate || '-',
+        '생년월일': u.birthDate || '-',
+        '연락처': u.phone || '-',
+        '이메일': u.email || '-',
+        '주소': u.address || '-'
+      };
+      if (canViewPayroll) {
+        row['기본급(원)'] = u.baseSalary || 0;
+      }
+      return row;
+    });
+
+    const todayStr = new Date().toISOString().slice(0, 10);
+    exportToExcel(rows, `임직원대장_${todayStr}`, '임직원');
+    showToast(`임직원 대장 ${rows.length}명 엑셀 내보내기 완료`);
+  };
+
   // --- Renders ---
   const renderDeptTree = (parentId: string | null, depth: number = 0) => {
     const children = departments.filter(d => d.parentDepartmentId === parentId);
@@ -608,9 +644,17 @@ const enforceManagerPolicies = (usersList: UserNode[], deptList: Department[]) =
           </p>
         </div>
         
-        {/* Global Save Button */}
-        {canEdit && (
-          <div style={{ display: 'flex', gap: '8px' }}>
+        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+          <button
+            type="button"
+            className="btn-secondary"
+            onClick={handleExportOrgExcel}
+            style={{ padding: '9px 16px', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '6px', whiteSpace: 'nowrap' }}
+          >
+            <Download size={15} /> 엑셀 내보내기
+          </button>
+          {/* Global Save Button */}
+          {canEdit && (
             <button 
               className={`btn-primary ${isDirty ? 'pulse-animation' : ''}`} 
               onClick={handleSaveAll} 
@@ -623,8 +667,8 @@ const enforceManagerPolicies = (usersList: UserNode[], deptList: Department[]) =
             >
               <Save size={16} /> {isDirty ? '전체 저장 (변경됨)' : '전체 저장'}
             </button>
-          </div>
-        )}
+          )}
+        </div>
       </div>
 
       {/* 📊 조직 및 임직원 현황 실시간 요약 바 */}

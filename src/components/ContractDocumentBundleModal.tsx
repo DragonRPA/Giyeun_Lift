@@ -583,7 +583,7 @@ export const ContractDocumentBundleModal: React.FC<Props> = ({ isOpen, onClose, 
                 const siteName = s?.name || '현장미지정';
                 return (
                   <option key={c.id} value={c.id}>
-                    [{c.id}] {custName} — {siteName} ({c.startDate} ~ {formatContractEndDate(c.endDate)})
+                    {c.contractNo || c.id} {custName} — {siteName} ({c.startDate} ~ {formatContractEndDate(c.endDate)})
                   </option>
                 );
               })}

@@ -204,7 +204,7 @@ const App: React.FC = () => {
         { id: 'billing', name: '청구 / 수납 관리', icon: <CreditCard size={16} />, component: <Billings /> },
         { id: 'receivable', name: '외상미수금 대장', icon: <CreditCard size={16} />, component: <Receivables /> },
         { id: 'smart_dispatch', name: '출고 요청', icon: <Zap size={16} />, component: <SmartDispatch /> },
-        { id: 'smart_dispatch4', name: '출고의뢰 (통합)', icon: <Zap size={16} />, component: <SmartDispatch4 /> },
+        { id: 'smart_dispatch4', name: '출고 의뢰', icon: <Zap size={16} />, component: <SmartDispatch4 /> },
         { id: 'smart_return', name: '회수 요청', icon: <Zap size={16} />, component: <SmartReturn /> },
         { id: 'smart_as_request', name: 'AS 요청', icon: <Wrench size={16} />, component: <SmartAsRequest /> },
       ]
@@ -217,7 +217,7 @@ const App: React.FC = () => {
         { id: 'product', name: '제품 관리', icon: <Package size={16} />, component: <Products /> },
         { id: 'asset', name: '자산 관리 (대장)', icon: <Layers size={16} />, component: <Assets /> },
         { id: 'acquisition_disposal', name: '당사자산 취득 / 매각', icon: <PlusCircle size={16} />, component: <AssetAcquisitionDisposal /> },
-        { id: 'rent_asset', name: '전대 / 임차 관리', icon: <ShoppingBag size={16} />, component: <RentAssets /> },
+        { id: 'rent_asset', name: '임차 장비 관리', icon: <ShoppingBag size={16} />, component: <RentAssets /> },
       ]
     },
     {
@@ -226,7 +226,7 @@ const App: React.FC = () => {
       icon: <Truck size={17} />,
       items: [
         { id: 'delivery', name: '배차 / 운송 관리', icon: <Truck size={16} />, component: <TruckDispatch /> },
-        { id: 'transport_master', name: '운송 거래처 / 기사 관리', icon: <Settings size={16} />, component: <TransportMaster /> },
+        { id: 'transport_master', name: '운송 거래처 관리', icon: <Settings size={16} />, component: <TransportMaster /> },
       ]
     },
     {
@@ -236,7 +236,7 @@ const App: React.FC = () => {
       items: [
         { id: 'asset_inout_history', name: '자산 입출고 / 정비 이력', icon: <Clock size={16} />, component: <AssetHistory /> },
         { id: 'dispatch_assign', name: '장비 할당 / 매핑', icon: <Layers size={16} />, component: <AssetAssignment /> },
-        { id: 'outbound_inspections', name: '출고 검수 의뢰 관리', icon: <CheckSquare size={16} />, component: <OutboundInspections /> },
+        { id: 'outbound_inspections', name: '출고 검수 관리', icon: <CheckSquare size={16} />, component: <OutboundInspections /> },
         { id: 'print_queue_monitor', name: '프린트 큐 모니터', icon: <Printer size={16} />, component: <PrintQueueManager /> },
       ]
     },
@@ -250,7 +250,7 @@ const App: React.FC = () => {
         { id: 'consumable_stock', name: '소모품 재고', icon: <Boxes size={16} />, component: <ConsumableStockPage /> },
         { id: 'field_as', name: '현장 AS 관리', icon: <Wrench size={16} />, component: <FieldAsManagement /> },
         { id: 'repair', name: '주기장 정비 관리', icon: <Wrench size={16} />, component: <Repairs /> },
-        { id: 'inspection_checklist_manage', name: '정비항목관리', icon: <Shield size={16} />, component: <InspectionChecklistManage /> },
+        { id: 'inspection_checklist_manage', name: '정비 항목 관리', icon: <Shield size={16} />, component: <InspectionChecklistManage /> },
       ]
     },
     {

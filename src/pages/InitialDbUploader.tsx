@@ -1907,7 +1907,7 @@ export const InitialDbUploader: React.FC = () => {
                   </span>
                 </div>
                 <span style={{ fontSize: '12px', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
-                  소모품재고.txt 파일 또는 엑셀 목록을 분석하여 본사 재고 및 최초 입고 이력을 일괄 등록합니다.
+                  소모품재고.txt 파일 또는 엑셀 목록을 분석하여 주기장 재고 및 최초 입고 이력을 일괄 등록합니다.
                 </span>
               </div>
 
@@ -2706,7 +2706,7 @@ export const InitialDbUploader: React.FC = () => {
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <Wrench size={18} color="#16a34a" />
                 <span style={{ fontSize: '16px', fontWeight: 700, color: 'var(--text-main)' }}>
-                  AS 게시글 상세 내역 [No. {selectedAsRecord.idx}]
+                  AS 게시글 상세 내역 No. {selectedAsRecord.idx}
                 </span>
               </div>
               <button

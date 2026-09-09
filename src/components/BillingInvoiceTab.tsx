@@ -444,7 +444,7 @@ export const BillingInvoiceTab: React.FC = () => {
       return;
     }
 
-    if (!window.confirm(`통합 청구서 [${invoiceId}]를 취소하시겠습니까?\n포함된 원본 청구서들의 통합 연결이 해제되어 미통합 목록으로 환원됩니다.`)) {
+    if (!window.confirm(`통합 청구서 ${invoiceId}를 취소하시겠습니까?\n포함된 원본 청구서들의 통합 연결이 해제되어 미통합 목록으로 환원됩니다.`)) {
       return;
     }
 

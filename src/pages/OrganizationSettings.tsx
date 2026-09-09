@@ -405,7 +405,7 @@ const enforceManagerPolicies = (usersList: UserNode[], deptList: Department[]) =
   const handleStatusChange = async (userId: string, newStatus: UserNode['status']) => {
     const targetUser = users.find(u => u.id === userId);
     if (targetUser && (targetUser.loginId === 'admin' || targetUser.id === 'u-1' || targetUser.id === 'sys-admin')) {
-      showErrorModal('최고관리자(시스템관리자/admin) 계정은 재직 상태를 변경(퇴사/휴직 처리)할 수 없습니다.', '상태 변경 불가');
+      showErrorModal('개발자(admin) 계정은 재직 상태를 변경(퇴사/휴직 처리)할 수 없습니다.', '상태 변경 불가');
       return;
     }
     
@@ -428,7 +428,7 @@ const enforceManagerPolicies = (usersList: UserNode[], deptList: Department[]) =
   const confirmRetirement = async () => {
     if (showHandoffModal) {
       if (showHandoffModal.loginId === 'admin' || showHandoffModal.id === 'u-1' || showHandoffModal.id === 'sys-admin') {
-        showErrorModal('최고관리자 계정은 퇴사 처리가 불가능합니다.', '퇴사 처리 불가');
+        showErrorModal('개발자 계정은 퇴사 처리가 불가능합니다.', '퇴사 처리 불가');
         setShowHandoffModal(null);
         return;
       }
@@ -452,11 +452,11 @@ const enforceManagerPolicies = (usersList: UserNode[], deptList: Department[]) =
         return;
       }
       if ((selectedProfile.id === 'sys-admin' || selectedProfile.id === 'u-1' || selectedProfile.loginId === 'admin') && selectedProfile.role !== 'ADMIN') {
-        showErrorModal('시스템 최고관리자의 시스템 역할은 변경할 수 없습니다.', '역할 변경 불가');
+        showErrorModal('시스템 개발자의 시스템 역할은 변경할 수 없습니다.', '역할 변경 불가');
         return;
       }
       if (selectedProfile.role === 'ADMIN' && !isSuperAdmin) {
-        showErrorModal('ADMIN 시스템 역할은 최고관리자(admin) 계정만 부여할 수 있습니다.', '권한 부여 제한');
+        showErrorModal('ADMIN 시스템 역할은 개발자(admin) 계정만 부여할 수 있습니다.', '권한 부여 제한');
         return;
       }
       let updated = users.map(u => u.id === selectedProfile.id ? selectedProfile : u);

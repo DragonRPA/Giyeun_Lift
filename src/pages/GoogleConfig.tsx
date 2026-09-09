@@ -241,7 +241,7 @@ export const GoogleConfig: React.FC = () => {
           </div>
           <h3 style={{ fontSize: '18px', fontWeight: '800', marginBottom: '10px', color: 'var(--text-primary)' }}>접근 권한 제한</h3>
           <p style={{ fontSize: '14px', color: 'var(--text-secondary)', lineHeight: '1.6', marginBottom: '0' }}>
-            본 설정 영역은 시스템 최고관리자(ADMIN)만 접근이 허용됩니다.<br />
+            본 설정 영역은 시스템 개발자(ADMIN)만 접근이 허용됩니다.<br />
             보안 자격증명 및 클라우드 경로 설정 보호를 위한 조치이오니,<br />
             권한이 필요하신 경우 시스템 총괄자에게 문의하십시오.
           </p>

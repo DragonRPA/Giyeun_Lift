@@ -275,7 +275,7 @@ export const PayrollPage: React.FC = () => {
   // 급여명세서 이메일 일괄 전송
   const handleSendEmails = () => {
     if (payrollStatus !== 'APPROVED') {
-      showToast('최고관리자(ADMIN)의 최종 결재 승인(Lock) 완료 후에만 이메일 교부가 가능합니다.', 'error');
+      showToast('개발자(ADMIN)의 최종 결재 승인(Lock) 완료 후에만 이메일 교부가 가능합니다.', 'error');
       return;
     }
 

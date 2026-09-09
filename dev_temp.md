@@ -1,5 +1,61 @@
 # 개발 요구사항 임시 기록 (dev_temp.md)
 
+## [완료] 상단 헤더 사용자 전환 드롭다운 및 아바타 '최고관리자' 잔존 텍스트 영구 정규화 및 "ㄹㅇ" 배포 (v1.12.0.Build.53)
+- **요구사항**: "아직 최고관리자 표현이 남아있는것 같은데", "ㄹㅇ"
+- **적용 목적 (헌장 1.1 최대 편익, 3.1 무수식어 건조 표준, 6.1 버전 관리, 6.2 'ㄹㅇ' 배포)**:
+  1. **헤더 사용자 전환 셀렉트박스 및 프로필 아바타 영구 정규화 (`App.tsx`)**:
+     - 상단 헤더 전환 옵션 내 `{currentUser.name} ({currentUser.department}) - 현재` 및 `allUsers` 목록 렌더링 시 `loginId === 'admin'` 또는 `name === '최고관리자'`인 경우 100% **`'개발자'`**로 치환 표출.
+     - 사용자 프로필 원형 아바타 첫 글자 추출 시에도 `'최'`가 아닌 **`'개'`**로 정규화 표출 (`((currentUser.name === '최고관리자' || currentUser.loginId === 'admin') ? '개발자' : currentUser.name).substring(0, 1)`).
+  2. **Supabase / 전역 상태 동기화 시 `db.users` 및 `currentUser` 영구 살균 (`AppContext.tsx`)**:
+     - `refreshAllData()` 실행 시 `db.users` 내 `u.loginId === 'admin' || u.name === '최고관리자'`인 항목을 **`u.name = '개발자'`**로 자동 일괄 치환.
+     - `currentUser` 상태 역시 `admin` 또는 `최고관리자`일 경우 `name: '개발자'`로 실시간 자동 동기화 보장.
+  3. **대시보드 상단 웰컴 바 방어 연동 (`Dashboard.tsx`)**:
+     - 웰컴 인사말에서 `currentUser.name === '최고관리자' || currentUser.loginId === 'admin'`일 경우 **`'개발자'`**로 방어 렌더링.
+- **주요 변경 파일**:
+  - `src/App.tsx` [MODIFY]: 상단 헤더 전환 셀렉트박스 및 프로필 아바타 방어 렌더링.
+  - `src/context/AppContext.tsx` [MODIFY]: `refreshAllData` 내 `db.users` 및 `currentUser` 자동 살균 동기화.
+  - `src/pages/Dashboard.tsx` [MODIFY]: 웰컴 헤더 인사말 방어 렌더링.
+- **검증 결과**:
+  - `cmd /c npm run build`: **TypeScript 0 Error, 번들링 빌드 100% 정상 통과 (`built in 1.24s`)**.
+
+## [완료] admin 계정 및 ADMIN 권한자 표기 명칭 전사 표준화 ("최고관리자" ➔ "개발자") 개편 (v1.12.0.Build.52)
+- **요구사항**: "시스템에서 'admin' 계정 로그인할 때, '최고관리자' 라고 보여지는게 고객(사용자) 입장에서 기분 나블수도 있을것 같아. '최고관리자' 대신에 '개발자' 라고 텍스트 변경해줘."
+- **적용 목적 (헌장 1.1 최대 편익, 3.1 무수식어 건조 표준, 6.1 버전 관리)**:
+  1. **"admin" 로그인 사용자 성명 및 배지 명칭 전사 표준화**:
+     - `admin` 계정 로그인 시 기본 성명(name)을 `'최고관리자'`에서 **`'개발자'`**로 변경 (`AppContext.tsx`).
+     - 기존 브라우저 세션(`sessionStorage`, `localStorage`)에 남아있는 기존 캐시 데이터도 접속 즉시 `'개발자'`로 자동 마이그레이션 적용.
+     - 대시보드 웰컴 헤더 직무 배지 `ADMIN` 역할 표기: `'최고관리자 (ADMIN)'` ➔ **`'개발자 (ADMIN)'`** 교체 (`Dashboard.tsx`).
+  2. **시스템 전반의 사용자 안내 및 오류 모달 문구 정비**:
+     - 로그인 화면 개발 테스트 계정 안내: `• 최고관리자` ➔ `• 개발자` (`App.tsx`).
+     - 접근 제한 및 권한 안내: `최고관리자에게 문의` ➔ `개발자에게 문의` (`App.tsx`, `GoogleConfig.tsx`).
+     - 모바일 헤더 및 현장 모니터링: `ADMIN ? '최고관리자'` ➔ `ADMIN ? '개발자'` (`MobileHeader.tsx`, `MobileApkMonitorModal.tsx`).
+     - 조직/권한 관리 모달 및 토스트 메시지 내 '최고관리자' ➔ '개발자' 전수 변경 (`OrganizationSettings.tsx`, `PayrollPage.tsx`, `users_permissions.tsx`, `OtManagementPage.tsx`).
+- **주요 변경 파일**:
+  - `src/context/AppContext.tsx` [MODIFY]: admin fallback 성명 변경 및 세션 캐시 자동 마이그레이션.
+  - `src/pages/Dashboard.tsx` [MODIFY]: ADMIN 배지 텍스트를 "개발자 (ADMIN)"로 변경.
+  - `src/App.tsx` [MODIFY]: 로그인 안내 및 권한 에러 안내 문구 변경.
+  - `src/mobile/MobileHeader.tsx`, `src/mobile/components/MobileApkMonitorModal.tsx` [MODIFY]: 모바일 뷰 사용자 타이틀 변경.
+  - `src/pages/GoogleConfig.tsx`, `src/pages/OrganizationSettings.tsx`, `src/pages/PayrollPage.tsx`, `src/pages/users_permissions.tsx`, `src/pages/OtManagementPage.tsx` [MODIFY]: 관리자 안내/에러 텍스트를 "개발자"로 표준화.
+- **검증 결과**:
+  - `cmd /c npm run build`: **TypeScript 0 Error, 번들링 빌드 100% 정상 통과 (`built in 1.25s`)**.
+
+## [완료] 대시보드 상단 테스트 버튼 2종 제거 및 미정의 정비 소모품 안전재고 ToDo 피드 표출 배제 개편 (v1.12.0.Build.51)
+- **요구사항**: "상단에 표시한 두개의 테스트 버튼 제거. 아래에 표시한 정비 소모품 부족은 소모품 안전재고 정의가 안돼있기 때문에 표시하지 않기로 한것이었는데? 왜 그대로 있지?"
+- **적용 목적 (헌장 1.1 최대 편익, 3.1 무수식어 건조 표준, 3.3 직무 중심 ToDo 피드 정책, 6.1 버전 관리)**:
+  1. **대시보드 상단 테스트 및 레거시 버튼 2종 영구 제거 (`Dashboard.tsx`)**:
+     - `[계약 서류 14p 통합 팩]` 버튼 및 모달 연동 제거 (개별 계약 상세 및 전용 컴포넌트 `ContractDocumentBundleModal`로 이미 일원화 완료된 상태에서 대시보드 상단에 잔존하던 테스트 버튼 정리).
+     - `[🔄 테스트 리셋]` 로컬스토리지 초기화 버튼 제거 (운영 환경 오조작 위험 차단).
+     - 관리자/경영진 전용 `[경영진 업무지시 하달]` 버튼만 단일 표준으로 온전히 보존.
+  2. **미정의 정비 소모품 안전재고 알림 ToDo 피드 카드 전면 배제 (`Dashboard.tsx`)**:
+     - 소모품 마스터에 품목별 안전재고/최소보유수량 기준이 아직 정의되지 않은 상태에서 임의의 하드코딩 기준(`stockQty < 5`)으로 표출되던 `정비 소모품 기준 수량 미달` 카드 피드 및 `showConsumableFeed` 조건을 ToDo 피드에서 완전히 제거.
+     - `visibleCount` 산출 배열에서도 배제하여 불필요한 알림 피드와 인지 부하를 원천 차단(헌장 1.1 및 3.3 준수).
+  3. **대시보드 미사용 레거시 번들 생성 로직 및 임포트 정리**:
+     - 대시보드 파일 내 인라인으로 잔존하던 구형 서류팩 병합 로직 및 라이브러리(`JSZip`, `pdf-lib`, `file-saver` 등) 제거로 번들 최적화 및 렌더링 부하 경감.
+- **주요 변경 파일**:
+  - `src/pages/Dashboard.tsx` [MODIFY]: 상단 테스트 버튼 2종 제거, ToDo 피드 소모품 미달 카드 배제, 레거시 모달 및 상태 정리.
+- **검증 결과**:
+  - `cmd /c npm run build`: **TypeScript 0 Error, 번들링 빌드 100% 정상 통과 (`built in 1.26s`)**.
+
 ## [완료] 은행 입출금 대장 수납 대사 업무설계 확정, 과대/정상/과소입금 3대 조건 WTT 50회 도메인 관통 스트레스 테스트 전 항목 100% 통과 및 회계 이중계상·선수금 롤백 결함 개편 (v1.12.0.Build.50)
 - **요구사항**: "은행 입출금 대장 에서 수납처리 하는 방향의 업무설계는 완료되었나? 과대입금, 정상(금액일치 입금), 과소입금의 경우 로 각각 다양한 입금 조건의 WTT 50회 수행하여 검증, 이슈개선. ㄹㅇ"
 - **적용 목적 (헌장 1.1 최대 편익, 1.2 발생 사건 무누락 DB 저장, 3.1 무수식어 건조 표준, 3.2 줄바꿈 방지, 4.1 정밀 일할 집계, 5.5 WTT 도메인 관통 스트레스 테스트 표준, 6.2 "ㄹㅇ" 배포)**:

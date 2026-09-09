@@ -287,7 +287,7 @@ export const MobileHeader: React.FC<MobileHeaderProps> = ({
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '0.5px', whiteSpace: 'nowrap', overflow: 'hidden' }}>
                 <span style={{ fontSize: '10px', color: '#94a3b8', overflow: 'hidden', textOverflow: 'ellipsis', flexShrink: 1 }}>
-                  {currentUser?.name || '담당자'} ({currentUser?.role === 'ADMIN' ? '최고관리자' : currentUser?.role === 'MECHANIC' ? '정비기사' : '임직원'})
+                  {currentUser?.name || '담당자'} ({currentUser?.role === 'ADMIN' ? '개발자' : currentUser?.role === 'MECHANIC' ? '정비기사' : '임직원'})
                 </span>
                 {/* 🌟 컴팩트 출근/퇴근 토글 버튼 (헌장 3.1 무수식어 건조 표준) */}
                 {onToggleWork && (

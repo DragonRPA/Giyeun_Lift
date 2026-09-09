@@ -600,7 +600,7 @@ const App: React.FC = () => {
             <div style={{ marginTop: '16px', padding: '12px', border: '1px dashed #f59e0b', borderRadius: 'var(--radius-sm)', backgroundColor: 'rgba(251,191,36,0.07)', fontSize: '12px' }}>
               <div style={{ fontWeight: '700', marginBottom: '6px', color: '#d97706' }}>⚠️ [개발 전용] 테스트 계정 — 운영 환경에서는 표시 안됨</div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' }}>
-                <div>• 최고관리자: <strong>admin / admin123</strong></div>
+                <div>• 개발자: <strong>admin / admin123</strong></div>
                 <div>• 영업관리: <strong>manager / mgr123</strong></div>
                 <div>• 일반영업: <strong>user / user123</strong></div>
                 <div>• 정비현장: <strong>mechanic / mech123</strong></div>
@@ -901,10 +901,10 @@ const App: React.FC = () => {
                       }}
                       title="[관리자 전용] 다른 사용자로 권한 테스트 전환"
                     >
-                      <option value={currentUser.id}>{currentUser.name} ({currentUser.department}) - 현재</option>
+                      <option value={currentUser.id}>{(currentUser.name === '최고관리자' || currentUser.loginId === 'admin') ? '개발자' : currentUser.name} ({currentUser.department}) - 현재</option>
                       <optgroup label="다른 사용자로 전환">
                         {allUsers.filter(u => u.id !== currentUser.id).map(u => (
-                          <option key={u.id} value={u.id}>{u.name} ({u.department} / {u.role})</option>
+                          <option key={u.id} value={u.id}>{(u.name === '최고관리자' || u.loginId === 'admin') ? '개발자' : u.name} ({u.department} / {u.role === 'ADMIN' ? '개발자' : u.role})</option>
                         ))}
                       </optgroup>
                     </select>
@@ -914,8 +914,8 @@ const App: React.FC = () => {
 
               return (
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
-                  <span style={{ fontSize: '13px', fontWeight: '700' }}>{currentUser.name} {currentUser.role === 'ADMIN' ? '관리자' : '임직원'}</span>
-                  <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{currentUser.department} ({currentUser.role})</span>
+                  <span style={{ fontSize: '13px', fontWeight: '700' }}>{(currentUser.name === '최고관리자' || currentUser.loginId === 'admin') ? '개발자' : currentUser.name} {currentUser.role === 'ADMIN' ? '개발자' : '임직원'}</span>
+                  <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{currentUser.department} ({currentUser.role === 'ADMIN' ? '개발자' : currentUser.role})</span>
                 </div>
               );
             })()}
@@ -923,7 +923,7 @@ const App: React.FC = () => {
               width: '36px', height: '36px', borderRadius: '50%', backgroundColor: 'var(--primary)', color: '#fff',
               display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: '700'
             }}>
-              {currentUser.name.substring(0, 1)}
+              {((currentUser.name === '최고관리자' || currentUser.loginId === 'admin') ? '개발자' : (currentUser.name || 'U')).substring(0, 1)}
             </div>
           </div>
 
@@ -1101,7 +1101,7 @@ const App: React.FC = () => {
               <h3>접근 권한 제한 알림</h3>
               <p style={{ marginTop: '8px', color: 'var(--text-secondary)' }}>
                 선택하신 메뉴에 대한 조회 권한이 비활성화되어 있습니다.<br />
-                권한이 필요할 경우 최고관리자에게 문의하시기 바랍니다.
+                권한이 필요할 경우 개발자에게 문의하시기 바랍니다.
               </p>
             </div>
           )}

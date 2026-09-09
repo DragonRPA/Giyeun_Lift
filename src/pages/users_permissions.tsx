@@ -163,12 +163,12 @@ export const UsersPermissions: React.FC = () => {
     if (!canSave) return;
     
     if (userId === 'u-1' || userId === 'sys-admin') {
-      showToast('최고관리자 계정의 시스템 등급은 변경할 수 없습니다.', 'error');
+      showToast('개발자 계정의 시스템 등급은 변경할 수 없습니다.', 'error');
       return;
     }
 
     if (newRole === 'ADMIN' && !isSuperAdmin) {
-      showToast('ADMIN(최고관리자) 등급은 오직 최고관리자(sys-admin) 계정만 승인 권한이 있습니다.', 'error');
+      showToast('ADMIN(개발자) 등급은 오직 개발자(sys-admin) 계정만 승인 권한이 있습니다.', 'error');
       return;
     }
 
@@ -176,7 +176,7 @@ export const UsersPermissions: React.FC = () => {
     if (!targetUser) return;
 
     if (targetUser.role === 'ADMIN' && newRole !== 'ADMIN' && !isSuperAdmin) {
-      showToast('ADMIN 권한 박탈은 오직 최고관리자(sys-admin)만 가능합니다.', 'error');
+      showToast('ADMIN 권한 박탈은 오직 개발자(sys-admin)만 가능합니다.', 'error');
       return;
     }
 
@@ -197,13 +197,13 @@ export const UsersPermissions: React.FC = () => {
     const targetUser = localUsers.find(u => u.id === selectedUserId);
     // 절대 대표이사 및 슈퍼 관리자 계정은 권한 회수 불가
     if (targetUser?.id === 'u-1' || targetUser?.id === 'sys-admin' || targetUser?.loginId === 'admin' || targetUser?.id === 'USR-0000002' || targetUser?.loginId === '이수용') {
-      showToast('대표이사 및 시스템 최고관리자 계정의 메뉴 권한은 변경할 수 없습니다.', 'error');
+      showToast('대표이사 및 시스템 개발자 계정의 메뉴 권한은 변경할 수 없습니다.', 'error');
       return;
     }
 
     // 사용자 권한 설정(permission) 메뉴는 오직 ADMIN 등급에게만 부여 가능
     if (menuId === 'permission' && targetUser?.role !== 'ADMIN') {
-      showToast('사용자 권한 설정 메뉴는 오직 최고관리자(ADMIN) 등급에게만 부여할 수 있습니다.', 'error');
+      showToast('사용자 권한 설정 메뉴는 오직 개발자(ADMIN) 등급에게만 부여할 수 있습니다.', 'error');
       return;
     }
 
@@ -280,7 +280,7 @@ export const UsersPermissions: React.FC = () => {
     const targetUser = localUsers.find(u => u.id === selectedUserId);
     // 절대 슈퍼 관리자 계정은 권한 회수 불가
     if (targetUser?.id === 'u-1' || targetUser?.id === 'sys-admin' || targetUser?.loginId === 'admin') {
-      showToast('시스템 최고관리자 계정의 메뉴 권한은 변경할 수 없습니다.', 'error');
+      showToast('시스템 개발자 계정의 메뉴 권한은 변경할 수 없습니다.', 'error');
       return;
     }
 
@@ -390,7 +390,7 @@ export const UsersPermissions: React.FC = () => {
     if (!canSave || !selectedUserId) return;
     const targetUser = localUsers.find(u => u.id === selectedUserId);
     if (targetUser?.id === 'u-1' || targetUser?.id === 'sys-admin' || targetUser?.loginId === 'admin') {
-      showToast('시스템 최고관리자 계정의 메뉴 권한은 변경할 수 없습니다.', 'error');
+      showToast('시스템 개발자 계정의 메뉴 권한은 변경할 수 없습니다.', 'error');
       return;
     }
 
@@ -1226,7 +1226,7 @@ export const UsersPermissions: React.FC = () => {
         <div style={{ display: 'flex', alignItems: 'center', gap: '14px', overflowX: 'auto', whiteSpace: 'nowrap' }}>
           <span>👥 <strong>전체임직원:</strong> {permissionAuditSummary.totalUsers}명</span>
           <span style={{ color: 'var(--border-color)' }}>|</span>
-          <span>👑 <strong>최고관리자:</strong> {permissionAuditSummary.adminCount}명</span>
+          <span>👑 <strong>개발자(ADMIN):</strong> {permissionAuditSummary.adminCount}명</span>
           <span style={{ color: 'var(--border-color)' }}>|</span>
           <span>💼 <strong>매니저/실무:</strong> {permissionAuditSummary.managerCount + permissionAuditSummary.userCount}명</span>
           <span style={{ color: 'var(--border-color)' }}>|</span>

@@ -207,7 +207,7 @@ export const OtManagementPage: React.FC = () => {
       return {
         id: cleanId,
         loginId: 'admin',
-        name: '최고관리자',
+        name: '개발자',
         department: '시스템',
         role: 'ADMIN'
       } as UserType;

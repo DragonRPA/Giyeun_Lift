@@ -652,6 +652,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
     }
 
+    // admin 또는 최고관리자 명칭 영구 정규화 (헌장 3.1 건조 표준)
+    db.users.forEach(u => {
+      if (u.loginId === 'admin' || u.name === '최고관리자') {
+        u.name = '개발자';
+      }
+    });
+
     setTenants([...db.tenants]);
     setUsers([...db.users]);
     setPermissions([...db.permissions]);
@@ -709,6 +716,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setCollectedParts([...db.collectedParts]);
     setPrintStations([...db.printStations]);
     setPrintQueue([...db.printQueue]);
+
+    setCurrentUser(prev => {
+      if (prev && (prev.loginId === 'admin' || prev.name === '최고관리자')) {
+        return { ...prev, name: '개발자' };
+      }
+      return prev;
+    });
   };
 
   // 전체 테이블 Supabase pull 후 state 동기화 (초기 로딩 전용)
@@ -845,9 +859,27 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const savedUser = sessionStorage.getItem('user');
     const autoUser = localStorage.getItem('auto_user');
     if (savedUser) {
-      setCurrentUser(JSON.parse(savedUser));
+      try {
+        const parsed = JSON.parse(savedUser);
+        if (parsed.loginId === 'admin' && (parsed.name === '최고관리자' || !parsed.name)) {
+          parsed.name = '개발자';
+          sessionStorage.setItem('user', JSON.stringify(parsed));
+        }
+        setCurrentUser(parsed);
+      } catch (e) {
+        setCurrentUser(null);
+      }
     } else if (autoUser) {
-      setCurrentUser(JSON.parse(autoUser));
+      try {
+        const parsed = JSON.parse(autoUser);
+        if (parsed.loginId === 'admin' && (parsed.name === '최고관리자' || !parsed.name)) {
+          parsed.name = '개발자';
+          localStorage.setItem('auto_user', JSON.stringify(parsed));
+        }
+        setCurrentUser(parsed);
+      } catch (e) {
+        setCurrentUser(null);
+      }
     }
     
     // 초기 로딩: 전체 28개 테이블 Supabase pull (앱 최초 진입 1회만)
@@ -865,7 +897,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (loginId === 'admin' && passwordHash === 'admin123') {
       const fallbackAdmin: User = { 
         id: 'sys-admin', loginId: 'admin', passwordHash: 'admin123', 
-        name: '최고관리자', department: '시스템', departmentId: '', role: 'ADMIN', createdAt: new Date().toISOString() 
+        name: '개발자', department: '시스템', departmentId: '', role: 'ADMIN', createdAt: new Date().toISOString() 
       };
       setCurrentUser(fallbackAdmin);
       sessionStorage.setItem('user', JSON.stringify(fallbackAdmin));
@@ -879,6 +911,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     const user = db.users.find(u => u.loginId === loginId && u.passwordHash === passwordHash);
     if (user) {
+      if (user.loginId === 'admin' && user.name === '최고관리자') {
+        user.name = '개발자';
+      }
       setCurrentUser(user);
       sessionStorage.setItem('user', JSON.stringify(user));
       if (keepLoggedIn) {

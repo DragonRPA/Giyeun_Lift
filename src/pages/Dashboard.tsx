@@ -1,16 +1,7 @@
 // d:\Kiyeun_Lift\src\pages\Dashboard.tsx
 import React, { useState, useEffect, useMemo } from 'react';
 import { useApp } from '../context/AppContext';
-import { Activity, ShieldAlert, Users, Layers, ShieldCheck, Wrench, Truck, CreditCard, ShoppingBag, CheckCircle, Bell, AlertTriangle, ArrowRight, Cloud, AlertCircle, Download, FileText, Bot, Shield, CheckSquare } from 'lucide-react';
-import JSZip from 'jszip';
-import { saveAs } from 'file-saver';
-import { PDFDocument } from 'pdf-lib';
-import { 
-  generateContractPdf, 
-  generateChecklistPdf, 
-  generateSafetyInspectionPdf 
-} from '../services/excelTemplateEngine';
-import { getDriveReadToken, extractDriveFolderId, listFilesInDriveFolder } from '../services/googleDriveBackup';
+import { Activity, ShieldAlert, Users, Layers, ShieldCheck, Wrench, Truck, CreditCard, CheckCircle, Bell, AlertTriangle, ArrowRight, Cloud, AlertCircle, Download, FileText, Bot, Shield, CheckSquare } from 'lucide-react';
 import { EXPECTED_AGENT_VERSION, AGENT_DOWNLOAD_URL, AGENT_CERT_URL, AGENT_INSTALL_BAT_URL, AGENT_KILL_BAT_URL } from '../services/agentService';
 import { findActiveTasksForUser } from '../utils/taskHandoverPipeline';
 import { ExecutiveDirectiveModal } from '../components/ExecutiveDirectiveModal';
@@ -55,9 +46,7 @@ export const Dashboard: React.FC = () => {
   const canActRepair = hasPermission('repair', 'save');
   const canActBilling = hasPermission('billing', 'save');
   const canActContract = hasPermission('contract', 'save');
-  const canActConsumable = hasPermission('consumable', 'save');
   const canActRentAsset = hasPermission('rent_asset', 'save');
-  const canGeneratePackage = hasPermission('agent_badge', 'view');  // 계약서 패키지 생성 권한 = agent_badge
 
   // ── 📄 계약서패키지 재발송 모달 상태 ──
   const [showBundleModal, setShowBundleModal] = useState(false);
@@ -155,169 +144,6 @@ export const Dashboard: React.FC = () => {
     }
   };
 
-  // ── 🚀 계약 서류 14p 통합 팩 발행 기능 ──
-  const [showContractSelectModal, setShowContractSelectModal] = useState(false);
-  const [isMergingDoc, setIsMergingDoc] = useState(false);
-  const [mergeProgressLabel, setMergeProgressLabel] = useState('');
-
-  const handleGenerateActiveContractPackage = async (contractId: string) => {
-    const targetContract = contracts.find(c => c.id === contractId);
-    if (!targetContract) {
-      alert('⚠️ 계약 정보를 찾을 수 없습니다.');
-      return;
-    }
-
-    const customer = customers.find(c => c.id === targetContract.customerId);
-    const site = sites.find(s => s.id === targetContract.siteId);
-    const cAssets = contractAssets.filter(ca => ca.contractId === contractId);
-    const assignedAssets = cAssets.map(ca => {
-      const a = assets.find(x => x.id === ca.assetId);
-      const prod = a ? products.find(p => p.modelName === a.modelName) : undefined;
-      return { ca, asset: a, product: prod };
-    });
-
-    const cfg = googleConfigs[0];
-    const folderInput = '';
-    const folderId = extractDriveFolderId(folderInput);
-    const clientId = '';
-
-    setShowContractSelectModal(false);
-    setIsMergingDoc(true);
-
-    try {
-      const mergedPdf = await PDFDocument.create();
-
-      // 1. 계약서 1p
-      setMergeProgressLabel('1단계: 계약서 양식 데이터 주입 중...');
-      const contractPdfData = {
-        contractDate: targetContract.startDate || new Date().toISOString().split('T')[0],
-        lessorName: currentTenant?.corporateName || currentTenant?.tradeName || '주식회사 임대인',
-        lessorCeo: currentTenant?.representativeName || '대표자',
-        lessorBizNo: currentTenant?.businessNumber || '138-81-83251',
-        lesseeName: customer?.name || '주식회사 우진아이엔에스',
-        lesseeCeo: customer?.representative || '홍경모',
-        lesseeBizNo: customer?.bizRegNo || '114-81-33003',
-        deliveryLocation: site?.name || '인천 검단신도시 101 역세권 개발사업',
-        siteAddress: site?.address || '인천 연수구 원당동 1061-1',
-        deliveryDateTime: `${targetContract.startDate} 인도 예정`,
-        managerName: site?.contactName || '양병욱 차장',
-        managerPhone: site?.contact || '010-4066-6543',
-        assets: assignedAssets.map(item => ({
-          modelName: item.asset?.modelName || 'GS-1930',
-          quantity: 1,
-          serialNo: item.asset ? `${item.asset.assetNo}${item.asset.serialNo ? ` (${item.asset.serialNo})` : ''}` : 'G19052',
-          monthlyFee: item.ca.monthlyRentalFee || 300000,
-          subtotal: item.ca.monthlyRentalFee || 300000
-        })),
-        totalMonthlyFee: assignedAssets.reduce((sum, item) => sum + (item.ca.monthlyRentalFee || 300000), 0),
-        transportTerms: '2개월 이하 왕복 임차인 부담'
-      };
-
-      const contractBytes = await generateContractPdf(contractPdfData);
-      const contractDoc = await PDFDocument.load(contractBytes);
-      const [contractPage] = await mergedPdf.copyPages(contractDoc, [0]);
-      mergedPdf.addPage(contractPage);
-
-      // 2. 체크리스트
-      setMergeProgressLabel(`2단계: 체결 장비(${assignedAssets.length}대)별 체크리스트 생성 중...`);
-      for (let i = 0; i < assignedAssets.length; i++) {
-        const item = assignedAssets[i];
-        const checklistBytes = await generateChecklistPdf({
-          modelName: item.asset?.modelName || 'GS-1930',
-          serialNo: item.asset ? `${item.asset.assetNo}${item.asset.serialNo ? ` (${item.asset.serialNo})` : ''}` : `G1905${i + 1}`
-        });
-        const clDoc = await PDFDocument.load(checklistBytes);
-        const [clPage] = await mergedPdf.copyPages(clDoc, [0]);
-        mergedPdf.addPage(clPage);
-      }
-
-      // 3. 안전점검결과서
-      setMergeProgressLabel(`3단계: 체결 장비(${assignedAssets.length}대)별 안전점검표 생성 중...`);
-      for (let i = 0; i < assignedAssets.length; i++) {
-        const item = assignedAssets[i];
-        const inspectionBytes = await generateSafetyInspectionPdf({
-          siteName: site?.name || '인천 검단신도시 101 역세권 개발사업',
-          clientName: customer?.name || '주식회사 우진아이엔에스',
-          manufacturer: item.product?.manufacturer || item.asset?.manufacturer || 'GENIE',
-          modelName: item.asset?.modelName || 'GS-1930',
-          serialNo: item.asset?.assetNo || `G1905${i + 1}`,
-          weight: item.product?.weight || '1,500 kg',
-          speed: item.product?.speed || '4.0 Km/h',
-          maxHeightCapacity: item.product?.maxHeightCapacity || '7.8 M / 227 kg',
-          safetyCertDate: item.product?.safetyCertDate || '2024-03-01',
-          inspectionDate: targetContract.startDate || new Date().toISOString().split('T')[0],
-          manufactureYear: item.asset?.manufactureYear || '2024년'
-        });
-        const inspDoc = await PDFDocument.load(inspectionBytes);
-        const [inspPage] = await mergedPdf.copyPages(inspDoc, [0]);
-        mergedPdf.addPage(inspPage);
-      }
-
-      // 4. 로컬 미러링 문서고 / 원본 서류 결합 (팝업 0회)
-      setMergeProgressLabel('4단계: 로컬 미러링 원본 서류 결합 중...');
-      try {
-        const mirrorRes = await fetch('http://127.0.0.1:5175/api/mirror-status', { signal: AbortSignal.timeout(2000) });
-        if (mirrorRes.ok) {
-          const mirrorData = await mirrorRes.json();
-          const pdfFiles = (mirrorData.files || []).filter((f: any) => f.name.toLowerCase().endsWith('.pdf') && !f.name.includes('임대차계약서') && !f.name.includes('반입전체크리스트') && !f.name.includes('안전점검'));
-
-          for (const mFile of pdfFiles) {
-            try {
-              const fileRes = await fetch(`http://127.0.0.1:5175/api/get-file?fileName=${encodeURIComponent(mFile.name)}`);
-              if (fileRes.ok) {
-                const drivePdfBytes = await fileRes.arrayBuffer();
-                const driveDoc = await PDFDocument.load(drivePdfBytes);
-                const copiedPages = await mergedPdf.copyPages(driveDoc, driveDoc.getPageIndices());
-                copiedPages.forEach(p => mergedPdf.addPage(p));
-              }
-            } catch (e) {}
-          }
-        }
-      } catch (mirrorErr) {}
-
-      // 5. 다운로드 및 로컬 아카이빙
-      const finalBytes = await mergedPdf.save();
-      const blob = new Blob([finalBytes.buffer as ArrayBuffer], { type: 'application/pdf' });
-      const url = URL.createObjectURL(blob);
-
-      const link = document.createElement('a');
-      link.href = url;
-      const tenantBrand = currentTenant?.displayName || currentTenant?.tradeName || 'e-Bro';
-      link.download = `[${tenantBrand}]_${targetContract.contractNo}_${customer?.name || '계약서'}_통합팩_${mergedPdf.getPageCount()}p_${new Date().toISOString().split('T')[0]}.pdf`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url);
-
-      let localSaveMsg = '';
-      if (agentStatus === 'ONLINE') {
-        try {
-          const agentRes = await fetch('http://127.0.0.1:5175/api/execute-job', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              jobType: 'CONTRACT_BUNDLE',
-              contractNo: targetContract.contractNo,
-              customerName: customer?.name || '고객사',
-              pageCount: mergedPdf.getPageCount()
-            })
-          });
-          if (agentRes.ok) {
-            const agentData = await agentRes.json();
-            localSaveMsg = `\n\n📂 [로컬 문서고 자동 보관 완료]\n저장 경로: ${agentData.localFilePath || 'C:\\eBroAgent\\문서고'}`;
-          }
-        } catch (e) {}
-      }
-
-      alert(`🎉 계약 ${targetContract.contractNo} 3대 핵심 서류 + 드라이브 원본 결합 성공!\n\n총 ${mergedPdf.getPageCount()}페이지 단일 PDF로 완벽하게 병합 다운로드되었습니다.${localSaveMsg}`);
-    } catch (err: any) {
-      alert(`⚠️ 서류 팩 생성 실패: ${err?.message || err}`);
-    } finally {
-      setIsMergingDoc(false);
-      setMergeProgressLabel('');
-    }
-  };
-
   const activeTasks = useMemo(() => findActiveTasksForUser(todos, currentUser, hasPermission), [todos, currentUser, hasPermission]);
   const myTodos = activeTasks;
 
@@ -327,7 +153,6 @@ export const Dashboard: React.FC = () => {
   const repairingAssets = assets.filter(a => a.status === 'REPAIRING').length;
 
   const activeContracts = contracts.filter(c => c.status === 'ACTIVE' || c.status === 'EXTENDED').length;
-  const lowStockConsumables = consumables.filter(c => c.stockQty < 5).length;
   const pendingRepairs = repairs.filter(r => r.status === 'PENDING' || r.status === 'IN_PROGRESS').length;
   const activeDeliveries = deliveries.filter(d => d.status !== 'COMPLETED').length;
 
@@ -406,7 +231,7 @@ export const Dashboard: React.FC = () => {
   // 직무 역할 한글 매핑 및 배지 색상
   const getRoleBadge = () => {
     switch (role) {
-      case 'ADMIN': return { text: '최고관리자 (ADMIN)', color: '#ef4444', bg: 'rgba(239,68,68,0.1)' };
+      case 'ADMIN': return { text: '개발자 (ADMIN)', color: '#ef4444', bg: 'rgba(239,68,68,0.1)' };
       case 'MANAGER': return { text: '부서관리자 (MANAGER)', color: '#22c55e', bg: 'rgba(34,197,94,0.1)' };
       case 'SALES': return { text: '영업담당자 (SALES)', color: '#3b82f6', bg: 'rgba(59,130,246,0.1)' };
       case 'REPAIR':
@@ -430,7 +255,7 @@ export const Dashboard: React.FC = () => {
       }}>
         <div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <h2 style={{ fontSize: '22px', fontWeight: '800', margin: 0 }}>반갑습니다, {currentUser?.name || '임직원'}님!</h2>
+            <h2 style={{ fontSize: '22px', fontWeight: '800', margin: 0 }}>반갑습니다, {(currentUser?.name === '최고관리자' || currentUser?.loginId === 'admin') ? '개발자' : (currentUser?.name || '임직원')}님!</h2>
             <span style={{
               fontSize: '11px', fontWeight: '800', padding: '3px 8px', borderRadius: '4px',
               color: badge.color, backgroundColor: badge.bg, border: `1px solid ${badge.color}`
@@ -441,24 +266,6 @@ export const Dashboard: React.FC = () => {
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-          {/* 계약 서류 14p 통합 팩 발행 버튼 */}
-          <button
-            type="button"
-            className="btn-primary"
-            disabled={isMergingDoc}
-            onClick={() => setShowContractSelectModal(true)}
-            style={{
-              display: 'flex', alignItems: 'center', gap: '8px', padding: '9px 16px',
-              fontSize: '13px', fontWeight: '800', whiteSpace: 'nowrap',
-              background: 'linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)',
-              border: 'none', borderRadius: '8px', color: '#fff', cursor: isMergingDoc ? 'wait' : 'pointer',
-              boxShadow: '0 4px 10px rgba(37,99,235,0.25)'
-            }}
-          >
-            <Download size={15} />
-            {isMergingDoc ? '서류 팩 생성 중...' : '계약 서류 14p 통합 팩'}
-          </button>
-
           {/* ⚡ 경영진 업무지시 하달 버튼 (경영진/관리자 전용) */}
           {isExecUser && (
             <button
@@ -476,21 +283,6 @@ export const Dashboard: React.FC = () => {
               경영진 업무지시 하달
             </button>
           )}
-
-          {role === 'ADMIN' && (
-            <button 
-              className="btn-danger" 
-              onClick={() => {
-                if(confirm('모든 로컬 데이터를 삭제하고 방금 주입된 100개의 테스트 데이터로 초기화하시겠습니까?')) {
-                  localStorage.clear();
-                  location.reload();
-                }
-              }}
-              style={{ padding: '8px 14px', fontSize: '12px', borderRadius: '8px', fontWeight: 'bold' }}
-            >
-              🔄 테스트 리셋
-            </button>
-          )}
         </div>
       </div>
 
@@ -503,11 +295,11 @@ export const Dashboard: React.FC = () => {
         const showBillingFeed = unpaidBillings.length > 0 && canActBilling;
         const showRentAssetFeed = (overdueRentedCount > 0 || mismatchRentedCount > 0) && canActRentAsset;
         const showRepairFeed = pendingRepairs > 0 && canActRepair;
-        const showConsumableFeed = lowStockConsumables > 0 && canActConsumable;
+        // 정비 소모품은 안전재고 기준 미정의 상태이므로 ToDo 피드에서 미표출
         const showContractFeed = activeContracts > 0 && canActContract;
         const showTodoFeed = myTodos.length > 0;
 
-        const visibleCount = [showDeliveryFeed, showBillingFeed, showRentAssetFeed, showRepairFeed, showConsumableFeed, showContractFeed, showTodoFeed].filter(Boolean).length;
+        const visibleCount = [showDeliveryFeed, showBillingFeed, showRentAssetFeed, showRepairFeed, showContractFeed, showTodoFeed].filter(Boolean).length;
 
         return (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
@@ -660,27 +452,6 @@ export const Dashboard: React.FC = () => {
               </div>
             )}
 
-            {/* 5. 소모품 재고 부족 카드 (소모품 저장/실행 권한자 표출) */}
-            {showConsumableFeed && (
-              <div style={{
-                backgroundColor: 'var(--bg-card)', borderRadius: '12px', padding: '20px 24px',
-                borderLeft: '5px solid #ef4444', border: '1px solid var(--border-color)', borderLeftWidth: '5px'
-              }}>
-                <div style={{ display: 'flex', justifyItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
-                  <span style={{ fontSize: '12px', fontWeight: '800', color: '#ef4444', backgroundColor: 'rgba(239,68,68,0.1)', padding: '2px 8px', borderRadius: '4px' }}>소모품 관리</span>
-                  <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>기준 미달 {lowStockConsumables}종</span>
-                </div>
-                <h4 style={{ margin: '0 0 10px 0', fontSize: '16px', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <ShoppingBag size={18} color="#ef4444" /> 정비 소모품 기준 수량 미달
-                </h4>
-                <p style={{ fontSize: '13px', color: 'var(--text-secondary)', margin: '0 0 14px 0', lineHeight: '1.5' }}>
-                  재고 기준 수량(5개) 미달 품목 <strong>{lowStockConsumables}종</strong>.
-                </p>
-                <button className="btn-primary" onClick={() => setActiveTab('consumable')} style={{ backgroundColor: '#ef4444', border: 'none', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                  소모품 관리 이동 <ArrowRight size={12} />
-                </button>
-              </div>
-            )}
 
             {/* 6. 영업 및 임대차 계약 관리 카드 (계약 저장/실행 권한자 표출) */}
             {showContractFeed && (
@@ -888,93 +659,7 @@ export const Dashboard: React.FC = () => {
         );
       })()}
 
-      {/* 🚀 실시간 유효 계약 선택 팝업 모달 */}
-      {showContractSelectModal && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999, padding: '20px' }}>
-          <div style={{ backgroundColor: 'var(--card-bg, #fff)', borderRadius: '16px', maxWidth: '750px', width: '100%', maxHeight: '85vh', display: 'flex', flexDirection: 'column', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.3)', border: '1px solid var(--border)' }}>
-            <div style={{ padding: '20px 24px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <div>
-                <h3 style={{ margin: 0, fontSize: '18px', fontWeight: '800', color: 'var(--text-primary)' }}>
-                  계약 서류 14p 통합 팩 발행
-                </h3>
-              </div>
-              <button
-                type="button"
-                onClick={() => setShowContractSelectModal(false)}
-                style={{ background: 'none', border: 'none', fontSize: '20px', cursor: 'pointer', color: 'var(--text-muted)' }}
-              >
-                ✕
-              </button>
-            </div>
 
-            <div style={{ padding: '16px 24px', overflowY: 'auto', flex: 1, display: 'flex', flexDirection: 'column', gap: '10px' }}>
-              {contracts.filter(c => c.status === 'ACTIVE').length === 0 ? (
-                <div style={{ textAlign: 'center', padding: '40px 0', color: 'var(--text-muted)' }}>
-                  현재 유효한(ACTIVE) 계약이 없습니다.
-                </div>
-              ) : (
-                contracts.filter(c => c.status === 'ACTIVE').map(c => {
-                  const cust = customers.find(x => x.id === c.customerId);
-                  const site = sites.find(s => s.id === c.siteId);
-                  const cAssetCount = contractAssets.filter(ca => ca.contractId === c.id).length;
-
-                  return (
-                    <div
-                      key={c.id}
-                      style={{
-                        padding: '16px 18px', borderRadius: '10px',
-                        border: '1px solid var(--border)', backgroundColor: 'var(--bg-app, #f8fafc)',
-                        display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '16px'
-                      }}
-                    >
-                      <div style={{ flex: 1 }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
-                          <span style={{ fontSize: '13px', fontWeight: '800', color: '#2563eb' }}>{c.contractNo}</span>
-                          <span style={{ fontSize: '14px', fontWeight: '700', color: 'var(--text-primary)' }}>{cust?.name || '고객사'}</span>
-                          <span style={{ fontSize: '11px', padding: '2px 6px', borderRadius: '4px', background: 'rgba(37, 99, 235, 0.12)', color: 'var(--primary)', border: '1px solid rgba(59, 130, 246, 0.25)', fontWeight: 'bold' }}>
-                            장비 {cAssetCount}대
-                          </span>
-                        </div>
-                        <div style={{ fontSize: '12px', color: 'var(--text-secondary)', display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
-                          <span>📍 현장: <strong>{site?.name || '기본현장'}</strong></span>
-                          <span>📅 계약일: {c.startDate}</span>
-                        </div>
-                      </div>
-
-                      {canGeneratePackage && (
-                      <button
-                        type="button"
-                        className="btn-primary"
-                        onClick={() => handleGenerateActiveContractPackage(c.id)}
-                        style={{
-                          padding: '9px 16px', fontSize: '13px', fontWeight: '700', whiteSpace: 'nowrap',
-                          display: 'flex', alignItems: 'center', gap: '6px',
-                          background: '#2563eb', border: 'none', borderRadius: '8px', color: '#fff', cursor: 'pointer'
-                        }}
-                      >
-                        <Download size={15} />
-                        통합 팩 발행
-                      </button>
-                      )}
-                    </div>
-                  );
-                })
-              )}
-            </div>
-
-            <div style={{ padding: '14px 24px', borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'flex-end', backgroundColor: 'var(--bg-app, #f8fafc)', borderBottomLeftRadius: '16px', borderBottomRightRadius: '16px' }}>
-              <button
-                type="button"
-                className="btn-secondary"
-                onClick={() => setShowContractSelectModal(false)}
-                style={{ padding: '8px 16px', fontSize: '13px', fontWeight: '600' }}
-              >
-                닫기
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* 🤖 로컬 에이전트 다운로드 및 가이드 모달 */}
       {showAgentGuideModal && (

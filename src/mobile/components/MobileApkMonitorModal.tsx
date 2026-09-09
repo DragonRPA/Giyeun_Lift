@@ -99,7 +99,7 @@ export const MobileApkMonitorModal: React.FC<MobileApkMonitorModalProps> = ({
                   <User className="w-3.5 h-3.5" /> 로그인 사용자
                 </span>
                 <span className="font-semibold text-white">
-                  {currentUser?.name || '담당자'} ({currentUser?.role === 'ADMIN' ? '최고관리자' : currentUser?.role === 'MECHANIC' ? '정비기사' : '임직원'})
+                  {currentUser?.name || '담당자'} ({currentUser?.role === 'ADMIN' ? '개발자' : currentUser?.role === 'MECHANIC' ? '정비기사' : '임직원'})
                 </span>
               </div>
               <div className="flex items-center justify-between">

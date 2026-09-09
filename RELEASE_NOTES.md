@@ -1,3 +1,26 @@
+## [v1.11.4.Build.2] - 2026-09-09 11:35
+
+### 🔄 [PC 출고검수 화면 원칙론적 전면 감사 및 개편 — 고객 요구사항 기반 동적 검수 체크포인트]
+
+**개편 배경**: `outbound_inspections.tsx` (PC 웹앱)에 하드코딩된 `ALL_SPECS` 12개 기술 체크리스트 잔존 — 모바일과 동일한 구조적 결함. rawText 키워드 매칭으로 검수 항목 추출하던 로직(키워드 없을 시 배터리/타이어/부착물 3종 강제 주입) 원칙론적 전면 폐기.
+
+**변경 내용** (`src/pages/outbound_inspections.tsx`):
+- **`ALL_SPECS` 12개 하드코딩 배열 완전 제거**
+- **`getDynamicSpecLabel` 키워드 매칭 함수 완전 제거**
+- **`getGroupCheckpoints()` 동적 체크포인트 생성 함수 신설**:
+  - **MODEL**: `contractAsset.expectedModel` vs 실제 자산 `modelName` 확인 (자산별 개별 생성)
+  - **SPEC**: `site.checkedSpecs` → `customer.defaultCheckedSpecs` 기준 `true`인 `STANDARD_SPECS` 항목만 동적 생성
+  - **OPTION**: `paidOptions` 텍스트 파싱 → 옵션별 장착 확인 체크포인트
+  - 요구 사양 0개: 모델 확인만 표시, 즉시 승인 가능
+- **`InspectionGroup` 인터페이스**: `requestedSpecs` → `checkpoints: CheckPoint[]` + `specialNote: string` 교체
+- **체크포인트 유형별 색상 구분**: MODEL=blue, SPEC=emerald, OPTION=amber
+- **특이사항 배너**: `site.memo` / `customer.specialNotes` 주황색 배너 노출
+- **헌장 3.1 UI 텍스트 전면 정제**: 부연설명·수식어 제거, 건조한 명사 구조 적용
+
+**검증**: TypeScript 전체 빌드 0 Error 확인
+
+---
+
 ## [v1.11.4.Build.1] - 2026-09-09 11:14
 
 ### 🔄 [출고검수 화면 원칙론적 전면 개편 — 고객 요구사항 기반 동적 검수 체크포인트]

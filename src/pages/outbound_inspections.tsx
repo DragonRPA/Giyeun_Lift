@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { useApp } from '../context/AppContext';
 import { ToggleSwitch } from '../components/ToggleSwitch';
-import { OutboundInspection, OutboundInspectionStatus, Asset, Contract, Customer, CustomerSite, AssetInOutLog, Repair, ContractAsset, db } from '../services/db';
+import { OutboundInspection, OutboundInspectionStatus, Asset, Contract, Customer, CustomerSite as Site, AssetInOutLog, Repair, ContractAsset, db, STANDARD_SPECS } from '../services/db';
 import { issueHandoverTask, clearHandoverTasks } from '../utils/taskHandoverPipeline';
 import {
   CheckSquare,
@@ -29,58 +29,62 @@ import {
   X
 } from 'lucide-react';
 
-// 정비/기술 스펙 체크리스트 마스터 정의 (스마트 키워드 매칭 규격)
-const ALL_SPECS = [
-  { id: 'spec1', label: '철망 / 함석 설치 검수', category: '보양/안전', keywords: ['철망', '함석', '사면철망', '1면', '2면', '3면', '4면', '5면', '망'] },
-  { id: 'spec2', label: '확장대 철망 / 함석 설치 검수', category: '보양/안전', keywords: ['확장대 철망', '확장대 함석', '확장대철망', '확장대함석'] },
-  { id: 'spec3', label: '상단 감지봉 / 협착 방지 센서 검수', category: '보양/안전', keywords: ['감지봉', '감지봉 4ea', '상단감지', '협착', '센서', '4ea', '감지봉4ea'] },
-  { id: 'spec4', label: '원판 설치 상태 검수', category: '구조/설비', keywords: ['원판설치', '원판'] },
-  { id: 'spec5', label: '배터리 단자 풀림 확인 마킹', category: '전원/배터리', keywords: ['배터리 단자', '단자 풀림', '배터리 마킹'] },
-  { id: 'spec6', label: '주행속도 세팅 (고속60/저속45)', category: '주행/제어', keywords: ['주행속도', '고속 60', '저속 45', '속도 세팅'] },
-  { id: 'spec7', label: '오버로드 과적재 세팅 검수', category: '주행/제어', keywords: ['오버로드 셋팅', '오버로드', '과적'] },
-  { id: 'spec8', label: '탑승구 사다리 및 모서리 보양', category: '보양/안전', keywords: ['사다리 보양', '모서리 보양', '사다리보양', '모서리보양', '모서리 8개소', '미끄럼방지'] },
-  { id: 'spec9', label: '소화기함/손잡이/안내스티커', category: '보양/안전', keywords: ['소화기함', '기타 스티커물', '소화기', '안내스티커'] },
-  { id: 'spec10', label: '타이어 A급 상태 검수', category: '구조/설비', keywords: ['타이어 A급', '타이어A급', '타이어 A급 상태'] },
-  { id: 'spec11', label: '점멸등/비상하강/정지장치 청결', category: '주행/제어', keywords: ['점멸등', '비상하강장치', '비상정지장치'] },
-  { id: 'spec12', label: '부착물 세트 (인증서/제원표/보험증권/체크리스트 등)', category: '서류/스티커', keywords: ['부착물', '제원표', '보험증권', '인증서', '반입전', '체크리스트'] }
-];
+interface CheckPoint {
+  id: string;
+  label: string;
+  type: 'MODEL' | 'SPEC' | 'OPTION';
+}
 
-// 💡 [동적 맞춤형 라벨 추출기] 원문 텍스트에서 '3면 함석', '4면 철망', '1면', '2면', '감지봉 4EA' 등 실감지 키워드로 100% 맞춰 동적 표출!
-const getDynamicSpecLabel = (spec: { id: string; label: string }, text: string): string => {
-  if (!text.trim()) return spec.label;
-  const lowerText = text.toLowerCase();
+function getGroupCheckpoints(
+  items: OutboundInspection[],
+  groupAssets: Asset[],
+  contract: Contract | undefined,
+  customer: Customer | null | undefined,
+  site: Site | null | undefined
+): { checkpoints: CheckPoint[]; specialNote: string } {
+  const checkpoints: CheckPoint[] = [];
 
-  if (spec.id === 'spec1') {
-    const match = text.match(/(\d+)\s*면\s*(함석|철망|망)/i) || text.match(/(함석|철망|망)\s*(\d+)\s*면/i);
-    if (match) {
-      const sideNum = match[1] && !isNaN(Number(match[1])) ? match[1] : match[2];
-      const rawMat = (match[2] && (match[2].includes('함석') || match[2].includes('철망') || match[2].includes('망'))) ? match[2] : match[1];
-      const material = rawMat.includes('함석') ? '함석' : '철망';
-      return `${sideNum}면 ${material} 설치 검수`;
+  // 1. 모델 일치 확인 — 항상 포함
+  items.forEach(item => {
+    const ca = db.contractAssets.find(ca => ca.id === item.contractAssetId);
+    const asset = db.assets.find(a => a.id === item.assetId);
+    if (ca?.expectedModel) {
+      checkpoints.push({
+        id: `model_${item.id}`,
+        label: `모델 확인: 계약 요구 [${ca.expectedModel}] ↔ 실출고 [${asset?.modelName || '미배정'}]`,
+        type: 'MODEL'
+      });
+    } else if (asset) {
+      checkpoints.push({
+        id: `model_${item.id}`,
+        label: `모델 확인: [${asset.modelName}] (${asset.assetNo}) 출고 준비 상태`,
+        type: 'MODEL'
+      });
     }
-    const sideOnlyMatch = text.match(/(\d+)\s*면/i);
-    if (sideOnlyMatch) {
-      const sideNum = sideOnlyMatch[1];
-      const material = lowerText.includes('함석') ? '함석' : '철망';
-      return `${sideNum}면 ${material} 설치 검수`;
+  });
+
+  // 2. STANDARD_SPECS 중 site.checkedSpecs 또는 customer.defaultCheckedSpecs에서 true인 항목만
+  const specMap: Record<string, boolean> = {
+    ...(customer?.defaultCheckedSpecs || {}),
+    ...(site?.checkedSpecs || {})
+  };
+  STANDARD_SPECS.forEach(spec => {
+    if (specMap[spec.id] === true) {
+      checkpoints.push({ id: spec.id, label: spec.label, type: 'SPEC' });
     }
-    if (lowerText.includes('함석')) return '함석 설치 검수';
-    if (lowerText.includes('철망') || lowerText.includes('사면철망')) return '철망 설치 검수';
+  });
+
+  // 3. 유상옵션 (site.paidOptions 또는 customer.defaultPaidOptions)
+  const paidOpts = site?.paidOptions || customer?.defaultPaidOptions || '';
+  if (typeof paidOpts === 'string' && paidOpts.trim()) {
+    paidOpts.split(/[,，、\\n]/).map(o => o.trim()).filter(Boolean).forEach((opt, i) => {
+      checkpoints.push({ id: `paid_${i}`, label: `[옵션] ${opt} 장착 확인`, type: 'OPTION' });
+    });
   }
 
-  if (spec.id === 'spec2') {
-    if (lowerText.includes('확장대 함석')) return '확장대 함석 설치 검수';
-    if (lowerText.includes('확장대 철망')) return '확장대 철망 설치 검수';
-  }
-
-  if (spec.id === 'spec3') {
-    const match = text.match(/감지봉\s*(\d+\s*EA|\d+\s*개)/i);
-    if (match) return `상단 감지봉 / 협착 방지 센서 (${match[1].replace(/\s+/g, '')}) 검수`;
-    if (lowerText.includes('감지봉')) return '상단 감지봉 / 협착 방지 센서 검수';
-  }
-
-  return spec.label;
-};
+  const specialNote = (site as any)?.memo || customer?.specialNotes || '';
+  return { checkpoints, specialNote };
+}
 
 // 의뢰 1건 그룹 단위 인터페이스
 interface InspectionGroup {
@@ -96,7 +100,8 @@ interface InspectionGroup {
   items: OutboundInspection[];
   assets: Asset[];
   equipmentsSummary: string;
-  requestedSpecs: typeof ALL_SPECS;
+  checkpoints: CheckPoint[];
+  specialNote: string;
   rawText?: string; // 스마트 출고시 입력된 자연어 원문 텍스트
 }
 
@@ -230,14 +235,7 @@ export const OutboundInspections: React.FC = () => {
       const rawText = delivery?.rawText || delivery?.memo || (contract as any)?.memo || firstItem.note || '';
       const memoText = `${rawText} ${delivery?.closingMemo || ''} ${firstItem.note || ''}`.toLowerCase();
 
-      let reqSpecs = ALL_SPECS.filter(spec => {
-        return spec.keywords.some(kw => memoText.includes(kw.toLowerCase()));
-      });
-
-      // 만약 원본 요청서에 아무런 특수 옵션 키워드가 없는 일반 기본 출고건인 경우 기본 필수 3종(배터리, 타이어, 부착물)만 표출
-      if (reqSpecs.length === 0) {
-        reqSpecs = ALL_SPECS.filter(s => ['spec5', 'spec10', 'spec12'].includes(s.id));
-      }
+      const { checkpoints, specialNote } = getGroupCheckpoints(items, groupAssets, contract, customer, site);
 
       let groupStatus: OutboundInspectionStatus = 'PENDING';
       if (items.every(i => i.status === 'COMPLETED')) {
@@ -263,7 +261,8 @@ export const OutboundInspections: React.FC = () => {
         items,
         assets: groupAssets,
         equipmentsSummary: summaryText,
-        requestedSpecs: reqSpecs,
+        checkpoints,
+        specialNote,
         rawText
       });
     });
@@ -305,8 +304,8 @@ export const OutboundInspections: React.FC = () => {
 
     // 초기 체크 상태 세팅 (기본값 false 미체크!)
     const initialMap: Record<string, boolean> = {};
-    group.requestedSpecs.forEach(spec => {
-      initialMap[spec.id] = false;
+    group.checkpoints.forEach(cp => {
+      initialMap[cp.id] = false;
     });
 
     // 만약 이미 검수가 진행중이거나 완료된 경우 기존 note 파싱
@@ -318,10 +317,10 @@ export const OutboundInspections: React.FC = () => {
   // 1-Click 전체 선택 / 해제
   const handleToggleAllSpecs = () => {
     if (!selectedGroup) return;
-    const allChecked = selectedGroup.requestedSpecs.every(spec => !!checkedItems[spec.id]);
+    const allChecked = selectedGroup.checkpoints.every(cp => !!checkedItems[cp.id]);
     const updated: Record<string, boolean> = {};
-    selectedGroup.requestedSpecs.forEach(spec => {
-      updated[spec.id] = !allChecked;
+    selectedGroup.checkpoints.forEach(cp => {
+      updated[cp.id] = !allChecked;
     });
     setCheckedItems(updated);
   };
@@ -370,7 +369,7 @@ export const OutboundInspections: React.FC = () => {
     }
 
     const checkedCount = Object.values(checkedItems).filter(Boolean).length;
-    const totalCount = selectedGroup.requestedSpecs.length;
+    const totalCount = selectedGroup.checkpoints.length;
 
     if (checkedCount === 0) {
       showErrorModal('점검 항목을 최소 1개 이상 검수 완료해야 출고 승인이 가능합니다.');
@@ -395,7 +394,7 @@ export const OutboundInspections: React.FC = () => {
           inspectedAt: nowIso,
           approvedAt: nowIso,
           specsJson: JSON.stringify({
-            checkedItems,
+            checkpoints: selectedGroup.checkpoints.map(cp => ({ ...cp, checked: !!checkedItems[cp.id] })),
             inspectionNote,
             inspectorName,
             approvedAt: nowIso
@@ -719,11 +718,9 @@ export const OutboundInspections: React.FC = () => {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '12px' }}>
         <div>
           <h2 style={{ fontWeight: 800, fontSize: '22px', display: 'flex', alignItems: 'center', gap: '10px', margin: 0 }}>
-            <CheckSquare size={24} color="var(--primary)" /> 출고 검수 의뢰 관리 (의뢰 1건 단위)
+            <CheckSquare size={24} color="var(--primary)" /> 출고 검수 관리
           </h2>
-          <p style={{ margin: '6px 0 0 0', fontSize: '13px', color: 'var(--text-muted)' }}>
-            출고 의뢰 1건당 포함된 전체 장비를 그룹으로 묶어 요구된 기술 스펙 체크리스트를 검수합니다.
-          </p>
+          
         </div>
       </div>
 
@@ -966,18 +963,24 @@ export const OutboundInspections: React.FC = () => {
                       )}
                     </div>
 
-                    {/* 요구 스펙 실제 체크리스트 항목 태그 */}
-                    <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
-                      <div style={{ marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                        <ShieldCheck size={12} color="var(--primary)" />
-                        <span style={{ fontWeight: 700, color: 'var(--text-primary)' }}>요구 스펙 ({group.requestedSpecs.length}개 항목):</span>
-                      </div>
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
-                        {group.requestedSpecs.map(spec => (
-                          <span key={spec.id} style={{ padding: '2px 6px', borderRadius: '4px', backgroundColor: 'rgba(59,130,246,0.1)', color: 'var(--primary)', fontWeight: 600, fontSize: '10.5px' }}>
-                            {getDynamicSpecLabel(spec, group.rawText || '')}
-                          </span>
+                    <div>
+                      <span style={{ fontSize: '10.5px', fontWeight: 700, color: 'var(--text-primary)' }}>
+                        검수 항목 ({group.checkpoints.length}개):
+                      </span>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', marginTop: '4px' }}>
+                        {group.checkpoints.slice(0, 4).map(cp => (
+                          <span key={cp.id} style={{
+                            padding: '2px 6px', borderRadius: '4px', fontSize: '10.5px', fontWeight: 600,
+                            backgroundColor: cp.type === 'MODEL' ? 'rgba(59,130,246,0.1)' : cp.type === 'SPEC' ? 'rgba(16,185,129,0.1)' : 'rgba(245,158,11,0.1)',
+                            color: cp.type === 'MODEL' ? '#2563eb' : cp.type === 'SPEC' ? '#059669' : '#d97706'
+                          }}>{cp.label.length > 20 ? cp.label.slice(0,20) + '…' : cp.label}</span>
                         ))}
+                        {group.checkpoints.length > 4 && (
+                          <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>+{group.checkpoints.length - 4}개 더</span>
+                        )}
+                        {group.checkpoints.length === 0 && (
+                          <span style={{ fontSize: '10.5px', color: 'var(--text-muted)' }}>모델 확인 후 즉시 승인 가능</span>
+                        )}
                       </div>
                     </div>
 
@@ -1034,7 +1037,7 @@ export const OutboundInspections: React.FC = () => {
                 {/* 포함 장비 다수 묶음 상세 표출 + 🔄 [장비 교체] 버튼 장착! */}
                 <div style={{ marginTop: '12px', padding: '12px', backgroundColor: 'var(--bg-card)', borderRadius: '8px', border: '1px solid var(--border-color)' }}>
                   <div style={{ fontSize: '12.5px', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <Wrench size={14} color="var(--primary)" /> 이번 의뢰에 동시 포함된 출고 대상 장비 ({selectedGroup.assets.length}대)
+                    <Wrench size={14} color="var(--primary)" /> 출고 장비 ({selectedGroup.assets.length}대)
                   </div>
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '10px' }}>
                     {selectedGroup.assets.map(asset => (
@@ -1075,16 +1078,23 @@ export const OutboundInspections: React.FC = () => {
                 </div>
               </div>
 
+              {selectedGroup.specialNote && (
+                <div style={{
+                  marginBottom: '16px', padding: '10px 14px',
+                  backgroundColor: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.3)',
+                  borderRadius: '8px', fontSize: '12.5px', color: '#b45309'
+                }}>
+                  <strong>현장/고객 특이사항:</strong> {selectedGroup.specialNote}
+                </div>
+              )}
+
               {/* 🎯 의뢰 요구 맞춤 정비 스펙 체크리스트 */}
               <div style={{ marginBottom: '20px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
                   <div>
                     <h3 style={{ fontSize: '15px', fontWeight: 800, margin: 0, display: 'flex', alignItems: 'center', gap: '6px' }}>
-                      <Sparkles size={16} color="var(--primary)" /> 의뢰 요구 맞춤 정비/기술 스펙 검수 항목 ({selectedGroup.requestedSpecs.length}개)
+                      <Sparkles size={16} color="var(--primary)" /> 검수 항목 ({selectedGroup.checkpoints.length}개)
                     </h3>
-                    <p style={{ margin: '2px 0 0 0', fontSize: '12px', color: 'var(--text-muted)' }}>
-                      해당 출고 의뢰가 요구한 핵심 항목만 엄선 표출됩니다. (초기 상태: 미체크 false)
-                    </p>
                   </div>
                   {canEdit && (
                     <button
@@ -1098,14 +1108,14 @@ export const OutboundInspections: React.FC = () => {
                 </div>
 
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: '10px' }}>
-                  {selectedGroup.requestedSpecs.map((spec, index) => {
-                    const isChecked = !!checkedItems[spec.id];
+                  {selectedGroup.checkpoints.map((cp, index) => {
+                    const isChecked = !!checkedItems[cp.id];
                     return (
                       <div
-                        key={spec.id}
+                        key={cp.id}
                         onClick={() => {
                           if (!canEdit) return;
-                          setCheckedItems(prev => ({ ...prev, [spec.id]: !isChecked }));
+                          setCheckedItems(prev => ({ ...prev, [cp.id]: !isChecked }));
                         }}
                         style={{
                           padding: '12px 14px',
@@ -1138,11 +1148,14 @@ export const OutboundInspections: React.FC = () => {
                         </div>
 
                         <div style={{ flex: 1 }}>
-                          <span style={{ fontSize: '10.5px', fontWeight: 700, color: isChecked ? '#16a34a' : 'var(--text-muted)', display: 'block' }}>
-                            [{spec.category}] {index + 1}.
+                          <span style={{
+                            fontSize: '10.5px', fontWeight: 700, display: 'block',
+                            color: isChecked ? '#16a34a' : cp.type === 'MODEL' ? '#2563eb' : cp.type === 'SPEC' ? '#059669' : '#d97706'
+                          }}>
+                            [{cp.type}] {index + 1}.
                           </span>
                           <span style={{ fontSize: '13px', fontWeight: isChecked ? 700 : 500, color: isChecked ? '#15803d' : 'var(--text-primary)' }}>
-                            {getDynamicSpecLabel(spec, selectedGroup.rawText || '')}
+                            {cp.label}
                           </span>
                         </div>
                       </div>
@@ -1154,7 +1167,7 @@ export const OutboundInspections: React.FC = () => {
               {/* 특이사항 및 작업 메모 */}
               <div style={{ marginBottom: '16px' }}>
                 <label style={{ fontSize: '13px', fontWeight: 700, marginBottom: '6px', display: 'block', color: 'var(--text-secondary)' }}>
-                  📝 정비 특이사항 및 작업 결과 메모
+                  검수 메모
                 </label>
                 <textarea
                   placeholder="예: 배터리 단자 정비 완료, 4면 망 완비 완료, 타이어 교체 등 특이사항 기록..."
@@ -1182,7 +1195,7 @@ export const OutboundInspections: React.FC = () => {
               {/* ────────────────────────────────────────────────────────────────── */}
               <div style={{ marginBottom: '20px', padding: '14px 16px', backgroundColor: 'rgba(59,130,246,0.06)', border: '1.5px solid rgba(59,130,246,0.25)', borderRadius: '10px' }}>
                 <div style={{ fontSize: '13px', fontWeight: 800, color: 'var(--primary)', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <MessageSquare size={16} /> 💬 스마트 출고 요청 자연어 원본 텍스트 (검수 판단 참고용)
+                  <MessageSquare size={16} /> 출고 의뢰 원문
                 </div>
                 <div style={{ fontSize: '12.5px', color: 'var(--text-primary)', whiteSpace: 'pre-wrap', lineHeight: '1.6', fontFamily: 'Consolas, Monaco, monospace', backgroundColor: 'var(--bg-card)', padding: '10px 12px', borderRadius: '6px', border: '1px solid var(--border-color)' }}>
                   {selectedGroup.rawText || '요청된 자연어 원문이 없습니다.'}

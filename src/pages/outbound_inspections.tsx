@@ -534,7 +534,7 @@ export const OutboundInspections: React.FC = () => {
             workCategory: 'YARD_INTERNAL',
             workLocation: 'YARD',
             stockSource: 'YARD_STOCK',
-            source: 'INBOUND_INSPECTION',
+            source: 'OUTBOUND_DEFECT',
             repairType: 'INTERNAL',
             status: 'PENDING',
             priority: 'URGENT',
@@ -594,6 +594,7 @@ export const OutboundInspections: React.FC = () => {
           db.updateRow<Asset>('assets', item.assetId, {
             status: targetStatus,
             maintenanceScore: rejectToRepairing ? Math.max(targetAsset?.maintenanceScore || 0, 7) : targetAsset?.maintenanceScore,
+            note: rejectToRepairing ? `[출고검수 반려] ${rejectReason.trim()}` : targetAsset?.note,
             updatedAt: nowIso
           });
         }

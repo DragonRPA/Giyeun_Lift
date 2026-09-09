@@ -5000,6 +5000,7 @@ ${currentTenant?.corporateName || tenantCorp} 배상
     const newSnapshot = newAssetOrig ? { ...newAssetOrig } : null;
     const caSnapshot = caOrig ? { ...caOrig } : null;
     const inspSnapshot = inspOrig ? { ...inspOrig } : null;
+    let createdRepairId: string | undefined = undefined;
 
     try {
       if (!oldAssetOrig || !newAssetOrig || !caOrig) {
@@ -5010,15 +5011,16 @@ ${currentTenant?.corporateName || tenantCorp} 배상
       const nowIso = new Date().toISOString();
 
       // 1. 기존 장비: 수리정비중(REPAIRING) 선택 시 REPAIRING 전환, 아니면 임대가능(AVAILABLE) 유지!
-      // 💡 [전사 정책]: 출고검수 탈락 교체 시 사유 유무와 무관하게 정비점수 +5점 무조건 가산 (신중한 할당 강제 및 사유 누락 방어)
+      // 💡 [전사 정책]: 출고검수 탈락 교체 시 사유 유무와 무관하게 정비점수 가산 (지정 점수 또는 기본 5점)
       const targetStatus = markOldAsRepairing ? 'REPAIRING' : 'AVAILABLE';
-      const updatedScore = (Number(oldAssetOrig.maintenanceScore) || 0) + 5;
+      const penaltyToAdd = typeof customPenaltyScore === 'number' && !isNaN(customPenaltyScore) ? customPenaltyScore : 5;
+      const updatedScore = (Number(oldAssetOrig.maintenanceScore) || 0) + penaltyToAdd;
       
       const cleanReason = reason && reason.trim() ? reason.trim() : '출고검수 탈락 교체(사유미기재)';
-      const oldNote = oldAssetOrig.memo1 || oldAssetOrig.note || oldAssetOrig.memo || '';
+      const oldNote = oldAssetOrig.note || '';
       const appendedNote = oldNote
-        ? `${oldNote}\n[출고검수 교체(벌점+5, 총점:${updatedScore}점)] ${today}: ${cleanReason}`
-        : `[출고검수 교체(벌점+5, 총점:${updatedScore}점)] ${today}: ${cleanReason}`;
+        ? `${oldNote}\n[출고검수 교체(벌점+${penaltyToAdd}, 총점:${updatedScore}점)] ${today}: ${cleanReason}`
+        : `[출고검수 교체(벌점+${penaltyToAdd}, 총점:${updatedScore}점)] ${today}: ${cleanReason}`;
 
       const oldPayload: Partial<Asset> = {
         status: targetStatus,
@@ -5027,13 +5029,62 @@ ${currentTenant?.corporateName || tenantCorp} 배상
         currentSiteId: undefined,
         contractStart: undefined,
         contractEnd: undefined,
-        memo1: appendedNote,
-        note: appendedNote,
-        memo: appendedNote,
+        note: appendedNote, // 🌟 자산 정비필요항목(note)에만 정확히 저장
+        // 🌟 memo(일반 자산 비고: 원사/임차처/결제조건 등)는 절대 오염시키지 않고 원본 100% 보존!
         updatedAt: nowIso
       };
 
       db.updateRow<Asset>('assets', oldAssetId, oldPayload);
+
+      // 1-1. 🌟 [주기장 정비 연계]: 수리정비중 전환 시 주기장 정비 대장(repairs) 티켓 1:1 자동 발행 (헌장 1.2 무누락 저장)
+      if (markOldAsRepairing) {
+        createdRepairId = db.generateNextId('repairs', db.repairs);
+        db.insertRow<Repair>('repairs', {
+          id: createdRepairId,
+          assetId: oldAssetId,
+          assetNo: oldAssetOrig.assetNo,
+          modelName: oldAssetOrig.modelName,
+          contractId: caOrig.contractId,
+          customerId: oldAssetOrig.currentCustomerId,
+          customerName: db.customers.find(c => c.id === oldAssetOrig.currentCustomerId)?.name || '출고 검수처',
+          siteId: oldAssetOrig.currentSiteId,
+          siteName: db.sites.find(s => s.id === oldAssetOrig.currentSiteId)?.name || '주기장',
+          requestDate: today,
+          status: 'PENDING',
+          workCategory: 'YARD_INTERNAL',
+          workLocation: 'YARD',
+          stockSource: 'YARD_STOCK',
+          source: 'OUTBOUND_DEFECT',
+          repairType: 'INTERNAL',
+          priority: 'URGENT',
+          details: `[출고검수 불량 정비 접수] 교체사유: ${cleanReason}\n대체장비: ${newAssetOrig.assetNo} (${newAssetOrig.modelName})`,
+          issueDescription: cleanReason,
+          totalCost: 0,
+          billableToCustomer: false,
+          targetAssetStatus: 'REPAIRING',
+          degradationScore: penaltyToAdd,
+          createdAt: nowIso,
+          updatedAt: nowIso
+        });
+
+        // 🚀 주기장 정비팀에 긴급 정비 ToDo 자동 적재
+        try {
+          await issueHandoverTask({
+            category: 'OUTBOUND_REPAIR_DEFECT',
+            title: `[출고 교체 긴급 정비] ${oldAssetOrig.assetNo} (${oldAssetOrig.modelName})`,
+            content: `출고검수 불량 교체 (+${penaltyToAdd}점): ${cleanReason} (대체: ${newAssetOrig.assetNo})`,
+            targetDept: 'YARD',
+            priority: 'URGENT',
+            actionUrl: '/repairs',
+            entityType: 'REPAIR',
+            entityId: createdRepairId,
+            senderId: currentUser?.id,
+            senderName: currentUser?.name || '출고검수시스템'
+          });
+        } catch (taskErr) {
+          console.warn('출고 불량 정비 ToDo 발행 경고 (무시):', taskErr);
+        }
+      }
 
       // 2. 대체 장비: 배차지정(ASSIGNED)으로 전환 및 계약 정보 매핑
       db.updateRow<Asset>('assets', newAssetId, {
@@ -5077,8 +5128,9 @@ ${currentTenant?.corporateName || tenantCorp} 배상
         assetNo: oldAssetOrig.assetNo,
         modelName: oldAssetOrig.modelName,
         type: 'REPAIR',
+        repairId: createdRepairId,
         eventDate: today,
-        memo: `[출고불가 수리전환] 대체장비(${newAssetOrig.assetNo}) 교체배정 | 사유: ${reason}`,
+        memo: `[출고불가 수리전환] 대체장비(${newAssetOrig.assetNo}) 교체배정 | 사유: ${cleanReason}${createdRepairId ? ` (정비티켓 ${createdRepairId} 자동발행)` : ''}`,
         createdAt: nowIso
       });
 
@@ -5106,6 +5158,7 @@ ${currentTenant?.corporateName || tenantCorp} 배상
       if (newSnapshot) db.updateRow('assets', newAssetId, newSnapshot);
       if (caSnapshot) db.updateRow('contractAssets', contractAssetId, caSnapshot);
       if (inspSnapshot && inspOrig) db.updateRow('outboundInspections', inspOrig.id, inspSnapshot);
+      if (createdRepairId) db.deleteRow('repairs', createdRepairId);
 
       refreshAllData();
 
@@ -7264,18 +7317,18 @@ ${currentTenant?.corporateName || tenantCorp} 배상
         nextMaintenanceScore = 0;
       }
 
-      let nextMemo = targetAsset.memo;
+      let nextNote = targetAsset.note;
       if (repairStatus === 'COMPLETED' && nextAssetStatus === 'AVAILABLE') {
         const dateTag = repairData.repairDate || new Date().toISOString().split('T')[0];
         const detailSnippet = repairData.details ? repairData.details.slice(0, 30) : '점검 완료';
-        nextMemo = `[정비완료 ${dateTag}] ${detailSnippet}`;
+        nextNote = `[정비완료 ${dateTag}] ${detailSnippet}`;
       }
 
       db.updateRow<Asset>('assets', targetAsset.id, {
         status: nextAssetStatus,
         maintenanceScore: nextMaintenanceScore,
         cumRepairCost: (targetAsset.cumRepairCost || 0) + totalRepairCost,
-        memo: nextMemo,
+        note: nextNote,
         updatedAt: new Date().toISOString()
       });
 

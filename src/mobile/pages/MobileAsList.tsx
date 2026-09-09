@@ -40,28 +40,30 @@ export const MobileAsList: React.FC<MobileAsListProps> = ({
   const yardAssets = useMemo(() => {
     return (assets || []).filter(a => {
       if (a.status === 'RENTED' || a.status === 'SOLD' || a.status === 'ASSIGNED') return false;
+      const hasOutboundDefect = (repairs || []).some(r => r.assetId === a.id && r.status === 'PENDING' && r.source === 'OUTBOUND_DEFECT');
       const hasInboundDefect = (repairs || []).some(r => r.assetId === a.id && r.status === 'PENDING' && r.source === 'INBOUND_INSPECTION');
       const isRepairing = a.status === 'REPAIRING';
       const isReturned = a.status === 'RENTED_RETURNED';
       const isUnresolved = (repairs || []).some(r => r.assetId === a.id && r.status === 'UNRESOLVED');
-      return hasInboundDefect || isRepairing || isReturned || isUnresolved;
+      return hasOutboundDefect || hasInboundDefect || isRepairing || isReturned || isUnresolved;
     });
   }, [assets, repairs]);
 
-  // 입고 결함 자산 건수
+  // 입출고 결함 자산 건수
   const inboundDefectCount = useMemo(() => {
     return (assets || []).filter(a => 
-      (repairs || []).some(r => r.assetId === a.id && r.status === 'PENDING' && r.source === 'INBOUND_INSPECTION')
+      (repairs || []).some(r => r.assetId === a.id && r.status === 'PENDING' && (r.source === 'INBOUND_INSPECTION' || r.source === 'OUTBOUND_DEFECT'))
     ).length;
   }, [assets, repairs]);
 
   // 주기장 필터링된 자산 목록
   const filteredYardAssets = useMemo(() => {
     return yardAssets.filter(asset => {
+      const pendingOutbound = (repairs || []).find(r => r.assetId === asset.id && r.status === 'PENDING' && r.source === 'OUTBOUND_DEFECT');
       const pendingInbound = (repairs || []).find(r => r.assetId === asset.id && r.status === 'PENDING' && r.source === 'INBOUND_INSPECTION');
       const unresolvedRepair = (repairs || []).find(r => r.assetId === asset.id && r.status === 'UNRESOLVED');
 
-      if (yardFilter === 'INBOUND_DEFECT' && !pendingInbound) return false;
+      if (yardFilter === 'INBOUND_DEFECT' && !pendingInbound && !pendingOutbound) return false;
       if (yardFilter === 'REPAIRING' && asset.status !== 'REPAIRING') return false;
       if (yardFilter === 'UNRESOLVED' && !unresolvedRepair) return false;
 
@@ -69,10 +71,12 @@ export const MobileAsList: React.FC<MobileAsListProps> = ({
         const q = searchTerm.toLowerCase();
         const matchAsset = (asset.assetNo || '').toLowerCase().includes(q);
         const matchModel = (asset.modelName || '').toLowerCase().includes(q);
+        const matchNote = (asset.note || '').toLowerCase().includes(q);
         const matchMemo = (asset.memo || '').toLowerCase().includes(q);
         const matchInbound = pendingInbound?.inboundNo ? pendingInbound.inboundNo.toLowerCase().includes(q) : false;
         const matchDetails = pendingInbound?.details ? pendingInbound.details.toLowerCase().includes(q) : false;
-        if (!matchAsset && !matchModel && !matchMemo && !matchInbound && !matchDetails) return false;
+        const matchOutbound = pendingOutbound?.details ? pendingOutbound.details.toLowerCase().includes(q) : false;
+        if (!matchAsset && !matchModel && !matchNote && !matchMemo && !matchInbound && !matchDetails && !matchOutbound) return false;
       }
 
       return true;
@@ -106,12 +110,13 @@ export const MobileAsList: React.FC<MobileAsListProps> = ({
 
   // 주기장 정비 모달 열기 핸들러
   const handleOpenYardRepair = (asset: Asset) => {
+    const pendingOutbound = (repairs || []).find(r => r.assetId === asset.id && r.status === 'PENDING' && r.source === 'OUTBOUND_DEFECT');
     const pendingInbound = (repairs || []).find(r => r.assetId === asset.id && r.status === 'PENDING' && r.source === 'INBOUND_INSPECTION');
     const unresolvedRepair = (repairs || []).find(r => r.assetId === asset.id && r.status === 'UNRESOLVED');
     const generalPending = (repairs || []).find(r => r.assetId === asset.id && (r.status === 'PENDING' || r.status === 'IN_PROGRESS'));
 
     setSelectedYardAsset(asset);
-    setSelectedYardRepair(pendingInbound || unresolvedRepair || generalPending || null);
+    setSelectedYardRepair(pendingOutbound || pendingInbound || unresolvedRepair || generalPending || null);
     setIsYardModalOpen(true);
   };
 
@@ -442,6 +447,7 @@ export const MobileAsList: React.FC<MobileAsListProps> = ({
               </div>
             ) : (
               filteredYardAssets.map((asset) => {
+                const pendingOutbound = (repairs || []).find(r => r.assetId === asset.id && r.status === 'PENDING' && r.source === 'OUTBOUND_DEFECT');
                 const pendingInbound = (repairs || []).find(r => r.assetId === asset.id && r.status === 'PENDING' && r.source === 'INBOUND_INSPECTION');
                 const unresolvedRepair = (repairs || []).find(r => r.assetId === asset.id && r.status === 'UNRESOLVED');
 
@@ -472,9 +478,13 @@ export const MobileAsList: React.FC<MobileAsListProps> = ({
                       </div>
 
                       <div className="flex items-center gap-1.5">
-                        {pendingInbound ? (
+                        {pendingOutbound ? (
                           <span className="text-[11px] px-2 py-0.5 rounded-full font-bold bg-red-500/20 text-red-400 border border-red-500/30">
-                            🚨 입고불량
+                            ⚡ 출고불량
+                          </span>
+                        ) : pendingInbound ? (
+                          <span className="text-[11px] px-2 py-0.5 rounded-full font-bold bg-red-500/20 text-red-400 border border-red-500/30">
+                            🚨 입고결함
                           </span>
                         ) : unresolvedRepair ? (
                           <span className="text-[11px] px-2 py-0.5 rounded-full font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30">
@@ -493,6 +503,19 @@ export const MobileAsList: React.FC<MobileAsListProps> = ({
                         )}
                       </div>
                     </div>
+
+                    {/* 출고 불량 교체 사유 */}
+                    {pendingOutbound && (
+                      <div className="p-2.5 rounded-xl bg-red-950/30 border border-red-500/30 flex flex-col gap-1">
+                        <span className="flex items-center gap-1 text-[11px] text-red-300 font-bold">
+                          <AlertTriangle className="w-3.5 h-3.5 text-red-400" />
+                          출고 불량 교체 건
+                        </span>
+                        <span className="text-[11px] text-red-200">
+                          {pendingOutbound.issueDescription || pendingOutbound.details}
+                        </span>
+                      </div>
+                    )}
 
                     {/* 입고 결함 항목 배지들 */}
                     {defectList.length > 0 && (
@@ -526,8 +549,10 @@ export const MobileAsList: React.FC<MobileAsListProps> = ({
 
                     {/* 하단 터치 가이드 바 */}
                     <div className="flex items-center justify-between text-[11px] text-slate-400 pt-1 border-t border-slate-800/60">
-                      <span>최근 메모: {asset.memo || '이상 없음'}</span>
-                      <span className="text-red-400 font-bold flex items-center gap-0.5">
+                      <span className="truncate max-w-[200px]">
+                        {asset.note && !asset.note.startsWith('[정비완료') ? `정비요구: ${asset.note}` : asset.memo ? `비고: ${asset.memo}` : '정상 대기'}
+                      </span>
+                      <span className="text-red-400 font-bold flex items-center gap-0.5 shrink-0">
                         정비 스튜디오 열기 <ChevronRight className="w-3.5 h-3.5" />
                       </span>
                     </div>

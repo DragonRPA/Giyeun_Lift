@@ -64,12 +64,19 @@ export const MobileYardRepairModal: React.FC<MobileYardRepairModalProps> = ({
   // 자산/티켓 변경 시 초기화
   useEffect(() => {
     if (asset) {
-      const defectSummary = inboundDefects.length > 0
-        ? inboundDefects.map(d => `• [${d.checkitemName}] 점검 및 부품 교체/수리 조치 완료`).join('\n')
-        : '• 입고 결함 항목 점검 및 정상 작동 확인 완료';
-      setRepairDetails(
-        `입고결함 정비: ${pendingRepair?.inboundNo || '주기장검수'}\n${defectSummary}\n• 시운전 및 안전장치 점검 완료`
-      );
+      if (pendingRepair?.source === 'OUTBOUND_DEFECT' || pendingRepair?.details?.includes('[출고')) {
+        const symptom = pendingRepair.issueDescription || pendingRepair.details;
+        setRepairDetails(
+          `[출고 불량 정비]\n• 불량 증상: ${symptom}\n• 점검 및 부품 수리/교체 조치 완료\n• 시운전 및 안전장치 점검 완료`
+        );
+      } else {
+        const defectSummary = inboundDefects.length > 0
+          ? inboundDefects.map(d => `• [${d.checkitemName}] 점검 및 부품 교체/수리 조치 완료`).join('\n')
+          : '• 입고 결함 항목 점검 및 정상 작동 확인 완료';
+        setRepairDetails(
+          `입고결함 정비: ${pendingRepair?.inboundNo || '주기장검수'}\n${defectSummary}\n• 시운전 및 안전장치 점검 완료`
+        );
+      }
       setBillableType('FREE');
       setBillableAmount(0);
       setUsedConsumables([]);

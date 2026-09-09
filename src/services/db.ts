@@ -1031,7 +1031,7 @@ export interface Repair {
   workCategory?: 'FIELD_AS' | 'YARD_INTERNAL' | 'PREVENTIVE' | 'EXTERNAL_VENDOR'; // 외근AS | 주기장정비 | 예방정비 | 외주정비
   workLocation?: 'SITE' | 'YARD' | 'VENDOR_SHOP';                                  // 현장 | 주기장 | 외주처
   stockSource?: 'VEHICLE_VAN' | 'YARD_STOCK' | 'DIRECT_PURCHASE' | 'CENTRAL_HQ';  // 기사차량 | 주기장재고 | 현장구매 (레거시 호환)
-  source?: 'SALES_REQUEST' | 'DIRECT_INTAKE' | 'INBOUND_INSPECTION' | 'BAND_IMPORT';
+  source?: 'SALES_REQUEST' | 'DIRECT_INTAKE' | 'INBOUND_INSPECTION' | 'OUTBOUND_DEFECT' | 'BAND_IMPORT';
   repairType?: 'INTERNAL' | 'EXTERNAL';
   maintenanceType?: 'EMERGENCY_AS' | 'PREVENTIVE' | 'INHOUSE_REPAIR' | 'EXTERNAL'; // 레거시 호환
   
@@ -1215,6 +1215,7 @@ export type TaskCategory =
   | 'BILLABLE_REPAIR_BILLING'     // 유상 수리비 매출 청구서 바인딩
   | 'INBOUND_INSPECTION'          // 회수 장비 입고 검수
   | 'INBOUND_REPAIR_DEFECT'       // 입고 결함 장비 주기장 정비
+  | 'OUTBOUND_REPAIR_DEFECT'      // 출고 결함/교체 장비 주기장 정비
   | 'CLAIM_DAMAGE_BILLING'        // 고객 과실 파손 구상권 청구
   | 'EXCHANGE_CHAIN_INSPECTION'   // 대차 입출고 1:1 검수 체인
   | 'BILLING_APPROVAL_SEND'       // 월말 렌탈 청구서 승인 및 계산서 발행

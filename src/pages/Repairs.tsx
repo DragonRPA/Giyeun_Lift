@@ -34,7 +34,7 @@ export const Repairs: React.FC = () => {
   // [1] 스튜디오 모드 상태 (마스터-디테일 워크벤치)
   // =========================================================================
   // 좌측 큐 필터: 'ALL' | 'INBOUND_DEFECT' | 'RENTED_RETURNED' | 'REPAIRING' | 'EXTERNAL' | 'AVAILABLE'
-  const [yardQueueFilter, setYardQueueFilter] = useState<'ALL' | 'INBOUND_DEFECT' | 'RENTED_RETURNED' | 'REPAIRING' | 'EXTERNAL' | 'AVAILABLE'>('ALL');
+  const [yardQueueFilter, setYardQueueFilter] = useState<'ALL' | 'OUTBOUND_DEFECT' | 'INBOUND_DEFECT' | 'RENTED_RETURNED' | 'REPAIRING' | 'EXTERNAL' | 'AVAILABLE'>('ALL');
   const [yardSearchTerm, setYardSearchTerm] = useState('');
   const [selectedAssetId, setSelectedAssetId] = useState<string>('');
 
@@ -159,10 +159,12 @@ export const Repairs: React.FC = () => {
       // 대여중(RENTED)이나 매각(SOLD)은 주기장 정비 큐에서 제외
       if (a.status === 'RENTED' || a.status === 'SOLD' || a.status === 'ASSIGNED') return false;
 
-      // 외주정비 진행 건 확인
-      const hasActiveExternalRepair = repairs.some(r => r.assetId === a.id && r.status === 'IN_PROGRESS' && r.maintenanceType === 'EXTERNAL');
+      // 출고불량, 입고결함 및 외주정비 진행 건 확인
+      const hasOutboundDefect = repairs.some(r => r.assetId === a.id && r.status === 'PENDING' && r.source === 'OUTBOUND_DEFECT');
       const hasInboundDefect = repairs.some(r => r.assetId === a.id && r.status === 'PENDING' && r.source === 'INBOUND_INSPECTION');
+      const hasActiveExternalRepair = repairs.some(r => r.assetId === a.id && r.status === 'IN_PROGRESS' && r.maintenanceType === 'EXTERNAL');
 
+      if (yardQueueFilter === 'OUTBOUND_DEFECT') return hasOutboundDefect;
       if (yardQueueFilter === 'INBOUND_DEFECT') return hasInboundDefect;
       if (yardQueueFilter === 'RENTED_RETURNED') return a.status === 'RENTED_RETURNED';
       if (yardQueueFilter === 'REPAIRING') return a.status === 'REPAIRING';
@@ -172,19 +174,24 @@ export const Repairs: React.FC = () => {
     }).filter(a => {
       if (!yardSearchTerm.trim()) return true;
       const term = yardSearchTerm.toLowerCase();
-      return a.assetNo.toLowerCase().includes(term) || a.modelName.toLowerCase().includes(term) || (a.memo && a.memo.toLowerCase().includes(term));
+      return a.assetNo.toLowerCase().includes(term) || 
+        a.modelName.toLowerCase().includes(term) || 
+        (a.note && a.note.toLowerCase().includes(term)) || 
+        (a.memo && a.memo.toLowerCase().includes(term));
     });
 
-    // 당면 정비 우선순위 정렬: 입고결함/수리중 > 입고검수대기 > 외주위탁 > 정상임대가능
+    // 당면 정비 우선순위 정렬: 출고불량 > 입고결함 > 수리중 > 입고검수대기 > 외주위탁 > 정상임대가능
     return list.sort((a, b) => {
       const getPriority = (item: Asset) => {
+        const hasOutboundDefect = repairs.some(r => r.assetId === item.id && r.status === 'PENDING' && r.source === 'OUTBOUND_DEFECT');
+        if (hasOutboundDefect) return 1;
         const hasInboundDefect = repairs.some(r => r.assetId === item.id && r.status === 'PENDING' && r.source === 'INBOUND_INSPECTION');
-        if (hasInboundDefect) return 1;
-        if (item.status === 'REPAIRING') return 2;
-        if (item.status === 'RENTED_RETURNED') return 3;
+        if (hasInboundDefect) return 2;
+        if (item.status === 'REPAIRING') return 3;
+        if (item.status === 'RENTED_RETURNED') return 4;
         const hasExternal = repairs.some(r => r.assetId === item.id && r.status === 'IN_PROGRESS' && r.maintenanceType === 'EXTERNAL');
-        if (hasExternal) return 4;
-        return 5; // AVAILABLE
+        if (hasExternal) return 5;
+        return 6; // AVAILABLE
       };
       const pA = getPriority(a);
       const pB = getPriority(b);
@@ -196,12 +203,13 @@ export const Repairs: React.FC = () => {
   // 주기장 큐 카운트 통계
   const queueCounts = useMemo(() => {
     const nonRented = assets.filter(a => a.status !== 'RENTED' && a.status !== 'SOLD' && a.status !== 'ASSIGNED');
+    const outboundDefects = nonRented.filter(a => repairs.some(r => r.assetId === a.id && r.status === 'PENDING' && r.source === 'OUTBOUND_DEFECT')).length;
     const inboundDefects = nonRented.filter(a => repairs.some(r => r.assetId === a.id && r.status === 'PENDING' && r.source === 'INBOUND_INSPECTION')).length;
     const returned = nonRented.filter(a => a.status === 'RENTED_RETURNED').length;
     const repairing = nonRented.filter(a => a.status === 'REPAIRING').length;
     const external = repairs.filter(r => r.status === 'IN_PROGRESS' && r.maintenanceType === 'EXTERNAL').length;
     const available = nonRented.filter(a => a.status === 'AVAILABLE').length;
-    return { all: nonRented.length, inboundDefects, returned, repairing, external, available };
+    return { all: nonRented.length, outboundDefects, inboundDefects, returned, repairing, external, available };
   }, [assets, repairs]);
 
   // 현재 선택된 자산 객체
@@ -266,13 +274,14 @@ export const Repairs: React.FC = () => {
   const handleSelectAsset = (asset: Asset) => {
     setSelectedAssetId(asset.id);
     
-    // 진행 중인 외주정비, 부품대기 또는 입고 결함 PENDING 건 탐색
+    // 진행 중인 외주정비, 부품대기 또는 출고불량/입고결함 PENDING 건 탐색
+    const pendingOutbound = repairs.find(r => r.assetId === asset.id && r.status === 'PENDING' && r.source === 'OUTBOUND_DEFECT');
     const activeExternal = repairs.find(r => r.assetId === asset.id && r.status === 'IN_PROGRESS' && r.maintenanceType === 'EXTERNAL');
     const unresolvedRepair = repairs.find(r => r.assetId === asset.id && r.status === 'UNRESOLVED');
     const pendingInbound = repairs.find(r => r.assetId === asset.id && r.status === 'PENDING' && r.source === 'INBOUND_INSPECTION');
     const generalPending = repairs.find(r => r.assetId === asset.id && (r.status === 'PENDING' || r.status === 'IN_PROGRESS'));
 
-    const targetRepair = pendingInbound || activeExternal || unresolvedRepair || generalPending;
+    const targetRepair = pendingOutbound || pendingInbound || activeExternal || unresolvedRepair || generalPending;
     setSelectedRepairId(targetRepair?.id || '');
 
     setRepairDate(new Date().toISOString().split('T')[0]);
@@ -283,7 +292,19 @@ export const Repairs: React.FC = () => {
     setInspectionItemCode('');
     setDegradationScore(asset.maintenanceScore || 0);
 
-    if (pendingInbound) {
+    if (pendingOutbound) {
+      // 🌟 출고 불량 교체 건 정비 모드로 프리셋
+      setMaintenanceType('INHOUSE_REPAIR');
+      setSelectedVendorId('');
+      setExternalCost(0);
+      setDegradationScore(pendingOutbound.degradationScore || asset.maintenanceScore || 0);
+      setInspectionItemCode(pendingOutbound.inspectionItemCode || '');
+      setInboundDefects([]);
+      setInboundPhotos([]);
+      setInboundMeta(null);
+      const symptom = pendingOutbound.issueDescription || pendingOutbound.details;
+      setRepairDetails(`[출고불량 긴급정비]\n• 불량 증상: ${symptom}\n• 점검 및 부품 수리/교체 조치 완료\n• 장비 시운전 및 안전 기능 검증 완료`);
+    } else if (pendingInbound) {
       // 🌟 입고 결함 정비 모드로 프리셋
       setMaintenanceType('INHOUSE_REPAIR');
       setSelectedVendorId('');
@@ -335,7 +356,8 @@ export const Repairs: React.FC = () => {
       setMaintenanceType('INHOUSE_REPAIR');
       setSelectedVendorId('');
       setExternalCost(0);
-      setRepairDetails(asset.memo ? `[입고 메모] ${asset.memo}\n` : '');
+      const cleanNote = asset.note && !asset.note.startsWith('[정비완료') && asset.note !== '정상 입고 점검 완료' ? asset.note : '';
+      setRepairDetails(cleanNote ? `[정비 메모] ${cleanNote}\n` : '');
     }
   };
 
@@ -746,7 +768,8 @@ export const Repairs: React.FC = () => {
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
               {[
                 { key: 'ALL', label: '전체', count: queueCounts.all },
-                { key: 'INBOUND_DEFECT', label: '입고결함', count: queueCounts.inboundDefects, color: '#ef4444' },
+                { key: 'OUTBOUND_DEFECT', label: '출고불량', count: queueCounts.outboundDefects, color: '#ef4444' },
+                { key: 'INBOUND_DEFECT', label: '입고결함', count: queueCounts.inboundDefects, color: '#dc2626' },
                 { key: 'RENTED_RETURNED', label: '반납검수', count: queueCounts.returned, color: '#f59e0b' },
                 { key: 'REPAIRING', label: '정비중', count: queueCounts.repairing, color: '#f97316' },
                 { key: 'EXTERNAL', label: '외주위탁', count: queueCounts.external, color: '#8b5cf6' },
@@ -799,7 +822,8 @@ export const Repairs: React.FC = () => {
                   const isRepairing = asset.status === 'REPAIRING';
                   const isAvailable = asset.status === 'AVAILABLE';
 
-                  // 외주정비, 부품대기 및 입고 결함 활성 건 탐색
+                  // 외주정비, 부품대기 및 출고불량/입고결함 활성 건 탐색
+                  const pendingOutbound = repairs.find(r => r.assetId === asset.id && r.status === 'PENDING' && r.source === 'OUTBOUND_DEFECT');
                   const activeExternal = repairs.find(r => r.assetId === asset.id && r.status === 'IN_PROGRESS' && r.maintenanceType === 'EXTERNAL');
                   const unresolvedRepair = repairs.find(r => r.assetId === asset.id && r.status === 'UNRESOLVED');
                   const pendingInbound = repairs.find(r => r.assetId === asset.id && r.status === 'PENDING' && r.source === 'INBOUND_INSPECTION');
@@ -826,9 +850,13 @@ export const Repairs: React.FC = () => {
                           <span style={{ fontSize: '12px', fontWeight: '600', color: 'var(--text-main)' }}>{asset.modelName}</span>
                         </div>
                         <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
-                          {pendingInbound ? (
+                          {pendingOutbound ? (
+                            <span className="badge badge-danger" style={{ fontSize: '10px', padding: '2px 6px', backgroundColor: '#ef4444', color: '#ffffff' }}>
+                              ⚡ 출고불량
+                            </span>
+                          ) : pendingInbound ? (
                             <span className="badge badge-danger" style={{ fontSize: '10px', padding: '2px 6px', backgroundColor: '#dc2626', color: '#ffffff' }}>
-                              🚨 입고불량
+                              🚨 입고결함
                             </span>
                           ) : activeExternal ? (
                             <span className="badge" style={{ fontSize: '10px', padding: '2px 6px', backgroundColor: '#8b5cf6', color: '#ffffff' }}>
@@ -860,21 +888,38 @@ export const Repairs: React.FC = () => {
                         {asset.serialNo && <span>S/N: {asset.serialNo}</span>}
                       </div>
 
-                      {pendingInbound && (
-                        <div style={{ fontSize: '11px', color: '#b91c1c', backgroundColor: 'rgba(239, 68, 68, 0.08)', padding: '3px 6px', borderRadius: '4px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                          🚨 입고결함 {pendingInbound.inboundNo || '검수'}: {pendingInbound.details.split('\n')[1] || '수리 요망'}
+                      {/* 🌟 일반 자산 비고(원사, 결제조건 등)는 절대 빨간색 경고가 아닌 차분한 중립 회색 메타정보로 표기 */}
+                      {asset.memo && (
+                        <div style={{ fontSize: '11px', color: 'var(--text-muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          비고: {asset.memo}
                         </div>
                       )}
 
+                      {/* ⚡ 1. 출고 수행 중 불량 발견으로 교체된 장비의 불량 증상 */}
+                      {pendingOutbound && (
+                        <div style={{ fontSize: '11px', color: '#dc2626', backgroundColor: 'rgba(239, 68, 68, 0.08)', padding: '3px 6px', borderRadius: '4px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          ⚡ 출고불량: {pendingOutbound.issueDescription || pendingOutbound.details}
+                        </div>
+                      )}
+
+                      {/* 🚨 2. 입고 등록 시 입력된 불량 상태 */}
+                      {pendingInbound && (
+                        <div style={{ fontSize: '11px', color: '#b91c1c', backgroundColor: 'rgba(239, 68, 68, 0.08)', padding: '3px 6px', borderRadius: '4px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          🚨 입고결함 {pendingInbound.inboundNo ? `(${pendingInbound.inboundNo})` : ''}: {pendingInbound.details.split('\n')[1] || pendingInbound.details}
+                        </div>
+                      )}
+
+                      {/* ⏸️ 3. 소모품 대기 사유 */}
                       {unresolvedRepair && unresolvedRepair.unresolvedReason && (
                         <div style={{ fontSize: '11px', color: '#b45309', backgroundColor: 'rgba(245, 158, 11, 0.1)', padding: '2px 6px', borderRadius: '4px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                           ⏸️ 소모품대기: {unresolvedRepair.unresolvedReason}
                         </div>
                       )}
 
-                      {asset.memo && (
-                        <div style={{ fontSize: '11px', color: '#b91c1c', backgroundColor: 'rgba(239, 68, 68, 0.08)', padding: '3px 6px', borderRadius: '4px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                          ⚠️ {asset.memo}
+                      {/* 🔧 4. 기타 정비 필요 메모 (미완료 수리중 또는 반납검수 대기 자산에 남겨진 정비 사유) */}
+                      {!pendingOutbound && !pendingInbound && !unresolvedRepair && asset.note && !asset.note.startsWith('[정비완료') && asset.note !== '정상 입고 점검 완료' && (
+                        <div style={{ fontSize: '11px', color: asset.status === 'REPAIRING' ? '#b91c1c' : '#b45309', backgroundColor: asset.status === 'REPAIRING' ? 'rgba(239, 68, 68, 0.08)' : 'rgba(245, 158, 11, 0.08)', padding: '3px 6px', borderRadius: '4px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          {asset.status === 'REPAIRING' ? '🔧 정비요구' : '📌 점검메모'}: {asset.note}
                         </div>
                       )}
                     </div>
@@ -915,11 +960,43 @@ export const Repairs: React.FC = () => {
                       <span>소유구분: {selectedAsset.ownerType === 'RENTED' ? '타사임차' : '자사보유'}</span>
                       <span>누적수리비: {(selectedAsset.cumRepairCost || 0).toLocaleString()}원</span>
                     </div>
-                    {assetInboundNote && (
-                      <div style={{ marginTop: '6px', fontSize: '11.5px', color: '#b91c1c', backgroundColor: 'rgba(239, 68, 68, 0.08)', padding: '4px 8px', borderRadius: '4px' }}>
-                        📌 <strong>최근 입고/검수 메모:</strong> {assetInboundNote.memo || '이상 없음'} ({assetInboundNote.eventDate})
-                      </div>
-                    )}
+                    {/* 출고불량 / 입고결함 / 정비요구 메모 배너 */}
+                    {(() => {
+                      const pendingOutbound = repairs.find(r => r.assetId === selectedAsset.id && r.status === 'PENDING' && r.source === 'OUTBOUND_DEFECT');
+                      const pendingInbound = repairs.find(r => r.assetId === selectedAsset.id && r.status === 'PENDING' && r.source === 'INBOUND_INSPECTION');
+                      if (pendingOutbound) {
+                        return (
+                          <div style={{ marginTop: '6px', fontSize: '11.5px', color: '#dc2626', backgroundColor: 'rgba(239, 68, 68, 0.08)', padding: '5px 10px', borderRadius: '4px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <AlertTriangle size={14} />
+                            <strong>출고 불량 교체 사유:</strong> {pendingOutbound.issueDescription || pendingOutbound.details}
+                          </div>
+                        );
+                      }
+                      if (pendingInbound) {
+                        return (
+                          <div style={{ marginTop: '6px', fontSize: '11.5px', color: '#b91c1c', backgroundColor: 'rgba(239, 68, 68, 0.08)', padding: '5px 10px', borderRadius: '4px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <AlertTriangle size={14} />
+                            <strong>입고 결함 점검 내용:</strong> {pendingInbound.details}
+                          </div>
+                        );
+                      }
+                      if (selectedAsset.note && !selectedAsset.note.startsWith('[정비완료') && selectedAsset.note !== '정상 입고 점검 완료') {
+                        return (
+                          <div style={{ marginTop: '6px', fontSize: '11.5px', color: '#b45309', backgroundColor: 'rgba(245, 158, 11, 0.08)', padding: '5px 10px', borderRadius: '4px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <Wrench size={14} />
+                            <strong>정비 필요 항목:</strong> {selectedAsset.note}
+                          </div>
+                        );
+                      }
+                      if (assetInboundNote && assetInboundNote.type === 'INBOUND' && assetInboundNote.memo) {
+                        return (
+                          <div style={{ marginTop: '6px', fontSize: '11.5px', color: 'var(--text-muted)', backgroundColor: 'var(--bg-card)', padding: '4px 8px', borderRadius: '4px' }}>
+                            📌 최근 반납일자: {assetInboundNote.eventDate} ({assetInboundNote.memo})
+                          </div>
+                        );
+                      }
+                      return null;
+                    })()}
                     {/* 진행 중인 외주정비 안내 배너 */}
                     {repairs.some(r => r.assetId === selectedAsset.id && r.status === 'IN_PROGRESS' && r.maintenanceType === 'EXTERNAL') && (
                       <div style={{ marginTop: '6px', fontSize: '11.5px', color: '#6d28d9', backgroundColor: 'rgba(139, 92, 246, 0.1)', padding: '5px 10px', borderRadius: '4px', display: 'flex', alignItems: 'center', gap: '6px' }}>

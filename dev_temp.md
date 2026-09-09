@@ -1,5 +1,43 @@
 # 개발 요구사항 임시 기록 (dev_temp.md)
 
+## [완료] 자산 일반 비고(원사/리스)의 주기장 정비 큐 불량 오표기 결함 해소 및 출고검수 불량 교체(exchangeOutboundAsset) 시 정비대장 1:1 티켓·ToDo·자산 불량내역(note) 연계 무누락 체인 구축 & WTT 30회 통과 (v1.12.0.Build.30)
+- **요구사항**: "빨간색 글씨로 표시되고 있는것은 정비에 관한 사항이 아니고, 자산에 달려있는 일반 비고사항인데, 이것을 마치 중대한 정비요구사항인 것처럼 표시되고 있어. 여기에 표시할 더 적합한 정보는 무엇일까? 모두 주기장에 있는 자산들이니까, 여기에 표시되어야 할 정보는, 입고등록 시 입력해놓은 불량상태와 출고수행 중 불량 발견되어 다른 자산으로 교체 했을때 남겨놓은 불량증상이어야 논리적으로 맞을것 같아. 이번 점검을 하면서, 출고검수 시 교체처리 할때 입력하는 교체사유가 자산의 정비필요항목에 기록되고 주기장 정비 대상으로까지 정확히 연계죄는디 WTT 30회 수행도 해줘. ㄹㅇ"
+- **적용 목적 (헌장 1.1 최대 편익, 1.2 발생 사건 무누락 DB 저장, 2.1 R&R 분리, 3.1 무수식어 건조 표준, 5.5 WTT 30회 도메인 관통 스트레스 테스트, 7.2 경험 지식 베이스 E-085)**:
+  - 주기장 정비 관리 화면(`Repairs.tsx`) 및 모바일 정비 목록에서 정상 가용 장비에 적힌 원사/금융 일반 비고(`asset.memo`: `▲ 임차(전대) 장비: 중부`, `▲ 2(데모)+9개월(유예) 결제`)가 빨간색 경고 박스(`⚠️`)로 표시되어 마치 긴급 정비가 필요한 불량 장비처럼 현장에 오인되던 UI 결함 원천 해소.
+  - 정비 큐에서 표시되어야 할 정보의 본질을 '입고 시 입력된 불량상태(`pendingInbound`)'와 '출고검수 수행 중 발견되어 교체된 불량증상(`pendingOutbound`)'으로 재정립.
+  - 출고검수 중 장비 불량으로 대체 교체(`exchangeOutboundAsset`) 처리 시, 기존 자산의 `asset.memo`는 100% 원본 보존하고 `asset.note`에 불량 사유와 벌점을 누적 기록하며, 정비 대장(`repairs`)에 `source: 'OUTBOUND_DEFECT'`, `status: 'PENDING'`, `priority: 'URGENT'` 정비 티켓을 1:1 자동 발행하고 정비팀 긴급 ToDo를 적재하는 완결된 업무 체인 구축.
+- **작업 및 개편 내역 (`src/services/db.ts`, `src/context/AppContext.tsx`, `src/pages/outbound_inspections.tsx`, `src/pages/Repairs.tsx`, `src/mobile/pages/MobileAsList.tsx`, `src/mobile/components/MobileYardRepairModal.tsx`)**:
+  - 1. **스키마 및 타입 확장 (`src/services/db.ts`)**:
+    - `Repair.source`에 `'OUTBOUND_DEFECT'` 신규 타입 추가.
+    - `TaskCategory`에 `'OUTBOUND_REPAIR_DEFECT'` 추가.
+  - 2. **트랜잭션 엔진 개편 (`src/context/AppContext.tsx`)**:
+    - `exchangeOutboundAsset`:
+      - `oldAsset.memo` 오염 원천 차단 (건드리지 않고 원본 보존).
+      - `oldAsset.note`에 `[출고검수 교체(벌점+N, 총점:M점)] YYYY-MM-DD: cleanReason` 안전 누적 기록.
+      - `markOldAsRepairing` 시 `repairs` 대장에 `source: 'OUTBOUND_DEFECT'`, `status: 'PENDING'`, `priority: 'URGENT'` 정비 티켓 1:1 자동 발행.
+      - 주기장 정비팀 긴급 정비 ToDo (`OUTBOUND_REPAIR_DEFECT`) 자동 적재.
+      - `assetInOutLogs`에 `type: 'REPAIR'`, `repairId` 매핑 이력 완비.
+      - DB 저장 실패 시 스냅샷 복원 및 생성된 정비티켓 자동 삭제(Delete) 롤백 완비.
+    - `registerRepair`:
+      - 정비 완료 시 `targetAsset.memo`를 보존하고 `targetAsset.note = '[정비완료 ...]'`에 기록.
+  - 3. **출고검수 화면 연동 (`src/pages/outbound_inspections.tsx`)**:
+    - 출고검수 반려 시 `source: 'OUTBOUND_DEFECT'` 티켓 자동 발행.
+  - 4. **주기장 정비 워크벤치 전면 개편 (`src/pages/Repairs.tsx`)**:
+    - `yardQueueFilter`에 `'OUTBOUND_DEFECT'` 필터 탭 추가 (`전체` | `출고불량` | `입고결함` | `반납검수` | `정비중` | `외주위탁` | `점검대상`).
+    - 큐 우선순위 1위: 출고불량(1) > 입고결함(2) > 수리중(3) > 반납검수(4) > 외주(5) > 정상(6).
+    - 카드 렌더링:
+      - 출고불량: `⚡ 출고불량` 배지(빨강) 및 `⚡ 출고불량: [교체사유]` 박스 표출.
+      - 입고결함: `🚨 입고결함` 배지 및 `🚨 입고결함 ([입고번호]): [불량내용]` 박스 표출.
+      - 일반 비고: 회색 `비고: [asset.memo]` 중립 텍스트로 격리 (경고 박스 미노출).
+    - 자산 선택 시 출고불량 증상 및 조치 가이드 자동 프리셋.
+  - 5. **모바일 정비 화면 연동 (`MobileAsList.tsx`, `MobileYardRepairModal.tsx`)**:
+    - 모바일 카드에 `⚡ 출고불량` 배지 및 사유 박스 바인딩, 일반 비고 중립 분리 표기.
+    - 정비 모달 진입 시 출고 불량 정비 템플릿 자동 프리셋.
+  - 6. **경험 지식 베이스(E-085) 등재**: `C:\Users\이정용\.gemini\config\경험.md` 기록 완료.
+- **검증 결과**:
+  - WTT 30회 도메인 관통 스트레스 테스트 (`scratch/run_wtt_30_outbound_exchange_repair.cjs`): **30 PASS / 0 FAIL (100.0%)**.
+  - TypeScript 전체 정적 빌드 및 번들링 (`npm.cmd run build`): **0 Error 정상 통과 (`built in 1.18s`)**.
+
 ## [완료] 정비항목 관리 삭제 버그 원천 해결(Supabase RLS 비활성화), AS 빅데이터 4,109건 최빈도 어휘 클러스터링 및 정비마스터 자동 형성·동기화·모달 UI 다크모드 전면 개편 (v1.12.0.Build.29)
 - **요구사항**: "정비항목관리의 기본 데이터를 형성하기 위해서, 현재 항목들(테스트용 데이터)는 삭제. 발생 빈도수가 높은 AS(정비항목)을 초기DB 업로드 시에 형성하는데, 미세하게 표현만 다른 유사어들을 묶어서 일관성있는 표기로(유사표현 중 빈도수가 높은쪽으로 정의)하여 정비항목 등록 하도록 개편해줘. 정비배점과 표준공수는 추천소모품은 참고할만한 이력이 있는 경우에만 등록해줘. 관련 누적 정비건수를 집계해줘. 정비항목마스터 모달의 UI 가 무너졌어. 개선해줘. AS 데이터를 다시 업로드 할수 있게 롤백도 처리해줘. 삭제 버튼을 눌렀을 때, 삭제 됐다고 알려주지만 새로고침 해보면 실제로는 정비항목이 삭제되지 않고 다시 조회돼. 삭제기능이 정상인지 검증해줘. ㄹㅇ"
 - **적용 목적 (헌장 1.1 최대 편익, 1.2 발생 사건 무누락 DB 저장, 3.1 무수식어 건조 표준, 3.4 상하 세로 스택, 5.2 무음 실패 방지, 5.5 WTT 30회 도메인 관통 스트레스 테스트, 7.2 경험 지식 베이스 E-084)**:

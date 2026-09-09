@@ -546,8 +546,14 @@ export const RentAssets: React.FC = () => {
         } else {
           // 엑셀 파일 (.xlsx / .xls) 스마트 범용 파서 연동
           const workbook = XLSX.read(new Uint8Array(data), { type: 'array' });
-          const firstSheetName = workbook.SheetNames[0];
-          const worksheet = workbook.Sheets[firstSheetName];
+          // 선택된 정산연월(selectedYm, 예: '2026-08')에 가장 부합하는 시트 동적 탐색 (중부/하이로드 등 30개 시트 지원)
+          const [selYear, selMonth] = (selectedYm || new Date().toISOString().slice(0, 7)).split('-');
+          const cleanMonth = parseInt(selMonth, 10).toString(); // '8'
+          const matchedSheetName = workbook.SheetNames.find(s => {
+            const clean = s.replace(/\s+/g, '');
+            return clean === `${selYear}-${cleanMonth}` || clean === `${selYear}-${selMonth}` || clean === `${cleanMonth}월` || clean === `${selYear}년${cleanMonth}월` || clean === `${selYear}${selMonth}`;
+          }) || workbook.SheetNames[0];
+          const worksheet = workbook.Sheets[matchedSheetName];
           
           const parseResult = parseVendorStatementExcel(worksheet, selectedYm, file.name);
 

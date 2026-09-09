@@ -12,6 +12,7 @@ export interface VendorStatementRow {
   rentStart: string;      // YYYY-MM-DD
   rentEnd: string;        // YYYY-MM-DD
   billedAmount: number;   // 공급가액 (청구금액)
+  unitPrice?: number;     // 단가 (월렌탈료/일단가)
   taxAmount?: number;     // 세액 (V.A.T)
   totalAmount?: number;   // 공급가액 + 세액 (합계)
   contractNo?: string;    // 원사 계약번호
@@ -265,12 +266,14 @@ export function parseVendorStatementExcel(
       colRentStart = idx;
     } else if (txt.includes('사용종료') || txt.includes('임차종료') || txt.includes('종료일') || txt.includes('철수일')) {
       colRentEnd = idx;
-    } else if (txt.includes('공급가액') || txt.includes('청구금액') || txt === '금액' || txt.includes('공급가')) {
+    } else if (txt.includes('단가') || txt.includes('월렌탈료') || txt.includes('월임대료') || txt.includes('일사용료') || txt.includes('일단가') || txt === '단가') {
+      // 1순위: 단가 / 월렌탈료 (절대 공급가액으로 오인되지 않도록 선행 격리)
+      colMonthlyRent = idx;
+    } else if (txt.includes('공급가액') || txt.includes('청구금액') || txt.includes('실청구액') || txt === '공급가' || txt === '금액' || txt === '합계') {
+      // 2순위: 실제 공급가액 (청구금액)
       colSupplyAmount = idx;
     } else if (txt.includes('V.A.T') || txt.includes('VAT') || txt.includes('세액') || txt.includes('부가세')) {
       colTaxAmount = idx;
-    } else if (txt.includes('월렌탈료') || txt.includes('월임대료') || txt === '단가') {
-      colMonthlyRent = idx;
     } else if (txt.includes('순번') || txt.includes('NO') || txt === '순번') {
       colSeq = idx;
     } else if (txt.includes('계약번호')) {
@@ -331,7 +334,13 @@ export function parseVendorStatementExcel(
     const rawPeriod = colPeriod !== -1 ? parseString(rowData[colPeriod]) : '';
     const rawRentStart = colRentStart !== -1 ? rowData[colRentStart] : '';
     const rawRentEnd = colRentEnd !== -1 ? rowData[colRentEnd] : '';
-    const rawSupplyAmount = colSupplyAmount !== -1 ? parseNumber(rowData[colSupplyAmount]) : 0;
+    const rawUnitPrice = colMonthlyRent !== -1 ? parseNumber(rowData[colMonthlyRent]) : undefined;
+    let rawSupplyAmount = 0;
+    if (colSupplyAmount !== -1 && rowData[colSupplyAmount] !== undefined && rowData[colSupplyAmount] !== '') {
+      rawSupplyAmount = parseNumber(rowData[colSupplyAmount]);
+    } else if (rawUnitPrice !== undefined && rawUnitPrice > 0) {
+      rawSupplyAmount = rawUnitPrice;
+    }
     const rawTaxAmount = colTaxAmount !== -1 ? parseNumber(rowData[colTaxAmount]) : 0;
     const rawContractNo = colContractNo !== -1 ? parseString(rowData[colContractNo]) : '';
     const rawSeq = colSeq !== -1 ? parseNumber(rowData[colSeq]) : undefined;
@@ -434,6 +443,7 @@ export function parseVendorStatementExcel(
       rentStart: rentStart || `${selectedYm}-01`,
       rentEnd: rentEnd || `${selectedYm}-31`,
       billedAmount: rawSupplyAmount,
+      unitPrice: rawUnitPrice,
       taxAmount: calculatedTax,
       totalAmount: rawSupplyAmount + calculatedTax,
       contractNo: rawContractNo,

@@ -767,35 +767,6 @@ export const OutboundInspections: React.FC = () => {
         ))}
       </div>
 
-      {/* 📊 출고 검수 현황 실시간 요약 바 */}
-      {(() => {
-        const pendingCount = outboundInspections.filter(i => i.status === 'PENDING').length;
-        const progressCount = outboundInspections.filter(i => i.status === 'IN_PROGRESS').length;
-        const completedCount = outboundInspections.filter(i => i.status === 'COMPLETED').length;
-        const rejectedCount = outboundInspections.filter(i => i.status === 'REJECTED').length;
-
-        return (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '10px', marginBottom: '16px' }}>
-            <div style={{ padding: '10px 14px', backgroundColor: 'var(--bg-card)', borderRadius: '6px', border: '1px solid var(--border-color)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span style={{ fontSize: '11.5px', color: 'var(--text-secondary)', fontWeight: 600 }}>접수 대기</span>
-              <strong style={{ fontSize: '15px', color: '#d97706' }}>{pendingCount}건</strong>
-            </div>
-            <div style={{ padding: '10px 14px', backgroundColor: 'var(--bg-card)', borderRadius: '6px', border: '1px solid var(--border-color)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span style={{ fontSize: '11.5px', color: 'var(--text-secondary)', fontWeight: 600 }}>검수 진행중</span>
-              <strong style={{ fontSize: '15px', color: '#2563eb' }}>{progressCount}건</strong>
-            </div>
-            <div style={{ padding: '10px 14px', backgroundColor: 'var(--bg-card)', borderRadius: '6px', border: '1px solid var(--border-color)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span style={{ fontSize: '11.5px', color: 'var(--text-secondary)', fontWeight: 600 }}>출고 승인 (대여중)</span>
-              <strong style={{ fontSize: '15px', color: '#16a34a' }}>{completedCount}건</strong>
-            </div>
-            <div style={{ padding: '10px 14px', backgroundColor: 'var(--bg-card)', borderRadius: '6px', border: '1px solid var(--border-color)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span style={{ fontSize: '11.5px', color: 'var(--text-secondary)', fontWeight: 600 }}>의뢰 반려</span>
-              <strong style={{ fontSize: '15px', color: '#dc2626' }}>{rejectedCount}건</strong>
-            </div>
-          </div>
-        );
-      })()}
-
       {/* 2열 메인 레이아웃 (좌: 의뢰 묶음 카드리스트 + 📅 기간 선택 | 우: 상세 검수서) */}
       <div style={{ display: 'grid', gridTemplateColumns: 'minmax(340px, 420px) 1fr', gap: '20px' }}>
         

@@ -1825,6 +1825,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         addedDeliveries.forEach(d => db.deleteRow('deliveries', d.id));
         const addedHistories = db.contractHistory.filter(h => h.contractId === contract.id);
         addedHistories.forEach(h => db.deleteRow('contractHistory', h.id));
+        // ✅ 고아 레코드 방지: 롤백 시 생성된 outboundInspections도 함께 삭제
+        const addedInspections = db.outboundInspections.filter(i => i.contractId === contract.id);
+        addedInspections.forEach(i => db.deleteRow('outboundInspections', i.id));
       }
       refreshAllData();
 
@@ -4244,8 +4247,9 @@ ${currentTenant?.corporateName || tenantCorp} 배상
       console.error('Supabase contract insert sync error in saveContract:', err);
     }
 
+    const nowIso = new Date().toISOString();
     assetsList.forEach(item => {
-      db.insertRow<ContractAsset>('contractAssets', {
+      const insertedCA = db.insertRow<ContractAsset>('contractAssets', {
         contractId: contract.id,
         assetId: item.assetId || undefined,
         expectedModel: item.expectedModel || undefined,
@@ -4253,7 +4257,7 @@ ${currentTenant?.corporateName || tenantCorp} 배상
         dailyRentalFee: item.dailyRentalFee,
         startDate: contractData.startDate,
         endDate: contractData.endDate,
-        createdAt: new Date().toISOString()
+        createdAt: nowIso
       });
 
       if (item.assetId) {
@@ -4266,7 +4270,16 @@ ${currentTenant?.corporateName || tenantCorp} 배상
           contractEnd: contractData.endDate,
           monthlyRentalFee: item.monthlyRentalFee,
           dailyRentalFee: item.dailyRentalFee,
-          updatedAt: new Date().toISOString()
+          updatedAt: nowIso
+        });
+        // ✅ 고아 레코드 방지: assetId가 있는 슬롯 생성 시 출고검수 의뢰 자동 연동 생성
+        db.insertRow<OutboundInspection>('outboundInspections', {
+          contractId: contract.id,
+          contractAssetId: insertedCA.id,
+          assetId: item.assetId,
+          status: 'PENDING',
+          createdAt: nowIso,
+          updatedAt: nowIso
         });
       }
     });
@@ -4492,15 +4505,16 @@ ${currentTenant?.corporateName || tenantCorp} 배상
       status: 'SUCCEEDED'
     });
 
+    const nowIsoSucceed = new Date().toISOString();
     oldCAssets.forEach(ca => {
-      db.insertRow<ContractAsset>('contractAssets', {
+      const newCA = db.insertRow<ContractAsset>('contractAssets', {
         contractId: newContract.id,
         assetId: ca.assetId,
         monthlyRentalFee: ca.monthlyRentalFee,
         dailyRentalFee: ca.dailyRentalFee,
         startDate: nextDay,
         endDate: oldEndDate,
-        createdAt: new Date().toISOString()
+        createdAt: nowIsoSucceed
       });
 
       if (ca.assetId) {
@@ -4509,8 +4523,21 @@ ${currentTenant?.corporateName || tenantCorp} 배상
           currentSiteId: successorSiteId,
           contractStart: nextDay,
           contractEnd: oldEndDate,
-          updatedAt: new Date().toISOString()
+          updatedAt: nowIsoSucceed
         });
+
+        // ✅ 고아 레코드 방지: ASSIGNED(출고대기) 상태 자산 승계 시 신규 계약 기준 출고검수 의뢰 생성
+        const asset = db.assets.find(a => a.id === ca.assetId);
+        if (asset && asset.status === 'ASSIGNED') {
+          db.insertRow<OutboundInspection>('outboundInspections', {
+            contractId: newContract.id,
+            contractAssetId: newCA.id,
+            assetId: ca.assetId,
+            status: 'PENDING',
+            createdAt: nowIsoSucceed,
+            updatedAt: nowIsoSucceed
+          });
+        }
       }
     });
 
@@ -5932,6 +5959,11 @@ ${currentTenant?.corporateName || tenantCorp} 배상
     if (linked.length > 0) {
       throw new Error(`이 입금건에 연결된 수납 내역 ${linked.length}건이 존재합니다.\n수납을 먼저 취소한 후 삭제하세요.`);
     }
+    // ✅ 고아 레코드 방지: 레거시 패턴 수납 레코드 존재 시 삭제 차단
+    const legacyPayments = db.payments.filter(p => p.id.startsWith(`pay-matching-${txId}`));
+    if (legacyPayments.length > 0) {
+      throw new Error(`이 입금건에 연결된 레거시 수납 기록 ${legacyPayments.length}건이 존재합니다.\n수납을 먼저 취소한 후 삭제하세요.`);
+    }
     db.deleteRow('bankTransactions', txId);
     refreshAllData();
   };
@@ -7270,6 +7302,19 @@ ${currentTenant?.corporateName || tenantCorp} 배상
   };
 
   const deleteVendor = (id: string) => {
+    // ✅ 고아 레코드 방지: 연관 자산 또는 매입 정산건이 있으면 삭제 차단
+    const linkedAssets = db.assets.filter(a => a.vendorId === id);
+    const linkedSettlements = db.purchaseSettlements.filter(s => s.vendorId === id);
+    if (linkedAssets.length > 0 || linkedSettlements.length > 0) {
+      showErrorModal(
+        `⚠️ 해당 매입처를 삭제할 수 없습니다.\n\n` +
+        (linkedAssets.length > 0 ? `■ 연결된 자산: ${linkedAssets.length}대\n` : '') +
+        (linkedSettlements.length > 0 ? `■ 연결된 매입 정산건: ${linkedSettlements.length}건\n` : '') +
+        `\n연결된 자산/정산을 먼저 해제한 후 삭제하십시오.`,
+        '매입처 삭제 불가'
+      );
+      return;
+    }
     db.deleteRow('vendors', id);
     refreshAllData();
   };
@@ -8252,6 +8297,11 @@ ${currentTenant?.corporateName || tenantCorp} 배상
   };
 
   const deleteCorporateVehicle = async (id: string): Promise<void> => {
+    // ✅ 고아 레코드 방지: 차량 삭제 시 연관 운행일지, 주유 기록 cascade 삭제
+    const linkedOpLogs = db.vehicleOperationLogs.filter(l => l.vehicleId === id);
+    linkedOpLogs.forEach(l => db.deleteRow('vehicleOperationLogs', l.id));
+    const linkedFuelLogs = db.vehicleFuelLogs.filter(l => l.vehicleId === id);
+    linkedFuelLogs.forEach(l => db.deleteRow('vehicleFuelLogs', l.id));
     db.deleteRow('corporateVehicles', id);
     await db.awaitPendingWrites();
     refreshAllData();

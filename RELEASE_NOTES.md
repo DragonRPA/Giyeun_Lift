@@ -1,4 +1,31 @@
+## [v1.11.4.Build.6] - 2026-09-09 12:29
+
+### 🛡️ [전사 고아 레코드(Orphan Record) 발생 원인 전량 제거 — 6개 결함 패치]
+
+**배경**: 리서치 서브에이전트 + 직접 코드 분석으로 `AppContext.tsx` 전체에서 고아 레코드 발생 경로 전수 조사 완료.  
+`outboundInspections`, `vehicleOperationLogs/vehicleFuelLogs`, `vendors` dangling ref, 레거시 `payments` 등 6개 결함 식별 및 일괄 수정.
+
+**수정 목록** (`src/context/AppContext.tsx`):
+
+| # | 결함 | 발생 함수 | 수정 내용 |
+|---|---|---|---|
+| 1 | `createContract()` — assetId 있는 CA 생성 시 outboundInspection 미생성 | `createContract()` L4247 | assetId 있는 슬롯 insertRow 시 outboundInspection 동시 생성 |
+| 2 | `succeedContract()` — 계약 승계 시 ASSIGNED 자산 outboundInspection 미생성 | `succeedContract()` L4495 | 신규 CA insertRow + ASSIGNED 상태 확인 후 inspection 생성 |
+| 3 | `saveSmartDispatch()` rollback — outboundInspections cascade 롤백 누락 | `saveSmartDispatch()` L1819 | 롤백 블록에 `contractId` 기준 inspection 일괄 삭제 추가 |
+| 4 | `deleteVendor()` — 연관 자산/정산 dangling reference | `deleteVendor()` L7276 | 연관 자산/정산 존재 시 삭제 차단 + 안내 메시지 |
+| 5 | `deleteCorporateVehicle()` — 운행/주유 로그 고아 | `deleteCorporateVehicle()` L8277 | 연관 vehicleOperationLogs, vehicleFuelLogs cascade 삭제 |
+| 6 | `deleteBankDeposit()` — 레거시 패턴 payments 고아 | `deleteBankDeposit()` L5957 | `pay-matching-{txId}` 패턴 payments 존재 시 삭제 차단 |
+
+**영향**:
+- `createContract()`로 장비 직접 지정 계약 시 출고검수 의뢰 자동 생성 → 검수 화면에서 누락 방지
+- `succeedContract()` 계약 승계 시 출고 대기 장비 검수 추적 가능
+- `saveSmartDispatch()` DB 실패 롤백 시 inspection 잔류 없음
+- 매입처/차량 삭제 시 데이터 무결성 보장
+
+---
+
 ## [v1.11.4.Build.5] - 2026-09-09 11:58
+
 
 ### 🐛 [PC 출고검수 탭 카운트 필터 종속성 수정 — 사용자 조회 의도 충실 반영]
 

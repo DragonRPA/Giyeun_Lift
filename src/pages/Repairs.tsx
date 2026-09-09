@@ -6,7 +6,7 @@ import {
   Camera, Plus, Trash2, ShieldCheck, ChevronRight, X, Truck, 
   Layers, Package, Check, RefreshCw, FileText
 } from 'lucide-react';
-import { Repair, Asset, db } from '../services/db';
+import { Repair, Asset, InboundDefectDetail, db } from '../services/db';
 import { exportToExcel } from '../services/excel';
 import { compressFileIfNeeded } from '../utils/imageCompressor';
 
@@ -27,7 +27,8 @@ const QUICK_WORK_TAGS = [
 export const Repairs: React.FC = () => {
   const {
     repairs, assets, consumables, repairConsumables, registerRepair, updateRepairStatus, 
-    hasPermission, users, currentUser, vendors, assetInOutLogs, showErrorModal
+    hasPermission, users, currentUser, vendors, assetInOutLogs, showErrorModal,
+    inspectionChecklistItems
   } = useApp();
 
   const canSave = hasPermission('repair', 'save');
@@ -45,10 +46,16 @@ export const Repairs: React.FC = () => {
   // =========================================================================
   // [1] 스튜디오 모드 상태 (마스터-디테일 워크벤치)
   // =========================================================================
-  // 좌측 큐 필터: 'ALL' | 'RENTED_RETURNED' | 'REPAIRING' | 'EXTERNAL' | 'AVAILABLE'
-  const [yardQueueFilter, setYardQueueFilter] = useState<'ALL' | 'RENTED_RETURNED' | 'REPAIRING' | 'EXTERNAL' | 'AVAILABLE'>('ALL');
+  // 좌측 큐 필터: 'ALL' | 'INBOUND_DEFECT' | 'RENTED_RETURNED' | 'REPAIRING' | 'EXTERNAL' | 'AVAILABLE'
+  const [yardQueueFilter, setYardQueueFilter] = useState<'ALL' | 'INBOUND_DEFECT' | 'RENTED_RETURNED' | 'REPAIRING' | 'EXTERNAL' | 'AVAILABLE'>('ALL');
   const [yardSearchTerm, setYardSearchTerm] = useState('');
   const [selectedAssetId, setSelectedAssetId] = useState<string>('');
+
+  // 🌟 입고 결함 연계 상태
+  const [selectedRepairId, setSelectedRepairId] = useState<string>('');
+  const [inboundDefects, setInboundDefects] = useState<InboundDefectDetail[]>([]);
+  const [inboundPhotos, setInboundPhotos] = useState<string[]>([]);
+  const [inboundMeta, setInboundMeta] = useState<{ inboundNo?: string; requestDate?: string; details?: string } | null>(null);
 
   // 우측 워크벤치 입력 폼 상태
   const [maintenanceType, setMaintenanceType] = useState<'INHOUSE_REPAIR' | 'PREVENTIVE' | 'EXTERNAL'>('INHOUSE_REPAIR');
@@ -108,7 +115,9 @@ export const Repairs: React.FC = () => {
 
       // 외주정비 진행 건 확인
       const hasActiveExternalRepair = repairs.some(r => r.assetId === a.id && r.status === 'IN_PROGRESS' && r.maintenanceType === 'EXTERNAL');
+      const hasInboundDefect = repairs.some(r => r.assetId === a.id && r.status === 'PENDING' && r.source === 'INBOUND_INSPECTION');
 
+      if (yardQueueFilter === 'INBOUND_DEFECT') return hasInboundDefect;
       if (yardQueueFilter === 'RENTED_RETURNED') return a.status === 'RENTED_RETURNED';
       if (yardQueueFilter === 'REPAIRING') return a.status === 'REPAIRING';
       if (yardQueueFilter === 'EXTERNAL') return hasActiveExternalRepair;
@@ -124,11 +133,12 @@ export const Repairs: React.FC = () => {
   // 주기장 큐 카운트 통계
   const queueCounts = useMemo(() => {
     const nonRented = assets.filter(a => a.status !== 'RENTED' && a.status !== 'SOLD' && a.status !== 'ASSIGNED');
+    const inboundDefects = nonRented.filter(a => repairs.some(r => r.assetId === a.id && r.status === 'PENDING' && r.source === 'INBOUND_INSPECTION')).length;
     const returned = nonRented.filter(a => a.status === 'RENTED_RETURNED').length;
     const repairing = nonRented.filter(a => a.status === 'REPAIRING').length;
     const external = repairs.filter(r => r.status === 'IN_PROGRESS' && r.maintenanceType === 'EXTERNAL').length;
     const available = nonRented.filter(a => a.status === 'AVAILABLE').length;
-    return { all: nonRented.length, returned, repairing, external, available };
+    return { all: nonRented.length, inboundDefects, returned, repairing, external, available };
   }, [assets, repairs]);
 
   // 현재 선택된 자산 객체
@@ -193,9 +203,14 @@ export const Repairs: React.FC = () => {
   const handleSelectAsset = (asset: Asset) => {
     setSelectedAssetId(asset.id);
     
-    // 진행 중인 외주정비 또는 보류 건 탐색
+    // 진행 중인 외주정비, 부품대기 또는 입고 결함 PENDING 건 탐색
     const activeExternal = repairs.find(r => r.assetId === asset.id && r.status === 'IN_PROGRESS' && r.maintenanceType === 'EXTERNAL');
     const unresolvedRepair = repairs.find(r => r.assetId === asset.id && r.status === 'UNRESOLVED');
+    const pendingInbound = repairs.find(r => r.assetId === asset.id && r.status === 'PENDING' && r.source === 'INBOUND_INSPECTION');
+    const generalPending = repairs.find(r => r.assetId === asset.id && (r.status === 'PENDING' || r.status === 'IN_PROGRESS'));
+
+    const targetRepair = pendingInbound || activeExternal || unresolvedRepair || generalPending;
+    setSelectedRepairId(targetRepair?.id || '');
 
     setRepairDate(new Date().toISOString().split('T')[0]);
     setSelectedMechanicId(currentUser?.id || '');
@@ -205,23 +220,138 @@ export const Repairs: React.FC = () => {
     setInspectionItemCode('');
     setDegradationScore(asset.maintenanceScore || 0);
 
-    if (activeExternal) {
-      // 🌟 외주정비 완료/입고 모드로 자동 프리셋
+    if (pendingInbound) {
+      // 🌟 입고 결함 정비 모드로 프리셋
+      setMaintenanceType('INHOUSE_REPAIR');
+      setSelectedVendorId('');
+      setExternalCost(0);
+      setDegradationScore(pendingInbound.degradationScore || asset.maintenanceScore || 0);
+      setInspectionItemCode(pendingInbound.inspectionItemCode || '');
+
+      let parsedDefects: InboundDefectDetail[] = [];
+      if (pendingInbound.defectsJson) {
+        try {
+          const parsed = JSON.parse(pendingInbound.defectsJson);
+          if (Array.isArray(parsed)) parsedDefects = parsed;
+        } catch (e) {
+          console.error(e);
+        }
+      }
+      setInboundDefects(parsedDefects);
+      setInboundPhotos(pendingInbound.evidenceImages || []);
+      setInboundMeta({
+        inboundNo: pendingInbound.inboundNo,
+        requestDate: pendingInbound.requestDate,
+        details: pendingInbound.details
+      });
+
+      const defectSummary = parsedDefects.length > 0
+        ? parsedDefects.map(d => `• [${d.checkitemName}] 점검 및 부품 교체/수리 조치 완료`).join('\n')
+        : '• 입고 결함 항목 점검 및 정상 작동 확인 완료';
+      setRepairDetails(`[입고결함 정비 - ${pendingInbound.inboundNo || '검수'}]\n${defectSummary}\n• 장비 기능 및 안전장치 시운전 테스트 완료`);
+    } else if (activeExternal) {
+      setInboundDefects([]);
+      setInboundPhotos([]);
+      setInboundMeta(null);
       setMaintenanceType('EXTERNAL');
       setSelectedVendorId(activeExternal.vendorId || '');
       setExternalCost(activeExternal.totalCost || 0);
       setRepairDetails(`[외주정비 완료 입고검수] 업체: ${getVendorName(activeExternal.vendorId)}\n• 외주 수리내역 확인 및 장비 정상 작동 테스트 완료`);
     } else if (unresolvedRepair) {
-      // 🌟 부품대기 보류 해제 모드로 자동 프리셋
+      setInboundDefects([]);
+      setInboundPhotos([]);
+      setInboundMeta(null);
       setMaintenanceType(unresolvedRepair.maintenanceType === 'EXTERNAL' ? 'EXTERNAL' : unresolvedRepair.maintenanceType === 'PREVENTIVE' ? 'PREVENTIVE' : 'INHOUSE_REPAIR');
       setSelectedVendorId(unresolvedRepair.vendorId || '');
       setExternalCost(unresolvedRepair.totalCost || 0);
       setRepairDetails(`[부품대기 해제 및 정비 재개]\n• 보류사유: ${unresolvedRepair.unresolvedReason || '부품 대기'}\n• 부품 장착 및 정비 완료 조치`);
     } else {
+      setInboundDefects([]);
+      setInboundPhotos([]);
+      setInboundMeta(null);
       setMaintenanceType('INHOUSE_REPAIR');
       setSelectedVendorId('');
       setExternalCost(0);
       setRepairDetails(asset.memo ? `[입고 메모] ${asset.memo}\n` : '');
+    }
+  };
+
+  // 📝 입고 결함 점검 조치내용 자동 반영
+  const handleAutoFillDefectDetails = () => {
+    if (inboundDefects.length === 0) return;
+    const lines = inboundDefects.map(d => {
+      const chk = (inspectionChecklistItems || []).find(c => c.id === d.checkitemId || c.code === d.checkitemId);
+      const sop = chk?.actionGuide ? ` (SOP: ${chk.actionGuide})` : '';
+      return `• [${d.checkitemName}] 점검 및 부품 교체/정비 완료${sop}`;
+    });
+    const prefix = `[입고결함 정비 - ${inboundMeta?.inboundNo || '검수'}]\n`;
+    setRepairDetails(prefix + lines.join('\n') + '\n• 이상 부위 시운전 및 안전 기능 검증 완료');
+    showToast('입고 결함 항목 조치 내용이 입력되었습니다.');
+  };
+
+  // 📦 추천 소모품 일괄 자동 담기
+  const handleAutoAddRecommendedConsumables = () => {
+    if (inboundDefects.length === 0) {
+      showToast('입고 결함 항목이 없습니다.', 'error');
+      return;
+    }
+    const recConsumableIds = new Set<string>();
+    inboundDefects.forEach(d => {
+      const chk = (inspectionChecklistItems || []).find(c => c.id === d.checkitemId || c.code === d.checkitemId);
+      if (chk?.recommendedConsumableIds && Array.isArray(chk.recommendedConsumableIds)) {
+        chk.recommendedConsumableIds.forEach(cId => recConsumableIds.add(cId));
+      }
+    });
+
+    if (recConsumableIds.size === 0) {
+      inboundDefects.forEach(d => {
+        const name = d.checkitemName.toLowerCase();
+        consumables.forEach(c => {
+          const cName = c.modelName.toLowerCase();
+          if (
+            (name.includes('유압') && cName.includes('유압')) ||
+            (name.includes('배터리') && (cName.includes('증류수') || cName.includes('단자'))) ||
+            (name.includes('조이스틱') && cName.includes('조이스틱')) ||
+            (name.includes('센서') && cName.includes('센서')) ||
+            (name.includes('스위치') && cName.includes('스위치')) ||
+            (name.includes('그리스') && cName.includes('그리스'))
+          ) {
+            recConsumableIds.add(c.id);
+          }
+        });
+      });
+    }
+
+    if (recConsumableIds.size === 0) {
+      showToast('해당 결함 항목에 매핑된 추천 소모품이 없습니다. 소모품 목록에서 직접 선택해 주십시오.', 'error');
+      return;
+    }
+
+    let addedCount = 0;
+    setUsedConsumables(prev => {
+      const next = [...prev];
+      recConsumableIds.forEach(cId => {
+        const con = consumables.find(c => c.id === cId);
+        if (con && (con.stockQty || 0) > 0) {
+          const existIdx = next.findIndex(item => item.consumableId === cId);
+          if (existIdx >= 0) {
+            if (next[existIdx].quantity < (con.stockQty || 0)) {
+              next[existIdx] = { ...next[existIdx], quantity: next[existIdx].quantity + 1 };
+              addedCount++;
+            }
+          } else {
+            next.push({ consumableId: cId, quantity: 1 });
+            addedCount++;
+          }
+        }
+      });
+      return next;
+    });
+
+    if (addedCount > 0) {
+      showToast(`추천 소모품 ${addedCount}건이 투입 목록에 자동 반영되었습니다.`);
+    } else {
+      showToast('추천 소모품 재고가 부족하거나 이미 모두 추가되어 있습니다.', 'error');
     }
   };
 
@@ -296,6 +426,7 @@ export const Repairs: React.FC = () => {
     if (afterImage) evidenceImages.push(afterImage);
 
     const payload: Partial<Repair> = {
+      id: selectedRepairId || undefined, // 🟢 기존 PENDING 티켓(입고결함 등)이 있으면 업데이트, 없으면 신규
       assetId: selectedAsset.id,
       assetNo: selectedAsset.assetNo,
       modelName: selectedAsset.modelName,
@@ -318,7 +449,8 @@ export const Repairs: React.FC = () => {
       billableAmount: billableType === 'BILLABLE' ? billableAmount : 0,
       billableToCustomer: billableType === 'BILLABLE',
       inspectionItemCode,
-      degradationScore
+      degradationScore,
+      inboundNo: inboundMeta?.inboundNo
     };
 
     await registerRepair(payload, usedConsumables);
@@ -327,6 +459,10 @@ export const Repairs: React.FC = () => {
 
     // 폼 초기화
     setSelectedAssetId('');
+    setSelectedRepairId('');
+    setInboundDefects([]);
+    setInboundPhotos([]);
+    setInboundMeta(null);
     setRepairDetails('');
     setUsedConsumables([]);
     setBeforeImage('');
@@ -350,6 +486,7 @@ export const Repairs: React.FC = () => {
     if (afterImage) evidenceImages.push(afterImage);
 
     const payload: Partial<Repair> = {
+      id: selectedRepairId || undefined,
       assetId: selectedAsset.id,
       assetNo: selectedAsset.assetNo,
       modelName: selectedAsset.modelName,
@@ -374,7 +511,8 @@ export const Repairs: React.FC = () => {
       billableAmount: billableType === 'BILLABLE' ? billableAmount : 0,
       billableToCustomer: billableType === 'BILLABLE',
       inspectionItemCode,
-      degradationScore
+      degradationScore,
+      inboundNo: inboundMeta?.inboundNo
     };
 
     await registerRepair(payload, usedConsumables);
@@ -382,6 +520,10 @@ export const Repairs: React.FC = () => {
     showToast(`[${selectedAsset.assetNo}] 장비가 수리정비중(REPAIRING) 상태로 보존되었습니다.`);
     setShowUnresolvedModal(false);
     setSelectedAssetId('');
+    setSelectedRepairId('');
+    setInboundDefects([]);
+    setInboundPhotos([]);
+    setInboundMeta(null);
     setRepairDetails('');
     setUsedConsumables([]);
   };
@@ -525,8 +667,9 @@ export const Repairs: React.FC = () => {
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
               {[
                 { key: 'ALL', label: '전체', count: queueCounts.all },
+                { key: 'INBOUND_DEFECT', label: '입고불량', count: queueCounts.inboundDefects, color: '#ef4444' },
                 { key: 'RENTED_RETURNED', label: '입고검수대기', count: queueCounts.returned, color: '#f59e0b' },
-                { key: 'REPAIRING', label: '수리중', count: queueCounts.repairing, color: '#ef4444' },
+                { key: 'REPAIRING', label: '수리중', count: queueCounts.repairing, color: '#f97316' },
                 { key: 'EXTERNAL', label: '외주위탁', count: queueCounts.external, color: '#8b5cf6' },
                 { key: 'AVAILABLE', label: '점검대상', count: queueCounts.available, color: '#10b981' },
               ].map(f => (
@@ -576,9 +719,10 @@ export const Repairs: React.FC = () => {
                   const isRepairing = asset.status === 'REPAIRING';
                   const isAvailable = asset.status === 'AVAILABLE';
 
-                  // 외주정비 및 부품대기 활성 건 탐색
+                  // 외주정비, 부품대기 및 입고 결함 활성 건 탐색
                   const activeExternal = repairs.find(r => r.assetId === asset.id && r.status === 'IN_PROGRESS' && r.maintenanceType === 'EXTERNAL');
                   const unresolvedRepair = repairs.find(r => r.assetId === asset.id && r.status === 'UNRESOLVED');
+                  const pendingInbound = repairs.find(r => r.assetId === asset.id && r.status === 'PENDING' && r.source === 'INBOUND_INSPECTION');
 
                   return (
                     <div
@@ -602,7 +746,11 @@ export const Repairs: React.FC = () => {
                           <span style={{ fontSize: '12px', fontWeight: '600', color: 'var(--text-main)' }}>{asset.modelName}</span>
                         </div>
                         <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
-                          {activeExternal ? (
+                          {pendingInbound ? (
+                            <span className="badge badge-danger" style={{ fontSize: '10px', padding: '2px 6px', backgroundColor: '#dc2626', color: '#ffffff' }}>
+                              🚨 입고불량
+                            </span>
+                          ) : activeExternal ? (
                             <span className="badge" style={{ fontSize: '10px', padding: '2px 6px', backgroundColor: '#8b5cf6', color: '#ffffff' }}>
                               외주:{getVendorName(activeExternal.vendorId)}
                             </span>
@@ -631,6 +779,12 @@ export const Repairs: React.FC = () => {
                         <span>구분: {asset.ownerType === 'RENTED' ? '타사임차' : '자사보유'}</span>
                         {asset.serialNo && <span>S/N: {asset.serialNo}</span>}
                       </div>
+
+                      {pendingInbound && (
+                        <div style={{ fontSize: '11px', color: '#b91c1c', backgroundColor: 'rgba(239, 68, 68, 0.08)', padding: '3px 6px', borderRadius: '4px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          🚨 입고결함 [{pendingInbound.inboundNo || '검수'}]: {pendingInbound.details.split('\n')[1] || '수리 요망'}
+                        </div>
+                      )}
 
                       {unresolvedRepair && unresolvedRepair.unresolvedReason && (
                         <div style={{ fontSize: '11px', color: '#b45309', backgroundColor: 'rgba(245, 158, 11, 0.1)', padding: '2px 6px', borderRadius: '4px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
@@ -710,6 +864,93 @@ export const Repairs: React.FC = () => {
                     <X size={16} />
                   </button>
                 </div>
+
+                {/* 1-1. 입고 결함 점검 리포트 카드 (입고 시 적발된 결함 내역 연동) */}
+                {inboundDefects.length > 0 && (
+                  <div style={{
+                    padding: '12px 14px',
+                    backgroundColor: 'rgba(239, 68, 68, 0.05)',
+                    borderRadius: '6px',
+                    border: '1px solid rgba(239, 68, 68, 0.3)',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '8px'
+                  }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <AlertTriangle size={16} color="#dc2626" />
+                        <strong style={{ fontSize: '13px', color: '#dc2626' }}>입고 검수 결함 리포트</strong>
+                        {inboundMeta?.inboundNo && (
+                          <span className="badge" style={{ backgroundColor: '#fee2e2', color: '#b91c1c', fontSize: '11px', fontWeight: '700' }}>
+                            입고번호: {inboundMeta.inboundNo}
+                          </span>
+                        )}
+                        <span className="badge badge-danger" style={{ fontSize: '11px' }}>
+                          총 결함 {inboundDefects.length}건 (+{degradationScore}점)
+                        </span>
+                      </div>
+
+                      <div style={{ display: 'flex', gap: '6px' }}>
+                        <button
+                          type="button"
+                          onClick={handleAutoFillDefectDetails}
+                          className="btn-secondary"
+                          style={{ padding: '4px 8px', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer' }}
+                        >
+                          <Check size={12} /> 조치내용 자동 반영
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleAutoAddRecommendedConsumables}
+                          className="btn-secondary"
+                          style={{ padding: '4px 8px', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer' }}
+                        >
+                          <Package size={12} /> 추천 소모품 일괄 담기
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* 결함 항목 배지 그리드 */}
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                      {inboundDefects.map((defect, idx) => (
+                        <div key={idx} style={{
+                          padding: '4px 8px',
+                          backgroundColor: '#ffffff',
+                          border: '1px solid #fca5a5',
+                          borderRadius: '4px',
+                          fontSize: '11.5px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '6px',
+                          boxShadow: '0 1px 2px rgba(0,0,0,0.04)'
+                        }}>
+                          <span style={{ fontWeight: '700', color: '#b91c1c' }}>{defect.checkitemName}</span>
+                          <span style={{ fontSize: '10.5px', color: '#ef4444', fontWeight: '700', backgroundColor: '#fef2f2', padding: '1px 4px', borderRadius: '3px' }}>
+                            +{defect.score}점
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* 입고 시 촬영된 사진 미리보기 */}
+                    {inboundPhotos.length > 0 && (
+                      <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginTop: '2px' }}>
+                        <span style={{ fontSize: '11px', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>입고 검수 사진 ({inboundPhotos.length}매):</span>
+                        <div style={{ display: 'flex', gap: '6px', overflowX: 'auto' }}>
+                          {inboundPhotos.map((photo, pIdx) => (
+                            <img
+                              key={pIdx}
+                              src={photo}
+                              alt={`입고 사진 ${pIdx + 1}`}
+                              style={{ width: '46px', height: '46px', objectFit: 'cover', borderRadius: '4px', border: '1px solid #fca5a5', cursor: 'pointer' }}
+                              onClick={() => window.open(photo, '_blank')}
+                            />
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 {/* 2. 정비 기본 설정 (헌장 3.4 상하 수직 스택) */}
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr 1fr', gap: '10px' }}>

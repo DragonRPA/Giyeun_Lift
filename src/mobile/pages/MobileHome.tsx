@@ -4,7 +4,7 @@ import { useApp } from '../../context/AppContext';
 import { 
   Wrench, Truck, CheckSquare, Search, Send, Building2, 
   ArrowRight, AlertTriangle, Clock, Plus, Boxes, ArrowDownToLine, Users, Car, BookOpen,
-  Smartphone, Download, UploadCloud, Layers
+  Smartphone, Download, UploadCloud, Layers, Package
 } from 'lucide-react';
 import { MobileTabType } from '../MobileBottomNav';
 import { MobileDeptMode } from '../MobileHeader';
@@ -24,7 +24,7 @@ export const MobileHome: React.FC<MobileHomeProps> = ({
   onOpenAsDetail,
   onOpenCreateAs,
 }) => {
-  const { fieldAsTickets, deliveries, outboundInspections, currentUser, assets, contracts, contractAssets, mechanicConsumableStocks, customers, currentTenant } = useApp();
+  const { fieldAsTickets, deliveries, outboundInspections, currentUser, assets, contracts, contractAssets, mechanicConsumableStocks, customers, currentTenant, repairs } = useApp();
 
   const defaultYard = currentTenant?.yards?.find((y: any) => y.isDefault) || currentTenant?.yards?.[0];
   const defaultYardName = defaultYard?.name || (currentTenant?.tradeName ? `${currentTenant.tradeName} 주기장` : '본사 주기장');
@@ -74,6 +74,14 @@ export const MobileHome: React.FC<MobileHomeProps> = ({
   const pendingInspections = outboundInspections.filter((ins) => ins.status === 'PENDING');
   const pendingAssignmentSlots = (contractAssets || []).filter((ca) => !ca.assetId).length;
   const activeContracts = contracts.filter(c => c.status === 'ACTIVE' || c.status === 'EXTENDED');
+  const yardRepairAssets = (assets || []).filter(a => {
+    if (a.status === 'RENTED' || a.status === 'SOLD' || a.status === 'ASSIGNED') return false;
+    const hasInboundDefect = (repairs || []).some(r => r.assetId === a.id && r.status === 'PENDING' && r.source === 'INBOUND_INSPECTION');
+    return hasInboundDefect || a.status === 'REPAIRING' || a.status === 'RENTED_RETURNED';
+  });
+  const inboundDefectCount = (assets || []).filter(a => 
+    (repairs || []).some(r => r.assetId === a.id && r.status === 'PENDING' && r.source === 'INBOUND_INSPECTION')
+  ).length;
 
   // ── 근무 상태 카드 (공통) ─────────────────────────────
   const WorkStatusCard = () => {
@@ -364,6 +372,30 @@ export const MobileHome: React.FC<MobileHomeProps> = ({
           <ArrowRight className="w-5 h-5" />
         </button>
 
+        {/* 주기장 정비 스튜디오 바로가기 배너 */}
+        <div
+          onClick={() => onNavigate('as')}
+          className="p-4 rounded-2xl bg-gradient-to-r from-red-950/40 to-slate-900 border border-red-500/30 flex items-center justify-between active:scale-98 transition-all cursor-pointer shadow-md"
+        >
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-red-500/20 border border-red-500/30 flex items-center justify-center text-red-400">
+              <Wrench className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="text-sm font-bold text-white flex items-center gap-1.5">
+                <span>주기장 정비 스튜디오</span>
+                {yardRepairAssets.length > 0 && (
+                  <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-red-500/20 text-red-300 font-bold">
+                    {yardRepairAssets.length}대 대기{inboundDefectCount > 0 ? ` (결함 ${inboundDefectCount})` : ''}
+                  </span>
+                )}
+              </div>
+              <div className="text-xs text-slate-400">입고 결함 점검, 소모품 투입 및 임대가능(AVAILABLE) 복원</div>
+            </div>
+          </div>
+          <ArrowRight className="w-5 h-5 text-red-400" />
+        </div>
+
         {/* 주기장 자산 조회 */}
         <div
           onClick={() => onNavigate('assets')}
@@ -548,6 +580,30 @@ export const MobileHome: React.FC<MobileHomeProps> = ({
           </div>
         </div>
         <ArrowRight className="w-5 h-5 text-slate-500" />
+      </div>
+
+      {/* 주기장 입고 정비 스튜디오 바로가기 */}
+      <div
+        onClick={() => onNavigate('as')}
+        className="p-4 rounded-2xl bg-gradient-to-r from-red-950/40 to-slate-900 border border-red-500/30 hover:border-red-500/50 flex items-center justify-between active:scale-98 transition-all cursor-pointer shadow-md"
+      >
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-red-500/20 border border-red-500/30 flex items-center justify-center text-red-400 flex-shrink-0">
+            <Package className="w-5 h-5" />
+          </div>
+          <div>
+            <div className="text-sm font-bold text-white flex items-center gap-1.5">
+              <span>주기장 정비 스튜디오</span>
+              {yardRepairAssets.length > 0 && (
+                <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-red-500/20 text-red-300 font-bold">
+                  {yardRepairAssets.length}대 대기{inboundDefectCount > 0 ? ` (결함 ${inboundDefectCount})` : ''}
+                </span>
+              )}
+            </div>
+            <div className="text-xs text-slate-400">입고 결함 장비 수리, 부품 투입 및 임대가능 복원</div>
+          </div>
+        </div>
+        <ArrowRight className="w-5 h-5 text-red-400" />
       </div>
 
       {/* 가용 자산 빠른 조회 */}

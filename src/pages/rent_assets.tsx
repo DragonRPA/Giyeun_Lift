@@ -306,23 +306,21 @@ export const RentAssets: React.FC = () => {
 
         // 1. 자사 기준 예상 약정금액 (expectedAmount) 스마트 산출
         let expected = baseMonthlyFee;
-        if (isReturned && mReturn) {
-          // 이미 반납된 장비: 자사 반납일까지의 일할 금액 산출
-          const validReturnDays = calcDaysBetween(mStart || rStart, mReturn);
-          expected = (validReturnDays > 0 && validReturnDays < 30)
-            ? calcProratedFee(baseMonthlyFee, validReturnDays)
-            : baseMonthlyFee;
-        } else if (rDays > 0 && rDays < 30) {
-          // 임차처 청구가 일할 청구인 경우:
-          if (mDays > 0 && mDays < 30 && Math.abs(rDays - mDays) <= 1) {
-            expected = calcProratedFee(baseMonthlyFee, rDays);
-          } else if (matched.monthlyRentFee === rUnitPrice && rUnitPrice > 0) {
-            // 월단가가 일치하면 청구된 일수에 상응하는 일할 약정금액으로 대조
-            expected = calcProratedFee(baseMonthlyFee, rDays);
+        const validReturnDays = (isReturned && mReturn) ? calcDaysBetween(mStart || rStart, mReturn) : 0;
+        const targetDays = validReturnDays > 0 ? validReturnDays : (mDays > 0 && mDays < 30 ? mDays : rDays);
+
+        if (targetDays > 0 && targetDays < 30) {
+          const feeBoth = calcProratedFee(baseMonthlyFee, targetDays);
+          const feeOne = calcProratedFee(baseMonthlyFee, targetDays - 1);
+          if (rBilled > 0 && Math.abs(rBilled - feeOne) <= 100) {
+            expected = feeOne; // 한편넣기(25일 등) 적용된 청구액 정합 인정
+          } else if (rBilled > 0 && Math.abs(rBilled - feeBoth) <= 100) {
+            expected = feeBoth; // 양편넣기(26일 등) 적용된 청구액 정합 인정
+          } else {
+            expected = feeBoth;
           }
-        } else if (mDays > 0 && mDays < 30) {
-          // 자사 약정 자체가 부분월(일할)인 경우
-          expected = calcProratedFee(baseMonthlyFee, mDays);
+        } else if (isReturned && mReturn) {
+          expected = baseMonthlyFee;
         }
 
         const rawDiff = rBilled - expected;
@@ -780,6 +778,25 @@ export const RentAssets: React.FC = () => {
     await db.awaitPendingWrites();
     refreshAllData();
     showToast(`자사 임차 기간이 ${newEndDate}로 단축 반영되었습니다.`);
+  };
+
+  // 💡 [약정기간 동기화] 자사 임차 기간을 임차처 청구 기간으로 원클릭 동기화 반영 (오차 ₩0 정상 일치 종결)
+  const handleSyncAssetPeriod = async (assetId: string, newStartDate: string, newEndDate: string) => {
+    if (!assetId || !newStartDate || !newEndDate) return;
+    const nowIso = new Date().toISOString();
+    const asset = assets.find(a => a.id === assetId);
+    const updatePayload: Partial<Asset> = {
+      rentStart: newStartDate,
+      rentEnd: newEndDate,
+      updatedAt: nowIso
+    };
+    if (asset?.actualRentReturnDate || asset?.status === 'RENTED_RETURNED') {
+      updatePayload.actualRentReturnDate = newEndDate;
+    }
+    db.updateRow<Asset>('assets', assetId, updatePayload);
+    await db.awaitPendingWrites();
+    refreshAllData();
+    showToast(`자사 임차 약정 기간이 [${newStartDate} ~ ${newEndDate}]로 정상 동기화 반영되었습니다.`);
   };
 
   // 💡 [개시일소급] 자사 임차 개시일 소급 반영 (임차처 청구 개시일로 자산 약정 시작일 보정)
@@ -1938,6 +1955,10 @@ export const RentAssets: React.FC = () => {
 
                         const isChecked = stmt ? selectedReconcileIds.includes(stmt.id) : false;
                         const isAssetReturned = Boolean(matched?.actualRentReturnDate || matched?.status === 'RENTED_RETURNED');
+                        const canSyncPeriod = Boolean(
+                          stmt && matched && stmt.rentStart && stmt.rentEnd &&
+                          (stmt.rentStart !== matched.rentStart || stmt.rentEnd !== (matched.actualRentReturnDate || matched.rentEnd))
+                        );
                         const canRetroStart = Boolean(stmt && matched && stmt.rentStart && matched.rentStart && stmt.rentStart < matched.rentStart);
                         const canExtend = Boolean(!isAssetReturned && stmt && matched && stmt.rentEnd && (!matched.rentEnd || stmt.rentEnd > matched.rentEnd));
                         const canShorten = Boolean(!isAssetReturned && stmt && matched && stmt.rentEnd && matched.rentEnd && stmt.rentEnd < matched.rentEnd);
@@ -2067,6 +2088,22 @@ export const RentAssets: React.FC = () => {
                                     }}
                                   >
                                     임차등록
+                                  </button>
+                                )}
+
+                                {/* [약정기간 동기화] 버튼 (임차처 청구 기간으로 원클릭 동기화 및 정상 정산 종결) */}
+                                {canSyncPeriod && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleSyncAssetPeriod(matched!.id, stmt!.rentStart!, stmt!.rentEnd!)}
+                                    style={{
+                                      padding: '2px 8px', fontSize: '10.5px', fontWeight: 800, borderRadius: '4px',
+                                      backgroundColor: '#2563eb', border: '1px solid #1d4ed8', color: '#ffffff', cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0,
+                                      boxShadow: '0 1px 2px rgba(37, 99, 235, 0.2)'
+                                    }}
+                                    title={`자사 약정 기간을 청구 기간(${stmt!.rentStart} ~ ${stmt!.rentEnd})으로 원클릭 동기화`}
+                                  >
+                                    약정기간 동기화
                                   </button>
                                 )}
 

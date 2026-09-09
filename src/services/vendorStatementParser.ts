@@ -301,6 +301,18 @@ export function parseVendorStatementExcel(
     const secondColStr = parseString(rowData[1]).replace(/\s+/g, '');
     const cleanFullText = rowFullText.replace(/\s+/g, '');
 
+    // 1. 하단 최종 결제계좌/VAT포함 총계 행 발견 시 테이블 완전 종료 (이후 푸터 행 수집 중단)
+    if (
+      cleanFullText.includes('결제계좌') ||
+      cleanFullText.includes('입금계좌') ||
+      cleanFullText.includes('VAT포함') ||
+      cleanFullText.includes('청구금액:') ||
+      cleanFullText.includes('아래와같이청구합니다')
+    ) {
+      break;
+    }
+
+    // 2. 소계/합계/총계 및 이메일/전화번호/팩스/사업자번호 등 비청구 더미 행 100% 차단
     if (
       firstColStr === '소계' ||
       firstColStr === '합계' ||
@@ -313,16 +325,27 @@ export function parseVendorStatementExcel(
       cleanFullText.includes('합계') ||
       cleanFullText.includes('총계') ||
       cleanFullText.includes('청구금액') ||
-      cleanFullText.includes('결제계좌') ||
-      cleanFullText.includes('입금계좌') ||
-      cleanFullText.includes('예금주:') ||
       cleanFullText.includes('예금주') ||
-      cleanFullText.includes('아래와같이청구합니다') ||
       cleanFullText.includes('공급자보관용') ||
       cleanFullText.includes('공급받는자용') ||
       cleanFullText.includes('영업담당') ||
-      cleanFullText.includes('연락처:') ||
-      cleanFullText.includes('미사용반환')
+      cleanFullText.includes('연락처') ||
+      cleanFullText.includes('미사용반환') ||
+      cleanFullText.includes('@') ||
+      cleanFullText.includes('.com') ||
+      cleanFullText.includes('.co.kr') ||
+      cleanFullText.includes('.net') ||
+      cleanFullText.includes('010-') ||
+      cleanFullText.includes('031-') ||
+      cleanFullText.includes('02-') ||
+      cleanFullText.includes('032-') ||
+      cleanFullText.includes('051-') ||
+      cleanFullText.includes('팩스') ||
+      cleanFullText.includes('FAX') ||
+      cleanFullText.includes('TEL') ||
+      cleanFullText.includes('사업자등록') ||
+      cleanFullText.includes('등록번호') ||
+      cleanFullText.includes('특이사항')
     ) {
       continue;
     }
@@ -422,9 +445,12 @@ export function parseVendorStatementExcel(
         }
         finalModelName = rawModelName || feeText || '기타비용';
         finalMemo = rawMemo ? `${rawModelName} - ${rawMemo}` : feeText;
-      } else {
-        // 엘제이리프트 등 별도 관리번호 컬럼 없는 단기 운송/임차 행
+      } else if (rawSupplyAmount > 0) {
+        // 엘제이리프트 등 별도 관리번호 컬럼 없는 단기 운송/임차 행 (금액이 존재하는 유효 행만 수용)
         finalAssetNo = `R-${1000 + r}`;
+      } else {
+        // 관리번호도 없고 비용 키워드도 아니며 청구 금액도 0원인 더미 행은 전면 배제
+        continue;
       }
     } else {
       // 장비번호가 있더라도 품목명이 청소비/수리비 등인 경우

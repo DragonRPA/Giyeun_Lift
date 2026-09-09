@@ -180,14 +180,27 @@ export async function parsePdfStatement(
         compactLine.includes('수신자확인') ||
         compactLine.includes('수량4공급가액') ||
         compactLine.includes('예금주:') ||
-        compactLine.includes('계좌번호:')
+        compactLine.includes('계좌번호:') ||
+        compactLine.includes('아래와같이청구합니다')
       ) {
         inTable = false;
         return;
       }
 
-      // 테이블 영역 밖의 라인은 100% 무시 (주소, 전화번호, 팩스, 사업자등록번호 등 노이즈 완벽 차단)
+      // 테이블 영역 밖이거나 이메일/전화번호/팩스 등 비청구 더미 라인은 100% 무시
       if (!inTable) return;
+      if (
+        compactLine.includes('@') ||
+        compactLine.includes('.com') ||
+        compactLine.includes('.co.kr') ||
+        compactLine.includes('TEL:') ||
+        compactLine.includes('FAX:') ||
+        compactLine.includes('팩스') ||
+        compactLine.includes('사업자등록') ||
+        compactLine.includes('특이사항')
+      ) {
+        return;
+      }
 
       // =========================================================================
       // 패턴 1: AJ네트웍스 양식

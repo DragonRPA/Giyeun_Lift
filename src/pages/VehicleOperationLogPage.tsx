@@ -63,8 +63,8 @@ export const VehicleOperationLogPage: React.FC = () => {
     showErrorModal
   } = useApp();
 
-  // 현재 활성 탭
-  const [activeTab, setActiveTab] = useState<PageTab>('OPERATION_LOG');
+  // 현재 활성 탭 (운행일지 대장 임시 비활성화 -> 주유 영수증 대장이 기본 탭)
+  const [activeTab, setActiveTab] = useState<PageTab>('FUEL_LOG');
 
   // 검색/필터 상태
   const now = new Date();
@@ -387,7 +387,7 @@ export const VehicleOperationLogPage: React.FC = () => {
             <Car size={18} />
           </div>
           <h2 style={{ fontSize: '17px', fontWeight: '700', margin: 0, color: 'var(--text-main)', whiteSpace: 'nowrap' }}>
-            법인 차량운행일지
+            법인 차량 및 주유 관리
           </h2>
         </div>
 
@@ -483,33 +483,36 @@ export const VehicleOperationLogPage: React.FC = () => {
         </div>
       </div>
 
-      {/* ── 2. 메인 3대 탭 바 ── */}
+      {/* ── 2. 메인 탭 바 (운행일지 대장은 임직원 업무저항 검토 중으로 임시 숨김) ── */}
       <div style={{ display: 'flex', borderBottom: '1px solid var(--border-color)', gap: '4px', flexShrink: 0 }}>
-        <button
-          onClick={() => setActiveTab('OPERATION_LOG')}
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px',
-            padding: '8px 16px',
-            fontSize: '13px',
-            fontWeight: activeTab === 'OPERATION_LOG' ? '800' : '600',
-            color: activeTab === 'OPERATION_LOG' ? 'var(--primary)' : 'var(--text-secondary)',
-            borderBottom: activeTab === 'OPERATION_LOG' ? '3px solid var(--primary)' : '3px solid transparent',
-            marginBottom: '-1px',
-            backgroundColor: 'transparent',
-            borderTop: 'none',
-            borderLeft: 'none',
-            borderRight: 'none',
-            cursor: 'pointer'
-          }}
-        >
-          <FileText size={15} />
-          <span>운행일지 대장</span>
-          <span style={{ fontSize: '11px', backgroundColor: 'rgba(2,132,199,0.15)', color: 'var(--primary)', padding: '1px 6px', borderRadius: '10px', fontWeight: '700' }}>
-            {vehicleOperationLogs.length}
-          </span>
-        </button>
+        {/* 운행일지 대장 탭: 임직원 업무저항 검토 중으로 임시 숨김 */}
+        {false && (
+          <button
+            onClick={() => setActiveTab('OPERATION_LOG')}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              padding: '8px 16px',
+              fontSize: '13px',
+              fontWeight: activeTab === 'OPERATION_LOG' ? '800' : '600',
+              color: activeTab === 'OPERATION_LOG' ? 'var(--primary)' : 'var(--text-secondary)',
+              borderBottom: activeTab === 'OPERATION_LOG' ? '3px solid var(--primary)' : '3px solid transparent',
+              marginBottom: '-1px',
+              backgroundColor: 'transparent',
+              borderTop: 'none',
+              borderLeft: 'none',
+              borderRight: 'none',
+              cursor: 'pointer'
+            }}
+          >
+            <FileText size={15} />
+            <span>운행일지 대장</span>
+            <span style={{ fontSize: '11px', backgroundColor: 'rgba(2,132,199,0.15)', color: 'var(--primary)', padding: '1px 6px', borderRadius: '10px', fontWeight: '700' }}>
+              {vehicleOperationLogs.length}
+            </span>
+          </button>
+        )}
 
         <button
           onClick={() => setActiveTab('FUEL_LOG')}

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { LogOut, Wrench, Crown, Radio, RotateCw, Car, Smartphone } from 'lucide-react';
+import { LogOut, Wrench, Crown, Radio, RotateCw, Car, Fuel, Smartphone } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { WeatherWidget } from '../components/WeatherWidget';
 
@@ -213,10 +213,10 @@ export const MobileHeader: React.FC<MobileHeaderProps> = ({
                   cursor: 'pointer',
                   flexShrink: 0
                 }}
-                title="차량운행일지"
+                title="주유영수증"
               >
-                <Car size={12} color="#fbbf24" />
-                <span>차량일지</span>
+                <Fuel size={12} color="#fbbf24" />
+                <span>주유영수증</span>
               </button>
             )}
 

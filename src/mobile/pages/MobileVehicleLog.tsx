@@ -466,17 +466,17 @@ export const MobileVehicleLog: React.FC<MobileVehicleLogProps> = ({ onBack }) =>
           </div>
           <div>
             <h1 className="text-base font-extrabold text-slate-100 flex items-center gap-1.5">
-              <span>차량운행일지 / 주유기록</span>
+              <span>법인차량 주유기록</span>
             </h1>
             <p className="text-[11px] text-slate-400">
-              계기판 및 주유영수증 촬영 ➔ 국세청 운행기록부 자동 집계
+              계기판 및 주유영수증 촬영 ➔ 주유 대장 자동 집계
             </p>
           </div>
         </div>
       </div>
 
-      {/* ── 2. 모바일 3대 상단 탭 ── */}
-      <div className="grid grid-cols-3 gap-1.5 bg-slate-900 p-1 rounded-xl border border-slate-800">
+      {/* ── 2. 모바일 상단 탭 (운행일지 작성은 임직원 업무저항 검토 중으로 임시 숨김) ── */}
+      <div className="grid grid-cols-2 gap-1.5 bg-slate-900 p-1 rounded-xl border border-slate-800">
         <button
           type="button"
           onClick={() => setActiveTab('FUEL_LOG')}
@@ -490,18 +490,21 @@ export const MobileVehicleLog: React.FC<MobileVehicleLogProps> = ({ onBack }) =>
           <span>주유 영수증</span>
         </button>
 
-        <button
-          type="button"
-          onClick={() => setActiveTab('OPERATION_LOG')}
-          className={`flex items-center justify-center gap-1.5 py-2.5 text-xs font-bold rounded-lg transition-all ${
-            activeTab === 'OPERATION_LOG'
-              ? 'bg-blue-600 text-white shadow-md font-extrabold'
-              : 'text-slate-400 hover:text-slate-200'
-          }`}
-        >
-          <FileText size={14} />
-          <span>운행일지 작성</span>
-        </button>
+        {/* 운행일지 작성 탭: 임직원 업무저항 검토 중으로 임시 숨김 */}
+        {false && (
+          <button
+            type="button"
+            onClick={() => setActiveTab('OPERATION_LOG')}
+            className={`flex items-center justify-center gap-1.5 py-2.5 text-xs font-bold rounded-lg transition-all ${
+              activeTab === 'OPERATION_LOG'
+                ? 'bg-blue-600 text-white shadow-md font-extrabold'
+                : 'text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            <FileText size={14} />
+            <span>운행일지 작성</span>
+          </button>
+        )}
 
         <button
           type="button"
@@ -513,7 +516,7 @@ export const MobileVehicleLog: React.FC<MobileVehicleLogProps> = ({ onBack }) =>
           }`}
         >
           <History size={14} />
-          <span>내 운행/주유 내역</span>
+          <span>내 주유 내역</span>
         </button>
       </div>
 
@@ -1028,48 +1031,50 @@ export const MobileVehicleLog: React.FC<MobileVehicleLogProps> = ({ onBack }) =>
             )}
           </div>
 
-          {/* 최근 운행일지 기록 섹션 */}
-          <div className="flex flex-col gap-2.5">
-            <div className="flex items-center justify-between px-1">
-              <span className="text-xs font-bold text-blue-400 flex items-center gap-1">
-                <FileText size={14} />
-                <span>최근 운행일지 내역 ({myRecentOperations.length}건)</span>
-              </span>
-            </div>
-
-            {myRecentOperations.length === 0 ? (
-              <div className="bg-slate-900 border border-slate-800 p-8 text-center text-slate-500 text-xs rounded-xl">
-                최근 등록된 운행일지 기록이 없습니다.
+          {/* 최근 운행일지 기록 섹션 (임직원 업무저항 검토 중: 임시 숨김) */}
+          {false && (
+            <div className="flex flex-col gap-2.5">
+              <div className="flex items-center justify-between px-1">
+                <span className="text-xs font-bold text-blue-400 flex items-center gap-1">
+                  <FileText size={14} />
+                  <span>최근 운행일지 내역 ({myRecentOperations.length}건)</span>
+                </span>
               </div>
-            ) : (
-              myRecentOperations.map(op => (
-                <div key={op.id} className="bg-slate-900 border border-slate-800 p-3.5 rounded-xl flex flex-col gap-2 shadow-sm">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-1.5">
-                      <span className="text-xs font-extrabold text-blue-400">{op.vehicleNo}</span>
-                      <span className="px-1.5 py-0.5 bg-blue-500/20 text-blue-300 text-[10px] font-bold rounded">
-                        {op.purposeType === 'SITE_AS' ? '현장AS' : op.purposeType === 'CLIENT_MEETING' ? '미팅' : '일반'}
+
+              {myRecentOperations.length === 0 ? (
+                <div className="bg-slate-900 border border-slate-800 p-8 text-center text-slate-500 text-xs rounded-xl">
+                  최근 등록된 운행일지 기록이 없습니다.
+                </div>
+              ) : (
+                myRecentOperations.map(op => (
+                  <div key={op.id} className="bg-slate-900 border border-slate-800 p-3.5 rounded-xl flex flex-col gap-2 shadow-sm">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-xs font-extrabold text-blue-400">{op.vehicleNo}</span>
+                        <span className="px-1.5 py-0.5 bg-blue-500/20 text-blue-300 text-[10px] font-bold rounded">
+                          {op.purposeType === 'SITE_AS' ? '현장AS' : op.purposeType === 'CLIENT_MEETING' ? '미팅' : '일반'}
+                        </span>
+                      </div>
+                      <span className="text-[11px] text-slate-400">{op.operationDate}</span>
+                    </div>
+
+                    <div className="text-xs text-slate-200 font-medium">
+                      {op.departureLocation} ➔ {op.arrivalLocation}
+                    </div>
+
+                    <div className="flex items-center justify-between text-xs pt-1 border-t border-slate-800/80">
+                      <span className="text-slate-400">
+                        {op.departureMileage.toLocaleString()} ➔ {op.arrivalMileage.toLocaleString()} km
+                      </span>
+                      <span className="font-extrabold text-amber-400">
+                        {op.driveDistance} km 주행
                       </span>
                     </div>
-                    <span className="text-[11px] text-slate-400">{op.operationDate}</span>
                   </div>
-
-                  <div className="text-xs text-slate-200 font-medium">
-                    {op.departureLocation} ➔ {op.arrivalLocation}
-                  </div>
-
-                  <div className="flex items-center justify-between text-xs pt-1 border-t border-slate-800/80">
-                    <span className="text-slate-400">
-                      {op.departureMileage.toLocaleString()} ➔ {op.arrivalMileage.toLocaleString()} km
-                    </span>
-                    <span className="font-extrabold text-amber-400">
-                      {op.driveDistance} km 주행
-                    </span>
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
+                ))
+              )}
+            </div>
+          )}
         </div>
       )}
 

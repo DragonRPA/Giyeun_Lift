@@ -1268,7 +1268,8 @@ export const Customers: React.FC = () => {
                 </div>
               </div>
 
-              {/* 4. 입금 계좌 관리 그리드 (수납 자동매핑용) */}
+              {/* 4. 입금 계좌 관리 그리드 (수납 자동매핑용 - 통장 입금자 계좌 식별 불가로 안보이게 처리) */}
+              {/*
               <div style={{ padding: '8px 12px', backgroundColor: 'var(--bg-app)', borderRadius: '6px', border: '1px solid var(--border-color)' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
                   <div style={{ fontWeight: 600, fontSize: '12.5px', color: 'var(--text-main)', display: 'flex', alignItems: 'center', gap: '6px' }}>
@@ -1340,6 +1341,7 @@ export const Customers: React.FC = () => {
                   </table>
                 </div>
               </div>
+              */}
 
             </div>
           ) : (

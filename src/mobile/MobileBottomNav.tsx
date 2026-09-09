@@ -1,5 +1,5 @@
 import React from 'react';
-import { Home, Wrench, Truck, CheckSquare, Search, Send, Building2, PlusCircle, Boxes, ArrowDownToLine, Layers, Users, AlertTriangle, Car } from 'lucide-react';
+import { Home, Wrench, Truck, CheckSquare, Search, Send, Building2, PlusCircle, Boxes, ArrowDownToLine, Layers, Users, AlertTriangle, Car, Fuel } from 'lucide-react';
 import { MobileDeptMode } from './MobileHeader';
 
 export type MobileTabType = 
@@ -90,7 +90,7 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
       { id: 'home', label: '관리홈', icon: Home, badge: 0 },
       { id: 'sublease', label: '전대관리', icon: Layers, badge: subleaseLeakCount },
       { id: 'dispatch', label: '배차상차', icon: Truck, badge: pendingDispatchCount },
-      { id: 'vehicle_log', label: '차량일지', icon: Car, badge: 0 },
+      { id: 'vehicle_log', label: '주유영수증', icon: Fuel, badge: 0 },
       { id: 'assets', label: '자산목록', icon: Search, badge: 0 },
     ];
   }

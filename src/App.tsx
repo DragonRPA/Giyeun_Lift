@@ -5,7 +5,7 @@ import {
   LayoutDashboard, Users, UserCheck, Package, Layers, PlusCircle,
   Truck, Wrench, Shield, ShoppingBag, CreditCard, LogOut, Sun, Moon, Menu, X, Zap, Settings, Database as DatabaseIcon,
   TrendingUp, Clock, AlertTriangle, Building2, ChevronDown, ChevronRight, Briefcase, Box, FolderKanban, ShieldAlert, Terminal, ArrowLeftRight, CheckSquare,
-  Smartphone, Monitor, Car, FileText, Search, Printer
+  Smartphone, Monitor, Car, FileText, Search, Printer, PackagePlus, Boxes
 } from 'lucide-react';
 
 import { WeatherWidget } from './components/WeatherWidget';
@@ -21,6 +21,9 @@ import { AssetAcquisitionDisposal } from './pages/AssetAcquisitionDisposal';
 import { RentAssets } from './pages/rent_assets';
 import { InspectionChecklistManage } from './pages/inspection_checklist_manage';
 import { Consumables } from './pages/Consumables';
+import { ConsumablePurchasesPage } from './pages/ConsumablePurchasesPage';
+import { ConsumableInOutPage } from './pages/ConsumableInOutPage';
+import { ConsumableStockPage } from './pages/ConsumableStockPage';
 import { Contracts } from './pages/Contracts';
 import { Billings } from './pages/Billings';
 import { Receivables } from './pages/Receivables';
@@ -242,8 +245,10 @@ const App: React.FC = () => {
       name: '정비 / 소모품관리',
       icon: <Wrench size={17} />,
       items: [
+        { id: 'consumable_purchase', name: '소모품 구매', icon: <ShoppingBag size={16} />, component: <ConsumablePurchasesPage /> },
+        { id: 'consumable_inout', name: '소모품 입출고', icon: <PackagePlus size={16} />, component: <ConsumableInOutPage /> },
+        { id: 'consumable_stock', name: '소모품 재고', icon: <Boxes size={16} />, component: <ConsumableStockPage /> },
         { id: 'field_as', name: '현장 AS 관리', icon: <Wrench size={16} />, component: <FieldAsManagement /> },
-        { id: 'consumable', name: '소모품 관리', icon: <ShoppingBag size={16} />, component: <Consumables /> },
         { id: 'repair', name: '주기장 정비 관리', icon: <Wrench size={16} />, component: <Repairs /> },
         { id: 'inspection_checklist_manage', name: '정비항목관리', icon: <Shield size={16} />, component: <InspectionChecklistManage /> },
       ]
@@ -254,7 +259,7 @@ const App: React.FC = () => {
       icon: <FolderKanban size={17} />,
       items: [
         { id: 'leave_ot', name: '연차/OT 관리', icon: <Clock size={16} />, component: <LeaveOtPage /> },
-        { id: 'vehicle_log', name: '차량운행일지', icon: <Car size={16} />, component: <VehicleOperationLogPage /> },
+        { id: 'vehicle_log', name: '차량 / 주유관리', icon: <Car size={16} />, component: <VehicleOperationLogPage /> },
         { id: 'purchase_settlement', name: '월말 매입 정산', icon: <CreditCard size={16} />, component: <PurchaseSettlementPage /> },
         { id: 'vendors', name: '매입처 (공급자 / 외주처) 관리', icon: <Building2 size={16} />, component: <Vendors /> },
         { id: 'bank_matching', name: '은행 입출금 대장', icon: <TrendingUp size={16} />, component: <BankMatching /> },
@@ -401,6 +406,7 @@ const App: React.FC = () => {
   // 활성 페이지 컴포넌트 탐색
   const getActiveComponent = () => {
     if (activeTab === 'dashboard') return <Dashboard />;
+    if (activeTab === 'consumable' || activeTab === 'consumables') return <ConsumableStockPage />;
     for (const grp of menuGroups) {
       const found = grp.items.find(item => item.id === activeTab);
       if (found) return found.component;

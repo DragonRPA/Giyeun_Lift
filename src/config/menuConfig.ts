@@ -63,7 +63,9 @@ export const SYSTEM_MENU_CONFIG: MenuGroupConfig[] = [
     id: 'grp_maintenance',
     name: '정비 / 소모품관리',
     items: [
-      { id: 'consumable', name: '소모품 관리' },
+      { id: 'consumable_purchase', name: '소모품 구매' },
+      { id: 'consumable_inout', name: '소모품 입출고' },
+      { id: 'consumable_stock', name: '소모품 재고' },
       { id: 'field_as', name: '현장 AS 관리' },
       { id: 'repair', name: '주기장 정비 관리' },
       { id: 'inspection_checklist_manage', name: '정비항목관리' }
@@ -74,7 +76,7 @@ export const SYSTEM_MENU_CONFIG: MenuGroupConfig[] = [
     name: '경영관리',
     items: [
       { id: 'leave_ot', name: '연차/OT 관리' },
-      { id: 'vehicle_log', name: '차량운행일지' },
+      { id: 'vehicle_log', name: '차량 / 주유관리' },
       { id: 'vendors', name: '매입처 (공급자/외주처) 관리' },
       { id: 'bank_matching', name: '은행 입출금 대장' },
       { id: 'corporate_card', name: '법인카드 매입정산' },

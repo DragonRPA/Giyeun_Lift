@@ -38,7 +38,11 @@ export const ACCOUNTING_TEMPLATE: PermissionRuleMap = {
   contract: { canView: true, canSave: false },
   product: { canView: true, canSave: false },
   asset: { canView: true, canSave: false },
-  rent_asset: { canView: true, canSave: false },
+  // 소모품 구매 승인 및 입출고/재고 총괄
+  consumable_purchase: { canView: true, canSave: true },
+  consumable_inout: { canView: true, canSave: true },
+  consumable_stock: { canView: true, canSave: true },
+  consumable: { canView: true, canSave: true },
   // 에이전트 배지: 관리부는 로컬 출력 없음 → 비노출
   agent_badge: { canView: false, canSave: false }
 };
@@ -76,6 +80,10 @@ export const LOGISTICS_TEMPLATE: PermissionRuleMap = {
   product: { canView: true, canSave: false },
   asset: { canView: true, canSave: false },
   rent_asset: { canView: true, canSave: false },
+  // 소모품 입출고 (출고팀 검수 및 입출고 권한)
+  consumable_purchase: { canView: true, canSave: false },
+  consumable_inout: { canView: true, canSave: true },
+  consumable_stock: { canView: true, canSave: false },
   // 에이전트 배지: 출고팀은 서류 프린트 필수 → 노출
   agent_badge: { canView: true, canSave: false }
 };
@@ -83,6 +91,9 @@ export const LOGISTICS_TEMPLATE: PermissionRuleMap = {
 // 5. AS팀 (정비 / 현장AS / 소모품수불 / 점검표) - DEPT-0000005
 export const MECHANIC_TEMPLATE: PermissionRuleMap = {
   ...BASE_COMMON_PERMISSIONS,
+  consumable_purchase: { canView: true, canSave: true },
+  consumable_inout: { canView: true, canSave: true },
+  consumable_stock: { canView: true, canSave: true },
   consumable: { canView: true, canSave: true },
   field_as: { canView: true, canSave: true },
   repair: { canView: true, canSave: true },

@@ -65,7 +65,9 @@ export const SYSTEM_MENU_CONFIG: MenuGroupConfig[] = [
     id: 'grp_maintenance',
     name: '정비 / 소모품관리',
     items: [
-      { id: 'consumable', name: '소모품 관리' },
+      { id: 'consumable_purchase', name: '소모품 구매' },
+      { id: 'consumable_inout', name: '소모품 입출고' },
+      { id: 'consumable_stock', name: '소모품 재고' },
       { id: 'field_as', name: '현장 AS 관리' },
       { id: 'repair', name: '주기장 정비 관리' },
       { id: 'inspection_checklist_manage', name: '정비항목관리' }
@@ -76,7 +78,7 @@ export const SYSTEM_MENU_CONFIG: MenuGroupConfig[] = [
     name: '경영관리',
     items: [
       { id: 'leave_ot', name: '연차/OT 관리' },
-      { id: 'vehicle_log', name: '차량운행일지' },
+      { id: 'vehicle_log', name: '차량 / 주유관리' },
       { id: 'purchase_settlement', name: '월말 매입 정산' },
       { id: 'vendors', name: '매입처 (공급자/외주처) 관리' },
       { id: 'bank_matching', name: '은행 입출금 대장' },
@@ -121,7 +123,13 @@ export const getAllSystemMenuIds = (): string[] => {
 
 // 전사 복수형/변형 메뉴 ID를 단일 표준(SSOT) 단수형 ID로 정규화하는 별칭 맵
 export const CANONICAL_MENU_ALIASES: Record<string, string> = {
-  'consumables': 'consumable',
+  'consumables': 'consumable_stock',
+  'consumable': 'consumable_stock',
+  'consumable-purchase': 'consumable_purchase',
+  'consumable-purchases': 'consumable_purchase',
+  'consumable_purchases': 'consumable_purchase',
+  'consumable-inout': 'consumable_inout',
+  'consumable-stock': 'consumable_stock',
   'repairs': 'repair',
   'repairing': 'repair',
   'billings': 'billing',

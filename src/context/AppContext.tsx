@@ -652,9 +652,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
     }
 
-    // admin 또는 최고관리자 명칭 영구 정규화 (헌장 3.1 건조 표준)
+    // 진짜 개발자(admin, sys-admin) 계정만 '개발자'로 정규화 (사장/부사장 등 최고관리자 성명 보존)
     db.users.forEach(u => {
-      if (u.loginId === 'admin' || u.name === '최고관리자') {
+      if (u.loginId === 'admin' || u.id === 'sys-admin') {
         u.name = '개발자';
       }
     });
@@ -718,7 +718,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setPrintQueue([...db.printQueue]);
 
     setCurrentUser(prev => {
-      if (prev && (prev.loginId === 'admin' || prev.name === '최고관리자')) {
+      if (prev && (prev.loginId === 'admin' || prev.id === 'sys-admin')) {
         return { ...prev, name: '개발자' };
       }
       return prev;

@@ -37,16 +37,17 @@ export const Dashboard: React.FC = () => {
   const [directiveReportNote, setDirectiveReportNote] = useState<string>('');
   const [isSubmittingReport, setIsSubmittingReport] = useState(false);
 
+  const isTrueDeveloper = currentUser?.loginId === 'admin' || currentUser?.id === 'sys-admin';
   const userRole = currentUser?.role || 'SALES';
   const userDept = currentUser?.department || '';
   const isExecUser = userRole === 'ADMIN' || userRole === 'EXECUTIVE' || userRole === 'MANAGER' || userDept.includes('경영') || userDept.includes('대표');
 
-  // 사용자 메뉴 권한 기반 카드 노출 판단 플래그 (조치/저장 실행 권한 기준 단일 표준 ID)
-  const canActDelivery = hasPermission('delivery', 'save');
-  const canActRepair = hasPermission('repair', 'save');
-  const canActBilling = hasPermission('billing', 'save');
-  const canActContract = hasPermission('contract', 'save');
-  const canActRentAsset = hasPermission('rent_asset', 'save');
+  // 사용자 메뉴 권한 기반 카드 노출 판단 플래그 (조치/저장 실행 권한 기준 단일 표준 ID + 담당 역할/조회 권한 fallback)
+  const canActDelivery = hasPermission('delivery', 'save') || hasPermission('delivery', 'view') || isExecUser || userRole === 'LOGISTICS' || userRole === 'DELIVERY';
+  const canActRepair = hasPermission('repair', 'save') || hasPermission('repair', 'view') || isExecUser || userRole === 'REPAIR' || userRole === 'MECHANIC';
+  const canActBilling = hasPermission('billing', 'save') || hasPermission('billing', 'view') || isExecUser || userRole === 'ACCOUNTING';
+  const canActContract = hasPermission('contract', 'save') || hasPermission('contract', 'view') || isExecUser || userRole === 'SALES';
+  const canActRentAsset = hasPermission('rent_asset', 'save') || hasPermission('rent_asset', 'view') || isExecUser || userRole === 'LOGISTICS' || userRole === 'DELIVERY';
 
   // ── 📄 계약서패키지 재발송 모달 상태 ──
   const [showBundleModal, setShowBundleModal] = useState(false);
@@ -231,7 +232,10 @@ export const Dashboard: React.FC = () => {
   // 직무 역할 한글 매핑 및 배지 색상
   const getRoleBadge = () => {
     switch (role) {
-      case 'ADMIN': return { text: '개발자 (ADMIN)', color: '#ef4444', bg: 'rgba(239,68,68,0.1)' };
+      case 'ADMIN': 
+        return isTrueDeveloper 
+          ? { text: '시스템 개발자 (DEV)', color: '#ef4444', bg: 'rgba(239,68,68,0.1)' }
+          : { text: '최고관리자 (ADMIN)', color: '#ef4444', bg: 'rgba(239,68,68,0.1)' };
       case 'MANAGER': return { text: '부서관리자 (MANAGER)', color: '#22c55e', bg: 'rgba(34,197,94,0.1)' };
       case 'SALES': return { text: '영업담당자 (SALES)', color: '#3b82f6', bg: 'rgba(59,130,246,0.1)' };
       case 'REPAIR':
@@ -255,7 +259,7 @@ export const Dashboard: React.FC = () => {
       }}>
         <div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <h2 style={{ fontSize: '22px', fontWeight: '800', margin: 0 }}>반갑습니다, {(currentUser?.name === '최고관리자' || currentUser?.loginId === 'admin') ? '개발자' : (currentUser?.name || '임직원')}님!</h2>
+            <h2 style={{ fontSize: '22px', fontWeight: '800', margin: 0 }}>반갑습니다, {isTrueDeveloper ? '개발자' : (currentUser?.name || '임직원')}님!</h2>
             <span style={{
               fontSize: '11px', fontWeight: '800', padding: '3px 8px', borderRadius: '4px',
               color: badge.color, backgroundColor: badge.bg, border: `1px solid ${badge.color}`
@@ -290,7 +294,10 @@ export const Dashboard: React.FC = () => {
       {/* 권한(Permission) 기반 스마트 카드 피드 렌더링 섹션 */}
       {/* ──────────────────────────────────────────────────────── */}
       {(() => {
-        const requestedDeliveries = deliveries.filter(d => d.status === 'REQUESTED');
+        const requestedDeliveries = deliveries.filter(d => {
+          const st = d.status || 'PENDING';
+          return st === 'PENDING' || st === 'REQUESTED' || (st !== 'DISPATCHED' && st !== 'DELIVERED' && st !== 'COMPLETED' && st !== 'CANCELLED');
+        });
         const showDeliveryFeed = requestedDeliveries.length > 0 && canActDelivery;
         const showBillingFeed = unpaidBillings.length > 0 && canActBilling;
         const showRentAssetFeed = (overdueRentedCount > 0 || mismatchRentedCount > 0) && canActRentAsset;
@@ -349,10 +356,10 @@ export const Dashboard: React.FC = () => {
                           </span>
                           <span style={{
                             fontSize: '11px', fontWeight: '800', padding: '2px 6px', borderRadius: '4px',
-                            backgroundColor: del.type === 'OUTBOUND' ? 'rgba(59,130,246,0.15)' : 'rgba(245,158,11,0.15)',
-                            color: del.type === 'OUTBOUND' ? '#3b82f6' : '#f59e0b'
+                            backgroundColor: del.type === 'EXCHANGE' ? 'rgba(139,92,246,0.15)' : del.type === 'OUTBOUND' ? 'rgba(59,130,246,0.15)' : 'rgba(245,158,11,0.15)',
+                            color: del.type === 'EXCHANGE' ? '#8b5cf6' : del.type === 'OUTBOUND' ? '#3b82f6' : '#f59e0b'
                           }}>
-                            {del.type === 'OUTBOUND' ? '출고 배차' : '회수 배차'} (요청: {del.requestDate || del.createdAt.substring(0, 10)})
+                            {del.type === 'EXCHANGE' ? '대차 교환' : del.type === 'OUTBOUND' ? '출고 배차' : '회수 배차'} (요청: {del.requestDate || del.createdAt.substring(0, 10)})
                           </span>
                         </div>
                         <div style={{ fontSize: '12px', color: 'var(--text-muted)', display: 'flex', gap: '12px', flexWrap: 'wrap' }}>

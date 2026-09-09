@@ -876,6 +876,19 @@ const App: React.FC = () => {
               const originalAdmin = originalAdminStr ? JSON.parse(originalAdminStr) : null;
               const isSuperAdmin = currentUser.role === 'ADMIN' || originalAdmin?.role === 'ADMIN';
 
+              const isTrueDev = (u?: any) => u && (u.loginId === 'admin' || u.id === 'sys-admin');
+              const getUserDisplayName = (u?: any) => {
+                if (!u) return '임직원';
+                if (isTrueDev(u)) return '개발자';
+                return u.name || '임직원';
+              };
+              const getUserRoleLabel = (u?: any) => {
+                if (!u) return '임직원';
+                if (isTrueDev(u)) return '개발자';
+                if (u.role === 'ADMIN') return '최고관리자';
+                return u.role;
+              };
+
               if (isSuperAdmin) {
                 const allUsers = [...users];
                 if (originalAdmin && !allUsers.find(u => u.id === originalAdmin.id)) {
@@ -884,38 +897,40 @@ const App: React.FC = () => {
                   allUsers.unshift(currentUser);
                 }
 
-                return (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginRight: '4px' }}>
-                    <select
-                      value={currentUser.id}
-                      onChange={(e) => switchUser(e.target.value)}
-                      style={{
-                        padding: '4px 8px',
-                        borderRadius: '4px',
-                        border: '1px solid var(--border-color)',
-                        backgroundColor: 'var(--bg-app)',
-                        color: 'var(--text-primary)',
-                        fontSize: '13px',
-                        fontWeight: '600',
-                        cursor: 'pointer'
-                      }}
-                      title="[관리자 전용] 다른 사용자로 권한 테스트 전환"
-                    >
-                      <option value={currentUser.id}>{(currentUser.name === '최고관리자' || currentUser.loginId === 'admin') ? '개발자' : currentUser.name} ({currentUser.department}) - 현재</option>
-                      <optgroup label="다른 사용자로 전환">
-                        {allUsers.filter(u => u.id !== currentUser.id).map(u => (
-                          <option key={u.id} value={u.id}>{(u.name === '최고관리자' || u.loginId === 'admin') ? '개발자' : u.name} ({u.department} / {u.role === 'ADMIN' ? '개발자' : u.role})</option>
-                        ))}
-                      </optgroup>
-                    </select>
-                  </div>
-                );
+                if (allUsers.length > 0) {
+                  return (
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '2px' }}>
+                      <select
+                        value={currentUser.id}
+                        onChange={(e) => switchUser(e.target.value)}
+                        style={{
+                          padding: '4px 8px',
+                          fontSize: '12px',
+                          fontWeight: '700',
+                          borderRadius: '6px',
+                          border: '1px solid var(--primary)',
+                          backgroundColor: 'var(--bg-secondary)',
+                          color: 'var(--text-main)',
+                          cursor: 'pointer'
+                        }}
+                        title="[관리자 전용] 다른 사용자로 권한 테스트 전환"
+                      >
+                        <option value={currentUser.id}>{getUserDisplayName(currentUser)} ({currentUser.department}) - 현재</option>
+                        <optgroup label="다른 사용자로 전환">
+                          {allUsers.filter(u => u.id !== currentUser.id).map(u => (
+                            <option key={u.id} value={u.id}>{getUserDisplayName(u)} ({u.department} / {getUserRoleLabel(u)})</option>
+                          ))}
+                        </optgroup>
+                      </select>
+                    </div>
+                  );
+                }
               }
 
               return (
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
-                  <span style={{ fontSize: '13px', fontWeight: '700' }}>{(currentUser.name === '최고관리자' || currentUser.loginId === 'admin') ? '개발자' : currentUser.name} {currentUser.role === 'ADMIN' ? '개발자' : '임직원'}</span>
-                  <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{currentUser.department} ({currentUser.role === 'ADMIN' ? '개발자' : currentUser.role})</span>
+                  <span style={{ fontSize: '13px', fontWeight: '700' }}>{getUserDisplayName(currentUser)} {getUserRoleLabel(currentUser)}</span>
+                  <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{currentUser.department} ({getUserRoleLabel(currentUser)})</span>
                 </div>
               );
             })()}
@@ -923,7 +938,7 @@ const App: React.FC = () => {
               width: '36px', height: '36px', borderRadius: '50%', backgroundColor: 'var(--primary)', color: '#fff',
               display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: '700'
             }}>
-              {((currentUser.name === '최고관리자' || currentUser.loginId === 'admin') ? '개발자' : (currentUser.name || 'U')).substring(0, 1)}
+              {(((currentUser.loginId === 'admin' || currentUser.id === 'sys-admin') ? '개발자' : (currentUser.name || 'U'))).substring(0, 1)}
             </div>
           </div>
 

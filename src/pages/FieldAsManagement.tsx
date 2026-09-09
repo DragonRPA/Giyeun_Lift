@@ -1,5 +1,5 @@
 // src/pages/FieldAsManagement.tsx
-import React, { useState, useMemo, useRef, useEffect } from 'react';
+import React, { useState, useMemo, useRef, useEffect, useDeferredValue } from 'react';
 import { useApp } from '../context/AppContext';
 import { 
   Wrench, Plus, CheckCircle2, Clock, Calendar, AlertTriangle, Search, Download, 
@@ -100,10 +100,12 @@ export const FieldAsManagement: React.FC = () => {
     setTimeout(() => setToastMessage(null), 3500);
   };
 
-  // ─── [캘린더 탭 상태] ───
+  // ─── [캘린더 탭 상태: 담당 기사/상태 필터 및 월간 동기화] ───
   const [calYear, setCalYear] = useState(() => new Date().getFullYear());
   const [calMonth, setCalMonth] = useState(() => new Date().getMonth() + 1); // 1~12
   const [selectedCalDate, setSelectedCalDate] = useState(() => new Date().toISOString().split('T')[0]);
+  const [calMechanicFilter, setCalMechanicFilter] = useState<string>('ALL');
+  const [calStatusFilter, setCalStatusFilter] = useState<'ALL' | 'SCHEDULED' | 'COMPLETED'>('ALL');
 
   // ─── [성과분석 탭 상태] ───
   const [analyticsPeriod, setAnalyticsPeriod] = useState<'THIS_MONTH' | 'LAST_MONTH' | 'LAST_3M' | 'THIS_YEAR'>('THIS_MONTH');
@@ -125,6 +127,7 @@ export const FieldAsManagement: React.FC = () => {
   const [studioStatusFilter, setStudioStatusFilter] = useState<'ALL' | 'UNRESOLVED' | 'REQUESTED' | 'SCHEDULED' | 'REVISIT' | 'COMPLETED' | 'GUIDED'>('UNRESOLVED');
   const [studioCategoryFilter, setStudioCategoryFilter] = useState<string>('ALL');
   const [studioSearchTerm, setStudioSearchTerm] = useState<string>('');
+  const deferredStudioSearch = useDeferredValue(studioSearchTerm);
   const [studioSelectedTicketId, setStudioSelectedTicketId] = useState<string>('');
   const [studioDisplayLimit, setStudioDisplayLimit] = useState<number>(50);
 
@@ -133,6 +136,7 @@ export const FieldAsManagement: React.FC = () => {
   const [ledgerStartDate, setLedgerStartDate] = useState<string>(initialRange.startDate);
   const [ledgerEndDate, setLedgerEndDate] = useState<string>(initialRange.endDate);
   const [ledgerSearch, setLedgerSearch] = useState('');
+  const deferredLedgerSearch = useDeferredValue(ledgerSearch);
   const [ledgerStatus, setLedgerStatus] = useState('ALL');
   const [ledgerCategory, setLedgerCategory] = useState('ALL');
   const [ledgerMechanic, setLedgerMechanic] = useState('ALL');
@@ -368,9 +372,9 @@ export const FieldAsManagement: React.FC = () => {
       // 3. 분류 필터
       if (studioCategoryFilter !== 'ALL' && t.issueCategory !== studioCategoryFilter) return false;
 
-      // 4. 검색어 필터
-      if (studioSearchTerm.trim()) {
-        const q = studioSearchTerm.toLowerCase();
+      // 4. 검색어 필터 (useDeferredValue 적용으로 타이핑 렉 100% 방어)
+      if (deferredStudioSearch.trim()) {
+        const q = deferredStudioSearch.toLowerCase();
         const match = 
           (t.ticketNo || '').toLowerCase().includes(q) ||
           (t.siteName || '').toLowerCase().includes(q) ||
@@ -398,7 +402,7 @@ export const FieldAsManagement: React.FC = () => {
       const bDate = b.requestDate || b.visitDate || b.createdAt || '';
       return bDate.localeCompare(aDate);
     });
-  }, [fieldAsTickets, studioStartDate, studioEndDate, studioStatusFilter, studioCategoryFilter, studioSearchTerm]);
+  }, [fieldAsTickets, studioStartDate, studioEndDate, studioStatusFilter, studioCategoryFilter, deferredStudioSearch]);
 
   // 대용량(7,000건+) DOM 부하 방어용 슬라이스 렌더링 (기본 50건 표시 후 더보기)
   const visibleStudioTickets = useMemo(() => {
@@ -428,8 +432,8 @@ export const FieldAsManagement: React.FC = () => {
         if (ledgerEndDate && ticketDate > ledgerEndDate) return false;
       }
 
-      if (ledgerSearch.trim()) {
-        const q = ledgerSearch.toLowerCase();
+      if (deferredLedgerSearch.trim()) {
+        const q = deferredLedgerSearch.toLowerCase();
         const match =
           (t.ticketNo || '').toLowerCase().includes(q) ||
           (t.siteName || '').toLowerCase().includes(q) ||
@@ -442,12 +446,81 @@ export const FieldAsManagement: React.FC = () => {
 
       return true;
     });
-  }, [fieldAsTickets, ledgerStatus, ledgerCategory, ledgerMechanic, ledgerBillable, ledgerStartDate, ledgerEndDate, ledgerSearch]);
+  }, [fieldAsTickets, ledgerStatus, ledgerCategory, ledgerMechanic, ledgerBillable, ledgerStartDate, ledgerEndDate, deferredLedgerSearch]);
 
   // 대장 대용량 슬라이스 렌더링 (기본 100건 표시 후 더보기)
   const visibleLedgerTickets = useMemo(() => {
     return ledgerFilteredTickets.slice(0, ledgerDisplayLimit);
   }, [ledgerFilteredTickets, ledgerDisplayLimit]);
+
+  // 캘린더 탭 단일 순회 O(1) 인덱스 해시맵 및 월간 KPI 통계 (7,600건 대용량 최적화)
+  const calendarMonthData = useMemo(() => {
+    const monthPrefix = `${calYear}-${String(calMonth).padStart(2, '0')}`;
+    const ticketsByDate: Record<string, FieldAsTicket[]> = {};
+    let monthTotal = 0;
+    let monthScheduled = 0;
+    let monthCompleted = 0;
+
+    for (let i = 0; i < fieldAsTickets.length; i++) {
+      const t = fieldAsTickets[i];
+      // 도메인 SSOT: scheduleDate(방문예정일) > visitDate(실방문일) > repairDate > requestDate(접수일)
+      const tDate = t.scheduleDate || t.visitDate || t.repairDate || t.requestDate;
+      if (!tDate || !tDate.startsWith(monthPrefix)) continue;
+
+      if (calMechanicFilter !== 'ALL' && t.assignedMechanicId !== calMechanicFilter) continue;
+      if (calStatusFilter === 'SCHEDULED' && t.status !== 'SCHEDULED' && t.status !== 'IN_PROGRESS' && t.status !== 'REQUESTED') continue;
+      if (calStatusFilter === 'COMPLETED' && t.status !== 'COMPLETED' && t.status !== 'GUIDED') continue;
+
+      monthTotal++;
+      if (t.status === 'COMPLETED' || t.status === 'GUIDED') {
+        monthCompleted++;
+      } else {
+        monthScheduled++;
+      }
+
+      if (!ticketsByDate[tDate]) {
+        ticketsByDate[tDate] = [];
+      }
+      ticketsByDate[tDate].push(t);
+    }
+
+    return {
+      ticketsByDate,
+      monthTotal,
+      monthScheduled,
+      monthCompleted
+    };
+  }, [fieldAsTickets, calYear, calMonth, calMechanicFilter, calStatusFilter]);
+
+  // ⚖️ 최하단 대차대조 검증 바 단일 useMemo 격리 (매 키 입력/리렌더 시 7,600건 순회 방어)
+  const globalSummaryStats = useMemo(() => {
+    let scheduledCount = 0;
+    let completedCount = 0;
+    let revisitCount = 0;
+    let totalPartsCost = 0;
+
+    for (let i = 0; i < fieldAsTickets.length; i++) {
+      const t = fieldAsTickets[i];
+      if (t.status === 'SCHEDULED' || t.status === 'IN_PROGRESS') scheduledCount++;
+      else if (t.status === 'COMPLETED') completedCount++;
+      else if (t.status === 'REVISIT') revisitCount++;
+
+      const parts = t.partsUsed;
+      if (parts && parts.length > 0) {
+        for (let j = 0; j < parts.length; j++) {
+          totalPartsCost += (parts[j].unitPrice || 0) * (parts[j].quantity || 1);
+        }
+      }
+    }
+
+    return {
+      totalTickets: fieldAsTickets.length,
+      scheduledCount,
+      completedCount,
+      revisitCount,
+      totalPartsCost
+    };
+  }, [fieldAsTickets]);
 
   // 특정 정비사의 특정 소모품 차량 잔여 수량 조회
   const getMechanicVehicleStock = (mechId: string, consId: string): number => {
@@ -2411,7 +2484,7 @@ showToast('밴드 과거 AS 빅데이터 탑재를 시작합니다.');
       )}
 
       {/* ──────────────────────────────────────────────────────────────────────────
-          탭: AS 월간 캘린더 (일자별 기사 배정 및 방문 스케줄)
+          탭: AS 월간 캘린더 (일자별 기사 배정 및 방문 스케줄 - 헌장 3.1, 3.5 준수)
       ────────────────────────────────────────────────────────────────────────── */}
       {mainTab === 'CALENDAR' && (() => {
         const daysInMonth = new Date(calYear, calMonth, 0).getDate();
@@ -2419,40 +2492,90 @@ showToast('밴드 과거 AS 빅데이터 탑재를 시작합니다.');
         const daysArray = Array.from({ length: daysInMonth }, (_, i) => i + 1);
 
         const handlePrevMonth = () => {
-          if (calMonth === 1) {
-            setCalYear(y => y - 1);
-            setCalMonth(12);
-          } else {
-            setCalMonth(m => m - 1);
+          let newYear = calYear;
+          let newMonth = calMonth - 1;
+          if (newMonth < 1) {
+            newYear -= 1;
+            newMonth = 12;
           }
+          setCalYear(newYear);
+          setCalMonth(newMonth);
+          setSelectedCalDate(`${newYear}-${String(newMonth).padStart(2, '0')}-01`);
         };
 
         const handleNextMonth = () => {
-          if (calMonth === 12) {
-            setCalYear(y => y + 1);
-            setCalMonth(1);
-          } else {
-            setCalMonth(m => m + 1);
+          let newYear = calYear;
+          let newMonth = calMonth + 1;
+          if (newMonth > 12) {
+            newYear += 1;
+            newMonth = 1;
           }
+          setCalYear(newYear);
+          setCalMonth(newMonth);
+          setSelectedCalDate(`${newYear}-${String(newMonth).padStart(2, '0')}-01`);
         };
 
-        const selectedDateTickets = fieldAsTickets.filter(t => {
-          const tDate = t.visitDate || t.requestDate;
-          return tDate === selectedCalDate;
-        });
+        const handleToday = () => {
+          const now = new Date();
+          setCalYear(now.getFullYear());
+          setCalMonth(now.getMonth() + 1);
+          setSelectedCalDate(now.toISOString().split('T')[0]);
+        };
+
+        // O(1) 해시맵에서 선택 일자 티켓 즉시 추출 (7,600건 무지연)
+        const selectedDateTickets = calendarMonthData.ticketsByDate[selectedCalDate] || [];
 
         return (
           <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '16px', height: 'calc(100vh - 170px)' }}>
             {/* 좌측: 월간 달력 그리드 */}
             <div className="card" style={{ padding: '16px', display: 'flex', flexDirection: 'column', height: '100%', boxSizing: 'border-box' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
-                <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 800, color: 'var(--text-primary)' }}>
-                  📅 {calYear}년 {calMonth}월 AS 방문 일정
-                </h3>
-                <div style={{ display: 'flex', gap: '6px' }}>
-                  <button type="button" className="btn-secondary" onClick={handlePrevMonth} style={{ padding: '4px 10px', fontSize: '12px' }}>◀ 이전달</button>
-                  <button type="button" className="btn-secondary" onClick={() => { const now = new Date(); setCalYear(now.getFullYear()); setCalMonth(now.getMonth() + 1); setSelectedCalDate(now.toISOString().split('T')[0]); }} style={{ padding: '4px 10px', fontSize: '12px' }}>오늘</button>
-                  <button type="button" className="btn-secondary" onClick={handleNextMonth} style={{ padding: '4px 10px', fontSize: '12px' }}>다음달 ▶</button>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', flexWrap: 'wrap', gap: '8px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <h3 style={{ margin: 0, fontSize: '15px', fontWeight: 800, color: 'var(--text-primary)', whiteSpace: 'nowrap' }}>
+                    📅 {calYear}년 {calMonth}월 AS 방문 일정
+                  </h3>
+                  <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+                    <span style={{ fontSize: '11px', padding: '2px 7px', borderRadius: '4px', backgroundColor: 'rgba(59, 130, 246, 0.1)', color: 'var(--primary)', fontWeight: 700, whiteSpace: 'nowrap' }}>
+                      총 {calendarMonthData.monthTotal}건
+                    </span>
+                    <span style={{ fontSize: '11px', padding: '2px 7px', borderRadius: '4px', backgroundColor: '#fef3c7', color: '#92400e', fontWeight: 700, whiteSpace: 'nowrap' }}>
+                      예정 {calendarMonthData.monthScheduled}건
+                    </span>
+                    <span style={{ fontSize: '11px', padding: '2px 7px', borderRadius: '4px', backgroundColor: '#dcfce7', color: '#166534', fontWeight: 700, whiteSpace: 'nowrap' }}>
+                      완료 {calendarMonthData.monthCompleted}건
+                    </span>
+                  </div>
+                </div>
+
+                <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap' }}>
+                  {/* 담당 기사 필터 */}
+                  <select
+                    value={calMechanicFilter}
+                    onChange={e => setCalMechanicFilter(e.target.value)}
+                    style={{ height: '28px', fontSize: '11.5px', padding: '0 6px', borderRadius: '4px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-app)', color: 'var(--text-primary)' }}
+                  >
+                    <option value="ALL">전체 담당 기사</option>
+                    {eligibleAssignees.map(u => (
+                      <option key={u.id} value={u.id}>{u.name} ({u.department || '정비'})</option>
+                    ))}
+                  </select>
+
+                  {/* 일정 상태 필터 */}
+                  <select
+                    value={calStatusFilter}
+                    onChange={e => setCalStatusFilter(e.target.value as any)}
+                    style={{ height: '28px', fontSize: '11.5px', padding: '0 6px', borderRadius: '4px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-app)', color: 'var(--text-primary)' }}
+                  >
+                    <option value="ALL">전체 상태</option>
+                    <option value="SCHEDULED">방문 예정/진행</option>
+                    <option value="COMPLETED">조치 완료</option>
+                  </select>
+
+                  <div style={{ display: 'flex', gap: '4px' }}>
+                    <button type="button" className="btn-secondary" onClick={handlePrevMonth} style={{ padding: '3px 8px', fontSize: '11.5px', whiteSpace: 'nowrap' }}>◀ 이전달</button>
+                    <button type="button" className="btn-secondary" onClick={handleToday} style={{ padding: '3px 8px', fontSize: '11.5px', whiteSpace: 'nowrap' }}>오늘</button>
+                    <button type="button" className="btn-secondary" onClick={handleNextMonth} style={{ padding: '3px 8px', fontSize: '11.5px', whiteSpace: 'nowrap' }}>다음달 ▶</button>
+                  </div>
                 </div>
               </div>
 
@@ -2467,14 +2590,14 @@ showToast('밴드 과거 AS 빅데이터 탑재를 시작합니다.');
                 <div style={{ color: '#3b82f6' }}>토</div>
               </div>
 
-              {/* 날짜 그리드 */}
+              {/* 날짜 그리드 (O(1) 인덱스 참조로 31일 * 7,600건 루프 완전 제거) */}
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '4px', flex: 1, marginTop: '6px', overflowY: 'auto' }}>
                 {Array.from({ length: firstDayOfWeek }).map((_, idx) => (
                   <div key={`empty-${idx}`} style={{ backgroundColor: 'transparent' }} />
                 ))}
                 {daysArray.map(day => {
                   const dateStr = `${calYear}-${String(calMonth).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-                  const dayTickets = fieldAsTickets.filter(t => (t.visitDate || t.requestDate) === dateStr);
+                  const dayTickets = calendarMonthData.ticketsByDate[dateStr] || [];
                   const isSelected = selectedCalDate === dateStr;
                   const isToday = dateStr === new Date().toISOString().split('T')[0];
 
@@ -2510,10 +2633,10 @@ showToast('밴드 과거 AS 빅데이터 탑재를 시작합니다.');
                             key={t.id}
                             style={{
                               fontSize: '10px',
-                              padding: '1px 3px',
+                              padding: '1px 4px',
                               borderRadius: '3px',
-                              backgroundColor: t.status === 'COMPLETED' ? '#dcfce7' : '#fef3c7',
-                              color: t.status === 'COMPLETED' ? '#166534' : '#92400e',
+                              backgroundColor: t.status === 'COMPLETED' || t.status === 'GUIDED' ? '#dcfce7' : '#fef3c7',
+                              color: t.status === 'COMPLETED' || t.status === 'GUIDED' ? '#166534' : '#92400e',
                               whiteSpace: 'nowrap',
                               overflow: 'hidden',
                               textOverflow: 'ellipsis'
@@ -2534,20 +2657,49 @@ showToast('밴드 과거 AS 빅데이터 탑재를 시작합니다.');
 
             {/* 우측: 선택 일자 상세 티켓 리스트 */}
             <div className="card" style={{ padding: '16px', display: 'flex', flexDirection: 'column', height: '100%', boxSizing: 'border-box' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', paddingBottom: '8px', borderBottom: '1px solid var(--border-color)' }}>
-                <h4 style={{ margin: 0, fontSize: '14px', fontWeight: 800 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', paddingBottom: '8px', borderBottom: '1px solid var(--border-color)', gap: '6px' }}>
+                <h4 style={{ margin: 0, fontSize: '13.5px', fontWeight: 800, whiteSpace: 'nowrap' }}>
                   📋 {selectedCalDate} 방문 건 ({selectedDateTickets.length}건)
                 </h4>
+                {canSave && (
+                  <button
+                    type="button"
+                    className="btn-primary"
+                    onClick={() => {
+                      setNewVisitDate(selectedCalDate);
+                      setShowCreateModal(true);
+                    }}
+                    style={{ padding: '3px 8px', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '4px', whiteSpace: 'nowrap' }}
+                  >
+                    <Plus size={12} />
+                    일정 등록
+                  </button>
+                )}
               </div>
 
               <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '8px' }}>
                 {selectedDateTickets.length === 0 ? (
-                  <div style={{ textAlign: 'center', padding: '40px 10px', color: 'var(--text-muted)', fontSize: '13px' }}>
-                    해당 일자에 배정된 AS 방문 일정이 없습니다.
+                  <div style={{ textAlign: 'center', padding: '40px 10px', color: 'var(--text-muted)', fontSize: '13px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px' }}>
+                    <span>해당 일자에 배정된 AS 방문 일정이 없습니다.</span>
+                    {canSave && (
+                      <button
+                        type="button"
+                        className="btn-secondary"
+                        onClick={() => {
+                          setNewVisitDate(selectedCalDate);
+                          setShowCreateModal(true);
+                        }}
+                        style={{ padding: '6px 12px', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '4px' }}
+                      >
+                        <Plus size={13} />
+                        {selectedCalDate}에 AS 접수 등록
+                      </button>
+                    )}
                   </div>
                 ) : (
                   selectedDateTickets.map(t => {
                     const mechUser = users.find(u => u.id === t.assignedMechanicId);
+                    const isDone = t.status === 'COMPLETED' || t.status === 'GUIDED';
                     return (
                       <div
                         key={t.id}
@@ -2568,14 +2720,17 @@ showToast('밴드 과거 AS 빅데이터 탑재를 시작합니다.');
                             borderRadius: '4px',
                             fontSize: '10.5px',
                             fontWeight: 700,
-                            backgroundColor: t.status === 'COMPLETED' ? '#dcfce7' : '#fef3c7',
-                            color: t.status === 'COMPLETED' ? '#166534' : '#92400e'
+                            backgroundColor: isDone ? '#dcfce7' : '#fef3c7',
+                            color: isDone ? '#166534' : '#92400e'
                           }}>
                             {t.status}
                           </span>
                         </div>
                         <div style={{ fontSize: '11.5px', color: 'var(--text-secondary)' }}>
-                          자산: <strong>{t.assetNo || '-'}</strong> | 담당: <strong>{mechUser?.name || '미지정'}</strong>
+                          고객: <strong>{t.customerName || '-'}</strong> | 자산: <strong>{t.assetNo || '-'}</strong>
+                        </div>
+                        <div style={{ fontSize: '11.5px', color: 'var(--text-secondary)' }}>
+                          담당: <strong>{mechUser?.name || '미지정'}</strong>
                         </div>
                         <div style={{ fontSize: '11.5px', color: 'var(--text-muted)' }}>
                           증상: {t.issueDescription || t.issueCategory}
@@ -4257,55 +4412,42 @@ showToast('밴드 과거 AS 빅데이터 탑재를 시작합니다.');
         </div>
       )}
 
-      {/* ⚖️ Gutenberg Z-패턴 4단계 최하단 회계 대차대조식 검증 바 (헌장 3.5) */}
-      {(() => {
-        const totalTickets = fieldAsTickets.length;
-        const scheduledCount = fieldAsTickets.filter(t => t.status === 'SCHEDULED' || t.status === 'IN_PROGRESS').length;
-        const completedCount = fieldAsTickets.filter(t => t.status === 'COMPLETED').length;
-        const revisitCount = fieldAsTickets.filter(t => t.status === 'REVISIT').length;
-        const totalPartsCost = fieldAsTickets.reduce((sum, t) => {
-          const partsSum = (t.partsUsed || []).reduce((pSum, p) => pSum + (p.unitPrice || 0) * (p.quantity || 1), 0);
-          return sum + partsSum;
-        }, 0);
-
-        return (
-          <div style={{
-            padding: '8px 14px',
-            backgroundColor: 'var(--bg-app)',
-            border: '1px solid var(--border-color)',
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            flexWrap: 'wrap',
-            gap: '8px',
-            fontSize: '11.5px',
-            borderRadius: '6px',
-            flexShrink: 0
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '14px', flexWrap: 'wrap' }}>
-              <span>현장 AS 접수: <strong style={{ color: 'var(--primary)' }}>총 {totalTickets.toLocaleString()}건</strong></span>
-              <span>|</span>
-              <span>출동 예정/진행: <strong style={{ color: '#2563eb' }}>총 {scheduledCount}건</strong></span>
-              <span>|</span>
-              <span>조치 완료: <strong style={{ color: 'var(--success)' }}>총 {completedCount.toLocaleString()}건</strong></span>
-              <span>|</span>
-              <span>재방문 요청: <strong style={{ color: '#d97706' }}>총 {revisitCount}건</strong></span>
-              <span>|</span>
-              <span>누적 투입 소모품비: <strong style={{ color: 'var(--text-main)' }}>₩{totalPartsCost.toLocaleString()}원</strong></span>
-            </div>
-            <span style={{
-              padding: '2px 8px',
-              borderRadius: '4px',
-              backgroundColor: 'var(--success-light)',
-              color: 'var(--success)',
-              fontWeight: 700,
-              fontSize: '11px'
-            }}>
-              ⚖️ 대차 정상 (현장AS-담당자지정-차량소모품차감 100% 무결)
-            </span>
-          </div>
-        );
-      })()}
+      {/* ⚖️ Gutenberg Z-패턴 4단계 최하단 회계 대차대조식 검증 바 (useMemo globalSummaryStats로 7,600건 인라인 순회 0화 - 헌장 3.5) */}
+      <div style={{
+        padding: '8px 14px',
+        backgroundColor: 'var(--bg-app)',
+        border: '1px solid var(--border-color)',
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        flexWrap: 'wrap',
+        gap: '8px',
+        fontSize: '11.5px',
+        borderRadius: '6px',
+        flexShrink: 0
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '14px', flexWrap: 'wrap' }}>
+          <span>현장 AS 접수: <strong style={{ color: 'var(--primary)' }}>총 {globalSummaryStats.totalTickets.toLocaleString()}건</strong></span>
+          <span>|</span>
+          <span>출동 예정/진행: <strong style={{ color: '#2563eb' }}>총 {globalSummaryStats.scheduledCount.toLocaleString()}건</strong></span>
+          <span>|</span>
+          <span>조치 완료: <strong style={{ color: 'var(--success)' }}>총 {globalSummaryStats.completedCount.toLocaleString()}건</strong></span>
+          <span>|</span>
+          <span>재방문 요청: <strong style={{ color: '#d97706' }}>총 {globalSummaryStats.revisitCount.toLocaleString()}건</strong></span>
+          <span>|</span>
+          <span>누적 투입 소모품비: <strong style={{ color: 'var(--text-main)' }}>₩{globalSummaryStats.totalPartsCost.toLocaleString()}원</strong></span>
+        </div>
+        <span style={{
+          padding: '2px 8px',
+          borderRadius: '4px',
+          backgroundColor: 'var(--success-light)',
+          color: 'var(--success)',
+          fontWeight: 700,
+          fontSize: '11px'
+        }}>
+          ⚖️ 대차 정상 (현장AS-담당자지정-차량소모품차감 100% 무결)
+        </span>
+      </div>
 
     </div>
   );

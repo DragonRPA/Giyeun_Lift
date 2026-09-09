@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
 import * as XLSX from 'xlsx';
-import { Clock, Trash2, Download, Search, CheckCircle2, Plus, Minus, RotateCcw, ChevronLeft, ChevronRight, Calendar } from 'lucide-react';
+import { Clock, Trash2, Download, Search, CheckCircle2, Plus, Minus, RotateCcw, ChevronLeft, ChevronRight, Calendar, List } from 'lucide-react';
 import { User as UserType, Department, db } from '../services/db';
 
 const getTodayYmd = () => {
@@ -170,6 +170,43 @@ export const OtManagementPage: React.FC = () => {
   const canSave = hasPermission('ot_management', 'save');
   const isAdmin = currentUser?.role === 'ADMIN' || currentUser?.role === 'MANAGER';
 
+  // 뷰 모드 ('LIST' 목록 | 'CALENDAR' 캘린더) 및 등록창 접기 상태
+  const [viewMode, setViewMode] = useState<'LIST' | 'CALENDAR'>('LIST');
+  const [isFormCollapsed, setIsFormCollapsed] = useState<boolean>(false);
+
+  // 캘린더 연/월 및 선택 일자 상태
+  const now = new Date();
+  const [calYear, setCalYear] = useState<number>(now.getFullYear());
+  const [calMonth, setCalMonth] = useState<number>(now.getMonth() + 1);
+  const [selectedCalDate, setSelectedCalDate] = useState<string>(getTodayYmd());
+
+  const handlePrevCalMonth = () => {
+    if (calMonth === 1) {
+      setCalYear(y => y - 1);
+      setCalMonth(12);
+    } else {
+      setCalMonth(m => m - 1);
+    }
+  };
+
+  const handleNextCalMonth = () => {
+    if (calMonth === 12) {
+      setCalYear(y => y + 1);
+      setCalMonth(1);
+    } else {
+      setCalMonth(m => m + 1);
+    }
+  };
+
+  const handleTodayCalMonth = () => {
+    const cur = new Date();
+    setCalYear(cur.getFullYear());
+    setCalMonth(cur.getMonth() + 1);
+    const tYmd = getTodayYmd();
+    setSelectedCalDate(tYmd);
+    setOtDate(tYmd);
+  };
+
   // OT 연장근무 등록 폼 상태 (기본 시작시간 17:00, 근로시간 1.0시간)
   const [otDate, setOtDate] = useState<string>(getTodayYmd());
   const [otUserId, setOtUserId] = useState(currentUser?.id || '');
@@ -332,6 +369,33 @@ export const OtManagementPage: React.FC = () => {
     return (u?.name || '').toLowerCase().includes(q) || uDept.toLowerCase().includes(q) || (ot.workDetail || '').toLowerCase().includes(q);
   });
 
+  // 📅 캘린더 월간 데이터 계산 (윤달/역법 정합성 준수)
+  const daysInMonth = useMemo(() => new Date(calYear, calMonth, 0).getDate(), [calYear, calMonth]);
+  const firstDayOfWeek = useMemo(() => new Date(calYear, calMonth - 1, 1).getDay(), [calYear, calMonth]);
+  const daysArray = useMemo(() => Array.from({ length: daysInMonth }, (_, i) => i + 1), [daysInMonth]);
+
+  const calMonthPrefix = useMemo(() => `${calYear}-${String(calMonth).padStart(2, '0')}`, [calYear, calMonth]);
+  const calMonthRecords = useMemo(() => {
+    return filteredRecords.filter(r => (r.startDateTime || r.createdAt || '').startsWith(calMonthPrefix));
+  }, [filteredRecords, calMonthPrefix]);
+
+  const calMonthTotalHours = useMemo(() => {
+    return calMonthRecords.reduce((sum, r) => sum + (r.hours || 0), 0);
+  }, [calMonthRecords]);
+
+  // 날짜별 레코드 매핑 (YYYY-MM-DD -> records[])
+  const recordsByDateMap = useMemo(() => {
+    const map = new Map<string, typeof overtimeRecords>();
+    filteredRecords.forEach(r => {
+      const dStr = (r.startDateTime || r.createdAt || '').substring(0, 10);
+      if (!dStr) return;
+      const list = map.get(dStr) || [];
+      list.push(r);
+      map.set(dStr, list);
+    });
+    return map;
+  }, [filteredRecords]);
+
   return (
     <div style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
       
@@ -376,11 +440,12 @@ export const OtManagementPage: React.FC = () => {
         </div>
       </div>
 
-      {/* 2단 작업대 레이아웃 (좌: 등록 폼 / 우: 대장 그리드) */}
-      <div style={{ display: 'grid', gridTemplateColumns: '330px 1fr', gap: '20px' }}>
+      {/* 2단 작업대 레이아웃 (좌: 등록 폼 / 우: 대장 그리드 및 월간 캘린더) */}
+      <div style={{ display: 'grid', gridTemplateColumns: isFormCollapsed ? '1fr' : '330px 1fr', gap: '20px', transition: 'all 0.2s ease' }}>
         
         {/* 좌측: OT 연장근무 6단계 간편 등록 폼 (헌장 3.4 상하 세로 스택) */}
-        <div style={{
+        {!isFormCollapsed && (
+          <div style={{
           backgroundColor: 'var(--bg-surface)',
           padding: '20px',
           borderRadius: '8px',
@@ -835,108 +900,548 @@ export const OtManagementPage: React.FC = () => {
             </button>
           </form>
         </div>
+        )}
 
-        {/* 우측: OT 이력 테이블 */}
+        {/* 우측: OT 이력 작업대 (목록 대장 & 월간 캘린더) */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
           
-          {/* 필터 및 검색 바 */}
-          <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-            <div style={{ position: 'relative', flex: '1 1 200px', maxWidth: '320px' }}>
-              <Search size={14} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
-              <input
-                type="text"
-                placeholder="성명 또는 업무 내용 검색..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
+          {/* 상단 툴바: 검색, 임직원 필터, 등록창 토글, 뷰 모드(목록/캘린더) 전환 */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
+            <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', flex: 1 }}>
+              <div style={{ position: 'relative', flex: '1 1 200px', maxWidth: '300px' }}>
+                <Search size={14} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+                <input
+                  type="text"
+                  placeholder="성명 또는 업무 내용 검색..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="form-control"
+                  style={{ paddingLeft: '32px', fontSize: '13px' }}
+                />
+              </div>
+
+              <select
+                value={userFilter}
+                onChange={(e) => setUserFilter(e.target.value)}
                 className="form-control"
-                style={{ paddingLeft: '32px', fontSize: '13px' }}
-              />
+                style={{ width: '170px', fontSize: '13px' }}
+              >
+                <option value="ALL">전체 임직원</option>
+                {sortedUsers.map(u => {
+                  const deptName = getEmployeeDeptName(u);
+                  return (
+                    <option key={u.id} value={u.id}>
+                      {u.name} {deptName ? `(${deptName})` : ''}
+                    </option>
+                  );
+                })}
+              </select>
             </div>
 
-            <select
-              value={userFilter}
-              onChange={(e) => setUserFilter(e.target.value)}
-              className="form-control"
-              style={{ width: '170px', fontSize: '13px' }}
-            >
-              <option value="ALL">전체 임직원</option>
-              {sortedUsers.map(u => {
-                const deptName = getEmployeeDeptName(u);
-                return (
-                  <option key={u.id} value={u.id}>
-                    {u.name} {deptName ? `(${deptName})` : ''}
-                  </option>
-                );
-              })}
-            </select>
+            {/* 우측: 등록창 토글 & 뷰 모드(목록/캘린더) 세그먼트 */}
+            <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexShrink: 0 }}>
+              <button
+                type="button"
+                onClick={() => setIsFormCollapsed(prev => !prev)}
+                className="btn btn-secondary"
+                style={{
+                  fontSize: '12px',
+                  padding: '6px 11px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '5px',
+                  backgroundColor: 'var(--bg-surface)',
+                  color: 'var(--text-secondary)'
+                }}
+                title={isFormCollapsed ? 'OT 등록창 펼치기' : 'OT 등록창 숨기기'}
+              >
+                {isFormCollapsed ? (
+                  <>
+                    <Plus size={13} />
+                    <span>등록창 표시</span>
+                  </>
+                ) : (
+                  <>
+                    <Minus size={13} />
+                    <span>등록창 숨김</span>
+                  </>
+                )}
+              </button>
+
+              <div style={{
+                display: 'inline-flex',
+                backgroundColor: 'var(--bg-main)',
+                borderRadius: '6px',
+                border: '1px solid var(--border-color)',
+                padding: '2px'
+              }}>
+                <button
+                  type="button"
+                  onClick={() => setViewMode('LIST')}
+                  style={{
+                    padding: '5px 12px',
+                    fontSize: '12px',
+                    fontWeight: viewMode === 'LIST' ? 700 : 500,
+                    borderRadius: '4px',
+                    border: 'none',
+                    backgroundColor: viewMode === 'LIST' ? 'var(--primary)' : 'transparent',
+                    color: viewMode === 'LIST' ? '#fff' : 'var(--text-secondary)',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '5px',
+                    transition: 'all 0.15s ease'
+                  }}
+                >
+                  <List size={13} />
+                  <span>목록</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setViewMode('CALENDAR')}
+                  style={{
+                    padding: '5px 12px',
+                    fontSize: '12px',
+                    fontWeight: viewMode === 'CALENDAR' ? 700 : 500,
+                    borderRadius: '4px',
+                    border: 'none',
+                    backgroundColor: viewMode === 'CALENDAR' ? 'var(--primary)' : 'transparent',
+                    color: viewMode === 'CALENDAR' ? '#fff' : 'var(--text-secondary)',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '5px',
+                    transition: 'all 0.15s ease'
+                  }}
+                >
+                  <Calendar size={13} />
+                  <span>캘린더</span>
+                </button>
+              </div>
+            </div>
           </div>
 
-          <div style={{ backgroundColor: 'var(--bg-surface)', borderRadius: '8px', border: '1px solid var(--border-color)', overflowX: 'auto' }}>
-            <table style={{ width: '100%', minWidth: '650px', borderCollapse: 'collapse', fontSize: '13px', textAlign: 'left' }}>
-              <thead>
-                <tr style={{ backgroundColor: 'var(--bg-main)', borderBottom: '1px solid var(--border-color)', color: 'var(--text-muted)' }}>
-                  <th style={{ padding: '10px 14px', whiteSpace: 'nowrap', width: '80px' }}>취소</th>
-                  <th style={{ padding: '10px 14px', whiteSpace: 'nowrap' }}>성명</th>
-                  <th style={{ padding: '10px 14px', whiteSpace: 'nowrap' }}>부서</th>
-                  <th style={{ padding: '10px 14px', whiteSpace: 'nowrap' }}>시작 일시</th>
-                  <th style={{ padding: '10px 14px', whiteSpace: 'nowrap', textAlign: 'center' }}>OT 시간</th>
-                  <th style={{ padding: '10px 14px', whiteSpace: 'nowrap' }}>근무 상세 내용</th>
-                  <th style={{ padding: '10px 14px', whiteSpace: 'nowrap' }}>등록일시</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredRecords.length === 0 ? (
-                  <tr>
-                    <td colSpan={7} style={{ padding: '32px', textAlign: 'center', color: 'var(--text-muted)' }}>
-                      조회된 OT 연장근무 내역이 없습니다.
-                    </td>
+          {/* 📋 1. 목록 뷰 */}
+          {viewMode === 'LIST' && (
+            <div style={{ backgroundColor: 'var(--bg-surface)', borderRadius: '8px', border: '1px solid var(--border-color)', overflowX: 'auto' }}>
+              <table style={{ width: '100%', minWidth: '650px', borderCollapse: 'collapse', fontSize: '13px', textAlign: 'left' }}>
+                <thead>
+                  <tr style={{ backgroundColor: 'var(--bg-main)', borderBottom: '1px solid var(--border-color)', color: 'var(--text-muted)' }}>
+                    <th style={{ padding: '10px 14px', whiteSpace: 'nowrap', width: '80px' }}>취소</th>
+                    <th style={{ padding: '10px 14px', whiteSpace: 'nowrap' }}>성명</th>
+                    <th style={{ padding: '10px 14px', whiteSpace: 'nowrap' }}>부서</th>
+                    <th style={{ padding: '10px 14px', whiteSpace: 'nowrap' }}>시작 일시</th>
+                    <th style={{ padding: '10px 14px', whiteSpace: 'nowrap', textAlign: 'center' }}>OT 시간</th>
+                    <th style={{ padding: '10px 14px', whiteSpace: 'nowrap' }}>근무 상세 내용</th>
+                    <th style={{ padding: '10px 14px', whiteSpace: 'nowrap' }}>등록일시</th>
                   </tr>
-                ) : (
-                  filteredRecords.map((ot) => {
-                    const u = sortedUsers.find(user => user.id === ot.userId) || users.find(user => user.id === ot.userId);
-                    const uName = u?.name || '알 수 없음';
-                    const uDept = getEmployeeDeptName(u) || '미지정';
-                    const canDelete = ot.userId === currentUser?.id || isAdmin || canSave;
+                </thead>
+                <tbody>
+                  {filteredRecords.length === 0 ? (
+                    <tr>
+                      <td colSpan={7} style={{ padding: '32px', textAlign: 'center', color: 'var(--text-muted)' }}>
+                        조회된 OT 연장근무 내역이 없습니다.
+                      </td>
+                    </tr>
+                  ) : (
+                    filteredRecords.map((ot) => {
+                      const u = sortedUsers.find(user => user.id === ot.userId) || users.find(user => user.id === ot.userId);
+                      const uName = u?.name || '알 수 없음';
+                      const uDept = getEmployeeDeptName(u) || '미지정';
+                      const canDelete = ot.userId === currentUser?.id || isAdmin || canSave;
+
+                      return (
+                        <tr key={ot.id} style={{ borderBottom: '1px solid var(--border-color)' }}>
+                          <td style={{ padding: '10px 14px', whiteSpace: 'nowrap' }}>
+                            {canDelete && (
+                              <button
+                                onClick={() => handleDeleteOt(ot.id, uName, ot.hours)}
+                                className="btn btn-secondary"
+                                style={{ fontSize: '11px', padding: '3px 8px', color: 'var(--danger)' }}
+                                title="OT 내역 취소"
+                              >
+                                <Trash2 size={12} />
+                              </button>
+                            )}
+                          </td>
+                          <td style={{ padding: '10px 14px', whiteSpace: 'nowrap', fontWeight: 'bold' }}>
+                            {uName}
+                          </td>
+                          <td style={{ padding: '10px 14px', whiteSpace: 'nowrap', color: 'var(--text-muted)' }}>
+                            {uDept}
+                          </td>
+                          <td style={{ padding: '10px 14px', whiteSpace: 'nowrap', fontSize: '12px' }}>
+                            {ot.startDateTime}
+                          </td>
+                          <td style={{ padding: '10px 14px', whiteSpace: 'nowrap', textAlign: 'center', fontWeight: 'bold', color: 'var(--primary)' }}>
+                            +{ot.hours} 시간
+                          </td>
+                          <td style={{ padding: '10px 14px', whiteSpace: 'nowrap', color: 'var(--text-muted)' }}>
+                            {ot.workDetail}
+                          </td>
+                          <td style={{ padding: '10px 14px', whiteSpace: 'nowrap', color: 'var(--text-muted)', fontSize: '12px' }}>
+                            {ot.createdAt?.substring(0, 10)}
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {/* 📅 2. 캘린더 뷰 */}
+          {viewMode === 'CALENDAR' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              {/* 캘린더 월간 이동 헤더 바 */}
+              <div style={{
+                backgroundColor: 'var(--bg-surface)',
+                border: '1px solid var(--border-color)',
+                borderRadius: '8px',
+                padding: '12px 18px',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                flexWrap: 'wrap',
+                gap: '10px'
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+                  <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 800, color: 'var(--text-main)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <Calendar size={18} style={{ color: 'var(--primary)' }} />
+                    <span>{calYear}년 {calMonth}월 초과근무 캘린더</span>
+                  </h3>
+                  <span style={{
+                    fontSize: '12px',
+                    fontWeight: 700,
+                    padding: '3px 10px',
+                    borderRadius: '12px',
+                    backgroundColor: 'rgba(59, 130, 246, 0.12)',
+                    color: 'var(--primary)',
+                    whiteSpace: 'nowrap'
+                  }}>
+                    당월 합계 {calMonthTotalHours.toFixed(1)}시간 ({calMonthRecords.length}건)
+                  </span>
+                  {userFilter !== 'ALL' && (
+                    <span style={{
+                      fontSize: '11.5px',
+                      fontWeight: 600,
+                      padding: '2px 8px',
+                      borderRadius: '4px',
+                      backgroundColor: 'rgba(217, 119, 6, 0.12)',
+                      color: '#d97706',
+                      whiteSpace: 'nowrap'
+                    }}>
+                      필터: {sortedUsers.find(u => u.id === userFilter)?.name || '직원'}
+                    </span>
+                  )}
+                </div>
+
+                <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                  <button
+                    type="button"
+                    onClick={handlePrevCalMonth}
+                    className="btn btn-secondary"
+                    style={{ padding: '6px 12px', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '4px' }}
+                  >
+                    <ChevronLeft size={14} /> 이전달
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleTodayCalMonth}
+                    className="btn btn-secondary"
+                    style={{ padding: '6px 12px', fontSize: '12px', fontWeight: 700 }}
+                  >
+                    오늘
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleNextCalMonth}
+                    className="btn btn-secondary"
+                    style={{ padding: '6px 12px', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '4px' }}
+                  >
+                    다음달 <ChevronRight size={14} />
+                  </button>
+                </div>
+              </div>
+
+              {/* 월간 캘린더 그리드 */}
+              <div style={{
+                backgroundColor: 'var(--bg-surface)',
+                border: '1px solid var(--border-color)',
+                borderRadius: '8px',
+                padding: '14px',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '8px',
+                overflowX: 'auto'
+              }}>
+                {/* 요일 헤더 (7열) */}
+                <div style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(7, minmax(105px, 1fr))',
+                  gap: '6px',
+                  textAlign: 'center',
+                  fontWeight: 700,
+                  fontSize: '12px',
+                  paddingBottom: '8px',
+                  borderBottom: '1px solid var(--border-color)'
+                }}>
+                  <div style={{ color: '#ef4444' }}>일</div>
+                  <div style={{ color: 'var(--text-secondary)' }}>월</div>
+                  <div style={{ color: 'var(--text-secondary)' }}>화</div>
+                  <div style={{ color: 'var(--text-secondary)' }}>수</div>
+                  <div style={{ color: 'var(--text-secondary)' }}>목</div>
+                  <div style={{ color: 'var(--text-secondary)' }}>금</div>
+                  <div style={{ color: '#3b82f6' }}>토</div>
+                </div>
+
+                {/* 일자별 그리드 */}
+                <div style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(7, minmax(105px, 1fr))',
+                  gap: '6px'
+                }}>
+                  {/* 시작 요일 전 빈 셀 */}
+                  {Array.from({ length: firstDayOfWeek }).map((_, idx) => (
+                    <div
+                      key={`empty-cal-${idx}`}
+                      style={{
+                        minHeight: '115px',
+                        backgroundColor: 'var(--bg-main)',
+                        borderRadius: '6px',
+                        opacity: 0.3,
+                        border: '1px dashed var(--border-color)'
+                      }}
+                    />
+                  ))}
+
+                  {/* 1일 ~ 말일 셀 */}
+                  {daysArray.map(day => {
+                    const dayStr = String(day).padStart(2, '0');
+                    const monthStr = String(calMonth).padStart(2, '0');
+                    const dateStr = `${calYear}-${monthStr}-${dayStr}`;
+                    const dayRecords = recordsByDateMap.get(dateStr) || [];
+                    const dayTotalHours = dayRecords.reduce((sum, r) => sum + (r.hours || 0), 0);
+                    const isToday = dateStr === getTodayYmd();
+                    const isSelected = selectedCalDate === dateStr || otDate === dateStr;
+                    const dayOfWeek = (firstDayOfWeek + day - 1) % 7; // 0: 일, 6: 토
 
                     return (
-                      <tr key={ot.id} style={{ borderBottom: '1px solid var(--border-color)' }}>
-                        <td style={{ padding: '10px 14px', whiteSpace: 'nowrap' }}>
-                          {canDelete && (
-                            <button
-                              onClick={() => handleDeleteOt(ot.id, uName, ot.hours)}
-                              className="btn btn-secondary"
-                              style={{ fontSize: '11px', padding: '3px 8px', color: 'var(--danger)' }}
-                              title="OT 내역 취소"
-                            >
-                              <Trash2 size={12} />
-                            </button>
+                      <div
+                        key={dateStr}
+                        onClick={() => {
+                          setSelectedCalDate(dateStr);
+                          setOtDate(dateStr);
+                        }}
+                        style={{
+                          minHeight: '115px',
+                          borderRadius: '6px',
+                          border: isSelected ? '2px solid var(--primary)' : isToday ? '1.5px solid rgba(59,130,246,0.6)' : '1px solid var(--border-color)',
+                          backgroundColor: isSelected ? 'rgba(59, 130, 246, 0.08)' : isToday ? 'rgba(59, 130, 246, 0.03)' : 'var(--bg-main)',
+                          padding: '6px',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          gap: '4px',
+                          cursor: 'pointer',
+                          transition: 'all 0.15s ease',
+                          position: 'relative'
+                        }}
+                      >
+                        {/* 셀 상단: 일자 번호 & 일별 합계 배지 */}
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <span style={{
+                            fontSize: '12px',
+                            fontWeight: isToday || isSelected ? 800 : 600,
+                            color: isToday ? '#fff' : dayOfWeek === 0 ? '#ef4444' : dayOfWeek === 6 ? '#3b82f6' : 'var(--text-main)',
+                            backgroundColor: isToday ? 'var(--primary)' : 'transparent',
+                            borderRadius: isToday ? '50%' : '0',
+                            width: isToday ? '20px' : 'auto',
+                            height: isToday ? '20px' : 'auto',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center'
+                          }}>
+                            {day}
+                          </span>
+
+                          {dayRecords.length > 0 && (
+                            <span style={{
+                              fontSize: '10.5px',
+                              fontWeight: 700,
+                              padding: '1px 6px',
+                              borderRadius: '8px',
+                              backgroundColor: 'rgba(217, 119, 6, 0.18)',
+                              color: '#d97706',
+                              whiteSpace: 'nowrap'
+                            }}>
+                              +{dayTotalHours.toFixed(1)}h
+                            </span>
                           )}
-                        </td>
-                        <td style={{ padding: '10px 14px', whiteSpace: 'nowrap', fontWeight: 'bold' }}>
-                          {uName}
-                        </td>
-                        <td style={{ padding: '10px 14px', whiteSpace: 'nowrap', color: 'var(--text-muted)' }}>
-                          {uDept}
-                        </td>
-                        <td style={{ padding: '10px 14px', whiteSpace: 'nowrap', fontSize: '12px' }}>
-                          {ot.startDateTime}
-                        </td>
-                        <td style={{ padding: '10px 14px', whiteSpace: 'nowrap', textAlign: 'center', fontWeight: 'bold', color: 'var(--primary)' }}>
-                          +{ot.hours} 시간
-                        </td>
-                        <td style={{ padding: '10px 14px', whiteSpace: 'nowrap', color: 'var(--text-muted)' }}>
-                          {ot.workDetail}
-                        </td>
-                        <td style={{ padding: '10px 14px', whiteSpace: 'nowrap', color: 'var(--text-muted)', fontSize: '12px' }}>
-                          {ot.createdAt?.substring(0, 10)}
-                        </td>
-                      </tr>
+                        </div>
+
+                        {/* 셀 본문: OT 명단 칩 목록 */}
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', flex: 1, overflowY: 'auto' }}>
+                          {dayRecords.slice(0, 3).map(ot => {
+                            const u = sortedUsers.find(user => user.id === ot.userId) || users.find(user => user.id === ot.userId);
+                            const uName = u?.name || '직원';
+                            const uDept = getEmployeeDeptName(u);
+                            const canDelete = ot.userId === currentUser?.id || isAdmin || canSave;
+
+                            return (
+                              <div
+                                key={ot.id}
+                                style={{
+                                  padding: '3px 6px',
+                                  borderRadius: '4px',
+                                  backgroundColor: 'var(--bg-surface)',
+                                  border: '1px solid var(--border-color)',
+                                  fontSize: '10.5px',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'space-between',
+                                  gap: '4px'
+                                }}
+                              >
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '3px', overflow: 'hidden', whiteSpace: 'nowrap' }}>
+                                  <strong style={{ color: 'var(--text-main)' }}>{uName}</strong>
+                                  {uDept && <span style={{ fontSize: '9px', color: 'var(--text-muted)' }}>({uDept})</span>}
+                                </div>
+
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '3px', flexShrink: 0 }}>
+                                  <span style={{ fontWeight: 700, color: 'var(--primary)', fontSize: '10px' }}>
+                                    +{ot.hours}h
+                                  </span>
+                                  {canDelete && (
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleDeleteOt(ot.id, uName, ot.hours);
+                                      }}
+                                      style={{
+                                        background: 'none',
+                                        border: 'none',
+                                        padding: '1px',
+                                        cursor: 'pointer',
+                                        color: 'var(--danger)',
+                                        opacity: 0.7,
+                                        display: 'flex',
+                                        alignItems: 'center'
+                                      }}
+                                      title="OT 취소"
+                                    >
+                                      <Trash2 size={10} />
+                                    </button>
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          })}
+
+                          {dayRecords.length > 3 && (
+                            <span style={{ fontSize: '9.5px', color: 'var(--text-muted)', textAlign: 'center', paddingTop: '2px' }}>
+                              +{dayRecords.length - 3}건 더보기
+                            </span>
+                          )}
+                        </div>
+                      </div>
                     );
-                  })
-                )}
-              </tbody>
-            </table>
-          </div>
+                  })}
+                </div>
+              </div>
+
+              {/* 📌 선택 날짜 상세 패널 */}
+              {selectedCalDate && (
+                <div style={{
+                  backgroundColor: 'var(--bg-surface)',
+                  border: '1px solid var(--border-color)',
+                  borderRadius: '8px',
+                  padding: '14px 18px',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '10px'
+                }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                      <span style={{ fontSize: '13.5px', fontWeight: 800, color: 'var(--text-main)' }}>
+                        📌 {selectedCalDate} 초과근무 상세 ({(recordsByDateMap.get(selectedCalDate) || []).length}건)
+                      </span>
+                      <span style={{ fontSize: '12.5px', fontWeight: 700, color: '#d97706' }}>
+                        합계 +{((recordsByDateMap.get(selectedCalDate) || []).reduce((sum, r) => sum + (r.hours || 0), 0)).toFixed(1)}시간
+                      </span>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setOtDate(selectedCalDate);
+                        setIsFormCollapsed(false);
+                      }}
+                      className="btn btn-secondary"
+                      style={{ fontSize: '12px', padding: '5px 12px', color: 'var(--primary)', fontWeight: 700, backgroundColor: 'rgba(59, 130, 246, 0.08)', border: '1px solid rgba(59, 130, 246, 0.25)' }}
+                    >
+                      + 이 날짜에 OT 추가 등록
+                    </button>
+                  </div>
+
+                  {(recordsByDateMap.get(selectedCalDate) || []).length === 0 ? (
+                    <div style={{ padding: '16px', textAlign: 'center', fontSize: '12.5px', color: 'var(--text-muted)' }}>
+                      선택된 일자에 등록된 OT 내역이 없습니다.
+                    </div>
+                  ) : (
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: '8px' }}>
+                      {(recordsByDateMap.get(selectedCalDate) || []).map(ot => {
+                        const u = sortedUsers.find(user => user.id === ot.userId) || users.find(user => user.id === ot.userId);
+                        const uName = u?.name || '직원';
+                        const uDept = getEmployeeDeptName(u) || '미지정';
+                        const canDelete = ot.userId === currentUser?.id || isAdmin || canSave;
+
+                        return (
+                          <div
+                            key={ot.id}
+                            style={{
+                              backgroundColor: 'var(--bg-main)',
+                              border: '1px solid var(--border-color)',
+                              borderRadius: '6px',
+                              padding: '10px 12px',
+                              display: 'flex',
+                              justifyContent: 'space-between',
+                              alignItems: 'center',
+                              gap: '10px'
+                            }}
+                          >
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', overflow: 'hidden' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                <strong style={{ fontSize: '13px', color: 'var(--text-main)' }}>{uName}</strong>
+                                <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>({uDept})</span>
+                                <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--primary)' }}>+{ot.hours}시간</span>
+                              </div>
+                              <div style={{ fontSize: '11.5px', color: 'var(--text-secondary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                {ot.workDetail} ({ot.startDateTime?.split(' ')[1] || '17:00'} 시작)
+                              </div>
+                            </div>
+
+                            {canDelete && (
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteOt(ot.id, uName, ot.hours)}
+                                className="btn btn-secondary"
+                                style={{ fontSize: '11px', padding: '4px 8px', color: 'var(--danger)', flexShrink: 0 }}
+                                title="OT 취소"
+                              >
+                                <Trash2 size={12} />
+                              </button>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </div>
 

@@ -1,3 +1,31 @@
+## [v1.12.0.Build.12] - 2026-09-09 18:35
+
+### 🚀 [OT 관리 월간 캘린더 뷰 모드 신설 & 밴드 AS 이력 contract_history CHECK 제약조건 확장 동기화]
+
+**배경**:
+1. 사용자 요구("OT 관리 캘린더로 보기 기능 추가")에 따라 텍스트 목록 대장 외에 월간 전체 초과근무 현황을 일자별/임직원별로 한눈에 파악할 수 있는 월간 캘린더 뷰를 구축함.
+2. 사용자 오류 보고("밴드 AS 적재 오류: contract_history 저장 실패: new row for relation "contract_history" violates check constraint "contract_history_changeType_check"")에 따라 Supabase 원격 DB의 `contract_history` CHECK 제약조건을 확장 갱신함.
+
+**개편 내역**:
+1. **OT 관리 월간 캘린더 뷰 모드 및 등록 폼 상호연동 (`src/pages/OtManagementPage.tsx`)**:
+   - **뷰 모드 세그먼트 전환**: 우측 툴바에 `[📋 목록]` / `[📅 캘린더]` 탭을 배치하여 원클릭으로 전환 지원.
+   - **등록창 접기/펼치기 토글**: `[등록창 숨김 / 등록창 표시]` 버튼으로 캘린더를 100% 전폭 화면으로 시원하게 확장 조망 가능.
+   - **검색 및 임직원 필터 100% 동기화**: `성명 또는 업무 내용 검색` 및 `전체 임직원` 드롭다운이 캘린더 뷰에도 실시간 연동되어 특정 직원/부서의 월간 OT만 집중 조회.
+   - **월간 캘린더 그리드**:
+     - 상단 바: `YYYY년 M월 초과근무 캘린더`, 당월 총 시간 배지(`당월 합계 N시간 (M건)`), `◀ 이전달` / `오늘` / `다음달 ▶` 내비게이션.
+     - 7열 요일 헤더: 일요일(빨강), 평일(그레이), 토요일(파랑) 표준 컬러 가이드 준수.
+     - 일자별 셀 (Day Cell): 일자 번호 (오늘 파란 원형 배지), 일별 총 OT 시간 합계 배지(`+N.Nh`), 일별 OT 명단 칩(성명, 부서, 시간 배지, 1클릭 취소 휴지통 아이콘).
+     - **원클릭 등록 폼 연동 (헌장 1.1 최대 편익)**: 캘린더 날짜 셀 클릭 시 좌측 등록 폼의 `1. 날짜 지정`이 해당 날짜로 즉시 자동 세팅되어 연속 등록 지원.
+   - **선택 날짜 상세 패널**: 캘린더 하단에 선택 일자의 전체 OT 근무자 목록, 시간, 사유를 카드형 그리드로 조망하고 `[+ 이 날짜에 OT 추가 등록]` 단축 버튼 제공.
+2. **원격 Supabase DB `contract_history` CHECK 제약조건 확장 동기화 (`scripts/patch_v1_4_0_asset_sale_domain.sql`, `scratch/fix_contract_history_check.cjs`)**:
+   - Supabase `dev_exec_ddl` RPC 파이프라인을 통해 원격 DB의 `contract_history_changeType_check` 제약조건에 `AS_SERVICE` 등 TypeScript 인터페이스(`db.ts`)에 선언된 16종 전수 허용 DDL 즉시 실행 및 스키마 리로드 완료.
+   - REST API 실데이터 INSERT (`status: 201 Created`) 및 롤백 정제 (`status: 204 No Content`) 통과.
+   - `C:\Users\이정용\.gemini\config\경험.md`에 `E-072` (TypeScript 타입 확장 시 원격 DB CHECK 제약조건 1:1 동기화 의무) 공식 등재.
+3. **검증 결과**:
+   - TypeScript 컴파일 및 번들 빌드 (`npm run build`): **0 Error 정상 완결 (`built in 1.14s`)**.
+
+---
+
 ## [v1.12.0.Build.11] - 2026-09-09 17:20
 
 ### 🚀 [OT 관리 대상 임직원 표시 순서 조직도 배치 100% 동기화 & 테스터 직원 6인 DB 전량 삭제 및 재생성 차단 & 운송료 대사 2줄 헤더 정제]

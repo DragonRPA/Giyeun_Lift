@@ -1,5 +1,54 @@
 # 개발 요구사항 임시 기록 (dev_temp.md)
 
+## [완료] OT 관리 월간 캘린더 뷰 모드 및 등록 폼 상호연동 기능 구축 (v1.12.0.Build.12 예정)
+- **요구사항**: "OT 관리 캘린더로 보기 기능 추가"
+- **적용 목적 (헌장 1.1 최대 편익, 1.2 임직원 최소 조작, 3.1 무수식어 건조 표준, 3.2 줄바꿈 방지, 3.4 상하 수직 스택, 3.5 Z-패턴 동선)**:
+  - 기존 텍스트 테이블 대장 외에 월간 전체 초과근무 현황을 일자별/임직원별로 직관적으로 조망할 수 있는 **월간 캘린더(Calendar)** 뷰 모드 신설.
+  - 캘린더의 일자 셀 클릭 시 좌측 OT 등록 폼의 `1. 날짜 지정`이 해당 클릭 날짜로 즉시 자동 동기화(`otDate = dateStr`)되어, 날짜를 확인하면서 바로바로 해당 일자에 OT를 추가할 수 있는 1-Way 연속 업무 흐름 제공 (최대 편익 달성).
+  - 캘린더 화면을 가득 넓게 보고자 할 때 좌측 330px 등록창을 원클릭으로 숨기거나 펼칠 수 있는 패널 접기/펼치기 토글 지원.
+  - 상단의 `전체 임직원` 필터 드롭다운과 `성명/업무내용 검색창`이 캘린더 뷰에도 100% 실시간 연동되어 특정 직원이나 부서의 월간 OT 스케줄만 집중 조회 가능.
+- **작업 및 개편 내역 (`src/pages/OtManagementPage.tsx`)**:
+  - 1. **뷰 모드 및 패널 접기 상태 엔진 탑재**:
+    - `viewMode`: `'LIST' | 'CALENDAR'` (기본값: `'LIST'`).
+    - `isFormCollapsed`: 좌측 등록 폼 접힘/펼침 제어 (`gridTemplateColumns: isFormCollapsed ? '1fr' : '330px 1fr'`).
+    - `calYear`, `calMonth`, `selectedCalDate`: 캘린더 연/월/일자 및 월 이동 핸들러(`이전달`, `오늘`, `다음달`).
+  - 2. **상단 툴바 UI/UX 개편**:
+    - 검색창 및 임직원 필터 드롭다운 유지.
+    - 우측: `[등록창 숨김 / 등록창 표시]` 패널 토글 버튼 + `[📋 목록]` / `[📅 캘린더]` 세그먼트 버튼 제공.
+  - 3. **월간 캘린더 뷰 구현**:
+    - **캘린더 헤더 바**: `YYYY년 M월 초과근무 캘린더`, 당월 합계 시간 배지(`당월 합계 N시간 (M건)`), 필터 적용 배지, `◀ 이전달` / `오늘` / `다음달 ▶` 내비게이션.
+    - **7열 요일 헤더**: 일요일(빨강), 평일(그레이), 토요일(파랑).
+    - **날짜 셀 (Day Cell)**:
+      - 일자 번호 (오늘: 파란 원형 배지, 선택일: 테두리 강조).
+      - 일별 총 OT 시간 합계 배지 (`+N.Nh`).
+      - 일별 OT 카드 칩 (성명 + 부서 + 시간 배지 + 1클릭 취소 휴지통 아이콘).
+      - 날짜 셀 클릭 시 좌측 등록폼 날짜 즉시 자동 세팅 (`setSelectedCalDate(dateStr)`, `setOtDate(dateStr)`).
+    - **선택 날짜 상세 패널**:
+      - `📌 YYYY-MM-DD 상세 내역` (건수, 총 시간 합계).
+      - `[+ 이 날짜에 OT 추가 등록]` 단축 버튼.
+      - 일별 전체 근무자 카드 그리드 (성명, 부서, 시간, 근무 상세 내용, 시작시간, 취소 버튼).
+- **검증 결과**:
+  - TypeScript 전체 빌드 (`cmd /c "npm run build"`): **0 Error 정상 통과 (`built in 1.14s`)**.
+
+## [완료] 과거 밴드 AS 이력 적재 시 contract_history CHECK 제약조건 위반 오류 해결 (v1.12.0.Build.12 예정)
+- **요구사항**: "밴드 AS 적재 오류: contract_history 저장 실패: new row for relation "contract_history" violates check constraint "contract_history_changeType_check""
+- **적용 목적 (헌장 1.1 최대 편익, 1.2 발생 사건 무누락 DB 저장, 5.2 무음 실패 방지, 5.3 SSOT 일원화)**:
+  - 과거 밴드 AS 이력 적재(`ingestBandAsHistoryDirect`) 시 완료된 AS 건에 대해 계약 이력(`contract_history`)에 `changeType: 'AS_SERVICE'` 레코드를 생성하여 DB에 적재하려 했으나, Supabase 원격 DB의 `contract_history_changeType_check` 제약조건에 `'AS_SERVICE'`가 누락되어 발생하던 CHECK 제약조건 위반 크래시를 완벽 척결.
+  - TypeScript의 `ContractHistory` 인터페이스에 정의된 모든 허용 타입(16종)을 원격 PostgreSQL Supabase DB 스키마와 1:1 무결 동기화.
+- **작업 및 개편 내역**:
+  - 1. **원격 Supabase DB `contract_history_changeType_check` 제약 조건 확장 DDL 즉시 실행**:
+    - `ALTER TABLE contract_history DROP CONSTRAINT IF EXISTS "contract_history_changeType_check";`
+    - `ALTER TABLE contract_history ADD CONSTRAINT "contract_history_changeType_check" CHECK ("changeType" IN ('REGISTER', 'EXTEND', 'SHORTEN', 'SUCCEED', 'TERMINATE', 'EXCHANGE', 'FEE_CHANGE', 'AS_SERVICE', 'BILLING_CREATED', 'BILLING_SENT', 'BILLING_CANCELLED', 'BILLING_REGENERATED', 'PAYMENT_RECEIVED', 'PAYMENT_CANCELLED', 'DOCUMENT_SENT', 'ASSET_SOLD'));`
+    - `NOTIFY pgrst, 'reload schema';` 스키마 캐시 리로드 완결.
+  - 2. **실서버 DDL 검증 및 REST API Insert/Delete 테스트 통과**:
+    - `test_as_service_insert.cjs`를 통해 Supabase에 `changeType: 'AS_SERVICE'` 레코드 실제 INSERT (201 Created) 및 정화 (204 No Content) 실시간 통과 확인.
+  - 3. **경험.md (E-072) 등록**:
+    - 스키마 타입 확장 시 원격 DB DDL 및 CHECK 제약조건 1:1 동기화 필수 원칙 수립.
+- **검증 결과**:
+  - `dev_exec_ddl` RPC를 통한 실서버 DDL 실행 상태 `200 OK` (전 4개 쿼리 `{"ok": true}`).
+  - `POST /rest/v1/contract_history` 테스트 레코드 삽입 성공 (`status: 201`).
+  - TypeScript 전체 빌드 (`cmd /c "npm run build"`): **0 Error 정상 통과 (`built in 1.18s`)**.
+
 ## [완료] OT 관리 대상 임직원 표시 순서 조직도 배치 순서 100% 동기화 (v1.12.0.Build.11)
 - **요구사항**: "OT 관리에서 직원의 표시 순서를 조직도의 배치 순서로 해"
 - **적용 목적 (헌장 1.1 최대 편익, 1.2 임직원 최소 조작, 3.1 무수식어 건조 표준, 3.2 줄바꿈 방지, 5.3 SSOT 일원화)**:

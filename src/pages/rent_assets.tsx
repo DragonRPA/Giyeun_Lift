@@ -227,6 +227,22 @@ export const RentAssets: React.FC = () => {
     // 문자열 공백/하이픈/소문자 통일 정화 헬퍼
     const cleanStr = (s?: string) => (s || '').replace(/[\s\-_]/g, '').toLowerCase();
 
+    // 두 날짜 간 일수 계산 헬퍼 (양편넣기: 시작일/종료일 모두 포함)
+    const calcDaysBetween = (d1Str?: string, d2Str?: string): number => {
+      if (!d1Str || !d2Str) return 0;
+      const t1 = new Date(d1Str).getTime();
+      const t2 = new Date(d2Str).getTime();
+      if (isNaN(t1) || isNaN(t2)) return 0;
+      return Math.max(0, Math.round((t2 - t1) / (1000 * 60 * 60 * 24)) + 1);
+    };
+
+    // 렌탈 업계 전사 표준 일할 계산 (30일 분모 고정 + 100원 단위 반올림)
+    const calcProratedFee = (monthlyFee: number, days: number): number => {
+      if (!monthlyFee || days <= 0) return 0;
+      if (days >= 30) return monthlyFee;
+      return Math.round(((monthlyFee / 30) * days) / 100) * 100;
+    };
+
     // A. 임차처 거래명세서 행 기준으로 자사 DB 자산 대조 (오직 관리번호 기준 1:1 매칭)
     statementRows.forEach((row, idx) => {
       // 이미지 2 지원: 장비 임대료가 아닌 기타 수리비/세척비/도색비/운송비 등 항목
@@ -273,37 +289,134 @@ export const RentAssets: React.FC = () => {
       } else {
         matchedAssetIds.add(matched.id);
 
-        // 일할/월할 약정 금액 계산 (자사 DB 기준)
-        const expected = matched.monthlyRentFee || 0;
-        const diff = row.billedAmount - expected;
+        const mStart = matched.rentStart;
+        const mEnd = matched.rentEnd;
+        const mReturn = matched.actualRentReturnDate;
+        const isReturned = Boolean(mReturn) || matched.status === 'RENTED_RETURNED';
+        const effectiveEnd = mReturn || mEnd;
 
-        // 기간 대조
-        const isPeriodMismatch = (matched.rentStart && matched.rentStart !== row.rentStart) ||
-                                 (matched.rentEnd && matched.rentEnd !== row.rentEnd);
+        const rStart = row.rentStart;
+        const rEnd = row.rentEnd;
+        const rUnitPrice = row.unitPrice || 0;
+        const rBilled = row.billedAmount || 0;
+
+        const baseMonthlyFee = matched.monthlyRentFee || rUnitPrice || rBilled;
+        const rDays = calcDaysBetween(rStart, rEnd);
+        const mDays = calcDaysBetween(mStart, effectiveEnd);
+
+        // 1. 자사 기준 예상 약정금액 (expectedAmount) 스마트 산출
+        let expected = baseMonthlyFee;
+        if (isReturned && mReturn) {
+          // 이미 반납된 장비: 자사 반납일까지의 일할 금액 산출
+          const validReturnDays = calcDaysBetween(mStart || rStart, mReturn);
+          expected = (validReturnDays > 0 && validReturnDays < 30)
+            ? calcProratedFee(baseMonthlyFee, validReturnDays)
+            : baseMonthlyFee;
+        } else if (rDays > 0 && rDays < 30) {
+          // 임차처 청구가 일할 청구인 경우:
+          if (mDays > 0 && mDays < 30 && Math.abs(rDays - mDays) <= 1) {
+            expected = calcProratedFee(baseMonthlyFee, rDays);
+          } else if (matched.monthlyRentFee === rUnitPrice && rUnitPrice > 0) {
+            // 월단가가 일치하면 청구된 일수에 상응하는 일할 약정금액으로 대조
+            expected = calcProratedFee(baseMonthlyFee, rDays);
+          }
+        } else if (mDays > 0 && mDays < 30) {
+          // 자사 약정 자체가 부분월(일할)인 경우
+          expected = calcProratedFee(baseMonthlyFee, mDays);
+        }
+
+        const rawDiff = rBilled - expected;
+        const diff = Math.abs(rawDiff) <= 100 ? 0 : rawDiff; // 100원 이하 오차는 0원 처리
+
+        // 2. 정밀 기간 대조 엔진 (시작일, 종료일, 반납여부 3차원 판정)
+        let periodStatus: 'MATCH' | 'EXTENDED' | 'SHORTENED' | 'OVER_AFTER_RETURN' | 'START_EARLY' | 'START_LATE' | 'PERIOD_DIFF' = 'MATCH';
+        let periodLabel = '기간일치';
+        let badgeClass = 'badge-warning';
+        let periodReason = '';
+
+        // 종료일 및 반납 판정
+        if (isReturned && mReturn && rEnd && rEnd > mReturn) {
+          // 🔴 자사 반납일 이후 초과 청구 (절대 연장대상이 아님!)
+          const overDays = calcDaysBetween(mReturn, rEnd) - 1;
+          periodStatus = 'OVER_AFTER_RETURN';
+          periodLabel = '반납후초과';
+          badgeClass = 'badge-danger';
+          periodReason = `자사 반납일(${mReturn}) 이후 ${rEnd}까지 ${overDays}일간 초과 청구됨 (임차처 반납확인 필요)`;
+        } else if (isReturned && mReturn && rEnd && rEnd < mReturn) {
+          const shortDays = calcDaysBetween(rEnd, mReturn) - 1;
+          periodStatus = 'SHORTENED';
+          periodLabel = '단축';
+          badgeClass = 'badge-info';
+          periodReason = `청구종료일(${rEnd})이 자사 반납일(${mReturn})보다 ${shortDays}일 앞섬`;
+        } else if (!isReturned && mEnd && rEnd && rEnd > mEnd) {
+          // 🟡 미반납 상태에서 청구종료일이 약정종료일보다 뒤임 -> 연장대상
+          const extendDays = calcDaysBetween(mEnd, rEnd) - 1;
+          periodStatus = 'EXTENDED';
+          periodLabel = '연장';
+          badgeClass = 'badge-warning';
+          periodReason = `청구종료일(${rEnd})이 약정종료일(${mEnd})보다 ${extendDays}일 뒤임 (현장 계속사용 약정연장)`;
+        } else if (!isReturned && mEnd && rEnd && rEnd < mEnd) {
+          // 🔵 미반납 상태에서 청구종료일이 약정종료일보다 앞섬 -> 단축대상
+          const shortDays = calcDaysBetween(rEnd, mEnd) - 1;
+          periodStatus = 'SHORTENED';
+          periodLabel = '단축';
+          badgeClass = 'badge-info';
+          periodReason = `청구종료일(${rEnd})이 약정종료일(${mEnd})보다 ${shortDays}일 앞섬 (조기반납/약정단축)`;
+        }
+
+        // 시작일 판정
+        const startDiffDays = (mStart && rStart) ? Math.round((new Date(rStart).getTime() - new Date(mStart).getTime()) / (1000 * 60 * 60 * 24)) : 0;
+        if (mStart && rStart && mStart !== rStart) {
+          if (startDiffDays < 0) {
+            // 청구개시일이 약정개시일보다 빠름 (자사 약정개시일이 늦음)
+            const earlyDays = Math.abs(startDiffDays);
+            if (periodStatus === 'EXTENDED') {
+              periodLabel = '기간확장';
+              periodReason = `청구개시일(${rStart})이 약정개시일(${mStart})보다 ${earlyDays}일 빠름 + 종료일 연장 필요`;
+            } else if (periodStatus === 'OVER_AFTER_RETURN') {
+              periodReason = `청구개시일(${rStart}) ${earlyDays}일 빠름 + ${periodReason}`;
+            } else if (periodStatus === 'SHORTENED') {
+              periodLabel = '기간차이';
+              periodReason = `청구개시일(${rStart}) ${earlyDays}일 빠름 + 청구종료일(${rEnd}) 앞섬`;
+            } else {
+              periodStatus = 'START_EARLY';
+              periodLabel = '선행청구';
+              badgeClass = 'badge-warning';
+              periodReason = `청구개시일(${rStart})이 자사 약정개시일(${mStart})보다 ${earlyDays}일 빠름 (자사 등록지연 vs 선행청구 확인)`;
+            }
+          } else if (startDiffDays > 0) {
+            // 청구개시일이 약정개시일보다 늦음
+            const lateDays = startDiffDays;
+            if (periodStatus === 'MATCH') {
+              periodStatus = 'START_LATE';
+              periodLabel = '지연청구';
+              badgeClass = 'badge-info';
+              periodReason = `청구개시일(${rStart})이 자사 약정개시일(${mStart})보다 ${lateDays}일 늦음`;
+            } else {
+              periodReason = `청구개시일(${rStart}) ${lateDays}일 늦음 + ${periodReason}`;
+            }
+          }
+        }
+
+        const isPeriodMismatch = periodStatus !== 'MATCH';
 
         if (isPeriodMismatch) {
-          const isExtended = row.rentEnd && (!matched.rentEnd || row.rentEnd > matched.rentEnd);
-          const isShortened = row.rentEnd && matched.rentEnd && (row.rentEnd < matched.rentEnd);
-          const periodLabel = isExtended ? '연장' : isShortened ? '단축' : '기간차이';
-
           results.push({
             id: `recon-period-${idx}`,
             status: 'PERIOD_MISMATCH',
             statusLabel: periodLabel,
-            badgeClass: 'badge-warning',
+            badgeClass: badgeClass,
             statementRow: row,
             matchedAsset: matched,
             priceDiff: diff,
             expectedAmount: expected,
-            reason: isExtended 
-              ? `청구종료일(${row.rentEnd}),약정종료일(${matched.rentEnd || '미지정'}), 연장대상`
-              : `청구종료일(${row.rentEnd}),약정종료일(${matched.rentEnd}), 단축대상`
+            reason: periodReason
           });
-        } else if (Math.abs(diff) > 1000) {
+        } else if (Math.abs(diff) > 100) {
           // 🟡 단가/금액 오차 ➔ 차액
           const isProrated = row.unitPrice && row.unitPrice !== row.billedAmount;
-          const reasonText = (isProrated && expected === row.unitPrice)
-            ? `일할계산 청구 (월단가 ₩${row.unitPrice.toLocaleString()} ➔ 실청구 ₩${row.billedAmount.toLocaleString()})`
+          const reasonText = (isProrated && expected === row.billedAmount)
+            ? `일할계산 일치 (월단가 ₩${(row.unitPrice || 0).toLocaleString()} ➔ 실청구 ₩${row.billedAmount.toLocaleString()})`
             : diff > 0 
               ? `임차처 초과청구 (+₩${diff.toLocaleString()})` 
               : `임차처 단가할인 (-₩${Math.abs(diff).toLocaleString()})`;
@@ -330,7 +443,7 @@ export const RentAssets: React.FC = () => {
             matchedAsset: matched,
             priceDiff: 0,
             expectedAmount: expected,
-            reason: '완벽 일치'
+            reason: '기간 및 금액 일치'
           });
         }
       }
@@ -667,6 +780,26 @@ export const RentAssets: React.FC = () => {
     await db.awaitPendingWrites();
     refreshAllData();
     showToast(`자사 임차 기간이 ${newEndDate}로 단축 반영되었습니다.`);
+  };
+
+  // 💡 [개시일소급] 자사 임차 개시일 소급 반영 (임차처 청구 개시일로 자산 약정 시작일 보정)
+  const handleRetroactiveStartDate = async (assetId: string, newStartDate: string) => {
+    if (!assetId || !newStartDate) return;
+    const nowIso = new Date().toISOString();
+    db.updateRow<Asset>('assets', assetId, { rentStart: newStartDate, updatedAt: nowIso });
+    await db.awaitPendingWrites();
+    refreshAllData();
+    showToast(`자사 임차 개시일이 ${newStartDate}로 소급 반영되었습니다.`);
+  };
+
+  // 💡 [반납일보정] 자사 임차 반납일 보정 (현장 실제 반납 지연 시 반납일 수정)
+  const handleUpdateReturnDate = async (assetId: string, newReturnDate: string) => {
+    if (!assetId || !newReturnDate) return;
+    const nowIso = new Date().toISOString();
+    db.updateRow<Asset>('assets', assetId, { actualRentReturnDate: newReturnDate, rentEnd: newReturnDate, updatedAt: nowIso });
+    await db.awaitPendingWrites();
+    refreshAllData();
+    showToast(`자사 임차 반납일이 ${newReturnDate}로 보정되었습니다.`);
   };
 
   // 💡 [반납] 자사 임차자산 반납 처리 (임차처 미청구 장비 현장 반납 확정)
@@ -1804,8 +1937,11 @@ export const RentAssets: React.FC = () => {
                         if (item.status === 'MISSING_BILLING') rowBg = 'rgba(59, 130, 246, 0.08)';
 
                         const isChecked = stmt ? selectedReconcileIds.includes(stmt.id) : false;
-                        const isExtended = stmt && matched && stmt.rentEnd && (!matched.rentEnd || stmt.rentEnd > matched.rentEnd);
-                        const isShortened = stmt && matched && stmt.rentEnd && matched.rentEnd && (stmt.rentEnd < matched.rentEnd);
+                        const isAssetReturned = Boolean(matched?.actualRentReturnDate || matched?.status === 'RENTED_RETURNED');
+                        const canRetroStart = Boolean(stmt && matched && stmt.rentStart && matched.rentStart && stmt.rentStart < matched.rentStart);
+                        const canExtend = Boolean(!isAssetReturned && stmt && matched && stmt.rentEnd && (!matched.rentEnd || stmt.rentEnd > matched.rentEnd));
+                        const canShorten = Boolean(!isAssetReturned && stmt && matched && stmt.rentEnd && matched.rentEnd && stmt.rentEnd < matched.rentEnd);
+                        const canAdjustReturn = Boolean(isAssetReturned && stmt && matched && stmt.rentEnd && matched.actualRentReturnDate && stmt.rentEnd > matched.actualRentReturnDate);
 
                         return (
                           <tr
@@ -1934,11 +2070,25 @@ export const RentAssets: React.FC = () => {
                                   </button>
                                 )}
 
-                                {/* [연장] 버튼 */}
-                                {stmt && matched && item.status === 'PERIOD_MISMATCH' && isExtended && (
+                                {/* [개시일소급] 버튼 (청구개시일이 약정개시일보다 앞선 경우) */}
+                                {canRetroStart && (
                                   <button
                                     type="button"
-                                    onClick={() => handleExtendAssetPeriod(matched.id, stmt.rentEnd)}
+                                    onClick={() => handleRetroactiveStartDate(matched!.id, stmt!.rentStart!)}
+                                    style={{
+                                      padding: '2px 6px', fontSize: '10.5px', fontWeight: 700, borderRadius: '4px',
+                                      backgroundColor: 'rgba(59, 130, 246, 0.15)', border: '1px solid #3b82f6', color: '#2563eb', cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0
+                                    }}
+                                  >
+                                    개시일소급
+                                  </button>
+                                )}
+
+                                {/* [연장] 버튼 (미반납 자산 중 청구종료일이 약정종료일보다 뒤인 경우) */}
+                                {canExtend && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleExtendAssetPeriod(matched!.id, stmt!.rentEnd!)}
                                     style={{
                                       padding: '2px 6px', fontSize: '10.5px', fontWeight: 700, borderRadius: '4px',
                                       backgroundColor: 'rgba(249, 115, 22, 0.15)', border: '1px solid #f97316', color: '#ea580c', cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0
@@ -1948,17 +2098,31 @@ export const RentAssets: React.FC = () => {
                                   </button>
                                 )}
 
-                                {/* [단축] 버튼 */}
-                                {stmt && matched && item.status === 'PERIOD_MISMATCH' && isShortened && (
+                                {/* [단축] 버튼 (미반납 자산 중 청구종료일이 약정종료일보다 앞선 경우) */}
+                                {canShorten && (
                                   <button
                                     type="button"
-                                    onClick={() => handleShortenAssetPeriod(matched.id, stmt.rentEnd)}
+                                    onClick={() => handleShortenAssetPeriod(matched!.id, stmt!.rentEnd!)}
                                     style={{
                                       padding: '2px 6px', fontSize: '10.5px', fontWeight: 700, borderRadius: '4px',
-                                      backgroundColor: 'rgba(249, 115, 22, 0.15)', border: '1px solid #f97316', color: '#ea580c', cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0
+                                      backgroundColor: 'rgba(16, 185, 129, 0.15)', border: '1px solid #10b981', color: '#059669', cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0
                                     }}
                                   >
                                     단축
+                                  </button>
+                                )}
+
+                                {/* [반납일보정] 버튼 (반납된 자산인데 청구종료일이 반납일보다 뒤인 경우) */}
+                                {canAdjustReturn && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleUpdateReturnDate(matched!.id, stmt!.rentEnd!)}
+                                    style={{
+                                      padding: '2px 6px', fontSize: '10.5px', fontWeight: 700, borderRadius: '4px',
+                                      backgroundColor: 'rgba(239, 68, 68, 0.15)', border: '1px solid #ef4444', color: '#dc2626', cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0
+                                    }}
+                                  >
+                                    반납일보정
                                   </button>
                                 )}
 

@@ -68,6 +68,8 @@ export const RentAssets: React.FC = () => {
   const [selectedVendor, setSelectedVendor] = useState<string>('');
   const [selectedYm, setSelectedYm] = useState<string>(new Date().toISOString().slice(0, 7));
   const [statementRows, setStatementRows] = useState<VendorStatementRow[]>([]);
+  const [loadedFileName, setLoadedFileName] = useState<string>('');
+  const [loadedFileSize, setLoadedFileSize] = useState<number>(0);
   const [selectedReconcileIds, setSelectedReconcileIds] = useState<string[]>([]);
   const [isSettling, setIsSettling] = useState<boolean>(false);
   const [reconcileStatusFilter, setReconcileStatusFilter] = useState('ALL');
@@ -335,8 +337,14 @@ export const RentAssets: React.FC = () => {
     const daysInMonth = new Date(yearNum, monthNum, 0).getDate();
     const monthEnd = `${selectedYm || yearStr + '-' + monthStr}-${String(daysInMonth).padStart(2, '0')}`;
 
+    const cleanVendor = (s?: string) => (s || '').replace(/[\s\-_주식회사\(\)㈜]/g, '').toLowerCase();
     const targetRented = rentedAssets.filter(a => {
-      const matchesVendor = !selectedVendor || getAssetRenterName(a) === selectedVendor;
+      const aVendor = getAssetRenterName(a);
+      const matchesVendor = !selectedVendor ||
+        aVendor === selectedVendor ||
+        cleanVendor(aVendor) === cleanVendor(selectedVendor) ||
+        (cleanVendor(selectedVendor).includes('aj') && cleanVendor(aVendor).includes('아주')) ||
+        (cleanVendor(selectedVendor).includes('아주') && cleanVendor(aVendor).includes('aj'));
       const assetStart = a.rentStart || '1900-01-01';
       const assetEnd = a.actualRentReturnDate || a.rentEnd || '9999-12-31';
       const isOverlapped = (assetStart <= monthEnd) && (assetEnd >= monthStart);
@@ -505,14 +513,15 @@ export const RentAssets: React.FC = () => {
       try {
         const data = event.target?.result as ArrayBuffer;
 
-        // 거래처명 정규화 매칭 헬퍼 (주식회사/(주)/공백 무시)
+        // 거래처명 정규화 매칭 헬퍼 (주식회사/(주)/공백 무시 + 아주/AJ 상호 호환)
         const matchVendor = (detected?: string): string => {
           if (!detected) return '';
           const clean = (s: string) => s.replace(/주식회사|\(주\)|㈜|\(유\)|유한회사|\s+/g, '').toLowerCase();
           const target = clean(detected);
           const found = renterVendors.find(v => {
             const cv = clean(v);
-            return cv === target || target.includes(cv) || cv.includes(target);
+            return cv === target || target.includes(cv) || cv.includes(target) ||
+              (target.includes('아주') && cv.includes('aj')) || (target.includes('aj') && cv.includes('아주'));
           });
           return found || detected;
         };
@@ -526,6 +535,8 @@ export const RentAssets: React.FC = () => {
             setSelectedVendor(matched);
           }
 
+          setLoadedFileName(file.name);
+          setLoadedFileSize(file.size);
           setStatementRows(parseResult.rows);
           setSelectedReconcileIds(parseResult.rows.map(r => r.id));
 
@@ -545,6 +556,8 @@ export const RentAssets: React.FC = () => {
             setSelectedVendor(matched);
           }
 
+          setLoadedFileName(file.name);
+          setLoadedFileSize(file.size);
           setStatementRows(parseResult.rows);
           setSelectedReconcileIds(parseResult.rows.map(r => r.id));
 
@@ -558,6 +571,16 @@ export const RentAssets: React.FC = () => {
     };
     reader.readAsArrayBuffer(file);
     if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  // 💡 불러온 거래명세서 파일 해제 및 초기화
+  const handleClearLoadedFile = () => {
+    setStatementRows([]);
+    setSelectedReconcileIds([]);
+    setLoadedFileName('');
+    setLoadedFileSize(0);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+    showToast('로드된 거래명세서 파일이 해제되었습니다.');
   };
 
   // 💡 [사장님 지시] 불일치 조치: 수동 자산 짝짓기 (미등록 청구 ➔ 자사 임차자산 1:1 매핑)
@@ -1477,6 +1500,36 @@ export const RentAssets: React.FC = () => {
                       {statementRows.length > 0 ? `현재 로드: ${statementRows.length}건` : '파일 대기중'}
                     </span>
                   </div>
+
+                  {loadedFileName && (
+                    <div style={{
+                      marginBottom: '6px', padding: '5px 8px', borderRadius: '6px',
+                      backgroundColor: 'rgba(59, 130, 246, 0.08)', border: '1px solid rgba(59, 130, 246, 0.25)',
+                      display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px'
+                    }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0, overflow: 'hidden' }}>
+                        <FileText size={13} color="var(--primary)" style={{ flexShrink: 0 }} />
+                        <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-main)', whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }} title={loadedFileName}>
+                          {loadedFileName}
+                        </span>
+                        <span style={{ fontSize: '10px', color: 'var(--primary)', fontWeight: 600, flexShrink: 0, backgroundColor: 'rgba(59, 130, 246, 0.15)', padding: '1px 5px', borderRadius: '3px' }}>
+                          {statementRows.length}건
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={handleClearLoadedFile}
+                        style={{
+                          padding: '1px 5px', fontSize: '10px', fontWeight: 700, borderRadius: '4px',
+                          backgroundColor: 'transparent', border: '1px solid var(--border-color)', color: 'var(--text-muted)',
+                          cursor: 'pointer', flexShrink: 0, display: 'flex', alignItems: 'center', gap: '2px'
+                        }}
+                        title="파일 해제"
+                      >
+                        <X size={10} /> 해제
+                      </button>
+                    </div>
+                  )}
                   
                   {/* 숨김 파일 입력 */}
                   <input
@@ -1498,7 +1551,7 @@ export const RentAssets: React.FC = () => {
                       boxShadow: '0 2px 4px rgba(59, 130, 246, 0.2)', cursor: 'pointer', whiteSpace: 'nowrap'
                     }}
                   >
-                    <Upload size={14} /> 거래명세서 업로드 및 자동 대사 (엑셀 / PDF)
+                    <Upload size={14} /> {loadedFileName ? '거래명세서 파일 교체 / 재업로드' : '거래명세서 업로드 및 자동 대사 (엑셀 / PDF)'}
                   </button>
                 </div>
 
@@ -1689,7 +1742,7 @@ export const RentAssets: React.FC = () => {
                           임차자산 대장
                         </th>
                         <th colSpan={2} style={{ padding: '5px 8px', borderRight: '1px solid var(--border-color)', backgroundColor: 'rgba(59, 130, 246, 0.05)', color: 'var(--primary)', whiteSpace: 'nowrap' }}>
-                          임차처 청구
+                          임차처 청구 {loadedFileName ? `(${loadedFileName})` : ''}
                         </th>
                         <th colSpan={1} style={{ padding: '5px 8px', borderRight: '1px solid var(--border-color)', whiteSpace: 'nowrap' }}>
                           오차

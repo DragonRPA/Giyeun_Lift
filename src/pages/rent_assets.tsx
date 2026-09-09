@@ -266,7 +266,7 @@ export const RentAssets: React.FC = () => {
           statementRow: row,
           priceDiff: row.billedAmount,
           expectedAmount: 0,
-          reason: '원사 청구 장비 (자사 임차등록 대상)'
+          reason: '원사 청구 (임차등록 대상)'
         });
       } else {
         matchedAssetIds.add(matched.id);
@@ -294,8 +294,8 @@ export const RentAssets: React.FC = () => {
             priceDiff: diff,
             expectedAmount: expected,
             reason: isExtended 
-              ? `청구 종료일(${row.rentEnd})이 약정종료일(${matched.rentEnd || '미지정'})보다 긺 (연장 대상)`
-              : `청구 종료일(${row.rentEnd})이 약정종료일(${matched.rentEnd})보다 짧음 (단축 대상)`
+              ? `청구종료일(${row.rentEnd}),약정종료일(${matched.rentEnd || '미지정'}), 연장대상`
+              : `청구종료일(${row.rentEnd}),약정종료일(${matched.rentEnd}), 단축대상`
           });
         } else if (Math.abs(diff) > 1000) {
           // 🟡 단가/금액 오차 ➔ 차액
@@ -321,7 +321,7 @@ export const RentAssets: React.FC = () => {
             matchedAsset: matched,
             priceDiff: 0,
             expectedAmount: expected,
-            reason: '원사 청구 금액 및 기간이 자사 약정과 100% 일치'
+            reason: '완벽 일치'
           });
         }
       }
@@ -355,7 +355,7 @@ export const RentAssets: React.FC = () => {
           matchedAsset: asset,
           priceDiff: isAcked ? 0 : -(asset.monthlyRentFee || 0),
           expectedAmount: asset.monthlyRentFee || 0,
-          reason: isAcked ? '당월 원사 청구 제외(무상/이월) 확인 완료' : '원사 명세서에 미포함됨 (반납 또는 청구제외 확인 필요)'
+          reason: isAcked ? '청구제외 확인 완료' : '원사 미청구 (반납/제외 대상)'
         });
       }
     });
@@ -690,15 +690,13 @@ export const RentAssets: React.FC = () => {
       return {
         '순번': idx + 1,
         '대사 상태': item.statusLabel,
-        '임차처 관리번호': stmt?.assetNo || '',
-        '임차처 모델명': stmt?.modelName || '',
-        '임차처 청구기간': stmt ? `${stmt.rentStart} ~ ${stmt.rentEnd}` : '',
-        '임차처 청구금액': stmt?.billedAmount || 0,
-        '자사 자산번호': matched?.assetNo || '',
-        '자사 모델명': matched?.modelName || '',
-        '자사 임차기간': matched ? `${matched.rentStart || ''} ~ ${matched.rentEnd || ''}` : '',
-        '자사 약정금액': item.expectedAmount,
-        '오차 차액': item.priceDiff,
+        '관리번호': stmt?.assetNo || matched?.assetNo || '',
+        '모델명': stmt?.modelName || matched?.modelName || '',
+        '약정 기간': matched ? `${matched.rentStart || ''} ~ ${matched.rentEnd || ''}` : '',
+        '약정금액': item.expectedAmount,
+        '청구 기간': stmt ? `${stmt.rentStart} ~ ${stmt.rentEnd}` : '',
+        '청구금액': stmt?.billedAmount || 0,
+        '오차': item.priceDiff,
         '대사 소견': item.reason
       };
     });
@@ -1170,10 +1168,10 @@ export const RentAssets: React.FC = () => {
   };
 
   return (
-    <div style={{ padding: '20px', maxWidth: '1600px', margin: '0 auto' }}>
+    <div style={{ padding: '14px 20px', maxWidth: '1600px', margin: '0 auto' }}>
       
       {/* 1. 상단 메뉴 헤더 */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
         <div>
           <h1 style={{ fontSize: '20px', fontWeight: '800', margin: 0, display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-main)' }}>
             <Layers className="text-primary" size={22} /> 임차 장비 관리
@@ -1188,7 +1186,7 @@ export const RentAssets: React.FC = () => {
       </div>
 
       {/* 2. 상단 메인 탭 (헌장 3.1 무수식어 건조 표준 준수) */}
-      <div style={{ display: 'flex', borderBottom: '2px solid var(--border-color)', marginBottom: '20px', gap: '8px' }}>
+      <div style={{ display: 'flex', borderBottom: '2px solid var(--border-color)', marginBottom: '12px', gap: '8px' }}>
         <button
           onClick={() => setActiveTab('CURRENT')}
           style={{
@@ -1318,50 +1316,50 @@ export const RentAssets: React.FC = () => {
         const balanceDiff = totalBilled - (confirmedCost + excludedCost);
 
         return (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', width: '100%' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', width: '100%' }}>
 
             {/* =================================================================== */}
             {/* ① 좌상단 [START / SCOPE] & ② 우상단 [INPUT / PIPELINE] 2열 그리드 배치 */}
             {/* =================================================================== */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.35fr) minmax(0, 1fr)', gap: '16px', alignItems: 'stretch' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.35fr) minmax(0, 1fr)', gap: '8px', alignItems: 'stretch' }}>
               
               {/* ① 좌상단: 정산 범위 설정 (Scope) */}
               <div className="card" style={{
-                padding: '16px', backgroundColor: 'var(--bg-card)', border: '1px solid var(--border-color)', borderRadius: '10px',
-                display: 'flex', flexDirection: 'column', gap: '12px'
+                padding: '8px 12px', backgroundColor: 'var(--bg-card)', border: '1px solid var(--border-color)', borderRadius: '8px',
+                display: 'flex', flexDirection: 'column', gap: '6px'
               }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span style={{ fontSize: '12px', fontWeight: 800, color: 'var(--text-main)', letterSpacing: '-0.2px' }}>
+                  <span style={{ fontSize: '11.5px', fontWeight: 800, color: 'var(--text-main)', letterSpacing: '-0.2px' }}>
                     정산 범위 설정
                   </span>
-                  <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+                  <span style={{ fontSize: '10.5px', color: 'var(--text-muted)' }}>
                     대상 임차처 및 정산 연월 필터
                   </span>
                 </div>
 
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '14px', alignItems: 'flex-start' }}>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px', alignItems: 'flex-start' }}>
                   {/* 정산 연월 필터 (상하 스택 3.4) */}
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                    <label style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                    <label style={{ fontSize: '10.5px', fontWeight: 700, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
                       정산 연월
                     </label>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                       <input
                         type="month"
                         value={selectedYm}
                         onChange={e => setSelectedYm(e.target.value)}
                         style={{
-                          padding: '5px 10px', borderRadius: '6px', border: '1px solid var(--border-color)',
-                          backgroundColor: 'var(--bg-app)', color: 'var(--text-main)', fontSize: '12px', fontWeight: 600
+                          padding: '3px 8px', borderRadius: '4px', border: '1px solid var(--border-color)',
+                          backgroundColor: 'var(--bg-app)', color: 'var(--text-main)', fontSize: '11.5px', fontWeight: 600
                         }}
                       />
                       {/* 연월 퀵 프리셋 버튼군 */}
-                      <div style={{ display: 'flex', gap: '4px' }}>
+                      <div style={{ display: 'flex', gap: '3px' }}>
                         <button
                           type="button"
                           onClick={() => handleSetReconYmPreset('THIS_MONTH')}
                           style={{
-                            padding: '4px 8px', fontSize: '11px', fontWeight: 600, borderRadius: '4px',
+                            padding: '3px 6px', fontSize: '10.5px', fontWeight: 600, borderRadius: '4px',
                             backgroundColor: 'var(--bg-app)', border: '1px solid var(--border-color)', color: 'var(--text-main)', cursor: 'pointer', whiteSpace: 'nowrap'
                           }}
                         >
@@ -1371,7 +1369,7 @@ export const RentAssets: React.FC = () => {
                           type="button"
                           onClick={() => handleSetReconYmPreset('LAST_MONTH')}
                           style={{
-                            padding: '4px 8px', fontSize: '11px', fontWeight: 600, borderRadius: '4px',
+                            padding: '3px 6px', fontSize: '10.5px', fontWeight: 600, borderRadius: '4px',
                             backgroundColor: 'var(--bg-app)', border: '1px solid var(--border-color)', color: 'var(--text-main)', cursor: 'pointer', whiteSpace: 'nowrap'
                           }}
                         >
@@ -1381,7 +1379,7 @@ export const RentAssets: React.FC = () => {
                           type="button"
                           onClick={() => handleSetReconYmPreset('ALL')}
                           style={{
-                            padding: '4px 8px', fontSize: '11px', fontWeight: 600, borderRadius: '4px',
+                            padding: '3px 6px', fontSize: '10.5px', fontWeight: 600, borderRadius: '4px',
                             backgroundColor: !selectedYm ? 'var(--primary)' : 'var(--bg-app)',
                             color: !selectedYm ? '#fff' : 'var(--text-muted)',
                             border: '1px solid var(--border-color)', cursor: 'pointer', whiteSpace: 'nowrap'
@@ -1394,18 +1392,18 @@ export const RentAssets: React.FC = () => {
                   </div>
 
                   {/* 임차처 선택 (상하 스택 3.4) */}
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', flex: '1 1 200px' }}>
-                    <label style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', flex: '1 1 180px' }}>
+                    <label style={{ fontSize: '10.5px', fontWeight: 700, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
                       임차처
                     </label>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                       <select
                         value={selectedVendor}
                         onChange={e => setSelectedVendor(e.target.value)}
                         style={{
-                          padding: '5px 10px', borderRadius: '6px', border: '1px solid var(--border-color)',
-                          backgroundColor: 'var(--bg-app)', color: 'var(--text-main)', fontSize: '12px', fontWeight: 600,
-                          flex: 1, minWidth: '130px'
+                          padding: '3px 8px', borderRadius: '4px', border: '1px solid var(--border-color)',
+                          backgroundColor: 'var(--bg-app)', color: 'var(--text-main)', fontSize: '11.5px', fontWeight: 600,
+                          flex: 1, minWidth: '120px'
                         }}
                       >
                         <option value="">전체 임차처</option>
@@ -1418,7 +1416,7 @@ export const RentAssets: React.FC = () => {
                           type="button"
                           onClick={() => setSelectedVendor('')}
                           style={{
-                            padding: '4px 8px', fontSize: '11px', borderRadius: '4px',
+                            padding: '3px 6px', fontSize: '10.5px', borderRadius: '4px',
                             backgroundColor: 'var(--bg-app)', border: '1px solid var(--border-color)', color: 'var(--text-muted)', cursor: 'pointer', whiteSpace: 'nowrap'
                           }}
                         >
@@ -1430,11 +1428,11 @@ export const RentAssets: React.FC = () => {
                 </div>
 
                 {/* 대사 상태 칩 필터 (상하 스택 3.4) */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                  <label style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                  <label style={{ fontSize: '10.5px', fontWeight: 700, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
                     대사 상태 필터
                   </label>
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
                     {[
                       { key: 'ALL', label: '전체' },
                       { key: 'MATCHED', label: '일치' },
@@ -1450,8 +1448,8 @@ export const RentAssets: React.FC = () => {
                           type="button"
                           onClick={() => setReconcileStatusFilter(tab.key)}
                           style={{
-                            padding: '4px 10px', fontSize: '11px', fontWeight: isActive ? 700 : 500,
-                            borderRadius: '20px', cursor: 'pointer', whiteSpace: 'nowrap',
+                            padding: '2px 8px', fontSize: '10.5px', fontWeight: isActive ? 700 : 500,
+                            borderRadius: '16px', cursor: 'pointer', whiteSpace: 'nowrap',
                             backgroundColor: isActive ? 'var(--primary)' : 'var(--bg-app)',
                             color: isActive ? '#fff' : 'var(--text-main)',
                             border: isActive ? '1px solid var(--primary)' : '1px solid var(--border-color)'
@@ -1467,15 +1465,15 @@ export const RentAssets: React.FC = () => {
 
               {/* ② 우상단: 데이터 유입 파이프라인 (Pipeline) */}
               <div className="card" style={{
-                padding: '16px', backgroundColor: 'var(--bg-card)', border: '1px solid var(--border-color)', borderRadius: '10px',
-                display: 'flex', flexDirection: 'column', justifyContent: 'space-between', gap: '12px'
+                padding: '8px 12px', backgroundColor: 'var(--bg-card)', border: '1px solid var(--border-color)', borderRadius: '8px',
+                display: 'flex', flexDirection: 'column', justifyContent: 'space-between', gap: '6px'
               }}>
                 <div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                    <span style={{ fontSize: '12px', fontWeight: 800, color: 'var(--text-main)', letterSpacing: '-0.2px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                    <span style={{ fontSize: '11.5px', fontWeight: 800, color: 'var(--text-main)', letterSpacing: '-0.2px' }}>
                       명세서 데이터 유입 파이프라인
                     </span>
-                    <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+                    <span style={{ fontSize: '10.5px', color: 'var(--text-muted)' }}>
                       {statementRows.length > 0 ? `현재 로드: ${statementRows.length}건` : '파일 대기중'}
                     </span>
                   </div>
@@ -1495,39 +1493,39 @@ export const RentAssets: React.FC = () => {
                     onClick={() => fileInputRef.current?.click()}
                     className="btn-primary"
                     style={{
-                      width: '100%', padding: '12px 16px', fontSize: '13px', fontWeight: 800, borderRadius: '8px',
-                      display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
-                      boxShadow: '0 2px 6px rgba(59, 130, 246, 0.25)', cursor: 'pointer', whiteSpace: 'nowrap'
+                      width: '100%', padding: '7px 12px', fontSize: '12px', fontWeight: 800, borderRadius: '6px',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
+                      boxShadow: '0 2px 4px rgba(59, 130, 246, 0.2)', cursor: 'pointer', whiteSpace: 'nowrap'
                     }}
                   >
-                    <Upload size={16} /> 거래명세서 업로드 및 자동 대사 (엑셀 / PDF)
+                    <Upload size={14} /> 거래명세서 업로드 및 자동 대사 (엑셀 / PDF)
                   </button>
                 </div>
 
                 {/* 2단 보조 파이프라인 버튼군 */}
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '6px' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '4px' }}>
                   <button
                     type="button"
                     onClick={handleDownloadTemplate}
                     style={{
-                      padding: '8px 10px', fontSize: '11px', fontWeight: 600, borderRadius: '6px',
+                      padding: '4px 8px', fontSize: '10.5px', fontWeight: 600, borderRadius: '4px',
                       backgroundColor: 'var(--bg-app)', border: '1px solid var(--border-color)', color: 'var(--text-main)',
                       cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px', whiteSpace: 'nowrap'
                     }}
                   >
-                    <Download size={13} /> 양식 다운로드
+                    <Download size={12} /> 양식 다운로드
                   </button>
 
                   <button
                     type="button"
                     onClick={handleExportReconciliationReport}
                     style={{
-                      padding: '8px 10px', fontSize: '11px', fontWeight: 600, borderRadius: '6px',
+                      padding: '4px 8px', fontSize: '10.5px', fontWeight: 600, borderRadius: '4px',
                       backgroundColor: 'var(--bg-app)', border: '1px solid var(--border-color)', color: 'var(--text-main)',
                       cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px', whiteSpace: 'nowrap'
                     }}
                   >
-                    <FileSpreadsheet size={13} /> 대사 리포트 다운로드
+                    <FileSpreadsheet size={12} /> 대사 리포트 다운로드
                   </button>
                 </div>
               </div>
@@ -1535,83 +1533,93 @@ export const RentAssets: React.FC = () => {
             </div>
 
             {/* =================================================================== */}
-            {/* ③ 중앙 본문 [BODY / INSPECTION]: 고밀도 1:1 대사 작업대 (38~42px) */}
+            {/* ③ 중앙 본문 [BODY / INSPECTION]: 고밀도 1:1 대사 작업대 (36px 슬림) */}
             {/* =================================================================== */}
             
-            {/* 건조 KPI 요약 바 (6대 핵심 지표 - 100% 가로 폭) */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: '10px', width: '100%' }}>
-              <div style={{ backgroundColor: 'var(--bg-card)', padding: '12px 14px', borderRadius: '8px', border: '1px solid var(--border-color)' }}>
-                <div style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: 700, marginBottom: '4px', whiteSpace: 'nowrap' }}>총 청구 명세</div>
-                <div style={{ fontSize: '17px', fontWeight: 800, color: 'var(--text-main)' }}>{statsRecon.totalCount}건</div>
-                <div style={{ fontSize: '11px', color: 'var(--primary)', fontWeight: 700, marginTop: '2px', whiteSpace: 'nowrap' }}>₩{statsRecon.totalBilled.toLocaleString()}</div>
+            {/* 건조 KPI 요약 바 (6대 핵심 지표 - 100% 가로 폭 초슬림 컴팩트) */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '6px', width: '100%' }}>
+              <div style={{ backgroundColor: 'var(--bg-card)', padding: '5px 10px', borderRadius: '6px', border: '1px solid var(--border-color)', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontSize: '10.5px', color: 'var(--text-muted)', fontWeight: 700, whiteSpace: 'nowrap' }}>총 청구 명세</span>
+                  <span style={{ fontSize: '14px', fontWeight: 800, color: 'var(--text-main)', whiteSpace: 'nowrap' }}>{statsRecon.totalCount}건</span>
+                </div>
+                <div style={{ fontSize: '10.5px', color: 'var(--primary)', fontWeight: 700, whiteSpace: 'nowrap' }}>₩{statsRecon.totalBilled.toLocaleString()}</div>
               </div>
 
-              <div style={{ backgroundColor: 'rgba(16, 185, 129, 0.08)', padding: '12px 14px', borderRadius: '8px', border: '1px solid rgba(16, 185, 129, 0.25)' }}>
-                <div style={{ fontSize: '11px', color: '#10b981', fontWeight: 700, marginBottom: '4px', whiteSpace: 'nowrap' }}>완벽 일치</div>
-                <div style={{ fontSize: '17px', fontWeight: 800, color: '#10b981' }}>{statsRecon.matchedCount}건</div>
-                <div style={{ fontSize: '11px', color: '#10b981', marginTop: '2px', whiteSpace: 'nowrap' }}>단가·기간 정합</div>
+              <div style={{ backgroundColor: 'rgba(16, 185, 129, 0.08)', padding: '5px 10px', borderRadius: '6px', border: '1px solid rgba(16, 185, 129, 0.25)', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontSize: '10.5px', color: '#10b981', fontWeight: 700, whiteSpace: 'nowrap' }}>완벽 일치</span>
+                  <span style={{ fontSize: '14px', fontWeight: 800, color: '#10b981', whiteSpace: 'nowrap' }}>{statsRecon.matchedCount}건</span>
+                </div>
+                <div style={{ fontSize: '10.5px', color: '#10b981', whiteSpace: 'nowrap' }}>단가·기간 정합</div>
               </div>
 
-              <div style={{ backgroundColor: 'rgba(245, 158, 11, 0.08)', padding: '12px 14px', borderRadius: '8px', border: '1px solid rgba(245, 158, 11, 0.25)' }}>
-                <div style={{ fontSize: '11px', color: '#f59e0b', fontWeight: 700, marginBottom: '4px', whiteSpace: 'nowrap' }}>차액</div>
-                <div style={{ fontSize: '17px', fontWeight: 800, color: '#f59e0b' }}>{statsRecon.priceMismatchCount}건</div>
-                <div style={{ fontSize: '11px', color: statsRecon.totalDiffAmount > 0 ? '#ef4444' : '#10b981', fontWeight: 700, marginTop: '2px', whiteSpace: 'nowrap' }}>
+              <div style={{ backgroundColor: 'rgba(245, 158, 11, 0.08)', padding: '5px 10px', borderRadius: '6px', border: '1px solid rgba(245, 158, 11, 0.25)', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontSize: '10.5px', color: '#f59e0b', fontWeight: 700, whiteSpace: 'nowrap' }}>차액</span>
+                  <span style={{ fontSize: '14px', fontWeight: 800, color: '#f59e0b', whiteSpace: 'nowrap' }}>{statsRecon.priceMismatchCount}건</span>
+                </div>
+                <div style={{ fontSize: '10.5px', color: statsRecon.totalDiffAmount > 0 ? '#ef4444' : '#10b981', fontWeight: 700, whiteSpace: 'nowrap' }}>
                   차액: {statsRecon.totalDiffAmount > 0 ? `+${statsRecon.totalDiffAmount.toLocaleString()}` : statsRecon.totalDiffAmount.toLocaleString()}원
                 </div>
               </div>
 
-              <div style={{ backgroundColor: 'rgba(249, 115, 22, 0.08)', padding: '12px 14px', borderRadius: '8px', border: '1px solid rgba(249, 115, 22, 0.25)' }}>
-                <div style={{ fontSize: '11px', color: '#f97316', fontWeight: 700, marginBottom: '4px', whiteSpace: 'nowrap' }}>연장 / 단축</div>
-                <div style={{ fontSize: '17px', fontWeight: 800, color: '#f97316' }}>{statsRecon.periodMismatchCount}건</div>
-                <div style={{ fontSize: '11px', color: '#f97316', marginTop: '2px', whiteSpace: 'nowrap' }}>계약 기간 차이</div>
+              <div style={{ backgroundColor: 'rgba(249, 115, 22, 0.08)', padding: '5px 10px', borderRadius: '6px', border: '1px solid rgba(249, 115, 22, 0.25)', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontSize: '10.5px', color: '#f97316', fontWeight: 700, whiteSpace: 'nowrap' }}>연장 / 단축</span>
+                  <span style={{ fontSize: '14px', fontWeight: 800, color: '#f97316', whiteSpace: 'nowrap' }}>{statsRecon.periodMismatchCount}건</span>
+                </div>
+                <div style={{ fontSize: '10.5px', color: '#f97316', whiteSpace: 'nowrap' }}>계약 기간 차이</div>
               </div>
 
-              <div style={{ backgroundColor: 'rgba(239, 68, 68, 0.08)', padding: '12px 14px', borderRadius: '8px', border: '1px solid rgba(239, 68, 68, 0.25)' }}>
-                <div style={{ fontSize: '11px', color: '#ef4444', fontWeight: 700, marginBottom: '4px', whiteSpace: 'nowrap' }}>임차등록 대상</div>
-                <div style={{ fontSize: '17px', fontWeight: 800, color: '#ef4444' }}>{statsRecon.unregisteredCount}건</div>
-                <div style={{ fontSize: '11px', color: '#ef4444', fontWeight: 700, marginTop: '2px', whiteSpace: 'nowrap' }}>자산 대장 미등록</div>
+              <div style={{ backgroundColor: 'rgba(239, 68, 68, 0.08)', padding: '5px 10px', borderRadius: '6px', border: '1px solid rgba(239, 68, 68, 0.25)', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontSize: '10.5px', color: '#ef4444', fontWeight: 700, whiteSpace: 'nowrap' }}>임차등록 대상</span>
+                  <span style={{ fontSize: '14px', fontWeight: 800, color: '#ef4444', whiteSpace: 'nowrap' }}>{statsRecon.unregisteredCount}건</span>
+                </div>
+                <div style={{ fontSize: '10.5px', color: '#ef4444', fontWeight: 700, whiteSpace: 'nowrap' }}>자산 대장 미등록</div>
               </div>
 
-              <div style={{ backgroundColor: 'rgba(59, 130, 246, 0.08)', padding: '12px 14px', borderRadius: '8px', border: '1px solid rgba(59, 130, 246, 0.25)' }}>
-                <div style={{ fontSize: '11px', color: '#3b82f6', fontWeight: 700, marginBottom: '4px', whiteSpace: 'nowrap' }}>미청구 / 반납</div>
-                <div style={{ fontSize: '17px', fontWeight: 800, color: '#3b82f6' }}>{statsRecon.missingCount}건</div>
-                <div style={{ fontSize: '11px', color: '#3b82f6', marginTop: '2px', whiteSpace: 'nowrap' }}>반납 확인 또는 제외</div>
+              <div style={{ backgroundColor: 'rgba(59, 130, 246, 0.08)', padding: '5px 10px', borderRadius: '6px', border: '1px solid rgba(59, 130, 246, 0.25)', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontSize: '10.5px', color: '#3b82f6', fontWeight: 700, whiteSpace: 'nowrap' }}>미청구 / 반납</span>
+                  <span style={{ fontSize: '14px', fontWeight: 800, color: '#3b82f6', whiteSpace: 'nowrap' }}>{statsRecon.missingCount}건</span>
+                </div>
+                <div style={{ fontSize: '10.5px', color: '#3b82f6', whiteSpace: 'nowrap' }}>반납 확인 또는 제외</div>
               </div>
             </div>
 
             {/* 인라인 검색 및 일괄 선택 툴바 */}
             <div style={{
-              display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px',
-              backgroundColor: 'var(--bg-card)', padding: '10px 14px', borderRadius: '8px', border: '1px solid var(--border-color)', width: '100%'
+              display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '6px',
+              backgroundColor: 'var(--bg-card)', padding: '6px 12px', borderRadius: '6px', border: '1px solid var(--border-color)', width: '100%'
             }}>
               {/* 좌측: 인라인 검색 */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                  <input
-                    type="text"
-                    value={reconcileSearch}
-                    onChange={e => setReconcileSearch(e.target.value)}
-                    placeholder="관리번호 / 모델명 검색"
-                    style={{ padding: '6px 10px', fontSize: '12px', width: '220px', borderRadius: '4px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-app)', color: 'var(--text-main)' }}
-                  />
-                </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <input
+                  type="text"
+                  value={reconcileSearch}
+                  onChange={e => setReconcileSearch(e.target.value)}
+                  placeholder="관리번호 / 모델명 검색"
+                  style={{ padding: '3px 8px', fontSize: '11.5px', width: '200px', borderRadius: '4px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-app)', color: 'var(--text-main)' }}
+                />
                 {reconcileSearch && (
                   <button
                     type="button"
                     onClick={() => setReconcileSearch('')}
-                    style={{ padding: '5px 8px', fontSize: '11px', background: 'var(--bg-app)', border: '1px solid var(--border-color)', borderRadius: '4px', cursor: 'pointer', whiteSpace: 'nowrap' }}
+                    style={{ padding: '3px 6px', fontSize: '10.5px', background: 'var(--bg-app)', border: '1px solid var(--border-color)', borderRadius: '4px', cursor: 'pointer', whiteSpace: 'nowrap' }}
                   >
                     초기화
                   </button>
                 )}
-                <span style={{ fontSize: '11px', color: 'var(--text-muted)', whiteSpace: 'nowrap', marginLeft: '4px' }}>
+                <span style={{ fontSize: '10.5px', color: 'var(--text-muted)', whiteSpace: 'nowrap', marginLeft: '4px' }}>
                   조회 {filteredReconcileResults.length}건 / 선택 {selectedReconcileIds.length}건
                 </span>
               </div>
 
               {/* 우측: 일괄 선택 제어 버튼군 */}
               {statementRows.length > 0 && (
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexWrap: 'wrap' }}>
                   <button
                     type="button"
                     onClick={() => {
@@ -1619,7 +1627,7 @@ export const RentAssets: React.FC = () => {
                       setSelectedReconcileIds(matchedIds);
                     }}
                     style={{
-                      padding: '4px 10px', fontSize: '11px', fontWeight: 700, borderRadius: '4px', cursor: 'pointer', whiteSpace: 'nowrap',
+                      padding: '3px 8px', fontSize: '10.5px', fontWeight: 700, borderRadius: '4px', cursor: 'pointer', whiteSpace: 'nowrap',
                       backgroundColor: 'rgba(16, 185, 129, 0.15)', color: '#10b981', border: '1px solid rgba(16, 185, 129, 0.3)'
                     }}
                   >
@@ -1635,7 +1643,7 @@ export const RentAssets: React.FC = () => {
                       setSelectedReconcileIds(validIds);
                     }}
                     style={{
-                      padding: '4px 10px', fontSize: '11px', fontWeight: 700, borderRadius: '4px', cursor: 'pointer', whiteSpace: 'nowrap',
+                      padding: '3px 8px', fontSize: '10.5px', fontWeight: 700, borderRadius: '4px', cursor: 'pointer', whiteSpace: 'nowrap',
                       backgroundColor: 'rgba(245, 158, 11, 0.15)', color: '#d97706', border: '1px solid rgba(245, 158, 11, 0.3)'
                     }}
                   >
@@ -1652,7 +1660,7 @@ export const RentAssets: React.FC = () => {
                       }
                     }}
                     style={{
-                      padding: '4px 10px', fontSize: '11px', fontWeight: 600, borderRadius: '4px', cursor: 'pointer', whiteSpace: 'nowrap',
+                      padding: '3px 8px', fontSize: '10.5px', fontWeight: 600, borderRadius: '4px', cursor: 'pointer', whiteSpace: 'nowrap',
                       backgroundColor: 'var(--bg-app)', border: '1px solid var(--border-color)', color: 'var(--text-main)'
                     }}
                   >
@@ -1662,34 +1670,37 @@ export const RentAssets: React.FC = () => {
               )}
             </div>
 
-            {/* 고밀도 그리드 테이블 (행 높이 38~42px 슬림, 2단 밴드 헤더, 100% 전체 너비) */}
+            {/* 고밀도 그리드 테이블 (행 높이 36px 슬림, 2단 밴드 헤더, 100% 전체 너비) */}
             <div className="card" style={{ border: '1px solid var(--border-color)', borderRadius: '8px', overflow: 'hidden', backgroundColor: 'var(--bg-card)', width: '100%' }}>
               {filteredReconcileResults.length === 0 ? (
                 <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '13px' }}>
                   대사 대상 데이터가 없습니다. 상단 [거래명세서 업로드]를 실행해 주세요.
                 </div>
               ) : (
-                <div style={{ overflowX: 'auto', maxHeight: '580px', overflowY: 'auto', width: '100%' }}>
+                <div style={{ overflowX: 'auto', maxHeight: 'calc(100vh - 290px)', minHeight: '520px', overflowY: 'auto', width: '100%' }}>
                   <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '11.5px' }}>
                     <thead style={{ position: 'sticky', top: 0, zIndex: 5 }}>
                       {/* 2단 밴드 헤더 1행: 그룹 분류 */}
                       <tr style={{ backgroundColor: 'var(--bg-card-header)', borderBottom: '1px solid var(--border-color)', textAlign: 'center', color: 'var(--text-muted)', fontSize: '11px', fontWeight: 700 }}>
-                        <th colSpan={5} style={{ padding: '6px 8px', borderRight: '1px solid var(--border-color)', whiteSpace: 'nowrap' }}>
+                        <th colSpan={5} style={{ padding: '5px 8px', borderRight: '1px solid var(--border-color)', whiteSpace: 'nowrap' }}>
                           기본 대사 식별 정보
                         </th>
-                        <th colSpan={2} style={{ padding: '6px 8px', borderRight: '1px solid var(--border-color)', backgroundColor: 'rgba(59, 130, 246, 0.05)', color: 'var(--primary)', whiteSpace: 'nowrap' }}>
-                          원사 청구 명세 (외부)
+                        <th colSpan={2} style={{ padding: '5px 8px', borderRight: '1px solid var(--border-color)', backgroundColor: 'rgba(16, 185, 129, 0.05)', color: '#10b981', whiteSpace: 'nowrap' }}>
+                          임차자산 대장
                         </th>
-                        <th colSpan={2} style={{ padding: '6px 8px', borderRight: '1px solid var(--border-color)', backgroundColor: 'rgba(16, 185, 129, 0.05)', color: '#10b981', whiteSpace: 'nowrap' }}>
-                          자사 등록 대장 (내부)
+                        <th colSpan={2} style={{ padding: '5px 8px', borderRight: '1px solid var(--border-color)', backgroundColor: 'rgba(59, 130, 246, 0.05)', color: 'var(--primary)', whiteSpace: 'nowrap' }}>
+                          임차처 청구
                         </th>
-                        <th colSpan={2} style={{ padding: '6px 8px', whiteSpace: 'nowrap' }}>
+                        <th colSpan={1} style={{ padding: '5px 8px', borderRight: '1px solid var(--border-color)', whiteSpace: 'nowrap' }}>
+                          오차
+                        </th>
+                        <th colSpan={1} style={{ padding: '5px 8px', whiteSpace: 'nowrap' }}>
                           대사 검증 및 조치
                         </th>
                       </tr>
                       {/* 2단 밴드 헤더 2행: 세부 컬럼명 */}
                       <tr style={{ backgroundColor: 'var(--bg-card-header)', borderBottom: '2px solid var(--border-color)', textAlign: 'left', color: 'var(--text-muted)', fontSize: '11px' }}>
-                        <th style={{ padding: '8px 10px', whiteSpace: 'nowrap', textAlign: 'center', width: '40px' }}>
+                        <th style={{ padding: '6px 8px', whiteSpace: 'nowrap', textAlign: 'center', width: '36px' }}>
                           <input
                             type="checkbox"
                             checked={statementRows.length > 0 && selectedReconcileIds.length === statementRows.length}
@@ -1699,19 +1710,19 @@ export const RentAssets: React.FC = () => {
                             }}
                           />
                         </th>
-                        <th style={{ padding: '8px 8px', whiteSpace: 'nowrap', textAlign: 'center', width: '56px' }}>상세</th>
-                        <th style={{ padding: '8px 10px', whiteSpace: 'nowrap', textAlign: 'center', width: '80px' }}>상태</th>
-                        <th style={{ padding: '8px 10px', whiteSpace: 'nowrap' }}>관리번호</th>
-                        <th style={{ padding: '8px 10px', whiteSpace: 'nowrap', borderRight: '1px solid var(--border-color)' }}>모델명</th>
+                        <th style={{ padding: '6px 6px', whiteSpace: 'nowrap', textAlign: 'center', width: '48px' }}>상세</th>
+                        <th style={{ padding: '6px 8px', whiteSpace: 'nowrap', textAlign: 'center', width: '68px' }}>상태</th>
+                        <th style={{ padding: '6px 8px', whiteSpace: 'nowrap' }}>관리번호</th>
+                        <th style={{ padding: '6px 8px', whiteSpace: 'nowrap', borderRight: '1px solid var(--border-color)' }}>모델명</th>
                         
-                        <th style={{ padding: '8px 10px', whiteSpace: 'nowrap', backgroundColor: 'rgba(59, 130, 246, 0.03)' }}>청구 기간</th>
-                        <th style={{ padding: '8px 10px', whiteSpace: 'nowrap', textAlign: 'right', backgroundColor: 'rgba(59, 130, 246, 0.03)', borderRight: '1px solid var(--border-color)' }}>청구금액</th>
+                        <th style={{ padding: '6px 8px', whiteSpace: 'nowrap', backgroundColor: 'rgba(16, 185, 129, 0.03)' }}>약정 기간</th>
+                        <th style={{ padding: '6px 8px', whiteSpace: 'nowrap', textAlign: 'right', backgroundColor: 'rgba(16, 185, 129, 0.03)', borderRight: '1px solid var(--border-color)' }}>약정금액</th>
 
-                        <th style={{ padding: '8px 10px', whiteSpace: 'nowrap', backgroundColor: 'rgba(16, 185, 129, 0.03)' }}>약정 기간</th>
-                        <th style={{ padding: '8px 10px', whiteSpace: 'nowrap', textAlign: 'right', backgroundColor: 'rgba(16, 185, 129, 0.03)', borderRight: '1px solid var(--border-color)' }}>약정금액</th>
+                        <th style={{ padding: '6px 8px', whiteSpace: 'nowrap', backgroundColor: 'rgba(59, 130, 246, 0.03)' }}>청구 기간</th>
+                        <th style={{ padding: '6px 8px', whiteSpace: 'nowrap', textAlign: 'right', backgroundColor: 'rgba(59, 130, 246, 0.03)', borderRight: '1px solid var(--border-color)' }}>청구금액</th>
 
-                        <th style={{ padding: '8px 10px', whiteSpace: 'nowrap', textAlign: 'right', width: '100px' }}>오차 차액</th>
-                        <th style={{ padding: '8px 10px', whiteSpace: 'nowrap' }}>검증 소견 및 조치</th>
+                        <th style={{ padding: '6px 8px', whiteSpace: 'nowrap', textAlign: 'right', width: '85px', borderRight: '1px solid var(--border-color)' }}>오차</th>
+                        <th style={{ padding: '6px 8px', whiteSpace: 'nowrap' }}>대사 검증 및 조치</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -1733,13 +1744,13 @@ export const RentAssets: React.FC = () => {
                           <tr
                             key={item.id}
                             style={{
-                              height: '40px',
+                              height: '36px',
                               borderBottom: '1px solid var(--border-color)',
                               backgroundColor: isChecked ? 'rgba(59, 130, 246, 0.05)' : rowBg
                             }}
                           >
                             {/* 체크박스 */}
-                            <td style={{ padding: '6px 10px', textAlign: 'center' }}>
+                            <td style={{ padding: '4px 8px', textAlign: 'center' }}>
                               {stmt ? (
                                 <input
                                   type="checkbox"
@@ -1755,13 +1766,13 @@ export const RentAssets: React.FC = () => {
                             </td>
 
                             {/* 상세 보기 버튼 */}
-                            <td style={{ padding: '6px 8px', textAlign: 'center' }}>
+                            <td style={{ padding: '4px 6px', textAlign: 'center' }}>
                               {matched ? (
                                 <button
                                   type="button"
                                   onClick={() => setSelectedAssetForDossier(matched)}
                                   className="btn-detail-link"
-                                  style={{ padding: '2px 8px', fontSize: '11px' }}
+                                  style={{ padding: '2px 6px', fontSize: '10.5px' }}
                                 >
                                   상세
                                 </button>
@@ -1771,34 +1782,24 @@ export const RentAssets: React.FC = () => {
                             </td>
 
                             {/* 상태 뱃지 */}
-                            <td style={{ padding: '6px 10px', textAlign: 'center', whiteSpace: 'nowrap' }}>
+                            <td style={{ padding: '4px 8px', textAlign: 'center', whiteSpace: 'nowrap' }}>
                               <span className={`badge ${item.badgeClass}`}>
                                 {item.statusLabel}
                               </span>
                             </td>
 
                             {/* 관리번호 */}
-                            <td style={{ padding: '6px 10px', whiteSpace: 'nowrap', fontWeight: 600 }}>
+                            <td style={{ padding: '4px 8px', whiteSpace: 'nowrap', fontWeight: 600 }}>
                               {stmt?.assetNo || matched?.assetNo || '-'}
                             </td>
 
                             {/* 모델명 */}
-                            <td style={{ padding: '6px 10px', whiteSpace: 'nowrap', color: 'var(--text-secondary)', borderRight: '1px solid var(--border-color)' }}>
+                            <td style={{ padding: '4px 8px', whiteSpace: 'nowrap', color: 'var(--text-secondary)', borderRight: '1px solid var(--border-color)' }}>
                               {stmt?.modelName || matched?.modelName || '미지정'}
                             </td>
 
-                            {/* 원사 청구 기간 */}
-                            <td style={{ padding: '6px 10px', whiteSpace: 'nowrap', color: 'var(--text-main)' }}>
-                              {stmt ? `${stmt.rentStart} ~ ${stmt.rentEnd}` : '-'}
-                            </td>
-
-                            {/* 원사 청구금액 */}
-                            <td style={{ padding: '6px 10px', whiteSpace: 'nowrap', textAlign: 'right', fontWeight: 700, borderRight: '1px solid var(--border-color)' }}>
-                              {stmt ? `₩${stmt.billedAmount.toLocaleString()}` : '-'}
-                            </td>
-
-                            {/* 자사 약정 기간 */}
-                            <td style={{ padding: '6px 10px', whiteSpace: 'nowrap', color: 'var(--text-secondary)' }}>
+                            {/* 자사 약정 기간 (좌측) */}
+                            <td style={{ padding: '4px 8px', whiteSpace: 'nowrap', color: 'var(--text-secondary)' }}>
                               {matched ? (
                                 <span>
                                   {matched.rentStart || '~'} ~ {matched.actualRentReturnDate || matched.rentEnd || '~'}
@@ -1811,23 +1812,34 @@ export const RentAssets: React.FC = () => {
                               )}
                             </td>
 
-                            {/* 자사 약정금액 */}
-                            <td style={{ padding: '6px 10px', whiteSpace: 'nowrap', textAlign: 'right', color: 'var(--text-secondary)', borderRight: '1px solid var(--border-color)' }}>
+                            {/* 자사 약정금액 (좌측) */}
+                            <td style={{ padding: '4px 8px', whiteSpace: 'nowrap', textAlign: 'right', color: 'var(--text-secondary)', borderRight: '1px solid var(--border-color)' }}>
                               ₩{item.expectedAmount.toLocaleString()}
                             </td>
 
-                            {/* 오차 차액 */}
+                            {/* 원사 청구 기간 (우측) */}
+                            <td style={{ padding: '4px 8px', whiteSpace: 'nowrap', color: 'var(--text-main)' }}>
+                              {stmt ? `${stmt.rentStart} ~ ${stmt.rentEnd}` : '-'}
+                            </td>
+
+                            {/* 원사 청구금액 (우측) */}
+                            <td style={{ padding: '4px 8px', whiteSpace: 'nowrap', textAlign: 'right', fontWeight: 700, borderRight: '1px solid var(--border-color)' }}>
+                              {stmt ? `₩${stmt.billedAmount.toLocaleString()}` : '-'}
+                            </td>
+
+                            {/* 오차 */}
                             <td style={{
-                              padding: '6px 10px', whiteSpace: 'nowrap', textAlign: 'right', fontWeight: 800,
+                              padding: '4px 8px', whiteSpace: 'nowrap', textAlign: 'right', fontWeight: 800,
+                              borderRight: '1px solid var(--border-color)',
                               color: item.priceDiff > 0 ? '#ef4444' : item.priceDiff < 0 ? '#10b981' : 'var(--text-muted)'
                             }}>
                               {item.priceDiff > 0 ? `+₩${item.priceDiff.toLocaleString()}` : item.priceDiff < 0 ? `-₩${Math.abs(item.priceDiff).toLocaleString()}` : '₩0'}
                             </td>
 
-                            {/* 검증 소견 및 조치 버튼군 */}
-                            <td style={{ padding: '6px 10px' }}>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                                <span style={{ whiteSpace: 'nowrap', color: 'var(--text-main)' }}>{item.reason}</span>
+                            {/* 검증 소견 및 조치 버튼군 (한 줄 고정 whiteSpace: nowrap) */}
+                            <td style={{ padding: '4px 8px', whiteSpace: 'nowrap' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'nowrap', whiteSpace: 'nowrap' }}>
+                                <span style={{ whiteSpace: 'nowrap', color: 'var(--text-main)', flexShrink: 0 }}>{item.reason}</span>
 
                                 {/* [임차등록] 버튼 (미등록 청구) */}
                                 {stmt && item.status === 'UNREGISTERED' && (
@@ -1838,8 +1850,8 @@ export const RentAssets: React.FC = () => {
                                       setSelectedAssetIdForMapping('');
                                     }}
                                     style={{
-                                      padding: '2px 8px', fontSize: '10.5px', fontWeight: 700, borderRadius: '4px',
-                                      backgroundColor: 'rgba(59, 130, 246, 0.15)', border: '1px solid #3b82f6', color: '#2563eb', cursor: 'pointer', whiteSpace: 'nowrap'
+                                      padding: '2px 6px', fontSize: '10.5px', fontWeight: 700, borderRadius: '4px',
+                                      backgroundColor: 'rgba(59, 130, 246, 0.15)', border: '1px solid #3b82f6', color: '#2563eb', cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0
                                     }}
                                   >
                                     임차등록
@@ -1852,8 +1864,8 @@ export const RentAssets: React.FC = () => {
                                     type="button"
                                     onClick={() => handleExtendAssetPeriod(matched.id, stmt.rentEnd)}
                                     style={{
-                                      padding: '2px 8px', fontSize: '10.5px', fontWeight: 700, borderRadius: '4px',
-                                      backgroundColor: 'rgba(249, 115, 22, 0.15)', border: '1px solid #f97316', color: '#ea580c', cursor: 'pointer', whiteSpace: 'nowrap'
+                                      padding: '2px 6px', fontSize: '10.5px', fontWeight: 700, borderRadius: '4px',
+                                      backgroundColor: 'rgba(249, 115, 22, 0.15)', border: '1px solid #f97316', color: '#ea580c', cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0
                                     }}
                                   >
                                     연장
@@ -1866,8 +1878,8 @@ export const RentAssets: React.FC = () => {
                                     type="button"
                                     onClick={() => handleShortenAssetPeriod(matched.id, stmt.rentEnd)}
                                     style={{
-                                      padding: '2px 8px', fontSize: '10.5px', fontWeight: 700, borderRadius: '4px',
-                                      backgroundColor: 'rgba(249, 115, 22, 0.15)', border: '1px solid #f97316', color: '#ea580c', cursor: 'pointer', whiteSpace: 'nowrap'
+                                      padding: '2px 6px', fontSize: '10.5px', fontWeight: 700, borderRadius: '4px',
+                                      backgroundColor: 'rgba(249, 115, 22, 0.15)', border: '1px solid #f97316', color: '#ea580c', cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0
                                     }}
                                   >
                                     단축
@@ -1880,8 +1892,8 @@ export const RentAssets: React.FC = () => {
                                     type="button"
                                     onClick={() => handleApprovePriceMismatch(stmt.id)}
                                     style={{
-                                      padding: '2px 8px', fontSize: '10.5px', fontWeight: 700, borderRadius: '4px',
-                                      backgroundColor: 'var(--bg-app)', border: '1px solid var(--border-color)', color: 'var(--text-main)', cursor: 'pointer', whiteSpace: 'nowrap'
+                                      padding: '2px 6px', fontSize: '10.5px', fontWeight: 700, borderRadius: '4px',
+                                      backgroundColor: 'var(--bg-app)', border: '1px solid var(--border-color)', color: 'var(--text-main)', cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0
                                     }}
                                   >
                                     기간승인
@@ -1894,8 +1906,8 @@ export const RentAssets: React.FC = () => {
                                     type="button"
                                     onClick={() => handleApprovePriceMismatch(stmt.id)}
                                     style={{
-                                      padding: '2px 8px', fontSize: '10.5px', fontWeight: 700, borderRadius: '4px',
-                                      backgroundColor: 'rgba(245, 158, 11, 0.15)', border: '1px solid #f59e0b', color: '#b45309', cursor: 'pointer', whiteSpace: 'nowrap'
+                                      padding: '2px 6px', fontSize: '10.5px', fontWeight: 700, borderRadius: '4px',
+                                      backgroundColor: 'rgba(245, 158, 11, 0.15)', border: '1px solid #f59e0b', color: '#b45309', cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0
                                     }}
                                   >
                                     차액승인
@@ -1908,8 +1920,8 @@ export const RentAssets: React.FC = () => {
                                     type="button"
                                     onClick={() => handleReturnAsset(item.matchedAsset!.id)}
                                     style={{
-                                      padding: '2px 8px', fontSize: '10.5px', fontWeight: 700, borderRadius: '4px',
-                                      backgroundColor: 'rgba(16, 185, 129, 0.15)', border: '1px solid #10b981', color: '#059669', cursor: 'pointer', whiteSpace: 'nowrap'
+                                      padding: '2px 6px', fontSize: '10.5px', fontWeight: 700, borderRadius: '4px',
+                                      backgroundColor: 'rgba(16, 185, 129, 0.15)', border: '1px solid #10b981', color: '#059669', cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0
                                     }}
                                   >
                                     반납
@@ -1922,11 +1934,11 @@ export const RentAssets: React.FC = () => {
                                     type="button"
                                     onClick={() => handleToggleExcludeBilling(item.matchedAsset!.id)}
                                     style={{
-                                      padding: '2px 8px', fontSize: '10.5px', fontWeight: 700, borderRadius: '4px',
+                                      padding: '2px 6px', fontSize: '10.5px', fontWeight: 700, borderRadius: '4px',
                                       backgroundColor: acknowledgedMissingAssetIds.includes(item.matchedAsset.id) ? 'rgba(100, 116, 139, 0.15)' : 'rgba(59, 130, 246, 0.12)',
                                       border: acknowledgedMissingAssetIds.includes(item.matchedAsset.id) ? '1px solid #64748b' : '1px solid #3b82f6',
                                       color: acknowledgedMissingAssetIds.includes(item.matchedAsset.id) ? '#64748b' : '#2563eb',
-                                      cursor: 'pointer', whiteSpace: 'nowrap'
+                                      cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0
                                     }}
                                   >
                                     {acknowledgedMissingAssetIds.includes(item.matchedAsset.id) ? '제외취소' : '청구제외'}
@@ -1939,8 +1951,8 @@ export const RentAssets: React.FC = () => {
                                     type="button"
                                     onClick={() => handleExcludeItem(stmt.id)}
                                     style={{
-                                      padding: '2px 8px', fontSize: '10.5px', fontWeight: 700, borderRadius: '4px',
-                                      backgroundColor: 'rgba(239, 68, 68, 0.12)', border: '1px solid #ef4444', color: '#dc2626', cursor: 'pointer', whiteSpace: 'nowrap'
+                                      padding: '2px 6px', fontSize: '10.5px', fontWeight: 700, borderRadius: '4px',
+                                      backgroundColor: 'rgba(239, 68, 68, 0.12)', border: '1px solid #ef4444', color: '#dc2626', cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0
                                     }}
                                   >
                                     정산제외
@@ -1953,8 +1965,8 @@ export const RentAssets: React.FC = () => {
                                     type="button"
                                     onClick={() => handleOpenClaimModal(item)}
                                     style={{
-                                      padding: '2px 8px', fontSize: '10.5px', fontWeight: 700, borderRadius: '4px',
-                                      backgroundColor: 'rgba(245, 158, 11, 0.12)', border: '1px solid #f59e0b', color: '#b45309', cursor: 'pointer', whiteSpace: 'nowrap'
+                                      padding: '2px 6px', fontSize: '10.5px', fontWeight: 700, borderRadius: '4px',
+                                      backgroundColor: 'rgba(245, 158, 11, 0.12)', border: '1px solid #f59e0b', color: '#b45309', cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0
                                     }}
                                   >
                                     구상등록
@@ -3388,7 +3400,7 @@ export const RentAssets: React.FC = () => {
               <div style={{ fontWeight: '800', fontSize: '12px', color: 'var(--text-main)', marginBottom: '4px' }}>🔍 시스템 자동 대사 검증 소견:</div>
               <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>{selectedReconcileDetail.reason}</div>
               <div style={{ fontSize: '12px', fontWeight: '700', marginTop: '6px', color: selectedReconcileDetail.priceDiff > 0 ? '#ef4444' : (selectedReconcileDetail.priceDiff < 0 ? '#10b981' : 'var(--text-main)') }}>
-                오차 차액: {selectedReconcileDetail.priceDiff > 0 ? `+₩${selectedReconcileDetail.priceDiff.toLocaleString()}원 (임차처 과다 청구)` : selectedReconcileDetail.priceDiff < 0 ? `-₩${Math.abs(selectedReconcileDetail.priceDiff).toLocaleString()}원 (임차처 임의 할인)` : '0원 (정상 일치)'}
+                오차: {selectedReconcileDetail.priceDiff > 0 ? `+₩${selectedReconcileDetail.priceDiff.toLocaleString()}원 (임차처 과다 청구)` : selectedReconcileDetail.priceDiff < 0 ? `-₩${Math.abs(selectedReconcileDetail.priceDiff).toLocaleString()}원 (임차처 임의 할인)` : '0원 (정상 일치)'}
               </div>
             </div>
 
@@ -3784,7 +3796,7 @@ export const RentAssets: React.FC = () => {
 
             {/* 청구서 정보 요약 */}
             <div style={{ padding: '12px', backgroundColor: 'var(--bg-app)', borderRadius: '8px', border: '1px solid var(--border-color)', marginBottom: '16px' }}>
-              <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)', marginBottom: '6px' }}>[원사 청구 명세 정보]</div>
+              <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)', marginBottom: '6px' }}>[임차처 청구 정보]</div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px', fontSize: '12px' }}>
                 <div><span style={{ color: 'var(--text-secondary)' }}>청구 자산번호:</span> <strong>{matchingItem.statementRow.assetNo || '미기재'}</strong></div>
                 <div><span style={{ color: 'var(--text-secondary)' }}>청구 모델:</span> <strong>{matchingItem.statementRow.modelName || '미기재'}</strong></div>
@@ -3809,7 +3821,7 @@ export const RentAssets: React.FC = () => {
                 </button>
               </div>
               <div style={{ fontSize: '11.5px', color: 'var(--text-secondary)', lineHeight: '1.4' }}>
-                원사 청구 명세(자산번호: {matchingItem.statementRow.assetNo || '자동채번'}, 모델: {matchingItem.statementRow.modelName || '기본'}, 약정료: ₩{matchingItem.statementRow.billedAmount.toLocaleString()})를 바탕으로 자사 임차자산 대장에 신규 등록하고 대사를 완결합니다.
+                임차처 청구 명세(자산번호: {matchingItem.statementRow.assetNo || '자동채번'}, 모델: {matchingItem.statementRow.modelName || '기본'}, 약정료: ₩{matchingItem.statementRow.billedAmount.toLocaleString()})를 바탕으로 자사 임차자산 대장에 신규 등록하고 대사를 완결합니다.
               </div>
             </div>
 

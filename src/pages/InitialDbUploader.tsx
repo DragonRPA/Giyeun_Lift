@@ -29,7 +29,6 @@ import {
 import {
   parseConsumableInventoryText,
   ingestConsumablesToDatabase,
-  SEED_INVENTORY_ITEMS,
   ParsedConsumableItem,
   detectSupplier,
   detectCategory
@@ -74,7 +73,8 @@ import {
 } from 'lucide-react';
 
 export const InitialDbUploader: React.FC = () => {
-  const { showSuccessToast, showErrorModal, fullRefreshFromServer, users, customers, contracts, contractAssets, customerSites, assets, importBandAsHistory, currentUser } = useApp();
+  const { showSuccessToast, showErrorModal, fullRefreshFromServer, users, customers, contracts, contractAssets, sites, customerSites: appCustomerSites, assets, importBandAsHistory, currentUser } = useApp();
+  const customerSites = sites || appCustomerSites || db.sites || [];
 
   // 상태 관리
   const [activeTab, setActiveTab] = useState<'INGEST' | 'BACKUP' | 'RESET'>('INGEST');
@@ -146,11 +146,9 @@ export const InitialDbUploader: React.FC = () => {
 
   // 📦 소모품 및 부품 재고 업로드 상태
   const [consumableFileName, setConsumableFileName] = useState<string>('');
-  const [consumableRawText, setConsumableRawText] = useState<string>('');
   const [parsedConsumables, setParsedConsumables] = useState<ParsedConsumableItem[] | null>(null);
   const [isConsumableParsing, setIsConsumableParsing] = useState(false);
   const [isConsumableIngesting, setIsConsumableIngesting] = useState(false);
-  const [showConsumableTextarea, setShowConsumableTextarea] = useState(false);
   const consumableFileInputRef = useRef<HTMLInputElement>(null);
 
   // 🔐 임직원 권한 마스터 업로드 상태
@@ -325,7 +323,6 @@ export const InitialDbUploader: React.FC = () => {
       reader.onload = (evt) => {
         try {
           const text = evt.target?.result as string;
-          setConsumableRawText(text);
           const items = parseConsumableInventoryText(text);
           setParsedConsumables(items);
           showSuccessToast?.(`소모품 텍스트 파싱 완료: ${items.length}건`);
@@ -339,33 +336,10 @@ export const InitialDbUploader: React.FC = () => {
     }
   };
 
-  // ── 텍스트 직접 입력 시 파싱 ──
-  const handleConsumableTextareaParse = () => {
-    if (!consumableRawText.trim()) {
-      showErrorModal?.('파싱할 텍스트 내용을 입력해 주세요.');
-      return;
-    }
-    try {
-      const items = parseConsumableInventoryText(consumableRawText);
-      setParsedConsumables(items);
-      setConsumableFileName('직접 텍스트 입력');
-      showSuccessToast?.(`소모품 텍스트 파싱 완료: ${items.length}건`);
-    } catch (err: any) {
-      showErrorModal?.(`텍스트 파싱 오류: ${err.message}`);
-    }
-  };
-
-  // ── 표준 30종 기본 재고 즉시 불러오기 ──
-  const handleLoadDefaultSeedConsumables = () => {
-    setConsumableFileName('소모품재고.txt (표준 30종 마스터)');
-    setParsedConsumables([...SEED_INVENTORY_ITEMS]);
-    showSuccessToast?.('관리 소모품 30종 (총 102개) 즉시 로드 완료');
-  };
-
   // ── 소모품 재고 일괄 DB 반영 ──
   const handleConsumablesIngest = async () => {
     if (!parsedConsumables || parsedConsumables.length === 0) {
-      showErrorModal?.('반영할 소모품 목록이 없습니다. 파일을 선택하거나 기본 목록을 불러와 주세요.');
+      showErrorModal?.('반영할 소모품 목록이 없습니다. 파일을 선택해 주세요.');
       return;
     }
     setIsConsumableIngesting(true);
@@ -2105,39 +2079,6 @@ export const InitialDbUploader: React.FC = () => {
                   소모품재고.txt 파일 또는 엑셀 목록을 분석하여 주기장 재고 및 최초 입고 이력을 일괄 등록합니다.
                 </span>
               </div>
-
-              {/* 우상단 액션 버튼군 */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <button
-                  type="button"
-                  onClick={handleLoadDefaultSeedConsumables}
-                  style={{
-                    display: 'flex', alignItems: 'center', gap: '6px',
-                    padding: '8px 14px', borderRadius: '6px',
-                    border: '1px solid #0284c7', backgroundColor: '#f0f9ff',
-                    color: '#0284c7', fontSize: '13px', fontWeight: 600,
-                    cursor: 'pointer', whiteSpace: 'nowrap'
-                  }}
-                >
-                  <FileText size={14} />
-                  표준 30종 기본 로드
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setShowConsumableTextarea(!showConsumableTextarea)}
-                  style={{
-                    display: 'flex', alignItems: 'center', gap: '6px',
-                    padding: '8px 14px', borderRadius: '6px',
-                    border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-card)',
-                    color: 'var(--text-secondary)', fontSize: '13px', fontWeight: 600,
-                    cursor: 'pointer', whiteSpace: 'nowrap'
-                  }}
-                >
-                  <Copy size={14} />
-                  텍스트 직접 입력 {showConsumableTextarea ? '닫기' : '열기'}
-                </button>
-              </div>
             </div>
 
             {/* 파일 업로드 바 */}
@@ -2170,41 +2111,6 @@ export const InitialDbUploader: React.FC = () => {
                 {consumableFileName || '선택된 파일 없음 (.txt / .xlsx 등)'}
               </span>
             </div>
-
-            {/* 텍스트 직접 입력창 (토글) */}
-            {showConsumableTextarea && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '16px', padding: '12px', backgroundColor: 'var(--bg-main)', borderRadius: '6px', border: '1px solid var(--border-color)' }}>
-                <label style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)' }}>
-                  소모품 재고 텍스트 직접 붙여넣기 (예: "JLG 충전기 2", "지니 g콘 (유압식) 4  3개수리중")
-                </label>
-                <textarea
-                  rows={6}
-                  value={consumableRawText}
-                  onChange={(e) => setConsumableRawText(e.target.value)}
-                  placeholder="품목명과 수량을 줄 단위로 입력하세요.&#10;예:&#10;JLG 충전기 2&#10;지니 충전기 5&#10;스카이잭 컨트롤박스1"
-                  style={{
-                    width: '100%', padding: '8px 10px', fontSize: '13px',
-                    fontFamily: 'monospace', borderRadius: '4px',
-                    border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-card)',
-                    color: 'var(--text-main)', resize: 'vertical'
-                  }}
-                />
-                <button
-                  type="button"
-                  onClick={handleConsumableTextareaParse}
-                  style={{
-                    alignSelf: 'flex-end', display: 'flex', alignItems: 'center', gap: '6px',
-                    padding: '6px 14px', borderRadius: '4px',
-                    backgroundColor: '#0284c7', color: 'white',
-                    border: 'none', fontSize: '12px', fontWeight: 600,
-                    cursor: 'pointer'
-                  }}
-                >
-                  <Search size={13} />
-                  텍스트 파싱 적용
-                </button>
-              </div>
-            )}
 
             {/* 파싱 결과 고밀도 테이블 및 최종 반영 버튼 */}
             {parsedConsumables && parsedConsumables.length > 0 && (

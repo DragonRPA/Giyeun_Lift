@@ -3482,35 +3482,54 @@ export function parseBandAsHistoryText(rawText: string): { author: string; date:
         if (j - i > 40) break;
       }
 
-      const full = collectedLines.join(' ');
+      // 🛡️ 작성자 닉네임에 '현장명:'이 포함된 경우(예: '현장명: 용인 SK하이닉스') 현장명 즉시 파싱 및 작성자 이름 정규화
+      let cleanAuthor = author;
+      let siteFromAuthor = '';
+      if (['현장명:', '현장명 :', '현장 :'].some(k => author.includes(k))) {
+        const match = author.match(/현장명?\s*[:：]?\s*(.+)/);
+        if (match) {
+          siteFromAuthor = match[1].trim();
+          cleanAuthor = '정비기사';
+        }
+      }
 
-      if (['현장명:', '현장명 :', '업체명:', '업체명 :', '업체 :', '업체:', '관리번호', '고장내용:', '고장내용 :', '접수자:'].some(k => full.includes(k))) {
-        const site = extractKeywordSection(full, ['현장명:', '현장명 :', '현장 :'], ['업체명:', '업체명 :', '업체 :', '업체:', '장비위치:', '관리번호', '고장내용', '접수자:']);
-        const addr = extractKeywordSection(full, ['현장주소:', '현장주소 :', '주소:', '주소 :', '상세주소:', '상세주소 :'], ['장비위치:', '관리번호', '고장내용', '접수자:']);
-        const cust = extractKeywordSection(full, ['업체명:', '업체명 :', '업체 :', '업체:'], ['장비위치:', '장비위치 :', '관리번호', '고장내용', '접수자:']);
-        const loc = extractKeywordSection(full, ['장비위치:', '장비위치 :', '위치:', '위치 :'], ['관리번호', '고장내용', '접수자:']);
-        let assetNo = extractKeywordSection(full, ['관리번호 :', '관리번호:', '관리번호'], ['고장내용:', '고장내용 :', '고장내용', '접수자:']);
-        const issue = extractKeywordSection(full, ['고장내용:', '고장내용 :', '고장내용'], ['접수자:', '접수자 :']);
-        const contact = extractKeywordSection(full, ['접수자:', '접수자 :'], ['댓글', '읽음', '글 옵션']);
+      const full = collectedLines.join(' ');
+      const combinedWithAuthor = `${author} ${full}`;
+
+      if (['현장명:', '현장명 :', '업체명:', '업체명 :', '업체 :', '업체:', '관리번호', '고장내용:', '고장내용 :', '접수자:'].some(k => combinedWithAuthor.includes(k))) {
+        let site = extractKeywordSection(full, ['현장명:', '현장명 :', '현장 :'], ['업체명:', '업체명 :', '업체 :', '업체:', '장비위치:', '관리번호', '고장내용', '접수자:']);
+        if (!site && siteFromAuthor) {
+          site = siteFromAuthor;
+        }
+        if (!site && author.includes('현장명')) {
+          site = extractKeywordSection(combinedWithAuthor, ['현장명:', '현장명 :', '현장 :'], ['업체명:', '업체명 :', '업체 :', '업체:', '장비위치:', '관리번호', '고장내용', '접수자:']);
+        }
+
+        const addr = extractKeywordSection(combinedWithAuthor, ['현장주소:', '현장주소 :', '주소:', '주소 :', '상세주소:', '상세주소 :'], ['장비위치:', '관리번호', '고장내용', '접수자:']);
+        const cust = extractKeywordSection(combinedWithAuthor, ['업체명:', '업체명 :', '업체 :', '업체:'], ['장비위치:', '장비위치 :', '관리번호', '고장내용', '접수자:']);
+        const loc = extractKeywordSection(combinedWithAuthor, ['장비위치:', '장비위치 :', '위치:', '위치 :'], ['관리번호', '고장내용', '접수자:']);
+        let assetNo = extractKeywordSection(combinedWithAuthor, ['관리번호 :', '관리번호:', '관리번호'], ['고장내용:', '고장내용 :', '고장내용', '접수자:']);
+        const issue = extractKeywordSection(combinedWithAuthor, ['고장내용:', '고장내용 :', '고장내용'], ['접수자:', '접수자 :']);
+        const contact = extractKeywordSection(combinedWithAuthor, ['접수자:', '접수자 :'], ['댓글', '읽음', '글 옵션']);
 
         if (assetNo.startsWith(':')) assetNo = assetNo.substring(1).trim();
 
         // 🛡️ 장비번호 미인식 시 대체 키워드 및 패턴 매칭
         if (!assetNo || assetNo === '현장확인') {
-          const altAsset = extractKeywordSection(full, ['장비번호 :', '장비번호:', '장비번호', '장비 :', '장비:', '호기 :', '호기:', '관리 :'], ['고장내용', '접수자:', '위치']);
+          const altAsset = extractKeywordSection(combinedWithAuthor, ['장비번호 :', '장비번호:', '장비번호', '장비 :', '장비:', '호기 :', '호기:', '관리 :'], ['고장내용', '접수자:', '위치']);
           if (altAsset) {
             assetNo = altAsset.startsWith(':') ? altAsset.substring(1).trim() : altAsset.trim();
           }
         }
         if (!assetNo || assetNo === '현장확인') {
-          const assetMatch = full.match(/\b([A-Za-z]{1,4}[- ]?\d{2,5}|\d{4,5})\b/);
+          const assetMatch = combinedWithAuthor.match(/\b([A-Za-z]{1,4}[- ]?\d{2,5}|\d{4,5})\b/);
           if (assetMatch && !['2026', '2025', '2024'].includes(assetMatch[1])) {
             assetNo = assetMatch[1];
           }
         }
 
         records.push({
-          author,
+          author: cleanAuthor,
           date: dateStr,
           site: site || '미지정현장',
           address: addr || '',
@@ -3519,7 +3538,7 @@ export function parseBandAsHistoryText(rawText: string): { author: string; date:
           assetNo: assetNo || '현장확인',
           issue: issue || '점검 및 정비 요청',
           contact,
-          raw: full.slice(0, 300)
+          raw: combinedWithAuthor.slice(0, 300)
         });
         i = j;
         continue;
@@ -3592,13 +3611,15 @@ export function analyzeBandAsHistory(
       )
     );
 
-    let matchedSite = (sites || []).find((s: any) =>
-      s.name && siteName && (
-        s.name.trim() === siteName ||
+    const normSiteName = siteName ? siteName.replace(/[\s\(\)\[\]._\-]/g, '').toLowerCase() : '';
+    let matchedSite = (sites || []).find((s: any) => {
+      if (!s.name || !siteName) return false;
+      const sNorm = s.name.replace(/[\s\(\)\[\]._\-]/g, '').toLowerCase();
+      return s.name.trim() === siteName ||
         siteName.includes(s.name.trim()) ||
-        s.name.trim().includes(siteName)
-      )
-    );
+        s.name.trim().includes(siteName) ||
+        (normSiteName.length >= 2 && (sNorm.includes(normSiteName) || normSiteName.includes(sNorm)));
+    });
 
     // 3. 계약 매칭 (고객/현장 기준)
     let matchedContract = (contracts || []).find((c: any) =>
@@ -3614,6 +3635,21 @@ export function analyzeBandAsHistory(
     if (!matchedAsset && finalAssetNo && finalAssetNo !== '현장확인') {
       const cleanNo = finalAssetNo.replace(/[^A-Za-z0-9]/g, '').toUpperCase();
       matchedAsset = (assets || []).find((a: any) => a.assetNo && a.assetNo.replace(/[^A-Za-z0-9]/g, '').toUpperCase() === cleanNo);
+    }
+
+    // 🛡️ 다수 장비번호 기재 시(예: 'G32021, H2494' 또는 'G19113,G19193') 첫 번째 유효 장비로 매칭 시도
+    if (!matchedAsset && finalAssetNo && (finalAssetNo.includes(',') || finalAssetNo.includes('/') || finalAssetNo.includes(' '))) {
+      const splitNos = finalAssetNo.split(/[,/\s]+/).map(x => x.trim()).filter(Boolean);
+      for (const singleNo of splitNos) {
+        const cleanNo = singleNo.replace(/[^A-Za-z0-9]/g, '').toUpperCase();
+        if (cleanNo.length >= 3) {
+          const found = (assets || []).find((a: any) => a.assetNo && a.assetNo.replace(/[^A-Za-z0-9]/g, '').toUpperCase() === cleanNo);
+          if (found) {
+            matchedAsset = found;
+            break;
+          }
+        }
+      }
     }
 
     let isSingleGuessed = false;
@@ -3907,46 +3943,39 @@ export async function rollbackBandAsHistory(
     let deletedRepairsCount = 0;
 
     if (supabase) {
-      // 1. repairs 테이블에서 source = 'BAND_IMPORT' 대상 조회
-      const { data: repRows, error: repErr } = await supabase
-        .from('repairs')
-        .select('id')
-        .eq('source', 'BAND_IMPORT');
+      // 1. repairs 테이블에서 source = 'BAND_IMPORT' 또는 id LIKE 'rep-band-%' 또는 ticketNo LIKE 'BAND-%' 대상 전수 완전 삭제
+      while (true) {
+        const { data: repRows, error: repErr } = await supabase
+          .from('repairs')
+          .select('id')
+          .or('source.eq.BAND_IMPORT,id.like.rep-band-*,ticketNo.like.BAND-*')
+          .limit(1000);
 
-      if (repErr) throw repErr;
+        if (repErr) throw repErr;
+        if (!repRows || repRows.length === 0) break;
 
-      const repIds = (repRows || []).map(r => r.id);
-      deletedRepairsCount = repIds.length;
+        const repIds = repRows.map(r => r.id);
+        deletedRepairsCount += repIds.length;
+        onProgress?.(`밴드 AS 이력 삭제 중 (누적 ${deletedRepairsCount.toLocaleString()}건 삭제 완료)...`);
 
-      if (repIds.length > 0) {
-        onProgress?.(`밴드 AS 이력 ${repIds.length}건 삭제 중...`);
         for (let i = 0; i < repIds.length; i += 100) {
           const chunk = repIds.slice(i, i + 100);
           const { error: delErr } = await supabase.from('repairs').delete().in('id', chunk);
           if (delErr) throw delErr;
-          onProgress?.(`밴드 AS 이력 삭제 중 (${Math.min(i + 100, repIds.length)}/${repIds.length})...`);
         }
       }
 
-      // 2. id LIKE 'rep-band-%' 대상 추가 청소
-      const { data: extraRows } = await supabase
-        .from('repairs')
-        .select('id')
-        .like('id', 'rep-band-%');
-      if (extraRows && extraRows.length > 0) {
-        const extraIds = extraRows.map(r => r.id);
-        for (let i = 0; i < extraIds.length; i += 100) {
-          const chunk = extraIds.slice(i, i + 100);
-          await supabase.from('repairs').delete().in('id', chunk);
-        }
-      }
+      // 2. asset_in_out_logs 에서 id LIKE 'aiog-band-%' 대상 전수 완전 삭제
+      while (true) {
+        const { data: aiogRows, error: aiogErr } = await supabase
+          .from('asset_in_out_logs')
+          .select('id')
+          .like('id', 'aiog-band-%')
+          .limit(1000);
 
-      // 3. asset_in_out_logs 에서 id LIKE 'aiog-band-%' 대상 정리
-      const { data: aiogRows } = await supabase
-        .from('asset_in_out_logs')
-        .select('id')
-        .like('id', 'aiog-band-%');
-      if (aiogRows && aiogRows.length > 0) {
+        if (aiogErr) throw aiogErr;
+        if (!aiogRows || aiogRows.length === 0) break;
+
         const aiogIds = aiogRows.map(r => r.id);
         for (let i = 0; i < aiogIds.length; i += 100) {
           const chunk = aiogIds.slice(i, i + 100);
@@ -3954,12 +3983,17 @@ export async function rollbackBandAsHistory(
         }
       }
 
-      // 4. contract_history 에서 id LIKE 'ch-as-band-%' 대상 정리
-      const { data: chRows } = await supabase
-        .from('contract_history')
-        .select('id')
-        .like('id', 'ch-as-band-%');
-      if (chRows && chRows.length > 0) {
+      // 3. contract_history 에서 id LIKE 'ch-as-band-%' 대상 전수 완전 삭제
+      while (true) {
+        const { data: chRows, error: chErr } = await supabase
+          .from('contract_history')
+          .select('id')
+          .like('id', 'ch-as-band-%')
+          .limit(1000);
+
+        if (chErr) throw chErr;
+        if (!chRows || chRows.length === 0) break;
+
         const chIds = chRows.map(r => r.id);
         for (let i = 0; i < chIds.length; i += 100) {
           const chunk = chIds.slice(i, i + 100);
@@ -4007,12 +4041,21 @@ export async function reconcileUnassignedBandRepairsWithAssets(
     let unassignedRepairs: any[] = [];
 
     if (supabase) {
-      const { data, error } = await supabase
-        .from('repairs')
-        .select('*')
-        .or('siteName.eq.미지정현장,siteName.eq.일반 현장,siteId.is.null');
-      if (error) throw error;
-      unassignedRepairs = data || [];
+      // 1000건 제한 우회: 전체 미지정현장 티켓 페이징 전수 수집 (최대 10,000건)
+      let page = 0;
+      const pageSize = 1000;
+      while (true) {
+        const { data, error } = await supabase
+          .from('repairs')
+          .select('*')
+          .or('siteName.eq.미지정현장,siteName.eq.일반 현장,siteId.is.null')
+          .range(page * pageSize, (page + 1) * pageSize - 1);
+        if (error) throw error;
+        if (!data || data.length === 0) break;
+        unassignedRepairs.push(...data);
+        if (data.length < pageSize) break;
+        page++;
+      }
     } else {
       unassignedRepairs = (db.repairs || []).filter(
         (r: any) => !r.siteId || r.siteName === '미지정현장' || r.siteName === '일반 현장'
@@ -4048,25 +4091,55 @@ export async function reconcileUnassignedBandRepairsWithAssets(
       if (!rawNo || rawNo === '현장확인' || rawNo === '전체장비') return;
 
       const cleanNo = rawNo.replace(/[^A-Za-z0-9]/g, '').toUpperCase();
-      const matchedAsset = assetMap.get(cleanNo);
+      let matchedAsset = assetMap.get(cleanNo);
 
-      if (matchedAsset && matchedAsset.currentSiteId) {
-        const foundSite = siteMap.get(matchedAsset.currentSiteId);
-        const foundCust = matchedAsset.currentCustomerId ? custMap.get(matchedAsset.currentCustomerId) : undefined;
-
-        if (foundSite) {
-          toUpdate.push({
-            id: rep.id,
-            siteId: foundSite.id,
-            siteName: foundSite.name,
-            siteAddress: foundSite.address || rep.siteAddress || '',
-            customerId: foundCust?.id || rep.customerId,
-            customerName: foundCust?.name || rep.customerName,
-            assetId: rep.assetId || matchedAsset.id,
-            updatedAt: new Date().toISOString()
-          });
-          updatedCount++;
+      // 다수 장비번호 시 첫 번째 장비로 매칭
+      if (!matchedAsset && (rawNo.includes(',') || rawNo.includes('/') || rawNo.includes(' '))) {
+        const parts = rawNo.split(/[,/\s]+/).map((x: string) => x.trim()).filter(Boolean);
+        for (const p of parts) {
+          const c = p.replace(/[^A-Za-z0-9]/g, '').toUpperCase();
+          if (c.length >= 3 && assetMap.has(c)) {
+            matchedAsset = assetMap.get(c);
+            break;
+          }
         }
+      }
+
+      let foundSite = matchedAsset?.currentSiteId ? siteMap.get(matchedAsset.currentSiteId) : undefined;
+      let foundCust = matchedAsset?.currentCustomerId ? custMap.get(matchedAsset.currentCustomerId) : undefined;
+
+      // 🛡️ mechanicName이나 memo에 '현장명: ...'이 들어있는 경우 텍스트 현장명 대사
+      if (!foundSite) {
+        const checkText = `${rep.mechanicName || ''} ${rep.memo || ''}`;
+        if (checkText.includes('현장명')) {
+          const m = checkText.match(/현장명\s*[:：]?\s*([^\n\r,]+)/);
+          if (m) {
+            const rawSiteStr = m[1].replace(/업체명.*|장비위치.*|관리번호.*/, '').trim();
+            const normRaw = rawSiteStr.replace(/[\s\(\)\[\]._\-]/g, '').toLowerCase();
+            if (normRaw.length >= 2) {
+              foundSite = (sites || []).find((s: any) => {
+                if (!s.name) return false;
+                const sNorm = s.name.replace(/[\s\(\)\[\]._\-]/g, '').toLowerCase();
+                return sNorm.includes(normRaw) || normRaw.includes(sNorm);
+              });
+            }
+          }
+        }
+      }
+
+      if (foundSite) {
+        toUpdate.push({
+          id: rep.id,
+          siteId: foundSite.id,
+          siteName: foundSite.name,
+          siteAddress: foundSite.address || rep.siteAddress || '',
+          customerId: foundCust?.id || rep.customerId,
+          customerName: foundCust?.name || rep.customerName,
+          assetId: rep.assetId || matchedAsset?.id,
+          mechanicName: (rep.mechanicName && rep.mechanicName.includes('현장명:')) ? '정비기사' : rep.mechanicName,
+          updatedAt: new Date().toISOString()
+        });
+        updatedCount++;
       }
     });
 

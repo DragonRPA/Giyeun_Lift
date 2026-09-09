@@ -54,8 +54,7 @@ export const MobileVehicleStock: React.FC = () => {
       const isAsDept = u.departmentId && asDeptIds.has(u.departmentId);
       const isAsName = Boolean(u.department?.includes('AS') || u.department?.includes('정비'));
       const isMechanicRole = u.role === 'MECHANIC';
-      const isTesterMechanic = u.id === 'usr-tester-mechanic';
-      return isAsDept || isAsName || isMechanicRole || isTesterMechanic;
+      return isAsDept || isAsName || isMechanicRole;
     });
 
     // 정렬: 팀장/매니저 우선 후 이름순

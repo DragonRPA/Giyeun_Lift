@@ -4451,11 +4451,11 @@ export const TruckDispatch: React.FC = () => {
                   <Upload size={15} color="var(--primary)" /> 거래명세서 데이터 유입
                 </span>
                 <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
-                  엑셀 거래명세서 ➔ 1:1 자동 대사
+                  거래명세서 ➔ 1:1 자동 대사
                 </span>
               </div>
 
-              {/* 메인 액션 버튼: 엑셀 거래명세서 업로드 & 자동대사 */}
+              {/* 메인 액션 버튼: 거래명세서 업로드 & 자동대사 */}
               <input type="file" ref={fileInputRef} onChange={handleExcelFileUpload} accept=".xlsx, .xls, .csv" style={{ display: 'none' }} />
               
               <button
@@ -4477,7 +4477,7 @@ export const TruckDispatch: React.FC = () => {
                   color: '#fff'
                 }}
               >
-                <Upload size={16} /> 엑셀 거래명세서 업로드 & 자동 대사
+                <Upload size={16} /> 거래명세서 업로드 & 자동 대사
               </button>
 
               {/* 하단 파이프라인 보조 버튼군 */}
@@ -4573,7 +4573,7 @@ export const TruckDispatch: React.FC = () => {
                   { key: 'ALL', label: '전체', count: reconPairs.length || completedDeliveriesForRecon.length, color: 'var(--text-primary)', bg: 'var(--bg-body)' },
                   { key: 'MATCHED', label: '대사 일치', count: reconStats.matchedCount, color: '#16a34a', bg: 'rgba(34,197,94,0.1)' },
                   { key: 'MISMATCH', label: '금액 불일치', count: reconStats.mismatchCount, color: '#ca8a04', bg: 'rgba(234,179,8,0.12)' },
-                  { key: 'EXCEL_ONLY', label: '엑셀 단독', count: reconPairs.filter(p => p.matchStatus === 'EXCEL_ONLY').length, color: '#dc2626', bg: 'rgba(239,68,68,0.1)' },
+                  { key: 'EXCEL_ONLY', label: '청구 단독', count: reconPairs.filter(p => p.matchStatus === 'EXCEL_ONLY').length, color: '#dc2626', bg: 'rgba(239,68,68,0.1)' },
                   { key: 'SYSTEM_ONLY', label: '시스템 단독', count: reconPairs.filter(p => p.matchStatus === 'SYSTEM_ONLY').length, color: 'var(--text-muted)', bg: 'var(--bg-body)' },
                   { key: 'EXCLUDED', label: '오청구 제외', count: reconStats.excludedCount, color: 'var(--text-muted)', bg: 'rgba(100,116,139,0.1)' },
                   { key: 'PAYMENT_REQUESTED', label: '지급요청 완료', count: reconStats.paymentRequestedCount, color: '#2563eb', bg: 'rgba(37,99,235,0.1)' }
@@ -4649,18 +4649,52 @@ export const TruckDispatch: React.FC = () => {
             {/* 1:1 대사 그리드 테이블 (행 높이 42px / 한눈에 15건 조망) */}
             <div style={{ maxHeight: 'calc(100vh - 320px)', minHeight: '400px', overflowY: 'auto', border: '1px solid var(--border-color)', borderRadius: '8px' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px', textAlign: 'left' }}>
-                <thead>
-                  <tr style={{ backgroundColor: 'var(--bg-body)', borderBottom: '1px solid var(--border-color)', color: 'var(--text-secondary)', position: 'sticky', top: 0, zIndex: 5, whiteSpace: 'nowrap' }}>
-                    <th style={{ padding: '8px 10px', width: '70px', textAlign: 'center' }}>상태</th>
-                    <th style={{ padding: '8px 10px', width: '85px' }}>시스템 일자</th>
-                    <th style={{ padding: '8px 10px', minWidth: '180px' }}>시스템 배차 정보 (고객사 / 현장 / 기사)</th>
-                    <th style={{ padding: '8px 10px', width: '90px', textAlign: 'right' }}>시스템 금액</th>
-                    <th style={{ padding: '8px 6px', width: '30px', textAlign: 'center' }}>비교</th>
-                    <th style={{ padding: '8px 10px', width: '85px' }}>엑셀 일자</th>
-                    <th style={{ padding: '8px 10px', minWidth: '180px' }}>엑셀 청구 내역 (현장명 / 비고)</th>
-                    <th style={{ padding: '8px 10px', width: '90px', textAlign: 'right' }}>엑셀 청구액</th>
-                    <th style={{ padding: '8px 10px', width: '130px', textAlign: 'center' }}>차액 분석</th>
-                    <th style={{ padding: '8px 10px', width: '140px', textAlign: 'center' }}>조치</th>
+                <thead style={{ position: 'sticky', top: 0, zIndex: 5 }}>
+                  {/* 1행: 대분류 영역 헤더 (상태 | 배차정보 3열 | 비교 | 청구정보 3열 | 차액 | 조치) */}
+                  <tr style={{ backgroundColor: 'var(--bg-body)', borderBottom: '1px solid var(--border-color)', color: 'var(--text-secondary)', whiteSpace: 'nowrap', fontSize: '11.5px' }}>
+                    <th rowSpan={2} style={{ padding: '6px 8px', width: '65px', textAlign: 'center', verticalAlign: 'middle', borderRight: '1px solid var(--border-color)', fontWeight: 800 }}>
+                      상태
+                    </th>
+                    <th colSpan={3} style={{ padding: '5px 8px', textAlign: 'center', fontWeight: 800, backgroundColor: 'rgba(59, 130, 246, 0.08)', color: 'var(--primary)', borderRight: '1px solid var(--border-color)' }}>
+                      배차정보
+                    </th>
+                    <th rowSpan={2} style={{ padding: '6px 4px', width: '36px', textAlign: 'center', verticalAlign: 'middle', borderRight: '1px solid var(--border-color)', fontWeight: 800, color: 'var(--text-muted)' }}>
+                      비교
+                    </th>
+                    <th colSpan={3} style={{ padding: '5px 8px', textAlign: 'center', fontWeight: 800, backgroundColor: 'rgba(16, 185, 129, 0.08)', color: '#10b981', borderRight: '1px solid var(--border-color)' }}>
+                      청구정보
+                    </th>
+                    <th rowSpan={2} style={{ padding: '6px 8px', width: '120px', textAlign: 'center', verticalAlign: 'middle', borderRight: '1px solid var(--border-color)', fontWeight: 800 }}>
+                      차액
+                    </th>
+                    <th rowSpan={2} style={{ padding: '6px 8px', width: '130px', textAlign: 'center', verticalAlign: 'middle', fontWeight: 800 }}>
+                      조치
+                    </th>
+                  </tr>
+
+                  {/* 2행: 세부 필드 헤더 (배차정보 3열 + 청구정보 3열) */}
+                  <tr style={{ backgroundColor: 'var(--bg-body)', borderBottom: '1.5px solid var(--border-color)', color: 'var(--text-secondary)', whiteSpace: 'nowrap', fontSize: '11px' }}>
+                    {/* 배차정보 하위 */}
+                    <th style={{ padding: '6px 8px', width: '85px', backgroundColor: 'rgba(59, 130, 246, 0.03)' }}>
+                      일자
+                    </th>
+                    <th style={{ padding: '6px 8px', minWidth: '180px', backgroundColor: 'rgba(59, 130, 246, 0.03)' }}>
+                      내역 (고객사 / 현장 / 기사)
+                    </th>
+                    <th style={{ padding: '6px 8px', width: '90px', textAlign: 'right', backgroundColor: 'rgba(59, 130, 246, 0.03)', borderRight: '1px solid var(--border-color)' }}>
+                      금액
+                    </th>
+
+                    {/* 청구정보 하위 */}
+                    <th style={{ padding: '6px 8px', width: '85px', backgroundColor: 'rgba(16, 185, 129, 0.03)' }}>
+                      청구서 일자
+                    </th>
+                    <th style={{ padding: '6px 8px', minWidth: '180px', backgroundColor: 'rgba(16, 185, 129, 0.03)' }}>
+                      청구 내역 (현장명 / 비고)
+                    </th>
+                    <th style={{ padding: '6px 8px', width: '90px', textAlign: 'right', backgroundColor: 'rgba(16, 185, 129, 0.03)', borderRight: '1px solid var(--border-color)' }}>
+                      청구금액
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
@@ -4694,7 +4728,7 @@ export const TruckDispatch: React.FC = () => {
                             </td>
                             <td style={{ textAlign: 'center', color: 'var(--text-muted)' }}>-</td>
                             <td colSpan={4} style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: '11.5px' }}>
-                              상단 [엑셀 거래명세서 업로드] 시 1:1 대사가 진행됩니다.
+                              상단 [거래명세서 업로드] 시 1:1 대사가 진행됩니다.
                             </td>
                             <td style={{ textAlign: 'center', padding: '6px' }}>
                               <button onClick={(e) => handleOpenCostEdit(d, cost, e)} style={{ padding: '2px 6px', fontSize: '11px', borderRadius: '4px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-body)', cursor: 'pointer' }}>
@@ -4742,7 +4776,7 @@ export const TruckDispatch: React.FC = () => {
                           <tr
                             key={pair.pairId || pIdx}
                             onDoubleClick={() => setSelectedReconDetailPair(pair)}
-                            title="더블클릭 시 배차 상세 및 엑셀 청구 대조 모달이 열립니다."
+                            title="더블클릭 시 배차 상세 및 청구 대조 모달이 열립니다."
                             style={{
                               borderBottom: '1px solid var(--border-color)',
                               backgroundColor: isExcluded ? 'rgba(100,116,139,0.06)' : isMismatch ? 'rgba(234,179,8,0.05)' : isMatched ? 'rgba(34,197,94,0.03)' : isExcelOnly ? 'rgba(239,68,68,0.04)' : 'transparent',
@@ -4766,7 +4800,7 @@ export const TruckDispatch: React.FC = () => {
                                 </span>
                               ) : isExcelOnly ? (
                                 <span style={{ padding: '2px 6px', borderRadius: '4px', fontSize: '11px', fontWeight: 800, backgroundColor: 'rgba(239,68,68,0.15)', color: '#dc2626' }}>
-                                  🔴 엑셀
+                                  🔴 청구
                                 </span>
                               ) : (
                                 <span style={{ padding: '2px 6px', borderRadius: '4px', fontSize: '11px', fontWeight: 700, backgroundColor: 'var(--bg-body)', color: 'var(--text-muted)' }}>
@@ -4775,12 +4809,12 @@ export const TruckDispatch: React.FC = () => {
                               )}
                             </td>
 
-                            {/* [시스템] 일자 */}
+                            {/* [배차정보] 일자 */}
                             <td style={{ padding: '6px 10px', whiteSpace: 'nowrap', color: sys ? 'var(--text-primary)' : 'var(--text-muted)' }}>
                               {sys ? (sys.loadingDate || sys.requestDate) : '(미기재)'}
                             </td>
 
-                            {/* [시스템] 배차 정보 */}
+                            {/* [배차정보] 내역 */}
                             <td style={{ padding: '6px 10px', maxWidth: '240px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                               {sys ? (
                                 <>
@@ -4792,7 +4826,7 @@ export const TruckDispatch: React.FC = () => {
                               )}
                             </td>
 
-                            {/* [시스템] 금액 */}
+                            {/* [배차정보] 금액 */}
                             <td style={{ padding: '6px 10px', textAlign: 'right', fontWeight: 800, color: sys ? 'var(--primary)' : 'var(--text-muted)', whiteSpace: 'nowrap' }}>
                               {sys ? `₩${pair.systemCost.toLocaleString()}` : '-'}
                             </td>
@@ -4802,12 +4836,12 @@ export const TruckDispatch: React.FC = () => {
                               {isMatched ? '=' : isMismatch ? '≠' : 'VS'}
                             </td>
 
-                            {/* [엑셀] 일자 */}
+                            {/* [청구정보] 일자 */}
                             <td style={{ padding: '6px 10px', whiteSpace: 'nowrap', color: excel ? 'var(--text-primary)' : 'var(--text-muted)' }}>
                               {excel ? (excel['정규일자'] || excel['일자'] || excel['날짜'] || excel['운송일자']) : '(미기재)'}
                             </td>
 
-                            {/* [엑셀] 청구 내역 */}
+                            {/* [청구정보] 청구 내역 */}
                             <td style={{ padding: '6px 10px', maxWidth: '260px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                               {excel ? (
                                 <>
@@ -4819,12 +4853,12 @@ export const TruckDispatch: React.FC = () => {
                               )}
                             </td>
 
-                            {/* [엑셀] 청구액 */}
+                            {/* [청구정보] 청구금액 */}
                             <td style={{ padding: '6px 10px', textAlign: 'right', fontWeight: 800, color: excel ? (isMismatch ? '#ca8a04' : '#16a34a') : 'var(--text-muted)', whiteSpace: 'nowrap' }}>
                               {excel ? `₩${pair.excelCost.toLocaleString()}` : '-'}
                             </td>
 
-                            {/* 차액 및 할증 분석 */}
+                            {/* 차액 */}
                             <td style={{ padding: '6px 10px', textAlign: 'center', whiteSpace: 'nowrap' }}>
                               {isMismatch ? (
                                 <span style={{ fontSize: '11.5px', fontWeight: 800, color: '#ca8a04' }}>
@@ -4832,7 +4866,7 @@ export const TruckDispatch: React.FC = () => {
                                   {pair.surchargeReason && <span style={{ fontSize: '10.5px', display: 'block', color: '#a16207' }}>({pair.surchargeReason})</span>}
                                 </span>
                               ) : isExcelOnly ? (
-                                <span style={{ fontSize: '11px', color: '#dc2626' }}>엑셀 단독 청구</span>
+                                <span style={{ fontSize: '11px', color: '#dc2626' }}>청구 단독</span>
                               ) : isSysOnly ? (
                                 <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>배차 미청구</span>
                               ) : (
@@ -4857,7 +4891,7 @@ export const TruckDispatch: React.FC = () => {
                                   <>
                                     <button
                                       onClick={() => handleCreateDeliveryFromExcel(pair.pairId)}
-                                      title="이 엑셀 항목으로 신규 배차를 생성하고 대사 완료"
+                                      title="청구 내역으로 신규 배차를 생성하고 대사 완료"
                                       style={{ padding: '3px 6px', fontSize: '10.5px', fontWeight: 700, borderRadius: '4px', border: '1px solid #2563eb', backgroundColor: 'rgba(37,99,235,0.1)', color: '#2563eb', cursor: 'pointer' }}
                                     >
                                       배차생성
@@ -4934,7 +4968,7 @@ export const TruckDispatch: React.FC = () => {
                   <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>({reconStats.totalCount}건)</span>
                 </div>
                 <div style={{ padding: '3px 10px', borderRadius: '4px', backgroundColor: 'rgba(100,116,139,0.1)', border: '1px solid var(--border-color)', color: 'var(--text-muted)', fontSize: '11.5px', fontWeight: 600 }}>
-                  대사 대기 (우상단 엑셀 거래명세서 업로드 시 1:1 대사 시작)
+                  대사 대기 (우상단 거래명세서 업로드 시 1:1 대사 시작)
                 </div>
               </div>
             ) : (
@@ -5163,7 +5197,7 @@ export const TruckDispatch: React.FC = () => {
                   )}
                   {isExcelOnly && (
                     <span style={{ padding: '3px 8px', borderRadius: '4px', fontSize: '12px', fontWeight: 800, backgroundColor: 'rgba(239,68,68,0.15)', color: '#dc2626' }}>
-                      🔴 엑셀 단독 청구 (배차 미발견)
+                      🔴 청구서 단독 (배차 미발견)
                     </span>
                   )}
                   {isSysOnly && (
@@ -5208,7 +5242,7 @@ export const TruckDispatch: React.FC = () => {
                   )}
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', textAlign: 'right' }}>
-                  <span style={{ fontSize: '12px', color: 'var(--text-muted)', fontWeight: 700 }}>운송사 엑셀 청구 운송비</span>
+                  <span style={{ fontSize: '12px', color: 'var(--text-muted)', fontWeight: 700 }}>운송사 청구 운송비</span>
                   <span style={{ fontSize: '20px', fontWeight: 900, color: excel ? (isMismatch ? '#ca8a04' : '#16a34a') : 'var(--text-muted)' }}>
                     {excel ? `₩${pair.excelCost.toLocaleString()}원` : '청구 없음'}
                   </span>
@@ -5233,7 +5267,7 @@ export const TruckDispatch: React.FC = () => {
                 </div>
               )}
 
-              {/* 2열 비교 본문 (좌측: 시스템 배차 원장 / 우측: 운송사 엑셀 청구 내역) */}
+              {/* 2열 비교 본문 (좌측: 시스템 배차 원장 / 우측: 운송사 청구 내역) */}
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
                 {/* 좌측: 시스템 배차 내역 */}
                 <div style={{
@@ -5303,12 +5337,12 @@ export const TruckDispatch: React.FC = () => {
                     </div>
                   ) : (
                     <div style={{ padding: '30px 10px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '13px' }}>
-                      시스템에 일치하는 배차 내역이 없습니다. (엑셀 단독 청구)
+                      시스템에 일치하는 배차 내역이 없습니다. (청구 단독)
                     </div>
                   )}
                 </div>
 
-                {/* 우측: 운송사 엑셀 청구 내역 */}
+                {/* 우측: 운송사 청구 내역 */}
                 <div style={{
                   border: '1px solid var(--border-color)',
                   borderRadius: '10px',
@@ -5319,7 +5353,7 @@ export const TruckDispatch: React.FC = () => {
                   gap: '10px'
                 }}>
                   <div style={{ fontSize: '14px', fontWeight: 900, color: 'var(--text-primary)', borderBottom: '1px solid var(--border-color)', paddingBottom: '8px' }}>
-                    📄 운송사 엑셀 거래명세서 내역
+                    📄 운송사 거래명세서 청구 내역
                   </div>
                   {excel ? (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '12.5px' }}>
@@ -5350,7 +5384,7 @@ export const TruckDispatch: React.FC = () => {
                         <span style={{ fontWeight: 700, color: 'var(--text-primary)' }}>{excel['톤수'] || excel['차종'] || '-'}</span>
                       </div>
                       <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                        <span style={{ color: 'var(--text-muted)', fontWeight: 600 }}>엑셀 기재 운송비</span>
+                        <span style={{ color: 'var(--text-muted)', fontWeight: 600 }}>청구 운송비</span>
                         <span style={{ fontWeight: 900, color: '#16a34a', fontSize: '14px' }}>₩{pair.excelCost.toLocaleString()}원</span>
                       </div>
                       {excel['비고'] && (
@@ -5364,7 +5398,7 @@ export const TruckDispatch: React.FC = () => {
                     </div>
                   ) : (
                     <div style={{ padding: '30px 10px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '13px' }}>
-                      운송사 엑셀에 해당 건의 청구 내역이 없습니다. (배차 단독)
+                      운송사 청구서에 해당 건의 내역이 없습니다. (배차 단독)
                     </div>
                   )}
                 </div>

@@ -161,6 +161,13 @@ const enforceManagerPolicies = (usersList: UserNode[], deptList: Department[]) =
       loadedUsers = db.users as any;
     }
 
+    // 🛡️ [테스터 영구 배제] 로컬스토리지나 DB 캐시에 잔존하는 테스터 계정 원천 차단
+    const isTester = (u: any) =>
+      u.id?.startsWith('usr-tester') ||
+      u.name?.includes('테스터') ||
+      u.loginId?.includes('tester');
+    loadedUsers = loadedUsers.filter(u => !isTester(u));
+
     // 로컬 스토리지에 잔류할 수 있는 오염 필드(modelName, supplier 등) 원천 제거
     loadedDepts = loadedDepts.map(d => {
       const { modelName, supplier, ...rest } = (d as any);
@@ -178,6 +185,11 @@ const enforceManagerPolicies = (usersList: UserNode[], deptList: Department[]) =
         ? { ...u, departmentId: null } 
         : u
     );
+
+    // 로컬스토리지 erp_users에서도 테스터 계정을 즉시 정화
+    if (savedUsers) {
+      localStorage.setItem('erp_users', JSON.stringify(loadedUsers));
+    }
 
     setDepartments(loadedDepts);
     setUsers(loadedUsers);
@@ -212,14 +224,21 @@ const enforceManagerPolicies = (usersList: UserNode[], deptList: Department[]) =
         const { modelName, supplier, ...rest } = (d as any);
         return rest as Department;
       });
-      const cleanUsers = users.map(u => {
-        const { modelName, supplier, ...rest } = (u as any);
-        const dept = cleanDepts.find(d => d.id === u.departmentId);
-        return {
-          ...rest,
-          department: dept ? dept.name : (rest.department || '')
-        } as UserNode;
-      });
+      // 🛡️ [테스터 영구 배제] 테스터 계정이 DB로 유입되는 것을 원천 차단
+      const isTester = (u: any) =>
+        u.id?.startsWith('usr-tester') ||
+        u.name?.includes('테스터') ||
+        u.loginId?.includes('tester');
+      const cleanUsers = users
+        .filter(u => !isTester(u))
+        .map(u => {
+          const { modelName, supplier, ...rest } = (u as any);
+          const dept = cleanDepts.find(d => d.id === u.departmentId);
+          return {
+            ...rest,
+            department: dept ? dept.name : (rest.department || '')
+          } as UserNode;
+        });
 
       // 실제 DB (또는 로컬 백그라운드 큐)에 일괄 업데이트
       await db.saveOrganizationBatch(cleanDepts, cleanUsers as any);

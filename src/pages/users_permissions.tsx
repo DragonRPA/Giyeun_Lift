@@ -80,12 +80,12 @@ export const UsersPermissions: React.FC = () => {
       if (dId === 'DEPT-0000004' || dId === 'DEPT-4') return '출고팀';
       if (dId === 'DEPT-0000005' || dId === 'DEPT-5') return 'AS팀';
     }
-    // 4. Role 및 테스트/관리 계정 식별
+    // 4. Role 및 관리 계정 식별
     const r = (u.role || '').toUpperCase();
     const login = (u.loginId || '').toLowerCase();
 
-    if (u.id === 'usr-tester-dispatch' || login.includes('dispatch')) return '출고팀';
-    if (u.id === 'usr-tester-mechanic' || login.includes('mechanic')) return 'AS팀';
+    if (login.includes('dispatch')) return '출고팀';
+    if (login.includes('mechanic')) return 'AS팀';
     if (r === 'ADMIN' || login === 'admin' || u.id === 'sys-admin' || u.id === 'u-1') return '경영지원';
 
     // 5. 직무 템플릿의 Role 기반 부서 추론
@@ -106,15 +106,23 @@ export const UsersPermissions: React.FC = () => {
     setTimeout(() => setToastMessage(null), 3500);
   };
 
+  // 테스터 계정 배제 필터
+  const isTester = (u: any) =>
+    u.id?.startsWith('usr-tester') ||
+    u.name?.includes('테스터') ||
+    u.loginId?.includes('tester');
+
+  const filteredUsers = users.filter(u => !isTester(u));
+
   useEffect(() => {
-    setLocalUsers([...users]);
+    setLocalUsers([...filteredUsers]);
   }, [users]);
 
   useEffect(() => {
-    if (users.length > 0 && !selectedUserId) {
-      setSelectedUserId(users[0].id);
+    if (filteredUsers.length > 0 && !selectedUserId) {
+      setSelectedUserId(filteredUsers[0].id);
     }
-  }, [users, selectedUserId]);
+  }, [filteredUsers, selectedUserId]);
 
   useEffect(() => {
     // 모든 시스템 메뉴 ID 스캔 및 누락된 권한 항목 자가 복구 (Auto Backfill - 직무 템플릿 상속 보존)
@@ -122,7 +130,7 @@ export const UsersPermissions: React.FC = () => {
     const merged = [...permissions];
     let addedCount = 0;
 
-    users.forEach(u => {
+    filteredUsers.forEach(u => {
       const dept = u.departmentId || u.department;
       allMenuIds.forEach(menuId => {
         const normId = normalizeMenuId(menuId);

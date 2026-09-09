@@ -1,8 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
 import * as XLSX from 'xlsx';
 import { Clock, Trash2, Download, Search, CheckCircle2, Plus, Minus, RotateCcw, ChevronLeft, ChevronRight, Calendar } from 'lucide-react';
-import { User as UserType } from '../services/db';
+import { User as UserType, Department, db } from '../services/db';
 
 const getTodayYmd = () => {
   const d = new Date();
@@ -29,6 +29,34 @@ const OT_REASON_PRESETS = [
   '재고 실사'
 ];
 
+// 표준 부서 순서 폴백 (DB 부서 미로딩 시 대비)
+const DEPT_FALLBACK_ORDER: Record<string, number> = {
+  'DEPT-0000001': 0, 'DEPT-1': 0,  // 기연리프트 (경영진)
+  'DEPT-0000002': 1, 'DEPT-2': 1,  // 관리부
+  'DEPT-0000003': 2, 'DEPT-3': 2,  // 영업부
+  'DEPT-0000004': 3, 'DEPT-4': 3,  // 출고팀
+  'DEPT-0000005': 4, 'DEPT-5': 4,  // AS팀
+  'DEPT-0000006': 5, 'DEPT-6': 5,  // 외국인
+};
+
+// 직급 서열 가중치 (사장/대표 -> 부사장 -> 전무 -> 상무 -> 부장 -> 차장 -> 팀장 -> 과장 -> 대리 -> 주임 -> 사원)
+const POSITION_RANK: Record<string, number> = {
+  '대표': 1, '대표이사': 1, '사장': 1,
+  '부사장': 2,
+  '전무': 3, '전무이사': 3,
+  '상무': 4, '상무이사': 4,
+  '이사': 5,
+  '본부장': 6,
+  '부장': 7,
+  '차장': 8,
+  '팀장': 9, '실장': 9,
+  '과장': 10,
+  '대리': 11,
+  '주임': 12, '계장': 12,
+  '사원': 13,
+  'D.RPA': 20
+};
+
 export const OtManagementPage: React.FC = () => {
   const {
     users,
@@ -37,13 +65,105 @@ export const OtManagementPage: React.FC = () => {
     hasPermission,
     showErrorModal,
     addOvertimeRecord,
-    deleteOvertimeRecord
+    deleteOvertimeRecord,
+    loadTablesForMenu
   } = useApp();
 
   const [toastMessage, setToastMessage] = useState<{ type: 'success' | 'error' | 'warning'; text: string } | null>(null);
   const showToast = (text: string, type: 'success' | 'error' | 'warning' = 'success') => {
     setToastMessage({ type, text });
     setTimeout(() => setToastMessage(null), 3500);
+  };
+
+  // 최신 부서 및 OT 데이터 동기화
+  useEffect(() => {
+    if (loadTablesForMenu) {
+      loadTablesForMenu('ot_management');
+    }
+  }, []);
+
+  // 조직도 부서 로딩 및 맵 생성
+  const departments: Department[] = useMemo(() => {
+    const local = localStorage.getItem('erp_departments');
+    if (local) {
+      try {
+        const parsed = JSON.parse(local);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      } catch {}
+    }
+    return db.departments || [];
+  }, []);
+
+  const departmentMap = useMemo(() => {
+    const map = new Map<string, string>();
+    departments.forEach(d => map.set(d.id, d.name));
+    return map;
+  }, [departments]);
+
+  // 조직도 트리 깊이 우선 탐색(DFS) 순서 배열 (조직도 화면과 100% 동일 배치)
+  const orderedDeptIds = useMemo(() => {
+    const ordered: string[] = [];
+    const traverse = (parentId: string | null) => {
+      departments
+        .filter(d => d.parentDepartmentId === parentId)
+        .forEach(d => {
+          ordered.push(d.id);
+          traverse(d.id);
+        });
+    };
+    traverse(null);
+    return ordered;
+  }, [departments]);
+
+  const getDeptOrder = (deptId?: string | null): number => {
+    if (!deptId) return 9999;
+    const idx = orderedDeptIds.indexOf(deptId);
+    if (idx !== -1) return idx;
+    const fallback = DEPT_FALLBACK_ORDER[deptId] ?? DEPT_FALLBACK_ORDER[deptId.toUpperCase()];
+    if (fallback !== undefined) return fallback;
+    return 9999;
+  };
+
+  const getPositionRank = (pos?: string): number => {
+    if (!pos) return 50;
+    return POSITION_RANK[pos] || 30;
+  };
+
+  const isTester = (u: any) =>
+    u.id?.startsWith('usr-tester') ||
+    u.name?.includes('테스터') ||
+    u.loginId?.includes('tester');
+
+  // 🏛️ 조직도의 부서 및 직급 배치 순서대로 정렬된 임직원 목록
+  const sortedUsers = useMemo(() => {
+    const nonTesters = users.filter(u => !isTester(u));
+    return [...nonTesters].sort((a, b) => {
+      // 1. 조직도 부서 배치 순서 (기연리프트 -> 관리부 -> 영업부 -> 출고팀 -> AS팀 -> 외국인)
+      const deptA = getDeptOrder(a.departmentId);
+      const deptB = getDeptOrder(b.departmentId);
+      if (deptA !== deptB) return deptA - deptB;
+
+      // 2. 부서 내 직급 서열 (사장 -> 부사장 -> 상무 -> 부장 -> 차장 -> 팀장 -> 과장 -> 대리 -> 주임 -> 사원)
+      const posA = getPositionRank(a.position);
+      const posB = getPositionRank(b.position);
+      if (posA !== posB) return posA - posB;
+
+      // 3. 역할 가중치 (ADMIN > MANAGER > USER)
+      const roleWeightA = a.role === 'ADMIN' ? 0 : a.role === 'MANAGER' ? 1 : 2;
+      const roleWeightB = b.role === 'ADMIN' ? 0 : b.role === 'MANAGER' ? 1 : 2;
+      if (roleWeightA !== roleWeightB) return roleWeightA - roleWeightB;
+
+      // 4. 성명 가나다순
+      return (a.name || '').localeCompare(b.name || '', 'ko');
+    });
+  }, [users, orderedDeptIds]);
+
+  const getEmployeeDeptName = (u?: UserType): string => {
+    if (!u) return '';
+    if (u.departmentId && departmentMap.has(u.departmentId)) {
+      return departmentMap.get(u.departmentId)!;
+    }
+    return u.department || '';
   };
 
   // OT 관리는 권한관리에서 통제 (ot_management view/save)
@@ -56,6 +176,13 @@ export const OtManagementPage: React.FC = () => {
   const [otStartTime, setOtStartTime] = useState('17:00');
   const [otHours, setOtHours] = useState<number>(1.0);
   const [otWorkDetail, setOtWorkDetail] = useState('');
+
+  // 로그인 사용자 또는 1순위 임직원으로 초기 선택 안전 보장
+  useEffect(() => {
+    if (!otUserId && sortedUsers.length > 0) {
+      setOtUserId(currentUser?.id || sortedUsers[0].id);
+    }
+  }, [sortedUsers, otUserId, currentUser]);
 
   // 1. 날짜 하루 단위 가감 (-1일 / +1일)
   const handleDateShift = (deltaDays: number) => {
@@ -169,9 +296,9 @@ export const OtManagementPage: React.FC = () => {
     const ymd = new Date().toISOString().substring(0, 10).replace(/-/g, '');
 
     const data = filteredRecords.map((ot, idx) => {
-      const u = users.find(user => user.id === ot.userId);
+      const u = sortedUsers.find(user => user.id === ot.userId) || users.find(user => user.id === ot.userId);
       const uName = u?.name || '알 수 없음';
-      const uDept = u?.department || '미지정';
+      const uDept = getEmployeeDeptName(u) || '미지정';
 
       return {
         '번호': idx + 1,
@@ -200,8 +327,9 @@ export const OtManagementPage: React.FC = () => {
     if (userFilter !== 'ALL' && ot.userId !== userFilter) return false;
     if (!searchQuery.trim()) return true;
     const q = searchQuery.toLowerCase();
-    const u = users.find(user => user.id === ot.userId);
-    return (u?.name || '').toLowerCase().includes(q) || (ot.workDetail || '').toLowerCase().includes(q);
+    const u = sortedUsers.find(user => user.id === ot.userId) || users.find(user => user.id === ot.userId);
+    const uDept = getEmployeeDeptName(u);
+    return (u?.name || '').toLowerCase().includes(q) || uDept.toLowerCase().includes(q) || (ot.workDetail || '').toLowerCase().includes(q);
   });
 
   return (
@@ -382,7 +510,7 @@ export const OtManagementPage: React.FC = () => {
                 </label>
                 {otUserId && (
                   <span style={{ fontSize: '11px', color: 'var(--primary)', fontWeight: 600, whiteSpace: 'nowrap' }}>
-                    {users.find(u => u.id === otUserId)?.name} 선택됨
+                    {sortedUsers.find(u => u.id === otUserId)?.name || users.find(u => u.id === otUserId)?.name} 선택됨
                   </span>
                 )}
               </div>
@@ -397,8 +525,9 @@ export const OtManagementPage: React.FC = () => {
                 borderRadius: '6px',
                 border: '1px solid var(--border-color)'
               }}>
-                {users.map(u => {
+                {sortedUsers.map(u => {
                   const isSelected = otUserId === u.id;
+                  const deptName = getEmployeeDeptName(u);
                   return (
                     <button
                       key={u.id}
@@ -422,13 +551,13 @@ export const OtManagementPage: React.FC = () => {
                       }}
                     >
                       <span>{u.name}</span>
-                      {u.department && (
+                      {deptName && (
                         <span style={{
                           fontSize: '10px',
                           opacity: isSelected ? 0.9 : 0.6,
                           fontWeight: 400
                         }}>
-                          ({u.department})
+                          ({deptName})
                         </span>
                       )}
                     </button>
@@ -728,12 +857,17 @@ export const OtManagementPage: React.FC = () => {
               value={userFilter}
               onChange={(e) => setUserFilter(e.target.value)}
               className="form-control"
-              style={{ width: '160px', fontSize: '13px' }}
+              style={{ width: '170px', fontSize: '13px' }}
             >
               <option value="ALL">전체 임직원</option>
-              {users.map(u => (
-                <option key={u.id} value={u.id}>{u.name}</option>
-              ))}
+              {sortedUsers.map(u => {
+                const deptName = getEmployeeDeptName(u);
+                return (
+                  <option key={u.id} value={u.id}>
+                    {u.name} {deptName ? `(${deptName})` : ''}
+                  </option>
+                );
+              })}
             </select>
           </div>
 
@@ -759,9 +893,9 @@ export const OtManagementPage: React.FC = () => {
                   </tr>
                 ) : (
                   filteredRecords.map((ot) => {
-                    const u = users.find(user => user.id === ot.userId);
+                    const u = sortedUsers.find(user => user.id === ot.userId) || users.find(user => user.id === ot.userId);
                     const uName = u?.name || '알 수 없음';
-                    const uDept = u?.department || '미지정';
+                    const uDept = getEmployeeDeptName(u) || '미지정';
                     const canDelete = ot.userId === currentUser?.id || isAdmin || canSave;
 
                     return (

@@ -4994,15 +4994,23 @@ class LocalDB {
 
   // 조직도 및 구성원 일괄 저장 (Batch) - 기존 데이터를 전부 덮어씌움
   async saveOrganizationBatch(departments: Department[], users: User[]): Promise<void> {
+    // 🛡️ [테스터 영구 배제] 테스터 계정 원천 차단
+    const isTester = (u: any) =>
+      u.id?.startsWith('usr-tester') ||
+      u.name?.includes('테스터') ||
+      u.loginId?.includes('tester');
+
     // 로컬 인메모리 캐시 및 스토리지 오염 필드(modelName, supplier 등) 제거
     const cleanDepts: Department[] = departments.map(d => {
       const { modelName, supplier, ...rest } = (d as any);
       return rest as Department;
     });
-    const cleanUsers: User[] = users.map(u => {
-      const { modelName, supplier, ...rest } = (u as any);
-      return rest as User;
-    });
+    const cleanUsers: User[] = users
+      .filter(u => !isTester(u))
+      .map(u => {
+        const { modelName, supplier, ...rest } = (u as any);
+        return rest as User;
+      });
 
     this.set('departments', cleanDepts);
     this.set('users', cleanUsers);

@@ -3452,24 +3452,26 @@ export function parseBandAsHistoryText(rawText: string): { author: string; date:
   let i = 0;
   const n = lines.length;
 
+  const dateExtractFn = (str: string): string | null => {
+    if (!str) return null;
+    const m1 = str.match(/(20\d{2})년\s*(\d{1,2})월\s*(\d{1,2})일/);
+    if (m1) return `${m1[1]}-${String(m1[2]).padStart(2, '0')}-${String(m1[3]).padStart(2, '0')}`;
+    const m2 = str.match(/(20\d{2})[.\-/](\d{1,2})[.\-/](\d{1,2})/);
+    if (m2) return `${m2[1]}-${String(m2[2]).padStart(2, '0')}-${String(m2[3]).padStart(2, '0')}`;
+    const m3 = str.match(/(\d{2})년\s*(\d{1,2})월\s*(\d{1,2})일/);
+    if (m3) return `20${m3[1]}-${String(m3[2]).padStart(2, '0')}-${String(m3[3]).padStart(2, '0')}`;
+    const m4 = str.match(/\b(\d{2})[.\-/](\d{1,2})[.\-/](\d{1,2})\b/);
+    if (m4) return `20${m4[1]}-${String(m4[2]).padStart(2, '0')}-${String(m4[3]).padStart(2, '0')}`;
+    return null;
+  };
+
   while (i < n) {
     const line = lines[i].trim();
 
     if ((line === '멤버' || line === '리더' || line === '공동리더') && i + 1 < n) {
       const author = lines[i + 1].trim();
+      const prevLine = i > 0 ? lines[i - 1].trim() : '';
       const timeRaw = i + 2 < n ? lines[i + 2].trim() : '';
-
-      // 일자 파싱
-      let dateStr = '2026-08-31';
-      const dateMatch = timeRaw.match(/(20\d{2})년\s*(\d{1,2})월\s*(\d{1,2})일/);
-      if (dateMatch) {
-        const y = dateMatch[1];
-        const m = String(dateMatch[2]).padStart(2, '0');
-        const d = String(dateMatch[3]).padStart(2, '0');
-        dateStr = `${y}-${m}-${d}`;
-      } else if (timeRaw.includes('시간 전') || timeRaw.includes('분 전') || timeRaw.includes('방금') || timeRaw.includes('어제')) {
-        dateStr = '2026-08-31';
-      }
 
       let j = i + 2;
       const collectedLines: string[] = [];
@@ -3495,6 +3497,33 @@ export function parseBandAsHistoryText(rawText: string): { author: string; date:
 
       const full = collectedLines.join(' ');
       const combinedWithAuthor = `${author} ${full}`;
+
+      // 🛡️ 다단계 정밀 일자 파싱 (하드코딩 배제)
+      let dateStr = '';
+      // 1순위: 이전 줄 (웹 밴드 복사 시 '2026년 9월 4일 오후 2:18 게시글'이 멤버/리더 바로 윗줄에 위치)
+      dateStr = dateExtractFn(prevLine) || '';
+      // 2순위: 작성자 아랫줄
+      if (!dateStr) dateStr = dateExtractFn(timeRaw) || '';
+      // 3순위: 본문 하단부 역순 검색 (접수자 연락처 뒤에 게시글 일시가 붙는 패턴)
+      if (!dateStr) {
+        for (let rIdx = collectedLines.length - 1; rIdx >= 0; rIdx--) {
+          const matched = dateExtractFn(collectedLines[rIdx]);
+          if (matched) { dateStr = matched; break; }
+        }
+      }
+      // 4순위: 본문 전체 텍스트 검색
+      if (!dateStr) dateStr = dateExtractFn(combinedWithAuthor) || '';
+      // 5순위: 상대적 시간 표기('어제', 'N시간 전', 'N분 전', '방금') 동적 연산
+      if (!dateStr) {
+        const checkRelative = [prevLine, timeRaw, full].join(' ');
+        const now = new Date();
+        if (checkRelative.includes('어제')) {
+          const yest = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+          dateStr = yest.toISOString().slice(0, 10);
+        } else if (checkRelative.includes('시간 전') || checkRelative.includes('분 전') || checkRelative.includes('방금')) {
+          dateStr = now.toISOString().slice(0, 10);
+        }
+      }
 
       if (['현장명:', '현장명 :', '업체명:', '업체명 :', '업체 :', '업체:', '관리번호', '고장내용:', '고장내용 :', '접수자:'].some(k => combinedWithAuthor.includes(k))) {
         let site = extractKeywordSection(full, ['현장명:', '현장명 :', '현장 :'], ['업체명:', '업체명 :', '업체 :', '업체:', '장비위치:', '관리번호', '고장내용', '접수자:']);
@@ -3538,13 +3567,28 @@ export function parseBandAsHistoryText(rawText: string): { author: string; date:
           assetNo: assetNo || '현장확인',
           issue: issue || '점검 및 정비 요청',
           contact,
-          raw: combinedWithAuthor.slice(0, 300)
+          raw: combinedWithAuthor.slice(0, 1000)
         });
         i = j;
         continue;
       }
     }
     i++;
+  }
+
+  // 🛡️ 날짜 미인식 레코드 대상 전후 인접 게시글 순차 보간 (Sequential Interpolation)
+  for (let idx = 0; idx < records.length; idx++) {
+    if (!records[idx].date) {
+      let prevDate = '';
+      for (let p = idx - 1; p >= 0; p--) {
+        if (records[p].date) { prevDate = records[p].date; break; }
+      }
+      let nextDate = '';
+      for (let nIdx = idx + 1; nIdx < records.length; nIdx++) {
+        if (records[nIdx].date) { nextDate = records[nIdx].date; break; }
+      }
+      records[idx].date = prevDate || nextDate || new Date().toISOString().slice(0, 10);
+    }
   }
 
   return records;
@@ -3965,10 +4009,10 @@ export async function rollbackBandAsHistory(
         }
       }
 
-      // 2. asset_in_out_logs 에서 id LIKE 'aiog-band-%' 대상 전수 완전 삭제
+      // 2. asset_inout_logs 에서 id LIKE 'aiog-band-%' 대상 전수 완전 삭제
       while (true) {
         const { data: aiogRows, error: aiogErr } = await supabase
-          .from('asset_in_out_logs')
+          .from('asset_inout_logs')
           .select('id')
           .like('id', 'aiog-band-%')
           .limit(1000);
@@ -3979,7 +4023,7 @@ export async function rollbackBandAsHistory(
         const aiogIds = aiogRows.map(r => r.id);
         for (let i = 0; i < aiogIds.length; i += 100) {
           const chunk = aiogIds.slice(i, i + 100);
-          await supabase.from('asset_in_out_logs').delete().in('id', chunk);
+          await supabase.from('asset_inout_logs').delete().in('id', chunk);
         }
       }
 

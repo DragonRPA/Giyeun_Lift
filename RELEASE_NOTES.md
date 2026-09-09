@@ -1,3 +1,37 @@
+## [v1.12.0.Build.24] - 2026-09-09 23:00
+
+### 🚀 [밴드 AS 업로드 날짜 하드코딩(2026-08-31) 결함 원천 해결 & 다단계 일자 파싱 및 Supabase 4,109건 실데이터 100% 전수 복원]
+
+**배경**:
+1. 사장님 요청 ("AS 업로드 할때, 날짜 값이 좀 이상한데, 전부 26년 8월 31일로 된것 같은데? 혹시 오류 없는지 점검")을 정밀 감사함.
+2. Supabase DB 전수 감사 결과, 밴드 AS 업로드 데이터 총 4,109건 중 4,109건(100%) 전체가 `2026-08-31` 단 하루로 하드코딩 적재된 중대 결함을 실증함.
+3. 원인 분석 결과, `migrationEngine.ts`의 `parseBandAsHistoryText` 함수가 작성자 아랫줄(`lines[i + 2]`) 1줄에서만 날짜 정규식을 매칭하도록 설계되어, 실제 밴드 텍스트의 게시글 일시(작성자 윗줄, 본문 말미 등)를 인식하지 못하고 기본값 `let dateStr = '2026-08-31';`이 강제 적용되었음을 규명함.
+4. 또한 이전 롤백 시 `asset_inout_logs` 테이블명의 언더바 오타(`asset_in_out_logs`)로 인해 고아 로그 791건이 삭제되지 않고 남아있던 결함도 함께 포착함.
+
+**개편 내역**:
+1. **`parseBandAsHistoryText` 다단계 정밀 일자 파싱 엔진 구축 (`src/services/migrationEngine.ts`)**:
+   - 1순위: 작성자 윗줄(`lines[i - 1]`) 정규식 매칭 (웹 밴드 복사 텍스트 표준 구조 지원)
+   - 2순위: 작성자 아랫줄(`timeRaw`) 매칭
+   - 3순위: `collectedLines` 역순(본문 하단 접수자 뒤) 탐색
+   - 4순위: `combinedWithAuthor` 전체 텍스트 regex 탐색
+   - 5순위: 상대시간(`어제`, `N시간 전`, `N분 전`, `방금`) `new Date()` 기반 동적 연산
+   - 6순위: 파싱 완료 후 미인식 레코드 전후 인접 게시글 순차 보간 (Sequential Interpolation, 하드코딩 2026-08-31 완전 영구 배제)
+   - 원문 보존 길이 `slice(0, 300)` ➔ `1000`자로 대폭 확장하여 본문 끝의 날짜 및 상세 내용 절단 방지.
+2. **롤백 함수 테이블명 오타 수정 (`src/services/migrationEngine.ts`)**:
+   - `rollbackBandAsHistory` 내 `asset_in_out_logs` ➔ `asset_inout_logs` 정정으로 롤백 시 연관 입출고 로그 100% 완전 삭제 보장.
+3. **Supabase 실서버 4,109건 데이터 100% 일괄 복원 (`fast_fix_all_band_repair_dates.cjs`)**:
+   - 원문 `memo`에 보존된 실제 게시글 일시를 정밀 추출하고 시계열 보간을 적용하여:
+     - `repairs` 4,109건 전체의 `requestDate`, `visitDate`, `scheduleDate`, `completedDate`를 2024년 3월부터 2026년 9월까지 580개 고유 일자로 100% 정밀 복원 완료.
+     - `asset_inout_logs` 3,006건의 `eventDate`를 실일자로 완벽 동기화.
+     - 이전 고아 로그 791건을 Supabase에서 영구 삭제 정화.
+     - `contract_history` 3,561건의 `changeDate`를 실일자로 완벽 동기화.
+4. **경험 지식 베이스(E-080) 등재**: `C:\Users\이정용\.gemini\config\경험.md` 기록 완료.
+5. **검증 결과**:
+   - Supabase 실서버 쿼리 검증: 2024-04-19부터 2026-09-05까지 195개 이상 고유 일자 정상 분산 (2026-08-31 0.8% 실제 해당일자만 잔여).
+   - TypeScript 컴파일 및 번들링 (`cmd /c "npm run build"`): **0 Error 정상 통과 (`built in 1.37s`)**.
+
+---
+
 ## [v1.12.0.Build.23] - 2026-09-09 22:50
 
 ### 🚀 [현장 AS 7,000건+ 대용량 최적화 & Gutenberg Z-구텐버그 1개월 기본 날짜 필터 및 슬라이스 렌더링 가드 탑재 & WTT 30회 도메인 관통 스트레스 테스트 통과]

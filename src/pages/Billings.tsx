@@ -691,13 +691,20 @@ showToast('모든 수납 내역 일괄 취소 및 통장 잔액을 복원합니�
     }
   };
 
-  // v2: 미납액 기준으로 입금잔액 자동 할당
+  // v2: 미납액 기준으로 입금잔액 자동 할당 (음수 방지 및 통일)
   const getDepositBalance = (txId: string) => {
     const tx = bankTransactions.find(t => t.id === txId);
-    const used = paymentDepositLinks
+    if (!tx) return 0;
+    const linkedPaymentIds = new Set(
+      (paymentDepositLinks || []).filter(l => l.bankTransactionId === txId).map(l => l.paymentId)
+    );
+    const linkUsed = (paymentDepositLinks || [])
       .filter(l => l.bankTransactionId === txId)
       .reduce((s, l) => s + l.usedAmount, 0);
-    return (tx?.depositAmount || 0) - used;
+    const legacyUsed = (payments || [])
+      .filter(p => p.id.startsWith(`pay-matching-${txId}`) && !linkedPaymentIds.has(p.id))
+      .reduce((s, p) => s + p.amount, 0);
+    return Math.max(0, (tx.depositAmount || 0) - (linkUsed + legacyUsed));
   };
 
   const handleOpenPay = (bId: string, unpaidAmount: number) => {

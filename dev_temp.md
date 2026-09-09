@@ -1,5 +1,32 @@
 # 개발 요구사항 임시 기록 (dev_temp.md)
 
+## [완료] 은행 입출금 대장 수납 대사 업무설계 확정, 과대/정상/과소입금 3대 조건 WTT 50회 도메인 관통 스트레스 테스트 전 항목 100% 통과 및 회계 이중계상·선수금 롤백 결함 개편 (v1.12.0.Build.50)
+- **요구사항**: "은행 입출금 대장 에서 수납처리 하는 방향의 업무설계는 완료되었나? 과대입금, 정상(금액일치 입금), 과소입금의 경우 로 각각 다양한 입금 조건의 WTT 50회 수행하여 검증, 이슈개선. ㄹㅇ"
+- **적용 목적 (헌장 1.1 최대 편익, 1.2 발생 사건 무누락 DB 저장, 3.1 무수식어 건조 표준, 3.2 줄바꿈 방지, 4.1 정밀 일할 집계, 5.5 WTT 도메인 관통 스트레스 테스트 표준, 6.2 "ㄹㅇ" 배포)**:
+  1. **은행 입출금 대장 수납 대사(매칭) 3대 조건 업무설계 완결 및 거버넌스 확립**:
+     - **과대입금 (입금액 > 청구액)**: 청구서 완납(`PAID`) + 잔여 초과 입금액은 거래처 마스터의 **선수금/예치금(`customer.prepaidBalance`)**에 자동 적립되고 `pay-matching-${txId}-prepaid` 전표 및 `PaymentDepositLink` 무누락 발행 ➔ 향후 익월 청구서나 타 미수 청구 시 선수금 상계 차감(`applyPrepaidBalanceForBilling`)으로 재활용.
+     - **정상(금액일치) 입금 (입금액 == 청구액)**: 청구서 청구총액(VAT 포함)과 1원도 오차 없이 1:1 완납 매칭. 타행 이체 수수료(500원~1,000원) 발생 시 원클릭 `feeAdjustment`로 감액 완납 지원.
+     - **과소입금 (입금액 < 청구액)**: 청구서 기수납액(`paidAmount`)에 입금액 전액을 충당하고 상태는 부분 수납(`PARTIAL`) 유지. 통장 입금건은 전액 소진(`remBal = 0`)되고 청구서 잔여 미수금은 완벽 보존되어 2차/3차 추가 분할 입금 누적 매칭 지원.
+  2. **핵심 회계 결함 3건 정밀 개선**:
+     - **결함 1 (통장 입금 사용액 이중 계상 버그 in `BankMatching.tsx`, `Billings.tsx`)**: `paymentDepositLinks`와 레거시 `payments` 양쪽에서 동일 전표를 중복 합산하여 통장 잔액이 왜곡되던 문제를 `linkedPaymentIds` Set 필터링으로 원천 해결.
+     - **결함 2 (초과 선수금 적립 전표 PDL 누락 및 대조 해제 롤백 누락 in `AppContext.tsx`)**: `executeMatch`에서 선수금 적립 시 `PaymentDepositLink`를 동시 발행하여 통장 잔액 0원 수지를 일치시키고, `unmatchTransaction` 시 청구서, 매칭규칙, 거래처 역추적으로 `customerId`를 100% 특정하여 선수금 환원 차감 및 수수료 감액 롤백 무결성 완결.
+     - **결함 3 (계약이력 및 UI 개선)**: 통장 대조 수납 시 `ContractHistory`에 `PAYMENT_RECEIVED`, 해제 시 `PAYMENT_CANCELLED` 무누락 DB 기록. 매칭 모달 내 `BLOCKED` 거래처 경고 배지 추가 및 상세 그리드 내 중복 텍스트 렌더링 방지.
+  3. **WTT 50회 도메인 관통 스트레스 테스트 50/50 전 항목 100% 통과 (`src/tests/wtt_bank_matching.test.ts`)**:
+     - [과대입금 15회 (WTT-BANK-01 ~ 15)] 단일 초과, 다건 초과, 3개월 연체 FIFO 초과, PINPOINT 초과, 매칭 취소 롤백, 선수금 누적, 익월 상계, 10원 단수 초과, 수수료 감액 복합, MULTI 모드 잔여 선수금, 자동 매칭, 계약이력 저장/취소, 거액 과대입금, 3회 연속 멱등성 ✅ 15/15 PASS
+     - [정상입금 15회 (WTT-BANK-16 ~ 30)] 1:1 일치, 상호 자동 매칭, 법인 표기 정규화, 다건 합계 일치, 수수료 500원/1,000원 감액, 감액 취소 잔류 0원 복구, 단수 절사, VAT 10% 일치, FIFO 선소진, 가용잔액 0원 확정, PDL 무결성, PINPOINT, MULTI, 일괄 자동대사 5건 동시 처리 ✅ 15/15 PASS
+     - [과소입금 15회 (WTT-BANK-31 ~ 45)] 단일 부분입금 PARTIAL, 2회 추가 완납 전이, 다건 선완납+후부분, 3회 분할 누적, 통장 100% 소진, 잔여 미수금 보존, 2차/1차 선택 취소 롤백, 소액 5회 누적, 대차대조 수지식, 익월 합산, 수수료 복합, MULTI 부분 충당, 계약이력 PARTIAL/CANCELLED ✅ 15/15 PASS
+     - [특수 거버넌스 및 종단 보존 법칙 5회 (WTT-BANK-46 ~ 50)] 복수 은행 계좌 분할 입금, BLOCKED 고객사 수납 거버넌스, 종단 수지 보존 법칙 (`총입금 + 감액 = 총수납 + 총선수금 | 차액 ₩0`), 통장 잔액 보존 법칙, 전 항목 대조 해제 100% 원복 보존 법칙 ✅ 5/5 PASS
+- **주요 변경 파일**:
+  - `src/context/AppContext.tsx` [MODIFY]: `executeMatch` 선수금 PDL 발행 및 계약이력 연동, `tryAutoMatchForTransaction` 상호 정규화, `unmatchTransaction` 선수금/수수료 원복 및 계약이력 연동.
+  - `src/pages/BankMatching.tsx` [MODIFY]: `getDepositBalance` 및 `getDepositUsedAmount` 이중계상 차단, `getMatchedTransactionInfo` 중복 렌더링 방지, `BLOCKED` 거래처 배지 표출.
+  - `src/pages/Billings.tsx` [MODIFY]: `getDepositBalance` 이중계상 차단 및 통장 가용잔액 동기화.
+  - `src/tests/wtt_bank_matching.test.ts` [NEW]: 50회 WTT 도메인 관통 스트레스 테스트 스위트 신설.
+- **검증 결과**:
+  - `cmd /c npx tsx src/tests/wtt_bank_matching.test.ts`: **50회 전 항목 100% PASS (0 결함)**.
+  - `cmd /c npx tsx src/tests/wtt_billings_unbilled.test.ts`: **10회 전 항목 100% PASS**.
+  - `cmd /c npx tsx src/tests/wtt_voice_dispatch.test.ts`: **46회 전 항목 100% PASS**.
+  - `cmd /c npm run build`: **TypeScript 0 Error, 번들링 빌드 100% 정상 통과 (`built in 1.26s`)**.
+
 ## [완료] 매출 청구 미청구 정산 대상 귀속월(targetYm) 동적 연동 결함 개편, WTT 10회 도메인 관통 스트레스 테스트 통과 및 "출고 요청" 전사 표준화 (v1.12.0.Build.49)
 - **요구사항**: 
   1. "전사 공통 옵션품목 마스터를 저장하면, 고객사 업션 등록할 때 사용할 수 있는거지? 여기에 저장하고, 고객의 현장으로 이 정보를 전파하면, 출고의뢰에 따라서 나오게 되는거고?"

@@ -6248,6 +6248,16 @@ ${currentTenant?.corporateName || tenantCorp} 배상
           status: nextStatus,
           updatedAt: new Date().toISOString()
         });
+
+        if (billing.contractId) {
+          db.insertRow<ContractHistory>('contractHistory', {
+            contractId: billing.contractId,
+            changeType: 'PAYMENT_RECEIVED',
+            changeDate: tx.transactionDate.split(' ')[0],
+            description: `수납 처리 (통장대조): ${billing.billingYm} / ${paymentAmount.toLocaleString()}원 수납 (누적: ${nextPaid.toLocaleString()}/${bGrand.toLocaleString()}원, 상태: ${nextStatus})${feeAdj > 0 ? ` (수수료 감액 ₩${feeAdj.toLocaleString()})` : ''}`,
+            createdAt: new Date().toISOString()
+          });
+        }
         matchedBillingIds.push(billing.id);
       }
     } else if (mode === 'PINPOINT') {
@@ -6287,6 +6297,16 @@ ${currentTenant?.corporateName || tenantCorp} 배상
         status: nextStatus,
         updatedAt: new Date().toISOString()
       });
+
+      if (billing.contractId) {
+        db.insertRow<ContractHistory>('contractHistory', {
+          contractId: billing.contractId,
+          changeType: 'PAYMENT_RECEIVED',
+          changeDate: tx.transactionDate.split(' ')[0],
+          description: `수납 처리 (통장대조 단독): ${billing.billingYm} / ${paymentAmount.toLocaleString()}원 수납 (누적: ${nextPaid.toLocaleString()}/${bGrand.toLocaleString()}원, 상태: ${nextStatus})${feeAdj > 0 ? ` (수수료 감액 ₩${feeAdj.toLocaleString()})` : ''}`,
+          createdAt: new Date().toISOString()
+        });
+      }
       matchedBillingIds.push(billing.id);
     } else {
       // 🌟 [CASCADE 모드]: 과거 미수부터 순차 충당 (수수료 감액 옵션 포함)
@@ -6345,11 +6365,21 @@ ${currentTenant?.corporateName || tenantCorp} 배상
           updatedAt: new Date().toISOString()
         });
 
+        if (billing.contractId) {
+          db.insertRow<ContractHistory>('contractHistory', {
+            contractId: billing.contractId,
+            changeType: 'PAYMENT_RECEIVED',
+            changeDate: tx.transactionDate.split(' ')[0],
+            description: `수납 처리 (${matchingType === 'AUTO' ? '통장대조 자동' : '통장대조 순차'}): ${billing.billingYm} / ${paymentAmount.toLocaleString()}원 수납 (누적: ${nextPaid.toLocaleString()}/${bGrand.toLocaleString()}원, 상태: ${nextStatus})${feeAdjForThis > 0 ? ` (수수료 감액 ₩${feeAdjForThis.toLocaleString()})` : ''}`,
+            createdAt: new Date().toISOString()
+          });
+        }
+
         matchedBillingIds.push(billing.id);
       }
     }
 
-    // 2. 남은 초과금 선수금 적립
+    // 2. 남은 초과금 선수금 적립 (과대입금 완벽 수지 보존)
     if (remainingDeposit > 0) {
       const customer = db.customers.find(c => c.id === customerId);
       if (customer) {
@@ -6359,14 +6389,23 @@ ${currentTenant?.corporateName || tenantCorp} 배상
           updatedAt: new Date().toISOString()
         } as any);
 
+        const prepaidPayId = `pay-matching-${txId}-prepaid`;
         // 선수금 가상 수납 전표 등록
         db.insertRow<Payment>('payments', {
-          id: `pay-matching-${txId}-prepaid`,
+          id: prepaidPayId,
           billingId: '',
           paymentDate: tx.transactionDate.split(' ')[0],
           amount: remainingDeposit,
           method: 'BANK_TRANSFER',
           memo: `통장 대조 매칭 초과 선수금 적립 (${tx.senderName})`,
+          createdAt: new Date().toISOString()
+        });
+
+        // 🌟 선수금 전표에 대해서도 PaymentDepositLink를 등록하여 통장 입금 사용 추적 완벽 일치화!
+        db.insertRow<PaymentDepositLink>('paymentDepositLinks', {
+          paymentId: prepaidPayId,
+          bankTransactionId: txId,
+          usedAmount: remainingDeposit,
           createdAt: new Date().toISOString()
         });
       }
@@ -6386,6 +6425,9 @@ ${currentTenant?.corporateName || tenantCorp} 배상
       return sup + Math.round(sup * 0.1);
     };
 
+    const cleanName = (n: string) => (n || '').replace(/\(주\)|주식회사|\s+/g, '').toLowerCase();
+    const cleanSender = cleanName(tx.senderName);
+
     const rule = db.bankMatchingRules.find(r => r.senderName === tx.senderName);
     if (rule) {
       const activeBillings = db.billings.filter(b => 
@@ -6402,9 +6444,10 @@ ${currentTenant?.corporateName || tenantCorp} 배상
       }
     }
 
-    const matchedCustomer = db.customers.find(c => 
-      tx.senderName.includes(c.name) || c.name.includes(tx.senderName)
-    );
+    const matchedCustomer = db.customers.find(c => {
+      const cClean = cleanName(c.name);
+      return cleanSender && cClean && (cleanSender.includes(cClean) || cClean.includes(cleanSender));
+    });
     if (matchedCustomer) {
       const activeBillings = db.billings.filter(b => 
         b.customerId === matchedCustomer.id && 
@@ -6489,8 +6532,35 @@ ${currentTenant?.corporateName || tenantCorp} 배상
     const tx = db.bankTransactions.find(t => t.id === txId);
     if (!tx) return;
 
-    // 1. paymentDepositLinks 기반 롤백 (신규 체계)
+    // customerId 식별 (청구서, 매칭규칙, 거래처 역추적)
     const linkedLinks = db.paymentDepositLinks.filter(l => l.bankTransactionId === txId);
+    let customerId: string | undefined;
+    for (const link of linkedLinks) {
+      const p = db.payments.find(x => x.id === link.paymentId);
+      if (p?.billingId) {
+        const b = db.billings.find(x => x.id === p.billingId);
+        if (b?.customerId) {
+          customerId = b.customerId;
+          break;
+        }
+      }
+    }
+    if (!customerId && tx.matchedBillingId) {
+      const b = db.billings.find(x => x.id === tx.matchedBillingId);
+      if (b?.customerId) customerId = b.customerId;
+    }
+    if (!customerId) {
+      customerId = db.bankMatchingRules.find(r => r.senderName === tx.senderName)?.customerId;
+    }
+    if (!customerId) {
+      const cleanSender = (tx.senderName || '').replace(/\(주\)|주식회사|\s+/g, '').toLowerCase();
+      customerId = db.customers.find(c => {
+        const cClean = (c.name || '').replace(/\(주\)|주식회사|\s+/g, '').toLowerCase();
+        return cleanSender && cClean && (cleanSender.includes(cClean) || cClean.includes(cleanSender));
+      })?.id;
+    }
+
+    // 1. paymentDepositLinks 기반 롤백 (신규 체계)
     linkedLinks.forEach(link => {
       const pay = db.payments.find(p => p.id === link.paymentId);
       if (pay) {
@@ -6499,15 +6569,38 @@ ${currentTenant?.corporateName || tenantCorp} 배상
           if (billing) {
             const bSup = billing.totalAmount || 0;
             const bGrand = bSup + Math.round(bSup * 0.1);
-            const nextPaid = Math.max(0, (billing.paidAmount || 0) - link.usedAmount);
+            const feeAdj = pay.feeAdjustment || 0;
+            const nextPaid = Math.max(0, (billing.paidAmount || 0) - link.usedAmount - feeAdj);
             const nextStatus: Billing['status'] = nextPaid === 0 ? 'UNPAID' : (nextPaid >= bGrand ? 'PAID' : 'PARTIAL');
             db.updateRow<Billing>('billings', billing.id, {
               paidAmount: nextPaid,
               status: nextStatus,
               updatedAt: new Date().toISOString()
             });
+
+            if (billing.contractId) {
+              db.insertRow<ContractHistory>('contractHistory', {
+                contractId: billing.contractId,
+                changeType: 'PAYMENT_CANCELLED',
+                changeDate: new Date().toISOString().split('T')[0],
+                description: `수납 대조 해제: ${billing.billingYm} 청구분 / ${link.usedAmount.toLocaleString()}원 수납 취소 (잔여: ${nextPaid.toLocaleString()}원, 상태: ${nextStatus})`,
+                createdAt: new Date().toISOString()
+              });
+            }
+          }
+        } else if (pay.id.endsWith('-prepaid') || !pay.billingId) {
+          // 초과 선수금 환원 차감
+          if (customerId) {
+            const customer = db.customers.find(c => c.id === customerId);
+            if (customer) {
+              db.updateRow<Customer>('customers', customerId, {
+                prepaidBalance: Math.max(0, (customer.prepaidBalance || 0) - pay.amount),
+                updatedAt: new Date().toISOString()
+              } as any);
+            }
           }
         }
+
         if (pay.id.startsWith(`pay-matching-${txId}`)) {
           db.deleteRow('payments', pay.id);
         } else {
@@ -6526,22 +6619,30 @@ ${currentTenant?.corporateName || tenantCorp} 배상
     const matchPrefix = `pay-matching-${txId}`;
     const associatedPayments = db.payments.filter(p => p.id.startsWith(matchPrefix));
 
-    const repBilling = tx.matchedBillingId ? db.billings.find(b => b.id === tx.matchedBillingId) : null;
-    const customerId = repBilling?.customerId;
-
     associatedPayments.forEach(pay => {
       if (pay.billingId) {
         const billing = db.billings.find(b => b.id === pay.billingId);
         if (billing) {
           const bSup = billing.totalAmount || 0;
           const bGrand = bSup + Math.round(bSup * 0.1);
-          const nextPaid = Math.max(0, (billing.paidAmount || 0) - pay.amount);
+          const feeAdj = pay.feeAdjustment || 0;
+          const nextPaid = Math.max(0, (billing.paidAmount || 0) - pay.amount - feeAdj);
           const nextStatus: Billing['status'] = nextPaid === 0 ? 'UNPAID' : (nextPaid >= bGrand ? 'PAID' : 'PARTIAL');
           db.updateRow<Billing>('billings', billing.id, {
             paidAmount: nextPaid,
             status: nextStatus,
             updatedAt: new Date().toISOString()
           });
+
+          if (billing.contractId) {
+            db.insertRow<ContractHistory>('contractHistory', {
+              contractId: billing.contractId,
+              changeType: 'PAYMENT_CANCELLED',
+              changeDate: new Date().toISOString().split('T')[0],
+              description: `수납 대조 해제(레거시): ${billing.billingYm} 청구분 / ${pay.amount.toLocaleString()}원 수납 취소 (잔여: ${nextPaid.toLocaleString()}원, 상태: ${nextStatus})`,
+              createdAt: new Date().toISOString()
+            });
+          }
         }
       } else if (customerId) {
         const customer = db.customers.find(c => c.id === customerId);

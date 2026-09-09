@@ -159,13 +159,11 @@ export const BankMatching: React.FC = () => {
     return customers.find(c => c.id === custId)?.name || '알 수 없음';
   };
 
-  // v2: 통장 입금 잔액 계산 (PaymentDepositLinks 실시간 반영)
+  // v2: 통장 입금 잔액 계산 (PaymentDepositLinks 실시간 반영 및 음수 방지)
   const getDepositBalance = (txId: string) => {
     const tx = bankTransactions.find(t => t.id === txId);
-    const used = (paymentDepositLinks || [])
-      .filter(l => l.bankTransactionId === txId)
-      .reduce((s, l) => s + l.usedAmount, 0);
-    return (tx?.depositAmount || 0) - used;
+    if (!tx) return 0;
+    return Math.max(0, (tx.depositAmount || 0) - getDepositUsedAmount(txId));
   };
 
   // 통장 입출금 내역 1건에 연결된 매칭 정보 (입금: 매출청구서 1:N / 출금: 월말매입정산)
@@ -183,30 +181,43 @@ export const BankMatching: React.FC = () => {
       }
       
       const elements: React.ReactNode[] = [];
+      const renderedPayIds = new Set<string>();
 
       // 신규 링크 표출
       linkedLinks.forEach(link => {
         const payObj = payments.find(p => p.id === link.paymentId);
-        const b = payObj ? billings.find(x => x.id === payObj.billingId) : null;
-        if (b) {
-          const cust = customers.find(c => c.id === b.customerId);
+        if (!payObj) return;
+        renderedPayIds.add(payObj.id);
+
+        if (!payObj.billingId || payObj.id.endsWith('-prepaid')) {
           elements.push(
-            <div key={link.id} style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '12px', whiteSpace: 'nowrap' }}>
-              <LinkIcon size={10} style={{ color: 'var(--primary)', flexShrink: 0 }} />
-              <span>
-                <strong>[{cust?.name || '고객사'}]</strong> {b.billingYm} 청구분 ({link.usedAmount.toLocaleString()}원 수납)
-              </span>
+            <div key={link.id} style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#10b981', fontSize: '12px', whiteSpace: 'nowrap' }}>
+              <span>• 초과 선수금 적립 (+{link.usedAmount.toLocaleString()}원)</span>
             </div>
           );
+        } else {
+          const b = billings.find(x => x.id === payObj.billingId);
+          if (b) {
+            const cust = customers.find(c => c.id === b.customerId);
+            elements.push(
+              <div key={link.id} style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '12px', whiteSpace: 'nowrap' }}>
+                <LinkIcon size={10} style={{ color: 'var(--primary)', flexShrink: 0 }} />
+                <span>
+                  <strong>[{cust?.name || '고객사'}]</strong> {b.billingYm} 청구분 ({link.usedAmount.toLocaleString()}원 수납)
+                </span>
+              </div>
+            );
+          }
         }
       });
 
-      // 레거시 결제 표출
+      // 미연결 레거시 결제 표출
       txPayments.forEach(p => {
-        if (!p.billingId) {
+        if (renderedPayIds.has(p.id)) return;
+        if (!p.billingId || p.id.endsWith('-prepaid')) {
           elements.push(
-            <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: '4px', color: 'var(--success)', fontSize: '12px', whiteSpace: 'nowrap' }}>
-              <span>• 선수금 적립 (+{p.amount.toLocaleString()}원)</span>
+            <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#10b981', fontSize: '12px', whiteSpace: 'nowrap' }}>
+              <span>• 초과 선수금 적립 (+{p.amount.toLocaleString()}원)</span>
             </div>
           );
         } else {
@@ -292,13 +303,16 @@ export const BankMatching: React.FC = () => {
     return { bankMap, totalBalance };
   }, [bankTransactions]);
 
-  // v2: 통장 입금 사용 금액 계산
+  // v2: 통장 입금 사용 금액 계산 (이중 계상 원천 차단)
   const getDepositUsedAmount = (txId: string) => {
+    const linkedPaymentIds = new Set(
+      (paymentDepositLinks || []).filter(l => l.bankTransactionId === txId).map(l => l.paymentId)
+    );
     const linkUsed = (paymentDepositLinks || [])
       .filter(l => l.bankTransactionId === txId)
       .reduce((s, l) => s + l.usedAmount, 0);
-    const legacyUsed = payments
-      .filter(p => p.id.startsWith(`pay-matching-${txId}`))
+    const legacyUsed = (payments || [])
+      .filter(p => p.id.startsWith(`pay-matching-${txId}`) && !linkedPaymentIds.has(p.id))
       .reduce((s, p) => s + p.amount, 0);
     return linkUsed + legacyUsed;
   };
@@ -1707,6 +1721,11 @@ export const BankMatching: React.FC = () => {
                             <div>
                               <div style={{ fontWeight: 'bold', fontSize: '13px', color: 'var(--text-main)', display: 'flex', alignItems: 'center', gap: '6px' }}>
                                 {custName} ({b.billingYm} 청구)
+                                {customers.find(c => c.id === b.customerId)?.transactionStatus === 'BLOCKED' && (
+                                  <span style={{ fontSize: '10px', padding: '1px 5px', borderRadius: '4px', backgroundColor: 'rgba(239, 68, 68, 0.15)', color: 'var(--danger)', fontWeight: 'bold' }}>
+                                    🚫 거래제한(BLOCKED)
+                                  </span>
+                                )}
                                 {isSmartMatch && (
                                   <span style={{ fontSize: '10px', padding: '1px 5px', borderRadius: '4px', backgroundColor: 'rgba(16, 185, 129, 0.2)', color: 'var(--success)', fontWeight: 'bold' }}>
                                     상호 일치

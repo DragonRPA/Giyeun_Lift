@@ -1,3 +1,30 @@
+## [v1.11.4.Build.1] - 2026-09-09 11:14
+
+### 🔄 [출고검수 화면 원칙론적 전면 개편 — 고객 요구사항 기반 동적 검수 체크포인트]
+
+**개편 배경**: 기존 하드코딩된 "10대 법정/기능 점검" 항목 구조는 출고팀이 임의 설정한 기준이며, 출고검수의 본질인 **"영업사원이 고객으로부터 요구받은 사양/옵션을 현장에서 확인하는 행위"** 와 불일치. 전면 원칙론적 재설계.
+
+**변경 내용** (`src/mobile/pages/MobileInspectionList.tsx`):
+- **하드코딩 10개 항목 완전 제거**: `INSPECTION_ITEMS` 배열 삭제
+- **동적 검수 체크포인트 생성** (`getInspectionCheckpoints`):
+  - **MODEL**: 계약 `expectedModel` vs 실제 자산 `modelName` 일치 확인 (항상 포함)
+  - **SPEC**: `site.checkedSpecs` → `customer.defaultCheckedSpecs` 기준 `true`인 `STANDARD_SPECS` 항목만 동적 생성
+  - **OPTION**: `paidOptions` 텍스트 파싱 → 옵션별 장착 확인 체크포인트 생성
+  - 요구 사양 0개인 경우: 모델 확인 1개만 표시 후 즉시 승인 가능
+- **배차 단위 그룹핑 (Layer 1)**: `deliveryId` 기준 그룹 카드 목록
+- **자산별 독립 검수 스튜디오 (Layer 2)**: 아코디언 + 자산별 독립 `checkedList`/사진 상태
+- **거래차단 가드**: BLOCKED 고객사 개별/일괄 승인 완전 차단
+- **헌장 1.3 준수**: 각 자산 검수 승인 시 `RENTED` 전환 + `assetInOutLogs` OUTBOUND 무누락 기록
+- 체크포인트 유형별 색상 구분: MODEL=blue, SPEC=emerald, OPTION=amber
+
+### 🖼️ [웹앱 아이콘 'KIYUEN' 텍스트 제거]
+- `public/icon-192.png`, `public/icon-512.png`, `public/apple-touch-icon.png` 하단 텍스트 영역 제거
+- 아이콘 그래픽(지게차 심볼) 원형 보존
+
+**검증**: TypeScript 전체 빌드 0 Error (`built in 2.00s`)
+
+---
+
 ## [v1.11.3.Build.5] - 2026-09-09 10:46
 
 ### 🔴 [헌장 1.3 위반 치명 결함 수정 — TruckDispatch INBOUND 배차 완료 시 자산 상태 불변 원칙 복원]

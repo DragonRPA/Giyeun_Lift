@@ -1,9 +1,35 @@
-// src/pages/OtManagementPage.tsx
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
 import * as XLSX from 'xlsx';
-import { Clock, Trash2, Download, Search, CheckCircle2 } from 'lucide-react';
+import { Clock, Trash2, Download, Search, CheckCircle2, Plus, Minus, RotateCcw } from 'lucide-react';
 import { User as UserType } from '../services/db';
+
+const getTodayYmd = () => {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+};
+
+const getYesterdayYmd = () => {
+  const d = new Date();
+  d.setDate(d.getDate() - 1);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+};
+
+const OT_REASON_PRESETS = [
+  '야간 출고·상하차',
+  '긴급 현장 AS',
+  '주말 장비정비',
+  '긴급 배차·회수',
+  '재고 실사'
+];
+
+const START_TIME_PRESETS = ['18:00', '19:00', '08:00', '13:00'];
 
 export const OtManagementPage: React.FC = () => {
   const {
@@ -26,10 +52,11 @@ export const OtManagementPage: React.FC = () => {
   const canSave = hasPermission('ot_management', 'save');
   const isAdmin = currentUser?.role === 'ADMIN' || currentUser?.role === 'MANAGER';
 
-  // OT 연장근무 신청 폼 상태
+  // OT 연장근무 6단계 등록 폼 상태
+  const [otDate, setOtDate] = useState<string>(getTodayYmd());
   const [otUserId, setOtUserId] = useState(currentUser?.id || '');
-  const [otStartDateTime, setOtStartDateTime] = useState(new Date().toISOString().substring(0, 16).replace('T', ' '));
-  const [otHours, setOtHours] = useState<number>(2.0);
+  const [otStartTime, setOtStartTime] = useState('18:00');
+  const [otHours, setOtHours] = useState<number>(1.0);
   const [otWorkDetail, setOtWorkDetail] = useState('');
 
   // 검색 및 필터
@@ -39,8 +66,20 @@ export const OtManagementPage: React.FC = () => {
   // OT 등록 제출
   const handleOvertimeSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!otUserId || !otWorkDetail.trim()) {
-      showErrorModal('신청 대상 임직원과 OT 근무 상세 내용을 기입해 주십시오.');
+    if (!otDate) {
+      showErrorModal('근무 일자를 지정해 주십시오.');
+      return;
+    }
+    if (!otUserId) {
+      showErrorModal('신청 대상 임직원을 선택해 주십시오.');
+      return;
+    }
+    if (!otStartTime) {
+      showErrorModal('시작 시간을 지정해 주십시오.');
+      return;
+    }
+    if (!otWorkDetail.trim()) {
+      showErrorModal('OT 근무 상세 사유를 선택하거나 기입해 주십시오.');
       return;
     }
 
@@ -54,10 +93,12 @@ export const OtManagementPage: React.FC = () => {
       return;
     }
 
+    const startDateTime = `${otDate} ${otStartTime}`;
+
     try {
       await addOvertimeRecord({
         userId: otUserId,
-        startDateTime: otStartDateTime,
+        startDateTime,
         hours: otHours,
         workDetail: otWorkDetail.trim(),
         status: 'APPROVED'
@@ -65,7 +106,8 @@ export const OtManagementPage: React.FC = () => {
 
       const targetUser = users.find(u => u.id === otUserId);
       setOtWorkDetail('');
-      showToast(`${targetUser?.name || '임직원'} 님의 OT 연장근무(${otHours}시간) 내역이 등록되었습니다.`);
+      setOtHours(1.0);
+      showToast(`${targetUser?.name || '임직원'} 님의 OT(${otHours}시간) 내역이 등록되었습니다.`);
     } catch (err: any) {
       showErrorModal(err?.message || 'OT 연장근무 등록 중 오류가 발생했습니다.');
     }
@@ -166,9 +208,9 @@ export const OtManagementPage: React.FC = () => {
       </div>
 
       {/* 2단 작업대 레이아웃 (좌: 등록 폼 / 우: 대장 그리드) */}
-      <div style={{ display: 'grid', gridTemplateColumns: '320px 1fr', gap: '20px' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '330px 1fr', gap: '20px' }}>
         
-        {/* 좌측: OT 연장근무 등록 폼 (헌장 3.4 상하 세로 스택) */}
+        {/* 좌측: OT 연장근무 6단계 간편 등록 폼 (헌장 3.4 상하 세로 스택) */}
         <div style={{
           backgroundColor: 'var(--bg-surface)',
           padding: '20px',
@@ -176,18 +218,68 @@ export const OtManagementPage: React.FC = () => {
           border: '1px solid var(--border-color)',
           display: 'flex',
           flexDirection: 'column',
-          gap: '16px',
+          gap: '14px',
           height: 'fit-content'
         }}>
           <h3 style={{ fontSize: '15px', fontWeight: 'bold', margin: 0, color: 'var(--text-main)', borderBottom: '1px solid var(--border-color)', paddingBottom: '10px' }}>
-            OT (연장근무) 등록
+            OT 등록
           </h3>
 
           <form onSubmit={handleOvertimeSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
             
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+            {/* 1. 날짜 지정 */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
               <label style={{ fontSize: '12px', fontWeight: 'bold', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
-                대상 임직원:
+                1. 날짜 지정
+              </label>
+              <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                <button
+                  type="button"
+                  onClick={() => setOtDate(getTodayYmd())}
+                  className="btn"
+                  style={{
+                    fontSize: '11.5px',
+                    padding: '5px 9px',
+                    whiteSpace: 'nowrap',
+                    backgroundColor: otDate === getTodayYmd() ? 'var(--primary)' : 'var(--bg-main)',
+                    color: otDate === getTodayYmd() ? '#fff' : 'var(--text-main)',
+                    border: '1px solid var(--border-color)',
+                    fontWeight: otDate === getTodayYmd() ? 700 : 500
+                  }}
+                >
+                  오늘
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setOtDate(getYesterdayYmd())}
+                  className="btn"
+                  style={{
+                    fontSize: '11.5px',
+                    padding: '5px 9px',
+                    whiteSpace: 'nowrap',
+                    backgroundColor: otDate === getYesterdayYmd() ? 'var(--primary)' : 'var(--bg-main)',
+                    color: otDate === getYesterdayYmd() ? '#fff' : 'var(--text-main)',
+                    border: '1px solid var(--border-color)',
+                    fontWeight: otDate === getYesterdayYmd() ? 700 : 500
+                  }}
+                >
+                  어제
+                </button>
+                <input
+                  type="date"
+                  required
+                  value={otDate}
+                  onChange={(e) => setOtDate(e.target.value)}
+                  className="form-control"
+                  style={{ fontSize: '13px', flex: 1 }}
+                />
+              </div>
+            </div>
+
+            {/* 2. 대상 임직원 지정 */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+              <label style={{ fontSize: '12px', fontWeight: 'bold', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
+                2. 대상 임직원 지정
               </label>
               <select
                 required
@@ -203,59 +295,197 @@ export const OtManagementPage: React.FC = () => {
               </select>
             </div>
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+            {/* 3. 시작시간 지정 */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
               <label style={{ fontSize: '12px', fontWeight: 'bold', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
-                시작 일시 (YYYY-MM-DD HH:mm):
+                3. 시작시간 지정
               </label>
+              <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap' }}>
+                <input
+                  type="time"
+                  required
+                  value={otStartTime}
+                  onChange={(e) => setOtStartTime(e.target.value)}
+                  className="form-control"
+                  style={{ fontSize: '13px', width: '120px' }}
+                />
+                <div style={{ display: 'flex', gap: '4px' }}>
+                  {START_TIME_PRESETS.map(time => (
+                    <button
+                      key={time}
+                      type="button"
+                      onClick={() => setOtStartTime(time)}
+                      className="btn"
+                      style={{
+                        fontSize: '11px',
+                        padding: '4px 6px',
+                        whiteSpace: 'nowrap',
+                        backgroundColor: otStartTime === time ? 'rgba(59, 130, 246, 0.15)' : 'var(--bg-main)',
+                        color: otStartTime === time ? 'var(--primary)' : 'var(--text-muted)',
+                        border: otStartTime === time ? '1px solid var(--primary)' : '1px solid var(--border-color)',
+                        fontWeight: otStartTime === time ? 700 : 500
+                      }}
+                    >
+                      {time}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* 4. 근로시간 설정 (+1시간, +0.5시간 증감) */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <label style={{ fontSize: '12px', fontWeight: 'bold', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
+                  4. 근로시간 설정
+                </label>
+                <div style={{
+                  fontSize: '14px',
+                  fontWeight: 'bold',
+                  color: 'var(--primary)',
+                  backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                  padding: '2px 8px',
+                  borderRadius: '4px',
+                  border: '1px solid rgba(59, 130, 246, 0.3)'
+                }}>
+                  {otHours.toFixed(1)} 시간
+                </div>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' }}>
+                <button
+                  type="button"
+                  onClick={() => setOtHours(prev => Math.min(24, Math.round((prev + 1.0) * 10) / 10))}
+                  className="btn btn-secondary"
+                  style={{
+                    fontSize: '12px',
+                    padding: '6px 8px',
+                    fontWeight: 700,
+                    backgroundColor: 'rgba(16, 185, 129, 0.1)',
+                    color: '#10b981',
+                    border: '1px solid rgba(16, 185, 129, 0.3)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '4px'
+                  }}
+                >
+                  <Plus size={13} /> +1시간
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setOtHours(prev => Math.min(24, Math.round((prev + 0.5) * 10) / 10))}
+                  className="btn btn-secondary"
+                  style={{
+                    fontSize: '12px',
+                    padding: '6px 8px',
+                    fontWeight: 700,
+                    backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                    color: 'var(--primary)',
+                    border: '1px solid rgba(59, 130, 246, 0.3)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '4px'
+                  }}
+                >
+                  <Plus size={13} /> +0.5시간
+                </button>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' }}>
+                <button
+                  type="button"
+                  onClick={() => setOtHours(prev => Math.max(0.5, Math.round((prev - 0.5) * 10) / 10))}
+                  className="btn btn-secondary"
+                  style={{
+                    fontSize: '11px',
+                    padding: '5px 8px',
+                    color: 'var(--text-muted)',
+                    border: '1px solid var(--border-color)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '4px'
+                  }}
+                >
+                  <Minus size={12} /> -0.5시간
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setOtHours(1.0)}
+                  className="btn btn-secondary"
+                  style={{
+                    fontSize: '11px',
+                    padding: '5px 8px',
+                    color: 'var(--text-muted)',
+                    border: '1px solid var(--border-color)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '4px'
+                  }}
+                >
+                  <RotateCcw size={12} /> 초기화 (1.0h)
+                </button>
+              </div>
+            </div>
+
+            {/* 5. OT 사유 선택 */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+              <label style={{ fontSize: '12px', fontWeight: 'bold', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
+                5. OT 사유 선택
+              </label>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+                {OT_REASON_PRESETS.map(reason => (
+                  <button
+                    key={reason}
+                    type="button"
+                    onClick={() => setOtWorkDetail(reason)}
+                    className="btn"
+                    style={{
+                      fontSize: '11px',
+                      padding: '4px 7px',
+                      borderRadius: '4px',
+                      backgroundColor: otWorkDetail === reason ? 'rgba(217, 119, 6, 0.15)' : 'var(--bg-main)',
+                      color: otWorkDetail === reason ? '#d97706' : 'var(--text-secondary)',
+                      border: otWorkDetail === reason ? '1px solid rgba(217, 119, 6, 0.4)' : '1px solid var(--border-color)',
+                      fontWeight: otWorkDetail === reason ? 700 : 500,
+                      whiteSpace: 'nowrap'
+                    }}
+                  >
+                    {reason}
+                  </button>
+                ))}
+              </div>
               <input
                 type="text"
                 required
-                placeholder="예: 2026-09-09 18:00"
-                value={otStartDateTime}
-                onChange={(e) => setOtStartDateTime(e.target.value)}
-                className="form-control"
-                style={{ fontSize: '13px' }}
-              />
-            </div>
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-              <label style={{ fontSize: '12px', fontWeight: 'bold', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
-                OT 연장근무 시간 수 (시간):
-              </label>
-              <input
-                type="number"
-                step="0.5"
-                min="0.5"
-                required
-                value={otHours}
-                onChange={(e) => setOtHours(parseFloat(e.target.value) || 0)}
-                className="form-control"
-                style={{ fontSize: '13px' }}
-              />
-            </div>
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-              <label style={{ fontSize: '12px', fontWeight: 'bold', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
-                근무 상세 내용:
-              </label>
-              <textarea
-                required
-                rows={3}
-                placeholder="야간/휴일 연장근무 사유 및 업무 내용을 입력하세요"
+                placeholder="사유 선택 또는 직접 입력"
                 value={otWorkDetail}
                 onChange={(e) => setOtWorkDetail(e.target.value)}
                 className="form-control"
-                style={{ fontSize: '13px', resize: 'vertical' }}
+                style={{ fontSize: '13px', marginTop: '2px' }}
               />
             </div>
 
+            {/* 6. 저장 */}
             <button
               type="submit"
               className="btn btn-primary"
-              style={{ fontSize: '13px', marginTop: '6px' }}
+              style={{
+                fontSize: '13.5px',
+                fontWeight: 'bold',
+                padding: '10px 14px',
+                marginTop: '4px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '6px'
+              }}
               disabled={!canSave}
             >
-              OT 연장근무 등록
+              OT 등록 ({otHours.toFixed(1)}시간)
             </button>
           </form>
         </div>

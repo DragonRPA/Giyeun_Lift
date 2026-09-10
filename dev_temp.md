@@ -1,5 +1,31 @@
 # 개발 요구사항 임시 기록 (dev_temp.md)
 
+## [완료] 소모품 구매신청 영구보존 결함 수정·더미 데이터 전면 삭제 및 미사용 테이블 정리 (v1.12.0.Build.61)
+- **요구사항**: "사용하지 않는 테이블이 확실하다면 삭제하고, 소모품 구매신청을 저장 했는데, 왜 사라질까? 그리고, 내가 등록하지 않은 소모품 구매신청 데이터가 6개가 있는데 저건 뭐지? 하드코딩된 데이터 같은데? 제거해. 코드에 남아있으면 코드도 제거해. 저장 안되는 이유는 찾아서 수정해. ㄹㅇ"
+- **적용 목적 (헌장 1.1 최대 편익, 1.2 DB 무누락 보존, 5.2 무음 실패 방지, 5.3 단일 진실 원천 SSOT 정합성, 6.1 버전 관리, 6.2 'ㄹㅇ' 배포)**:
+  1. **소모품 구매신청 저장 실패 및 새로고침 시 소멸 결함 근본 수정 (`db.ts`)**:
+     - **원인 분석**: `src/services/db.ts`의 `sanitizeSupabasePayload`에서 `modelName` 필터링 화이트리스트에 `consumable_purchases`가 누락되어 있어, 소모품 구매신청 등록 시 Supabase 전송 페이로드에서 `modelName`이 자동 제거됨. Supabase `consumable_purchases` 테이블의 `modelName` 컬럼은 `NOT NULL` 제약조건이 걸려 있어 PostgreSQL 에러(`null value in column "modelName" violates not-null constraint`) 발생 및 원격 저장 무음 실패. 이후 페이지 새로고침 시 `pullFromSupabase()`가 실행되면서 원격 DB 데이터로 로컬 캐시를 덮어씌워 방금 등록한 신청서가 화면에서 감쪽같이 사라지던 현상 규명.
+     - **조치**: `sanitizeSupabasePayload`의 `modelName` 허용 대상 테이블에 `'consumable_purchases'` 추가. `normalizeKey`의 reverseMapping에 `consumablePurchaseRequests: 'consumablePurchases'`, `consumable_purchase_requests: 'consumablePurchases'` 별칭 매핑 보강.
+  2. **모바일 결재 승인 테이블 키 정합성 보정 (`MobileExecutiveHome.tsx`)**:
+     - `MobileExecutiveHome.tsx`에서 소모품 결재 승인 시 잘못 지정되어 있던 `'consumablePurchaseRequests'`를 단일 정식 키인 `'consumablePurchases'`로 수정.
+  3. **원격 DB 및 시드/테스트 더미 데이터 7건 전면 삭제 (`consumable_purchases`, `WTT_SQL.sql`)**:
+     - 과거 모의 테스트용으로 적재되어 있던 `CPUR-0000001` ~ `CPUR-0000007` (유압유 ISO VG 46, (주)기연부품소모품몰, 테스터(정비관리)) 레코드 7건을 Supabase 원격 `consumable_purchases` 테이블에서 완전 삭제.
+     - `WTT_SQL.sql` 내 더미 구매신청 `INSERT INTO "consumablePurchases"` 구문 영구 제거.
+  4. **미사용 테이블 2종 완전 삭제 (`consumable_purchase_requests`, `consumable_purchase_items`)**:
+     - 과거 마스터-디테일 분리형으로 생성되었으나 현재 단일 통합 테이블(`consumable_purchases`)로 대체되어 사용되지 않던 2개 테이블을 Supabase DB-Native DDL(`dev_exec_ddl`)로 원격에서 영구 DROP 처리 완료.
+     - `schema.sql`에서 해당 테이블 정의 블록 완전 제거.
+     - `DevDataUploader.tsx`, `migrationEngine.ts`에서 미사용 테이블 목록 정리 및 `consumable_purchases` 표준 매핑 확립.
+- **주요 변경 파일**:
+  - `src/services/db.ts` [MODIFY]: `sanitizeSupabasePayload`에 `consumable_purchases`의 `modelName` 허용, `normalizeKey` 별칭 추가.
+  - `src/mobile/pages/MobileExecutiveHome.tsx` [MODIFY]: 결재 테이블 키 `'consumablePurchases'` 동기화.
+  - `src/pages/DevDataUploader.tsx` [MODIFY]: 미사용 테이블 매핑 제거.
+  - `src/services/migrationEngine.ts` [MODIFY]: 미사용 테이블 제거 및 `consumable_purchases` 반영.
+  - `schema.sql` [MODIFY]: 미사용 테이블 DDL 제거.
+  - `WTT_SQL.sql` [MODIFY]: 더미 구매 데이터 구문 제거.
+- **검증 결과**:
+  - 엔드투엔드 검증 스크립트 실행으로 `consumable_purchases` 신규 등록 및 데이터 조회가 Supabase 원격 DB에 100% 영구 보존됨을 실증 완료.
+  - `npm run build`: **TypeScript 0 Error, 번들링 100% 정상 통과 (`built in 1.13s`)**.
+
 ## [완료] 자산 입출고 메뉴명 단일화·정비 탭 전면 제거 및 입고등록 점검 퀵버튼 소형화 개편 (v1.12.0.Build.60)
 - **요구사항**: 
   1. "메뉴명 '자산 입출고/정비이력' >> '자산입출고' 로 변경 ('정비이력' 제거, 정비는 모두 다른 메뉴로 이동되었음). 이 메뉴 내의 '정비 이력 조회' 탭 기능 제거"

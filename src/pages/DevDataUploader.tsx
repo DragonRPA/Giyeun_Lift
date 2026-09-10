@@ -103,8 +103,6 @@ const TABLE_LABEL_MAP: Record<string, string> = {
   products: '제품 (모델)',
   assets: '자산 (장비)',
   consumables: '소모품 마스터',
-  consumable_purchase_requests: '소모품 구매 신청',
-  consumable_purchase_items: '소모품 구매 신청 상세',
   consumable_logs: '소모품 입출고 로그',
   contracts: '렌탈 계약',
   contract_assets: '계약 투입 장비',

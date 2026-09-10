@@ -4666,7 +4666,7 @@ class LocalDB {
         continue;
       }
       // modelName 컬럼이 존재하지 않는 테이블로의 modelName 누출 원천 방지 (departments, users, customers 등)
-      if (key === 'modelName' && !['products', 'assets', 'product_specs', 'product_spec_items', 'contract_assets', 'contract_history', 'inspection_checklist_items', 'equipment_manuals'].includes(tableName || '')) {
+      if (key === 'modelName' && !['products', 'assets', 'product_specs', 'product_spec_items', 'contract_assets', 'contract_history', 'inspection_checklist_items', 'equipment_manuals', 'consumable_purchases'].includes(tableName || '')) {
         continue;
       }
       // supplier 컬럼이 존재하지 않는 테이블로의 supplier 누출 원천 방지
@@ -4740,6 +4740,8 @@ class LocalDB {
       repair_consumables: 'repairConsumables',
       consumable_logs: 'consumableLogs',
       consumable_purchases: 'consumablePurchases',
+      consumablePurchaseRequests: 'consumablePurchases',
+      consumable_purchase_requests: 'consumablePurchases',
       purchase_settlements: 'purchaseSettlements',
       purchase_settlement_items: 'purchaseSettlementItems',
       settlement_payment_logs: 'settlementPaymentLogs',

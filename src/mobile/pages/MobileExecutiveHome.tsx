@@ -219,7 +219,7 @@ export const MobileExecutiveHome: React.FC<MobileExecutiveHomeProps> = ({ onNavi
       const approverName = currentUser?.name || '대표이사';
 
       if (item.category === 'CONSUMABLE') {
-        db.updateRow<ConsumablePurchaseRequest>('consumablePurchaseRequests', item.id, {
+        db.updateRow<ConsumablePurchaseRequest>('consumablePurchases', item.id, {
           status: 'ACCEPTED',
           acceptedDate: nowIso,
           accepterId: currentUser?.id,

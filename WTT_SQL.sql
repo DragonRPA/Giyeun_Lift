@@ -6640,17 +6640,6 @@ ON CONFLICT (id) DO UPDATE SET "vendorId" = EXCLUDED."vendorId", "contractId" = 
 
 -- 9. 소모품 구매 및 수불 로그
 
-INSERT INTO "consumablePurchases" ("id", "consumableId", "vendorId", "quantity", "unitPrice", "totalCost", "status", "requestDate", "inboundDate", "requestedBy", "createdAt", "updatedAt")
-VALUES
-('CPUR-0000001', 'CON-0000002', 'VEND-0000010', 65, 461538, 30000000, 'INBOUND_COMPLETED', '2026-01-02', '2026-01-05', 'usr-tester-mechanic', '2026-01-02T00:00:00Z', '2026-01-05T00:00:00Z'),
-('CPUR-0000002', 'CON-0000002', 'VEND-0000010', 65, 461538, 30000000, 'INBOUND_COMPLETED', '2026-02-02', '2026-02-05', 'usr-tester-mechanic', '2026-02-02T00:00:00Z', '2026-02-05T00:00:00Z'),
-('CPUR-0000003', 'CON-0000002', 'VEND-0000010', 65, 461538, 30000000, 'INBOUND_COMPLETED', '2026-03-02', '2026-03-05', 'usr-tester-mechanic', '2026-03-02T00:00:00Z', '2026-03-05T00:00:00Z'),
-('CPUR-0000004', 'CON-0000002', 'VEND-0000010', 65, 461538, 30000000, 'INBOUND_COMPLETED', '2026-04-02', '2026-04-05', 'usr-tester-mechanic', '2026-04-02T00:00:00Z', '2026-04-05T00:00:00Z'),
-('CPUR-0000005', 'CON-0000002', 'VEND-0000010', 65, 461538, 30000000, 'INBOUND_COMPLETED', '2026-05-02', '2026-05-05', 'usr-tester-mechanic', '2026-05-02T00:00:00Z', '2026-05-05T00:00:00Z'),
-('CPUR-0000006', 'CON-0000002', 'VEND-0000010', 65, 461538, 30000000, 'INBOUND_COMPLETED', '2026-06-02', '2026-06-05', 'usr-tester-mechanic', '2026-06-02T00:00:00Z', '2026-06-05T00:00:00Z'),
-('CPUR-0000007', 'CON-0000002', 'VEND-0000010', 65, 461538, 30000000, 'INBOUND_COMPLETED', '2026-07-02', '2026-07-05', 'usr-tester-mechanic', '2026-07-02T00:00:00Z', '2026-07-05T00:00:00Z')
-ON CONFLICT (id) DO UPDATE SET "consumableId" = EXCLUDED."consumableId", "vendorId" = EXCLUDED."vendorId", "quantity" = EXCLUDED."quantity", "unitPrice" = EXCLUDED."unitPrice", "totalCost" = EXCLUDED."totalCost", "status" = EXCLUDED."status", "requestDate" = EXCLUDED."requestDate", "inboundDate" = EXCLUDED."inboundDate", "requestedBy" = EXCLUDED."requestedBy", "createdAt" = EXCLUDED."createdAt", "updatedAt" = EXCLUDED."updatedAt";
-
 INSERT INTO "consumableLogs" ("id", "consumableId", "type", "quantity", "unitPrice", "userId", "actionDate", "description", "createdAt")
 VALUES
 ('CLOG-0000001', 'CON-0000002', 'INBOUND', 65, 461538, 'usr-tester-mechanic', '2026-01-05', '정기 월초 소모품 3,000만원 대량 입고', '2026-01-05T00:00:00Z'),

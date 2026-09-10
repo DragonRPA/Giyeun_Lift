@@ -882,29 +882,7 @@ CREATE TABLE consumable_logs (
     "updatedAt"           TEXT NOT NULL
 );
 
--- 4-5. 소모품 구매신청 마스터 (consumable_purchase_requests)
-CREATE TABLE consumable_purchase_requests (
-    id                    TEXT PRIMARY KEY,
-    "requesterId"         TEXT REFERENCES users(id) ON DELETE SET NULL,
-    title                 TEXT NOT NULL,
-    status                TEXT CHECK (status IN ('REQUESTED', 'PARTIAL_INBOUND', 'COMPLETED', 'CANCELLED')) NOT NULL DEFAULT 'REQUESTED',
-    "requestDate"         TEXT NOT NULL,
-    "createdAt"           TEXT NOT NULL,
-    "updatedAt"           TEXT NOT NULL
-);
-
--- 4-6. 소모품 구매신청 상세 (consumable_purchase_items)
-CREATE TABLE consumable_purchase_items (
-    id                    TEXT PRIMARY KEY,
-    "requestId"           TEXT NOT NULL REFERENCES consumable_purchase_requests(id) ON DELETE CASCADE,
-    "consumableId"        TEXT NOT NULL REFERENCES consumables(id) ON DELETE CASCADE,
-    "requestQty"          DOUBLE PRECISION NOT NULL,
-    "inboundQty"          DOUBLE PRECISION NOT NULL DEFAULT 0,
-    "createdAt"           TEXT NOT NULL,
-    "updatedAt"           TEXT NOT NULL
-);
-
--- 4-7. 검수 체크리스트 항목 (inspection_checklist_items)
+-- 4-5. 검수 체크리스트 항목 (inspection_checklist_items)
 CREATE TABLE inspection_checklist_items (
     id                    TEXT PRIMARY KEY,
     category              TEXT NOT NULL,

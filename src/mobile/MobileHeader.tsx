@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { LogOut, Wrench, Crown, Radio, RotateCw, Car, Fuel, Smartphone } from 'lucide-react';
+import { LogOut, Wrench, Crown, Radio, RotateCw, Smartphone } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { WeatherWidget } from '../components/WeatherWidget';
 
@@ -11,7 +11,6 @@ interface MobileHeaderProps {
   isWalkieOn?: boolean;
   onOpenWalkieTalkie?: () => void;
   onOpenApkMonitor?: () => void;
-  onOpenVehicleLog?: () => void;
   isWorking?: boolean;
   isWorkLoading?: boolean;
   onToggleWork?: () => void;
@@ -23,7 +22,6 @@ export const MobileHeader: React.FC<MobileHeaderProps> = ({
   isWalkieOn = false,
   onOpenWalkieTalkie,
   onOpenApkMonitor,
-  onOpenVehicleLog,
   isWorking = false,
   isWorkLoading = false,
   onToggleWork
@@ -82,23 +80,24 @@ export const MobileHeader: React.FC<MobileHeaderProps> = ({
           overflowX: 'hidden'
         }}
       >
-        {/* ── 1행: 좌상단 날씨 위젯 & 우상단 퀵 액션 버튼군 ── */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', gap: '6px' }}>
+        {/* ── 1행: 좌상단 날씨 위젯 & 우상단 퀵 액션 버튼군 (360px 모바일 화면 줄바꿈·잘림 없는 컴팩트 레이아웃) ── */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', gap: '6px', minWidth: 0 }}>
           {/* 🌤️ 좌상단 실시간 현장 날씨 위젯 */}
-          <div style={{ flexShrink: 0 }}>
+          <div style={{ flexShrink: 1, minWidth: 0 }}>
             <WeatherWidget compact />
           </div>
 
-          {/* 우상단 퀵 액션 버튼군 */}
+          {/* 우상단 퀵 액션 버튼군 + 로그아웃 아이콘 */}
           <div 
             style={{ 
               display: 'flex', 
               alignItems: 'center', 
               gap: '4px', 
-              flexShrink: 0
+              flexShrink: 0,
+              marginLeft: 'auto'
             }}
           >
-            {/* 🔄 화면 새로고침 버튼 (헌장 3.1 무수식어 건조한 명사) */}
+            {/* 🔄 화면 새로고침 버튼 (아이콘 컴팩트) */}
             <button
               type="button"
               onClick={handleRefresh}
@@ -106,28 +105,29 @@ export const MobileHeader: React.FC<MobileHeaderProps> = ({
               style={{
                 display: 'flex',
                 alignItems: 'center',
-                gap: '3px',
-                fontSize: '11px',
-                fontWeight: '600',
-                padding: '5px 7px',
+                justifyContent: 'center',
+                width: '28px',
+                height: '28px',
+                padding: '0',
                 borderRadius: '8px',
                 backgroundColor: '#1e293b',
                 border: '1px solid #334155',
                 color: '#38bdf8',
                 cursor: 'pointer',
-                flexShrink: 0
+                flexShrink: 0,
+                transition: 'all 0.15s ease'
               }}
               title="새로고침"
+              aria-label="새로고침"
             >
               <RotateCw 
-                size={12} 
+                size={13} 
                 style={{
                   transition: 'transform 0.4s ease',
                   transform: isRefreshing ? 'rotate(360deg)' : 'none'
                 }} 
                 color="#38bdf8" 
               />
-              <span>새로고침</span>
             </button>
 
             {/* 📻 현장 무전기 (PTT) 버튼 */}
@@ -140,7 +140,7 @@ export const MobileHeader: React.FC<MobileHeaderProps> = ({
                 gap: '3px',
                 fontSize: '11px',
                 fontWeight: '700',
-                padding: '5px 7px',
+                padding: '4px 6px',
                 borderRadius: '8px',
                 backgroundColor: isWalkieOn ? 'rgba(16, 185, 129, 0.2)' : '#1e293b',
                 border: isWalkieOn ? '1px solid #10b981' : '1px solid #334155',
@@ -163,7 +163,7 @@ export const MobileHeader: React.FC<MobileHeaderProps> = ({
               )}
             </button>
 
-            {/* 📱 통화캡처 APK 다운로드 & 모니터링 버튼 (헌장 3.1 무수식어 건조 표준) */}
+            {/* 📱 통화캡처 APK 다운로드 & 모니터링 버튼 */}
             <button
               type="button"
               onClick={onOpenApkMonitor}
@@ -173,7 +173,7 @@ export const MobileHeader: React.FC<MobileHeaderProps> = ({
                 gap: '3px',
                 fontSize: '11px',
                 fontWeight: '800',
-                padding: '5px 7px',
+                padding: '4px 6px',
                 borderRadius: '8px',
                 backgroundColor: isWorking ? 'rgba(16, 185, 129, 0.25)' : 'rgba(2, 132, 199, 0.25)',
                 border: isWorking ? '1px solid #10b981' : '1px solid #38bdf8',
@@ -193,49 +193,35 @@ export const MobileHeader: React.FC<MobileHeaderProps> = ({
                 boxShadow: isWorking ? '0 0 5px #10b981' : 'none'
               }} />
             </button>
-
-            {/* 🚗 전사 공용 차량운행일지/주유일지 버튼 */}
-            {onOpenVehicleLog && (
-              <button
-                type="button"
-                onClick={onOpenVehicleLog}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '3px',
-                  fontSize: '11px',
-                  fontWeight: '800',
-                  padding: '5px 7px',
-                  borderRadius: '8px',
-                  backgroundColor: 'rgba(245, 158, 11, 0.2)',
-                  border: '1px solid #f59e0b',
-                  color: '#fbbf24',
-                  cursor: 'pointer',
-                  flexShrink: 0
-                }}
-                title="주유영수증"
-              >
-                <Fuel size={12} color="#fbbf24" />
-                <span>주유영수증</span>
-              </button>
-            )}
-
-            {/* 로그아웃 버튼 */}
+            {/* 🚪 로그아웃 버튼 (웹앱 우상단 표준 - 아이콘만 작게) */}
             <button
+              type="button"
               onClick={logout}
               style={{
-                padding: '6px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                width: '28px',
+                height: '28px',
+                padding: '0',
                 borderRadius: '8px',
                 backgroundColor: '#1e293b',
                 border: '1px solid #334155',
                 color: '#94a3b8',
                 cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                flexShrink: 0
+                flexShrink: 0,
+                transition: 'all 0.15s ease'
               }}
               title="로그아웃"
+              aria-label="로그아웃"
+              onMouseEnter={(e) => {
+                e.currentTarget.style.borderColor = '#ef4444';
+                e.currentTarget.style.color = '#f87171';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.borderColor = '#334155';
+                e.currentTarget.style.color = '#94a3b8';
+              }}
             >
               <LogOut size={13} />
             </button>

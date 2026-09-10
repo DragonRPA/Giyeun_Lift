@@ -40,7 +40,7 @@ export const MobileAsCreate: React.FC<MobileAsCreateProps> = ({
   const [customerName, setCustomerName] = useState('');
   const [siteName, setSiteName] = useState('');
   const [siteAddress, setSiteAddress] = useState('');
-  const [assetNo, setAssetNo] = useState(initialAssetNo || '');
+  const [assetNo, setAssetNo] = useState(typeof initialAssetNo === 'string' ? initialAssetNo : '');
   const [locationDetail, setLocationDetail] = useState('');
   const [reporterName, setReporterName] = useState('');
   const [reporterContact, setReporterContact] = useState('');
@@ -66,22 +66,23 @@ export const MobileAsCreate: React.FC<MobileAsCreateProps> = ({
 
   // 🌟 1. 장비번호 입력 시 계약 현장 및 고객사·도로명 주소 실시간 자동 역추적
   const handleAssetNoChange = (val: string) => {
+    if (typeof val !== 'string') return;
     setAssetNo(val);
     const clean = val.trim().toUpperCase();
     if (!clean) return;
 
-    const matchedAsset = assets.find(a => a.assetNo.toUpperCase() === clean);
+    const matchedAsset = (assets || []).find(a => (a?.assetNo && typeof a.assetNo === 'string') && a.assetNo.toUpperCase() === clean);
     if (matchedAsset) {
-      const ca = contractAssets.find(c => c.assetId === matchedAsset.id && !c.actualReturnDate);
+      const ca = (contractAssets || []).find(c => c.assetId === matchedAsset.id && !c.actualReturnDate);
       if (ca) {
-        const contract = contracts.find(c => c.id === ca.contractId);
+        const contract = (contracts || []).find(c => c.id === ca.contractId);
         if (contract) {
-          const cust = customers.find(c => c.id === contract.customerId);
-          if (cust && !customerName) setCustomerName(cust.name);
+          const cust = (customers || []).find(c => c.id === contract.customerId);
+          if (cust && !customerName) setCustomerName(cust.name || '');
           if (contract.siteId) {
-            const site = sites.find(s => s.id === contract.siteId);
+            const site = (sites || []).find(s => s.id === contract.siteId);
             if (site) {
-              setSiteName(site.name);
+              setSiteName(site.name || '');
               if (site.address?.trim()) setSiteAddress(site.address.trim());
               else if (cust?.address?.trim()) setSiteAddress(cust.address.trim());
             }
@@ -95,31 +96,32 @@ export const MobileAsCreate: React.FC<MobileAsCreateProps> = ({
 
   // 🌟 초기 인계 파라미터(내현장/자산조회 등에서 유입) 자동 바인딩 (헌장 1.1 & 과제 6)
   useEffect(() => {
-    if (initialAssetNo) {
+    if (typeof initialAssetNo === 'string' && initialAssetNo.trim()) {
       handleAssetNoChange(initialAssetNo);
     }
-    if (initialSiteId) {
-      const site = sites.find(s => s.id === initialSiteId);
+    if (typeof initialSiteId === 'string' && initialSiteId.trim()) {
+      const site = (sites || []).find(s => s.id === initialSiteId);
       if (site) {
-        setSiteName(site.name);
+        setSiteName(site.name || '');
         if (site.address?.trim()) setSiteAddress(site.address.trim());
-        const cust = customers.find(c => c.id === site.customerId);
-        if (cust && !customerName) setCustomerName(cust.name);
+        const cust = (customers || []).find(c => c.id === site.customerId);
+        if (cust && !customerName) setCustomerName(cust.name || '');
       }
     }
   }, [initialAssetNo, initialSiteId]);
 
   // 🌟 2. 고객사명 입력 시 마스터 일치 및 현장·도로명 주소 상속
   const handleCustomerNameChange = (val: string) => {
+    if (typeof val !== 'string') return;
     setCustomerName(val);
     const clean = val.trim();
     if (!clean) return;
 
-    const cust = customers.find(c => c.name.trim() === clean || c.name.includes(clean));
+    const cust = (customers || []).find(c => (c?.name && typeof c.name === 'string') && (c.name.trim() === clean || c.name.includes(clean)));
     if (cust) {
-      const cSites = sites.filter(s => s.customerId === cust.id);
+      const cSites = (sites || []).filter(s => s.customerId === cust.id);
       if (cSites.length === 1) {
-        setSiteName(cSites[0].name);
+        setSiteName(cSites[0].name || '');
         if (cSites[0].address?.trim()) {
           setSiteAddress(cSites[0].address.trim());
         } else if (cust.address?.trim()) {
@@ -133,13 +135,15 @@ export const MobileAsCreate: React.FC<MobileAsCreateProps> = ({
 
   // 🌟 3. 현장명 입력 시 현장 상세 주소 상속
   const handleSiteNameChange = (val: string) => {
+    if (typeof val !== 'string') return;
     setSiteName(val);
     const clean = val.trim();
     if (!clean) return;
 
-    const matchedCust = customers.find(c => c.name.trim() === customerName.trim() || c.name.includes(customerName.trim()));
-    const cSites = matchedCust ? sites.filter(s => s.customerId === matchedCust.id) : sites;
-    const site = cSites.find(s => s.name.trim() === clean || s.name.includes(clean) || clean.includes(s.name.trim()));
+    const cNameClean = (customerName || '').trim();
+    const matchedCust = (customers || []).find(c => (c?.name && typeof c.name === 'string') && (c.name.trim() === cNameClean || c.name.includes(cNameClean)));
+    const cSites = matchedCust ? (sites || []).filter(s => s.customerId === matchedCust.id) : (sites || []);
+    const site = cSites.find(s => (s?.name && typeof s.name === 'string') && (s.name.trim() === clean || s.name.includes(clean) || clean.includes(s.name.trim())));
     if (site?.address?.trim()) {
       setSiteAddress(site.address.trim());
     }
@@ -365,17 +369,23 @@ export const MobileAsCreate: React.FC<MobileAsCreateProps> = ({
     setIsSubmitting(true);
     try {
       // 🌟 고객사 및 현장 마스터 ID 자동 매핑 (도로명 주소 상속 보장)
-      const matchedCust = customers.find(c => c.name.trim() === customerName.trim() || c.name.includes(customerName.trim()));
-      const matchedSite = sites.find(s => 
+      const cleanCustomerName = customerName.trim();
+      const cleanSiteName = siteName.trim();
+      const matchedCust = (customers || []).find(c => 
+        (c?.name && typeof c.name === 'string') && 
+        (c.name.trim() === cleanCustomerName || c.name.includes(cleanCustomerName))
+      );
+      const matchedSite = (sites || []).find(s => 
         (matchedCust ? s.customerId === matchedCust.id : true) && 
-        (s.name.trim() === siteName.trim() || s.name.includes(siteName.trim()) || siteName.trim().includes(s.name))
+        (s?.name && typeof s.name === 'string') && 
+        (s.name.trim() === cleanSiteName || s.name.includes(cleanSiteName) || cleanSiteName.includes(s.name))
       );
 
       const ticket = await createFieldAsTicket({
         customerId: matchedCust?.id,
-        customerName: customerName.trim(),
+        customerName: cleanCustomerName,
         siteId: matchedSite?.id,
-        siteName: siteName.trim(),
+        siteName: cleanSiteName,
         siteAddress: siteAddress.trim(),
         assetNo: assetNo.toUpperCase(),
         locationDetail,
@@ -398,12 +408,13 @@ export const MobileAsCreate: React.FC<MobileAsCreateProps> = ({
     }
   };
 
-  const matchedCustomer = customers.find(c => 
-    c.name.trim() === customerName.trim() || 
-    (customerName.trim().length >= 2 && c.name.includes(customerName.trim()))
-  );
+  const cleanCustName = (customerName || '').trim();
+  const matchedCustomer = cleanCustName ? (customers || []).find(c => 
+    (c?.name && typeof c.name === 'string') && 
+    (c.name.trim() === cleanCustName || (cleanCustName.length >= 2 && c.name.includes(cleanCustName)))
+  ) : undefined;
   const matchedCustomerSites = matchedCustomer 
-    ? sites.filter(s => s.customerId === matchedCustomer.id) 
+    ? (sites || []).filter(s => s.customerId === matchedCustomer.id) 
     : [];
 
   return (
@@ -616,7 +627,7 @@ export const MobileAsCreate: React.FC<MobileAsCreateProps> = ({
             <label className="text-xs font-bold text-slate-300 whitespace-nowrap flex-shrink-0">
               현장 도로명 주소
             </label>
-            {matchedCustomer?.address && siteAddress !== matchedCustomer.address.trim() && (
+            {matchedCustomer?.address && typeof matchedCustomer.address === 'string' && siteAddress !== matchedCustomer.address.trim() && (
               <button
                 type="button"
                 onClick={() => setSiteAddress(matchedCustomer.address.trim())}

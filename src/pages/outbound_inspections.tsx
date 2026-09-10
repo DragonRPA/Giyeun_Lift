@@ -27,7 +27,8 @@ import {
   RotateCcw,
   MessageSquare,
   X,
-  Download
+  Download,
+  Boxes
 } from 'lucide-react';
 import { exportToExcel } from '../services/excel';
 
@@ -121,7 +122,9 @@ export const OutboundInspections: React.FC = () => {
     hasPermission,
     showErrorModal,
     exchangeOutboundAsset,
-    inspectionChecklistItems
+    inspectionChecklistItems,
+    consumables,
+    mechanicConsumableStocks
   } = useApp();
 
   const canEdit = hasPermission('repair', 'save') || hasPermission('delivery', 'save') || hasPermission('contract', 'save');
@@ -129,6 +132,10 @@ export const OutboundInspections: React.FC = () => {
   const [activeTabStatus, setActiveTabStatus] = useState<string>('PENDING');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
+
+  // 주기장 소모품 재고조회 모달 상태
+  const [showConsumableModal, setShowConsumableModal] = useState<boolean>(false);
+  const [consumableModalSearch, setConsumableModalSearch] = useState<string>('');
 
   // 토스트 알림 상태 (헌장 5.2: 브라우저 alert/confirm 전면 퇴출)
   const [toastMessage, setToastMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
@@ -809,7 +816,29 @@ export const OutboundInspections: React.FC = () => {
             <CheckSquare size={24} color="var(--primary)" /> 출고 검수 관리
           </h2>
         </div>
-        <div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <button
+            onClick={() => setShowConsumableModal(true)}
+            style={{
+              padding: '8px 14px',
+              borderRadius: '8px',
+              border: '1px solid #f59e0b',
+              backgroundColor: 'rgba(245, 158, 11, 0.08)',
+              color: '#d97706',
+              fontWeight: 700,
+              fontSize: '12.5px',
+              cursor: 'pointer',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+              whiteSpace: 'nowrap',
+              flexShrink: 0,
+              boxShadow: '0 1px 2px rgba(0,0,0,0.05)'
+            }}
+          >
+            <Boxes size={14} color="#d97706" />
+            주기장 소모품 재고
+          </button>
           <button
             onClick={handleExportInspectionExcel}
             style={{
@@ -1651,6 +1680,203 @@ export const OutboundInspections: React.FC = () => {
                   </button>
                 );
               })()}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 📦 주기장 소모품 재고조회 모달 */}
+      {showConsumableModal && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: 'rgba(0,0,0,0.6)',
+          zIndex: 1100,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: '20px'
+        }}>
+          <div style={{
+            backgroundColor: 'var(--bg-card, #fff)',
+            borderRadius: '16px',
+            width: '100%',
+            maxWidth: '960px',
+            maxHeight: '85vh',
+            display: 'flex',
+            flexDirection: 'column',
+            boxShadow: '0 20px 25px -5px rgba(0,0,0,0.2)',
+            border: '1px solid var(--border-color)',
+            overflow: 'hidden'
+          }}>
+            {/* 모달 헤더 */}
+            <div style={{
+              padding: '16px 20px',
+              borderBottom: '1px solid var(--border-color)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              backgroundColor: 'var(--bg-body, #f8fafc)'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Boxes size={20} color="#d97706" />
+                <h3 style={{ margin: 0, fontSize: '17px', fontWeight: 800 }}>주기장 소모품 재고조회</h3>
+                <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
+                  (출고 검수 및 부속품 가용 수량)
+                </span>
+              </div>
+              <button
+                onClick={() => setShowConsumableModal(false)}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            {/* 검색 및 요약 바 */}
+            <div style={{ padding: '16px 20px', display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap' }}>
+              <div style={{ position: 'relative', flex: 1, minWidth: '240px' }}>
+                <Search size={16} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+                <input
+                  type="text"
+                  value={consumableModalSearch}
+                  onChange={(e) => setConsumableModalSearch(e.target.value)}
+                  placeholder="소모품명, 공급처, 분류 검색..."
+                  style={{
+                    width: '100%',
+                    padding: '8px 12px 8px 34px',
+                    borderRadius: '8px',
+                    border: '1px solid var(--border-color)',
+                    backgroundColor: 'var(--bg-body)',
+                    color: 'var(--text-primary)',
+                    fontSize: '13px'
+                  }}
+                />
+              </div>
+              <div style={{ display: 'flex', gap: '8px', fontSize: '12px', fontWeight: 700 }}>
+                <span style={{ padding: '6px 10px', borderRadius: '6px', background: 'rgba(59,130,246,0.1)', color: '#2563eb' }}>
+                  총 {(consumables || []).length}종
+                </span>
+                <span style={{ padding: '6px 10px', borderRadius: '6px', background: 'rgba(16,185,129,0.1)', color: '#059669' }}>
+                  보유 {(consumables || []).filter(c => (c.stockQty || 0) > 0).length}종
+                </span>
+                <span style={{ padding: '6px 10px', borderRadius: '6px', background: 'rgba(239,68,68,0.1)', color: '#dc2626' }}>
+                  품절 {(consumables || []).filter(c => (c.stockQty || 0) <= 0).length}종
+                </span>
+              </div>
+            </div>
+
+            {/* 재고 테이블 */}
+            <div style={{ flex: 1, overflowY: 'auto', padding: '0 20px 20px' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px', textAlign: 'left' }}>
+                <thead>
+                  <tr style={{ borderBottom: '2px solid var(--border-color)', color: 'var(--text-secondary)', fontSize: '12px' }}>
+                    <th style={{ padding: '10px 8px', whiteSpace: 'nowrap' }}>분류</th>
+                    <th style={{ padding: '10px 8px', whiteSpace: 'nowrap' }}>품목명 (모델명)</th>
+                    <th style={{ padding: '10px 8px', textAlign: 'right', whiteSpace: 'nowrap' }}>주기장 재고</th>
+                    <th style={{ padding: '10px 8px', textAlign: 'right', whiteSpace: 'nowrap' }}>차량 분산적재</th>
+                    <th style={{ padding: '10px 8px', textAlign: 'right', whiteSpace: 'nowrap' }}>수리중</th>
+                    <th style={{ padding: '10px 8px', whiteSpace: 'nowrap' }}>공급처</th>
+                    <th style={{ padding: '10px 8px', textAlign: 'right', whiteSpace: 'nowrap' }}>단가</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(() => {
+                    const filtered = (consumables || []).filter(c => {
+                      if (!consumableModalSearch.trim()) return true;
+                      const q = consumableModalSearch.toLowerCase();
+                      return (
+                        (c.modelName || '').toLowerCase().includes(q) ||
+                        (c.supplier || '').toLowerCase().includes(q) ||
+                        (c.category || '').toLowerCase().includes(q)
+                      );
+                    });
+
+                    if (filtered.length === 0) {
+                      return (
+                        <tr>
+                          <td colSpan={7} style={{ padding: '40px', textAlign: 'center', color: 'var(--text-muted)' }}>
+                            일치하는 소모품이 없습니다.
+                          </td>
+                        </tr>
+                      );
+                    }
+
+                    return filtered.map(c => {
+                      const yardQty = c.stockQty || 0;
+                      const vQty = (mechanicConsumableStocks || [])
+                        .filter(ms => ms.consumableId === c.id)
+                        .reduce((sum, ms) => sum + (ms.stockQty || 0), 0);
+                      const isOut = yardQty <= 0;
+
+                      return (
+                        <tr key={c.id} style={{ borderBottom: '1px solid var(--border-color)' }}>
+                          <td style={{ padding: '10px 8px', whiteSpace: 'nowrap' }}>
+                            <span style={{ padding: '2px 6px', borderRadius: '4px', fontSize: '11px', fontWeight: 600, background: 'var(--bg-body)', color: 'var(--text-secondary)' }}>
+                              {c.category || '일반'}
+                            </span>
+                          </td>
+                          <td style={{ padding: '10px 8px', fontWeight: 700 }}>
+                            {c.modelName}
+                          </td>
+                          <td style={{ padding: '10px 8px', textAlign: 'right', whiteSpace: 'nowrap' }}>
+                            <span style={{
+                              fontWeight: 800,
+                              fontFamily: 'monospace',
+                              padding: '2px 8px',
+                              borderRadius: '12px',
+                              backgroundColor: isOut ? 'rgba(239,68,68,0.1)' : 'rgba(16,185,129,0.1)',
+                              color: isOut ? '#dc2626' : '#059669'
+                            }}>
+                              {isOut ? `품절 (0${c.unit || '개'})` : `${yardQty} ${c.unit || '개'}`}
+                            </span>
+                          </td>
+                          <td style={{ padding: '10px 8px', textAlign: 'right', fontFamily: 'monospace', color: vQty > 0 ? '#2563eb' : 'var(--text-muted)' }}>
+                            {vQty > 0 ? `${vQty} ${c.unit || '개'}` : '-'}
+                          </td>
+                          <td style={{ padding: '10px 8px', textAlign: 'right', fontFamily: 'monospace', color: (c.repairingQty || 0) > 0 ? '#d97706' : 'var(--text-muted)' }}>
+                            {(c.repairingQty || 0) > 0 ? `${c.repairingQty} ${c.unit || '개'}` : '-'}
+                          </td>
+                          <td style={{ padding: '10px 8px', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
+                            {c.supplier || '-'}
+                          </td>
+                          <td style={{ padding: '10px 8px', textAlign: 'right', fontFamily: 'monospace' }}>
+                            {c.unitPrice ? `₩${c.unitPrice.toLocaleString()}` : '-'}
+                          </td>
+                        </tr>
+                      );
+                    });
+                  })()}
+                </tbody>
+              </table>
+            </div>
+
+            {/* 모달 푸터 */}
+            <div style={{
+              padding: '12px 20px',
+              borderTop: '1px solid var(--border-color)',
+              display: 'flex',
+              justifyContent: 'flex-end',
+              backgroundColor: 'var(--bg-body, #f8fafc)'
+            }}>
+              <button
+                onClick={() => setShowConsumableModal(false)}
+                style={{
+                  padding: '8px 18px',
+                  borderRadius: '8px',
+                  border: 'none',
+                  backgroundColor: 'var(--primary)',
+                  color: '#fff',
+                  fontWeight: 700,
+                  fontSize: '13px',
+                  cursor: 'pointer'
+                }}
+              >
+                닫기
+              </button>
             </div>
           </div>
         </div>

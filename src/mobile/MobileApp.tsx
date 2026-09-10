@@ -22,6 +22,7 @@ import { MobileCustomerManage } from './pages/MobileCustomerManage';
 import { MobileDelinquencyManage } from './pages/MobileDelinquencyManage';
 import { MobileVehicleLog } from './pages/MobileVehicleLog';
 import { MobileManualViewer } from './pages/MobileManualViewer';
+import { MobileYardConsumableStock } from './pages/MobileYardConsumableStock';
 import { PwaInstallBanner } from './components/PwaInstallBanner';
 import { MobileWalkieTalkieModal } from './components/MobileWalkieTalkieModal';
 import { MobileApkMonitorModal } from './components/MobileApkMonitorModal';
@@ -40,7 +41,7 @@ interface MobileAppProps {
 }
 
 export const MobileApp: React.FC<MobileAppProps> = ({ onSwitchToPc: _onSwitchToPc }) => {
-  const { fieldAsTickets, deliveries, outboundInspections, currentUser, assets, customers, billings, currentTenant, contractAssets, loadTablesForMenu } = useApp();
+  const { fieldAsTickets, deliveries, outboundInspections, currentUser, assets, customers, billings, currentTenant, contractAssets, loadTablesForMenu, logout } = useApp();
 
   // 전대 장비 주기장 유휴 누수 위험 건수
   const subleaseLeakCount = useMemo(() => {
@@ -149,6 +150,8 @@ export const MobileApp: React.FC<MobileAppProps> = ({ onSwitchToPc: _onSwitchToP
       if (workStatus?.isWorking) {
         const updated = await clockOut(targetUserId);
         setWorkStatus(updated);
+        // 퇴근 처리 시 자동 로그아웃 연동
+        logout();
       } else {
         const updated = await clockIn(targetUserId);
         setWorkStatus(updated);
@@ -233,7 +236,9 @@ export const MobileApp: React.FC<MobileAppProps> = ({ onSwitchToPc: _onSwitchToP
   };
 
   const handleOpenCreateAs = (assetNo?: string, siteId?: string) => {
-    setAsInitialParams(assetNo || siteId ? { assetNo, siteId } : null);
+    const validAssetNo = typeof assetNo === 'string' ? assetNo : undefined;
+    const validSiteId = typeof siteId === 'string' ? siteId : undefined;
+    setAsInitialParams(validAssetNo || validSiteId ? { assetNo: validAssetNo, siteId: validSiteId } : null);
     setIsCreatingAs(true);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
@@ -250,10 +255,6 @@ export const MobileApp: React.FC<MobileAppProps> = ({ onSwitchToPc: _onSwitchToP
           setIsWalkieModalOpen(true);
         }}
         onOpenApkMonitor={() => setIsApkMonitorOpen(true)}
-        onOpenVehicleLog={() => {
-          if (loadTablesForMenu) loadTablesForMenu('vehicle_log');
-          handleTabChange('vehicle_log');
-        }}
         isWorking={workStatus?.isWorking ?? false}
         isWorkLoading={workLoading}
         onToggleWork={handleWorkToggle}
@@ -356,6 +357,8 @@ export const MobileApp: React.FC<MobileAppProps> = ({ onSwitchToPc: _onSwitchToP
           <MobileManualViewer onBack={() => handleTabChange('home')} />
         ) : activeTab === 'vehicle_stock' ? (
           <MobileVehicleStock />
+        ) : activeTab === 'consumable_stock' ? (
+          <MobileYardConsumableStock onBack={() => handleTabChange('home')} />
         ) : (
           <MobileAssetSearch
             onNavigateToOrder={(specFt) => {

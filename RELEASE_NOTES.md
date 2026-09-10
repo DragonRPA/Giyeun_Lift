@@ -1,3 +1,46 @@
+## [v1.12.0.Build.65] - 2026-09-10 13:56
+
+### 🚀 [웹앱 영업부 홈 화면 하단 중복 카드 3종 및 커다란 근무중 위젯 제거, 상단 헤더 소형 버튼 단독 유지, 직무 맞춤형 ToDo 피드 최상단 탑재, 소형 로그아웃 아이콘 노출, 퇴근 시 자동 로그아웃 및 출고팀 주기장 소모품 재고조회 기능 구축, "ㄹㅇ" 배포]
+
+**배경**:
+1. 사장님 지시사항:
+   - "웹앱 버전의 오른쪽 상단에 로그아웃 아이콘만 작게 추가"
+   - "웹앱 화면 우상단에 법인차량 주유기록 버튼이 있어. 제거해줘"
+   - "퇴근처리를 할때에도 로그아웃 해줘"
+   - "웹앱 영업부 화면에서, 고객고장 AS 접수 누르면 오류나" (오류: `e.trim is not a function`)
+   - "웹앱의 출고팀에 주기장 소모품 재고조회 기능 추가"
+   - "웹앱 영업부 홈 화면에서, 이미지 1,2,3 는 하단 버튼메뉴와 중복 기능이니까 제거해, PC버전과 동일하게 나에게 todo 업무가 발생하면 홈 화면의 가장 상단에 todo 카드를 뜨게 해줘"
+   - "홈 화면에 커다란 근무중 위젯은 없애고, 위에있는 작은 버튼만 남겨줘. ㄹㅇ"
+2. 시스템 헌장 카테고리 I (1.1 최대 편익), 카테고리 II (2.1 부서 및 직무별 R&R 정책), 카테고리 III (3.1 무수식어 건조 표준, 3.2 줄바꿈 및 잘림 방지, 3.3 직무 중심 ToDo 피드 대시보드 정책), 카테고리 V (5.2 무음 실패 방지), 카테고리 VI (6.1 버전 관리, 6.2 "ㄹㅇ" 배포) 준수.
+
+**개편 내역**:
+1. **웹앱 영업부 홈 화면 하단 중복 카드 3종 및 커다란 근무중 위젯 제거 (`src/mobile/pages/MobileHome.tsx`)**:
+   - 하단 내비게이션 바 메뉴와 중복되던 3개 카드(`고객사 및 거래처 관리`, `내 계약 & 투입 현장`, `자사 가용 재고 현황`)를 화면에서 전면 제거하여 중복 조작 배제.
+   - 상단 헤더에 `[● 근무중/출근]` 소형 토글 버튼이 상시 노출되므로, 본문에 불필요하게 크게 자리잡고 있던 대형 근무상태 카드(`WorkStatusCard`)를 완전 삭제하고 상단 헤더의 소형 버튼만 단독 유지.
+2. **PC 버전과 동일한 직무 맞춤형 ToDo 피드 카드 최상단 탑재 (`src/mobile/pages/MobileHome.tsx`)**:
+   - `findActiveTasksForUser(todos, currentUser, hasPermission)` 파이프라인을 연동하여 로그인 사용자 본인의 미결 ToDo 업무를 실시간 필터링.
+   - 담당 업무가 존재할 경우 (`userTodos.length > 0`), 영업부 홈 화면의 **가장 최상단**에 **`업무 목록 (N건 대기)`** 카드를 즉시 표출.
+   - 특별지시(`⚡ 특별지시`), 계약서 패키지 재발송(`패키지 재발송`), 우선순위(`URGENT`, `HIGH`, `NORMAL`), 마감일 배지 표출.
+   - 원클릭 `[처리 이동 ➔]`(목적지 탭 라우팅), `[완료]`(`completeTodo`), `[보고 및 완료]`(`resolveExecutiveDirective`) 액션 버튼 연동.
+3. **웹앱 상단 헤더 우측 소형 로그아웃 아이콘 노출 및 주유버튼 제거 (`src/mobile/MobileHeader.tsx`, `src/mobile/MobileApp.tsx`)**:
+   - 우측 상단 최외곽에 28×28px 컴팩트 규격의 단독 로그아웃 아이콘 버튼(`<LogOut size={13} />`) 배치.
+   - 헤더 1행에서 중복 주유기록 버튼을 완전 제거하고 새로고침 버튼을 슬림 아이콘으로 정돈하여 320px~360px 초소형 모바일 화면에서도 요소 잘림이나 가로 넘침이 발생하지 않도록 100% 방어.
+4. **퇴근 처리 시 자동 로그아웃 연동 (`src/mobile/MobileApp.tsx`)**:
+   - 상단 헤더 `[근무중]` 버튼 또는 APK 모니터링 모달에서 퇴근(`clockOut`) 처리 완료 시 `logout()`을 즉시 호출하여 안전하게 로그인 화면으로 전환.
+5. **고객 고장 AS 대리 접수 `e.trim is not a function` 런타임 오류 원천 해결 (`src/mobile/pages/MobileAsCreate.tsx`, `src/mobile/pages/MobileHome.tsx`, `src/mobile/MobileApp.tsx`)**:
+   - `onClick={() => onOpenCreateAs()}` 익명 함수 래핑으로 React SyntheticBaseEvent 유입 원천 차단.
+   - `initialAssetNo`, `customerName`, `siteName` 등 전반에 걸쳐 `typeof === 'string'` 방어 가드와 안전한 문자열 처리 적용.
+6. **웹앱 출고팀 주기장 소모품 재고조회 기능 구축 (`src/mobile/pages/MobileYardConsumableStock.tsx`, `src/mobile/MobileBottomNav.tsx`, `src/mobile/pages/MobileInspectionList.tsx`, `src/App.tsx`, `src/pages/outbound_inspections.tsx`)**:
+   - 출고/자산팀 전용 모바일 소모품 재고조회 페이지 신설: 한글 초성 검색, 카테고리 칩 필터, 재고 보유/품절 필터, AS 기사 탑차 적재 현황 병기, 수불 내역 바텀시트.
+   - 출고 검수(PDI) 도중 화면 이탈 없이 충전기/부속품 재고를 확인할 수 있는 퀵 모달 탑재.
+   - PC 버전 입출고관리 메뉴에도 `[주기장 소모품 재고]` 탭 신설 연동.
+
+**검증 결과**:
+- `cmd /c npx tsc --noEmit`: **TypeScript 0 Error 통과**.
+- `cmd /c npm run build`: **Production 번들 100% 정상 통과 (`✓ built in 1.15s`)**.
+
+---
+
 ## [v1.12.0.Build.64] - 2026-09-10 12:10
 
 ### 🚀 [소모품 온라인 구매 URL 및 실물 입고 후 구매완결 지급요청 연계·연차신청 취소 ADMIN 제약 개편, "ㄹㅇ" 배포]

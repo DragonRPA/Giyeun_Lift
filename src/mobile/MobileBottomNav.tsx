@@ -18,7 +18,8 @@ export type MobileTabType =
   | 'customers'
   | 'delinquency'
   | 'vehicle_log'
-  | 'manual_viewer';
+  | 'manual_viewer'
+  | 'consumable_stock';
 
 interface MobileBottomNavProps {
   deptMode: MobileDeptMode;

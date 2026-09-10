@@ -20,7 +20,8 @@ import {
   Calendar, 
   RotateCcw,
   Sparkles,
-  FileText
+  FileText,
+  Boxes
 } from 'lucide-react';
 
 function isModelMatch(a?: string, b?: string): boolean {
@@ -102,7 +103,8 @@ export const MobileInspectionList: React.FC = () => {
     contractHistory,
     exchangeOutboundAsset,
     refreshAllData, 
-    showErrorModal 
+    showErrorModal,
+    consumables
   } = useApp();
   
   // ── 탭 및 필터 상태 ──
@@ -110,6 +112,10 @@ export const MobileInspectionList: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [dateFilter, setDateFilter] = useState<'ALL' | 'TODAY' | 'TOMORROW' | 'WEEK'>('ALL');
   const [exchangeOnly, setExchangeOnly] = useState(false);
+
+  // ── 주기장 소모품 재고 퀵 조회 모달 상태 ──
+  const [isConsumableModalOpen, setIsConsumableModalOpen] = useState(false);
+  const [consumableSearchQuery, setConsumableSearchQuery] = useState('');
 
   // ── 상세 스튜디오 및 조작 상태 ──
   const [selectedGroupId, setSelectedGroupId] = useState<string>('');
@@ -619,25 +625,37 @@ export const MobileInspectionList: React.FC = () => {
             </div>
           </div>
 
-          {/* 실시간 검색창 */}
-          <div className="relative flex items-center">
-            <Search className="w-4 h-4 text-slate-500 absolute left-3 pointer-events-none" />
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={e => setSearchQuery(e.target.value)}
-              placeholder="고객사, 현장, 계약번호, 장비번호 검색"
-              className="w-full pl-9 pr-9 py-2.5 rounded-xl bg-slate-900 border border-slate-800 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500 transition-colors"
-            />
-            {searchQuery && (
-              <button 
-                type="button" 
-                onClick={() => setSearchQuery('')}
-                className="absolute right-2.5 p-1 text-slate-400 hover:text-white"
-              >
-                <X className="w-3.5 h-3.5" />
-              </button>
-            )}
+          {/* 실시간 검색창 & 소모품 재고 퀵버튼 */}
+          <div className="flex items-center gap-2">
+            <div className="relative flex-1 flex items-center">
+              <Search className="w-4 h-4 text-slate-500 absolute left-3 pointer-events-none" />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={e => setSearchQuery(e.target.value)}
+                placeholder="고객사, 현장, 계약번호, 장비번호 검색"
+                className="w-full pl-9 pr-9 py-2.5 rounded-xl bg-slate-900 border border-slate-800 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500 transition-colors"
+              />
+              {searchQuery && (
+                <button 
+                  type="button" 
+                  onClick={() => setSearchQuery('')}
+                  className="absolute right-2.5 p-1 text-slate-400 hover:text-white"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setIsConsumableModalOpen(true)}
+              className="flex items-center gap-1.5 px-3 py-2.5 rounded-xl bg-gradient-to-r from-amber-950/40 to-slate-900 border border-amber-500/40 text-amber-300 text-xs font-bold whitespace-nowrap active:scale-95 transition-all shadow-sm shrink-0"
+              title="출고 검수 부속품 및 주기장 소모품 재고 확인"
+            >
+              <Boxes className="w-4 h-4 text-amber-400" />
+              <span>소모품</span>
+            </button>
           </div>
 
           {/* 날짜 프리셋 퀵 버튼 바 (대기 탭 전용) */}
@@ -1390,6 +1408,121 @@ export const MobileInspectionList: React.FC = () => {
                 {isSubmitting ? '반려 처리 중...' : '출고의뢰 반려 확정'}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* 📦 주기장 소모품 재고 퀵 조회 모달 */}
+      {isConsumableModalOpen && (
+        <div 
+          className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-end justify-center p-0 animate-fadeIn"
+          onClick={() => setIsConsumableModalOpen(false)}
+        >
+          <div 
+            className="w-full max-w-lg bg-slate-900 border-t border-slate-700 rounded-t-3xl p-5 flex flex-col gap-3 max-h-[85vh] shadow-2xl animate-slideUp"
+            onClick={e => e.stopPropagation()}
+          >
+            {/* 상단 핸들 & 타이틀 */}
+            <div className="w-12 h-1.5 bg-slate-700 rounded-full mx-auto -mt-1 mb-1" />
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Boxes className="w-5 h-5 text-amber-400" />
+                <h3 className="text-base font-black text-white">주기장 소모품 재고 확인</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsConsumableModalOpen(false)}
+                className="w-8 h-8 rounded-full bg-slate-800 flex items-center justify-center text-slate-400 hover:text-white"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* 검색창 */}
+            <div className="relative">
+              <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+              <input
+                type="text"
+                value={consumableSearchQuery}
+                onChange={e => setConsumableSearchQuery(e.target.value)}
+                placeholder="충전기, 안전띠, 키박스 등 검색..."
+                className="w-full pl-9 pr-9 py-2.5 rounded-xl bg-slate-800 border border-slate-700 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-500"
+              />
+              {consumableSearchQuery && (
+                <button
+                  type="button"
+                  onClick={() => setConsumableSearchQuery('')}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+
+            {/* 목록 스크롤 영역 */}
+            <div className="flex-1 overflow-y-auto flex flex-col gap-2 max-h-[50vh] pr-1">
+              {(() => {
+                const list = (consumables || []).filter(c => {
+                  if (!consumableSearchQuery.trim()) return true;
+                  const q = consumableSearchQuery.toLowerCase().trim();
+                  return (
+                    (c.modelName || '').toLowerCase().includes(q) ||
+                    (c.category || '').toLowerCase().includes(q) ||
+                    (c.supplier || '').toLowerCase().includes(q)
+                  );
+                }).sort((a, b) => (b.stockQty || 0) - (a.stockQty || 0));
+
+                if (list.length === 0) {
+                  return (
+                    <div className="p-8 text-center text-xs text-slate-500">
+                      일치하는 소모품이 없습니다.
+                    </div>
+                  );
+                }
+
+                return list.map(c => {
+                  const qty = c.stockQty || 0;
+                  const isOut = qty <= 0;
+                  return (
+                    <div
+                      key={c.id}
+                      className={`p-2.5 rounded-xl border flex items-center justify-between gap-2 text-xs ${
+                        isOut ? 'bg-slate-900/40 border-slate-800/80' : 'bg-slate-800/60 border-slate-700/60'
+                      }`}
+                    >
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          {c.category && (
+                            <span className="text-[10px] px-1 py-0.5 rounded bg-slate-700 text-slate-300 font-medium">
+                              {c.category}
+                            </span>
+                          )}
+                          <span className="font-bold text-white truncate">{c.modelName}</span>
+                        </div>
+                        {c.supplier && (
+                          <span className="text-[10px] text-slate-400 block truncate mt-0.5">공급처: {c.supplier}</span>
+                        )}
+                      </div>
+
+                      <div className="text-right shrink-0">
+                        <span className={`font-mono font-bold text-sm ${isOut ? 'text-red-400' : 'text-emerald-400'}`}>
+                          {isOut ? '품절' : `${qty}${c.unit || '개'}`}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                });
+              })()}
+            </div>
+
+            {/* 닫기 버튼 */}
+            <button
+              type="button"
+              onClick={() => setIsConsumableModalOpen(false)}
+              className="w-full py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs"
+            >
+              닫기
+            </button>
           </div>
         </div>
       )}

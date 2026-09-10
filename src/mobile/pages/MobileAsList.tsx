@@ -1,7 +1,7 @@
 // src/mobile/pages/MobileAsList.tsx
 import React, { useState, useMemo } from 'react';
 import { useApp } from '../../context/AppContext';
-import { Search, Plus, Wrench, MapPin, User, Phone, Package, AlertTriangle, Clock, Image as ImageIcon, ChevronRight } from 'lucide-react';
+import { Search, Plus, Wrench, MapPin, User, Phone, Package, AlertTriangle, Clock, Image as ImageIcon, ChevronRight, BookOpen } from 'lucide-react';
 import { safePhoneCall, resolveSiteDetailedAddress } from '../../utils/nativeLauncher';
 import { Asset, Repair, InboundDefectDetail } from '../../services/db';
 import { MobileYardRepairModal } from '../components/MobileYardRepairModal';
@@ -9,12 +9,14 @@ import { MobileYardRepairModal } from '../components/MobileYardRepairModal';
 interface MobileAsListProps {
   onSelectTicket: (ticketId: string) => void;
   onOpenCreate: () => void;
+  onOpenManual?: () => void;
   initialMode?: 'FIELD_AS' | 'YARD_REPAIR';
 }
 
 export const MobileAsList: React.FC<MobileAsListProps> = ({
   onSelectTicket,
   onOpenCreate,
+  onOpenManual,
   initialMode = 'FIELD_AS',
 }) => {
   const { fieldAsTickets, repairs, assets, sites, customers, contracts, contractAssets, refreshAllData } = useApp();
@@ -180,13 +182,25 @@ export const MobileAsList: React.FC<MobileAsListProps> = ({
               <Wrench className="w-4 h-4 text-blue-400" />
               현장 AS 티켓 ({filteredFieldTickets.length})
             </h2>
-            <button
-              onClick={onOpenCreate}
-              className="flex items-center gap-1.5 py-2 px-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs shadow-lg shadow-blue-600/30 active:scale-95 transition-transform"
-            >
-              <Plus className="w-4 h-4 stroke-[3]" />
-              신규 접수
-            </button>
+            <div className="flex items-center gap-2">
+              {onOpenManual && (
+                <button
+                  type="button"
+                  onClick={onOpenManual}
+                  className="flex items-center gap-1 py-2 px-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-blue-400 font-bold text-xs border border-blue-500/30 shadow-md active:scale-95 transition-transform"
+                >
+                  <BookOpen className="w-3.5 h-3.5" />
+                  <span>장비 매뉴얼</span>
+                </button>
+              )}
+              <button
+                onClick={onOpenCreate}
+                className="flex items-center gap-1.5 py-2 px-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs shadow-lg shadow-blue-600/30 active:scale-95 transition-transform"
+              >
+                <Plus className="w-4 h-4 stroke-[3]" />
+                신규 접수
+              </button>
+            </div>
           </div>
 
           {/* 검색창 */}

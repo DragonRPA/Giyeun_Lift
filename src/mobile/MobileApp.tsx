@@ -322,6 +322,7 @@ export const MobileApp: React.FC<MobileAppProps> = ({ onSwitchToPc: _onSwitchToP
           <MobileAsList
             onSelectTicket={handleOpenAsDetail}
             onOpenCreate={handleOpenCreateAs}
+            onOpenManual={() => handleTabChange('manual_viewer')}
           />
         ) : activeTab === 'dispatch' ? (
           <MobileDispatchList />

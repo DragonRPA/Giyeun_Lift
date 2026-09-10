@@ -341,6 +341,128 @@ export const MobileHome: React.FC<MobileHomeProps> = ({
   if (deptMode === 'OUTBOUND') {
     return (
       <div className="flex flex-col gap-4 pb-24 p-4 font-sans text-slate-100">
+        {/* 직무 맞춤형 당면 과제 ToDo 피드 (헌장 3.3 준수 - 최상단 배치) */}
+        {userTodos.length > 0 && (
+          <div className="bg-slate-900 border-2 border-emerald-500/50 rounded-2xl p-4 shadow-xl flex flex-col gap-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className="w-7 h-7 rounded-lg bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-emerald-400 flex-shrink-0">
+                  <Bell className="w-4 h-4" />
+                </div>
+                <span className="text-sm font-black text-white" style={{ whiteSpace: 'nowrap' }}>
+                  업무 목록
+                </span>
+              </div>
+              <span className="text-xs font-black px-2 py-0.5 rounded-md bg-emerald-500/20 text-emerald-300 border border-emerald-500/30" style={{ whiteSpace: 'nowrap', flexShrink: 0 }}>
+                {userTodos.length}건 대기
+              </span>
+            </div>
+
+            <div className="flex flex-col gap-2.5">
+              {userTodos.map((task) => {
+                const isDirective = task.taskCategory === 'EXECUTIVE_DIRECTIVE';
+                const priorityBg = task.priority === 'URGENT' 
+                  ? 'bg-red-500/20 text-red-300 border-red-500/30' 
+                  : task.priority === 'HIGH' 
+                  ? 'bg-amber-500/20 text-amber-300 border-amber-500/30' 
+                  : 'bg-blue-500/20 text-blue-300 border-blue-500/30';
+
+                return (
+                  <div
+                    key={task.id}
+                    className={`p-3 rounded-xl border flex flex-col gap-2 ${
+                      isDirective
+                        ? 'bg-red-950/30 border-red-500/50'
+                        : 'bg-slate-800/80 border-slate-700/80'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        {isDirective ? (
+                          <span className="text-[10px] font-black px-1.5 py-0.5 rounded bg-red-600 text-white flex items-center gap-1" style={{ whiteSpace: 'nowrap' }}>
+                            ⚡ 특별지시
+                          </span>
+                        ) : (
+                          <span className={`text-[10px] font-extrabold px-1.5 py-0.5 rounded border ${priorityBg}`} style={{ whiteSpace: 'nowrap' }}>
+                            {task.priority || 'NORMAL'}
+                          </span>
+                        )}
+
+                        {task.dueDate && (
+                          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30" style={{ whiteSpace: 'nowrap' }}>
+                            마감 {task.dueDate}
+                          </span>
+                        )}
+                      </div>
+
+                      {task.createdAt && (
+                        <span className="text-[10px] text-slate-400 font-mono" style={{ whiteSpace: 'nowrap', flexShrink: 0 }}>
+                          {task.createdAt.substring(5, 10)}
+                        </span>
+                      )}
+                    </div>
+
+                    <div>
+                      <h4 className="text-xs font-black text-white leading-snug">
+                        {task.title}
+                      </h4>
+                      {task.content && (
+                        <p className="text-[11px] text-slate-300 mt-1 leading-relaxed whitespace-pre-line">
+                          {task.content}
+                        </p>
+                      )}
+                      <div className="text-[10px] text-slate-400 mt-1 flex items-center gap-2">
+                        <span>발행: {task.senderName || '경영진'}</span>
+                        {task.targetDept && <span>대상: {task.targetDept}</span>}
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-end gap-2 pt-1 border-t border-slate-700/50">
+                      {(() => {
+                        const targetTab = resolveMobileTabForTask(task);
+                        if (!targetTab) return null;
+                        return (
+                          <button
+                            type="button"
+                            onClick={() => onNavigate(targetTab)}
+                            className="px-2.5 py-1 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-[11px] font-bold flex items-center gap-1 active:scale-95 transition-all"
+                            style={{ whiteSpace: 'nowrap', flexShrink: 0 }}
+                          >
+                            <span>처리 이동</span>
+                            <ArrowRight className="w-3 h-3" />
+                          </button>
+                        );
+                      })()}
+
+                      {isDirective ? (
+                        <button
+                          type="button"
+                          onClick={() => handleResolveDirective(task)}
+                          className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-bold flex items-center gap-1 active:scale-95 transition-all"
+                          style={{ whiteSpace: 'nowrap', flexShrink: 0 }}
+                        >
+                          <CheckSquare className="w-3 h-3" />
+                          <span>보고 및 완료</span>
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => completeTodo(task.id)}
+                          className="px-2 py-1 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-200 text-[11px] font-bold flex items-center gap-1 active:scale-95 transition-all"
+                          style={{ whiteSpace: 'nowrap', flexShrink: 0 }}
+                        >
+                          <CheckSquare className="w-3 h-3" />
+                          <span>완료</span>
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
         <div className="bg-gradient-to-br from-emerald-950/60 to-slate-900 border border-emerald-500/30 rounded-3xl p-5 shadow-xl">
           <div className="flex items-center justify-between mb-2">
             <span className="text-xs font-bold text-emerald-400 tracking-wider">주기장 출고 피드</span>
@@ -354,58 +476,6 @@ export const MobileHome: React.FC<MobileHomeProps> = ({
             출고 검수 대기 <span className="text-emerald-400">{pendingInspections.length}건</span>
           </h2>
         </div>
-
-        {/* 계약 장비 할당 대형 버튼 (신규) */}
-        <button
-          type="button"
-          onClick={() => onNavigate('assignment')}
-          className="w-full py-4 px-5 rounded-2xl bg-blue-600 hover:bg-blue-500 text-white font-black text-base flex items-center justify-between shadow-xl shadow-blue-600/30 active:scale-98 transition-all"
-        >
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-white/20 flex items-center justify-center">
-              <Layers className="w-5 h-5 stroke-[2.5]" />
-            </div>
-            <div className="flex items-center gap-2">
-              <span>계약 장비 할당</span>
-              {pendingAssignmentSlots > 0 && (
-                <span className="text-xs bg-white text-blue-700 px-2 py-0.5 rounded-full font-bold">
-                  {pendingAssignmentSlots}대 미할당
-                </span>
-              )}
-            </div>
-          </div>
-          <ArrowRight className="w-5 h-5" />
-        </button>
-
-        {/* 출고 검수(PDI) 마감 대형 버튼 (헌장 1.3 준수) */}
-        <button
-          type="button"
-          onClick={() => onNavigate('inspection')}
-          className="w-full py-4 px-5 rounded-2xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-base flex items-center justify-between shadow-xl shadow-emerald-600/30 active:scale-98 transition-all"
-        >
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-white/20 flex items-center justify-center">
-              <CheckSquare className="w-5 h-5 stroke-[2.5]" />
-            </div>
-            <span>출고 검수 승인 마감 (PDI)</span>
-          </div>
-          <ArrowRight className="w-5 h-5" />
-        </button>
-
-        {/* 장비 입고 등록 대형 버튼 (신규) */}
-        <button
-          type="button"
-          onClick={() => onNavigate('inbound_register')}
-          className="w-full py-4 px-5 rounded-2xl bg-teal-600 hover:bg-teal-500 text-white font-black text-base flex items-center justify-between shadow-xl shadow-teal-600/30 active:scale-98 transition-all"
-        >
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-white/20 flex items-center justify-center">
-              <ArrowDownToLine className="w-5 h-5 stroke-[2.5]" />
-            </div>
-            <span>회수 장비 입고 등록</span>
-          </div>
-          <ArrowRight className="w-5 h-5" />
-        </button>
 
         {/* 주기장 정비 스튜디오 바로가기 배너 */}
         <div
@@ -431,23 +501,6 @@ export const MobileHome: React.FC<MobileHomeProps> = ({
           <ArrowRight className="w-5 h-5 text-red-400" />
         </div>
 
-        {/* 주기장 자산 조회 */}
-        <div
-          onClick={() => onNavigate('assets')}
-          className="p-4 rounded-2xl bg-slate-900 border border-slate-800 flex items-center justify-between active:scale-98 transition-all cursor-pointer"
-        >
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-slate-800 border border-slate-700 flex items-center justify-center text-emerald-400">
-              <Search className="w-5 h-5" />
-            </div>
-            <div>
-              <div className="text-sm font-bold text-white">주기장 자산 상태 조회</div>
-              <div className="text-xs text-slate-400">임대가능 자산 {availableAssetCount}대</div>
-            </div>
-          </div>
-          <ArrowRight className="w-5 h-5 text-slate-500" />
-        </div>
-
         {/* 주기장 소모품 재고조회 */}
         <div
           onClick={() => onNavigate('consumable_stock')}
@@ -468,23 +521,6 @@ export const MobileHome: React.FC<MobileHomeProps> = ({
             </div>
           </div>
           <ArrowRight className="w-5 h-5 text-amber-400" />
-        </div>
-
-        {/* 출고 의뢰 조회 */}
-        <div
-          onClick={() => onNavigate('sales_order')}
-          className="p-4 rounded-2xl bg-slate-900 border border-slate-800 flex items-center justify-between active:scale-98 transition-all cursor-pointer"
-        >
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-slate-800 border border-slate-700 flex items-center justify-center text-sky-400">
-              <Send className="w-5 h-5" />
-            </div>
-            <div>
-              <div className="text-sm font-bold text-white">출고 요청 접수 현황</div>
-              <div className="text-xs text-slate-400">영업부 출고요청 파이프라인</div>
-            </div>
-          </div>
-          <ArrowRight className="w-5 h-5 text-slate-500" />
         </div>
 
         {/* [법인차량] 주유영수증 등록 카드 */}
@@ -537,6 +573,129 @@ export const MobileHome: React.FC<MobileHomeProps> = ({
   // 3. [AS팀 전용 홈 화면 - 기본]
   return (
     <div className="flex flex-col gap-4 pb-24 p-4 font-sans text-slate-100">
+      {/* 직무 맞춤형 당면 과제 ToDo 피드 (헌장 3.3 준수 - 최상단 배치) */}
+      {userTodos.length > 0 && (
+        <div className="bg-slate-900 border-2 border-amber-500/50 rounded-2xl p-4 shadow-xl flex flex-col gap-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <div className="w-7 h-7 rounded-lg bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-amber-400 flex-shrink-0">
+                <Bell className="w-4 h-4" />
+              </div>
+              <span className="text-sm font-black text-white" style={{ whiteSpace: 'nowrap' }}>
+                업무 목록
+              </span>
+            </div>
+            <span className="text-xs font-black px-2 py-0.5 rounded-md bg-amber-500/20 text-amber-300 border border-amber-500/30" style={{ whiteSpace: 'nowrap', flexShrink: 0 }}>
+              {userTodos.length}건 대기
+            </span>
+          </div>
+
+          <div className="flex flex-col gap-2.5">
+            {userTodos.map((task) => {
+              const isDirective = task.taskCategory === 'EXECUTIVE_DIRECTIVE';
+              const priorityBg = task.priority === 'URGENT' 
+                ? 'bg-red-500/20 text-red-300 border-red-500/30' 
+                : task.priority === 'HIGH' 
+                ? 'bg-amber-500/20 text-amber-300 border-amber-500/30' 
+                : 'bg-blue-500/20 text-blue-300 border-blue-500/30';
+
+              return (
+                <div
+                  key={task.id}
+                  className={`p-3 rounded-xl border flex flex-col gap-2 ${
+                    isDirective
+                      ? 'bg-red-950/30 border-red-500/50'
+                      : 'bg-slate-800/80 border-slate-700/80'
+                  }`}
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      {isDirective ? (
+                        <span className="text-[10px] font-black px-1.5 py-0.5 rounded bg-red-600 text-white flex items-center gap-1" style={{ whiteSpace: 'nowrap' }}>
+                          ⚡ 특별지시
+                        </span>
+                      ) : (
+                        <span className={`text-[10px] font-extrabold px-1.5 py-0.5 rounded border ${priorityBg}`} style={{ whiteSpace: 'nowrap' }}>
+                          {task.priority || 'NORMAL'}
+                        </span>
+                      )}
+
+                      {task.dueDate && (
+                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30" style={{ whiteSpace: 'nowrap' }}>
+                          마감 {task.dueDate}
+                        </span>
+                      )}
+                    </div>
+
+                    {task.createdAt && (
+                      <span className="text-[10px] text-slate-400 font-mono" style={{ whiteSpace: 'nowrap', flexShrink: 0 }}>
+                        {task.createdAt.substring(5, 10)}
+                      </span>
+                    )}
+                  </div>
+
+                  <div>
+                    <h4 className="text-xs font-black text-white leading-snug">
+                      {task.title}
+                    </h4>
+                    {task.content && (
+                      <p className="text-[11px] text-slate-300 mt-1 leading-relaxed whitespace-pre-line">
+                        {task.content}
+                      </p>
+                    )}
+                    <div className="text-[10px] text-slate-400 mt-1 flex items-center gap-2">
+                      <span>발행: {task.senderName || '경영진'}</span>
+                      {task.targetDept && <span>대상: {task.targetDept}</span>}
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-end gap-2 pt-1 border-t border-slate-700/50">
+                    {(() => {
+                      const targetTab = resolveMobileTabForTask(task);
+                      if (!targetTab) return null;
+                      return (
+                        <button
+                          type="button"
+                          onClick={() => onNavigate(targetTab)}
+                          className="px-2.5 py-1 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-[11px] font-bold flex items-center gap-1 active:scale-95 transition-all"
+                          style={{ whiteSpace: 'nowrap', flexShrink: 0 }}
+                        >
+                          <span>처리 이동</span>
+                          <ArrowRight className="w-3 h-3" />
+                        </button>
+                      );
+                    })()}
+
+                    {isDirective ? (
+                      <button
+                        type="button"
+                        onClick={() => handleResolveDirective(task)}
+                        className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-bold flex items-center gap-1 active:scale-95 transition-all"
+                        style={{ whiteSpace: 'nowrap', flexShrink: 0 }}
+                      >
+                        <CheckSquare className="w-3 h-3" />
+                        <span>보고 및 완료</span>
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => completeTodo(task.id)}
+                        className="px-2 py-1 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-200 text-[11px] font-bold flex items-center gap-1 active:scale-95 transition-all"
+                        style={{ whiteSpace: 'nowrap', flexShrink: 0 }}
+                      >
+                        <CheckSquare className="w-3 h-3" />
+                        <span>완료</span>
+                      </button>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* 상단 현장 AS 출동 피드 배너 */}
       <div className="bg-gradient-to-br from-amber-950/60 to-slate-900 border border-amber-500/30 rounded-3xl p-5 shadow-xl">
         <div className="flex items-center justify-between mb-2">
           <span className="text-xs font-bold text-amber-400 tracking-wider">현장 AS 출동 피드</span>
@@ -565,6 +724,28 @@ export const MobileHome: React.FC<MobileHomeProps> = ({
         </div>
         <ArrowRight className="w-5 h-5" />
       </button>
+
+      {/* [장비 매뉴얼 라이브러리] 바로가기 카드 (최상단 강조 배치) */}
+      <div
+        onClick={() => onNavigate('manual_viewer')}
+        className="p-4 rounded-2xl bg-slate-900 border border-blue-500/40 hover:border-blue-500/60 flex items-center justify-between active:scale-98 transition-all cursor-pointer shadow-lg"
+      >
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-blue-500/20 border border-blue-500/30 flex items-center justify-center text-blue-400 flex-shrink-0">
+            <BookOpen className="w-5 h-5" />
+          </div>
+          <div>
+            <div className="text-sm font-bold text-white flex items-center gap-1.5">
+              <span>장비 매뉴얼 라이브러리</span>
+              <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-blue-500/20 text-blue-300 font-bold">
+                출고·정비
+              </span>
+            </div>
+            <div className="text-xs text-slate-400 mt-0.5">파츠북, 에러코드 진단표, 전기/유압 회로도 열람</div>
+          </div>
+        </div>
+        <ArrowRight className="w-5 h-5 text-blue-400" />
+      </div>
 
       {/* 긴급 출동 대상 AS 목록 */}
       <div className="flex flex-col gap-2">
@@ -663,23 +844,6 @@ export const MobileHome: React.FC<MobileHomeProps> = ({
         <ArrowRight className="w-5 h-5 text-red-400" />
       </div>
 
-      {/* 가용 자산 빠른 조회 */}
-      <div
-        onClick={() => onNavigate('assets')}
-        className="p-4 rounded-2xl bg-slate-900 border border-slate-800 flex items-center justify-between active:scale-98 transition-all cursor-pointer"
-      >
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-slate-800 border border-slate-700 flex items-center justify-center text-sky-400">
-            <Search className="w-5 h-5" />
-          </div>
-          <div>
-            <div className="text-sm font-bold text-white">가용 자산 조회</div>
-            <div className="text-xs text-slate-400">규격별 출고 가능 자산 ({availableAssetCount}대)</div>
-          </div>
-        </div>
-        <ArrowRight className="w-5 h-5 text-slate-500" />
-      </div>
-
       {/* [법인차량] 주유영수증 등록 카드 */}
       <div
         onClick={() => onNavigate('vehicle_log')}
@@ -700,28 +864,6 @@ export const MobileHome: React.FC<MobileHomeProps> = ({
           </div>
         </div>
         <ArrowRight className="w-5 h-5 text-amber-400" />
-      </div>
-
-      {/* [장비 매뉴얼] 장비 매뉴얼 라이브러리 바로가기 */}
-      <div
-        onClick={() => onNavigate('manual_viewer')}
-        className="p-4 rounded-2xl bg-slate-900 border border-blue-500/30 flex items-center justify-between active:scale-98 transition-all cursor-pointer shadow-md"
-      >
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-blue-500/20 border border-blue-500/30 flex items-center justify-center text-blue-400 flex-shrink-0">
-            <BookOpen className="w-5 h-5" />
-          </div>
-          <div>
-            <div className="text-sm font-bold text-white flex items-center gap-1.5">
-              <span>장비 매뉴얼 라이브러리</span>
-              <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-blue-500/20 text-blue-300 font-bold">
-                현장 AS 필수
-              </span>
-            </div>
-            <div className="text-xs text-slate-400 mt-0.5">파츠북, 에러코드 진단표, 전기/유압 회로도 열람</div>
-          </div>
-        </div>
-        <ArrowRight className="w-5 h-5 text-blue-400" />
       </div>
     </div>
   );

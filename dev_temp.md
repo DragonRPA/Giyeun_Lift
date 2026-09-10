@@ -1,5 +1,46 @@
 # 개발 요구사항 임시 기록 (dev_temp.md)
 
+## [완료] 연차신청 메뉴 취소 버튼 ADMIN 전용 권한 제약 개편 (v1.12.0.Build.64)
+- **요구사항**: "연차신청 메뉴에서 취소 버튼은 ADMIN 권한만 가능하도록 제약"
+- **적용 목적 (헌장 1.1 최대 편익, 2.1 부서 및 직무별 R&R 정책, 3.1 무수식어 건조 표준)**:
+  1. **신청 취소 권한 ADMIN 엄격 제한 (`LeaveApplicationPage.tsx`)**:
+     - 기존에 신청자 본인(`l.userId === currentUser?.id`)이면 일반 임직원도 직접 연차/반차 신청 내역을 삭제/취소할 수 있었던 구조를 전면 차단.
+     - 오직 관리자(`currentUser?.role === 'ADMIN'`, `admin`, `sys-admin`)만 취소 버튼이 표출되고 조작할 수 있도록 제약.
+  2. **UI 테이블 및 보안 핸들러 2중 방어벽 구축**:
+     - 일반 임직원(`USER`, `MANAGER` 등) 로그인 시 테이블 헤더 `취소` 컬럼 및 개별 행의 휴지통(`Trash2`) 버튼을 화면에서 완전 비노출 처리하여 불필요한 UI 혼선 방지.
+     - `ADMIN` 계정 로그인 시에만 테이블 최좌측에 `취소` 컬럼과 원클릭 환원 버튼 표출.
+     - 취소 핸들러(`handleDelete`) 내부에도 `!isSystemAdmin` 검증 가드를 추가하여 비인가 취소 요청을 원천 차단.
+- **주요 변경 파일**:
+  - `src/pages/LeaveApplicationPage.tsx` [MODIFY]: `handleDelete` ADMIN 권한 가드 추가, 테이블 헤더 및 행 취소 버튼 `isSystemAdmin` 조건부 렌더링.
+- **검증 결과**:
+  - `cmd /c npx tsc --noEmit`: TypeScript 0 Error.
+  - `cmd /c npm run build`: Production 번들 정상 완료 (`built in 1.38s`).
+
+## [완료] 소모품 온라인 구매 사이트 주소 입력·링크 복원 및 실물 입고 후 구매완결 지급요청 파이프라인 구축 (v1.12.0.Build.64)
+- **요구사항**: "소모품 구입 실행 후, 실물의 입고등록을 처리 완료 했음을 구매신청자가 완결 할 때 대급의 지급을 처리하고, 소모품을 온라인으로 구매할 때, 온라인 구매 사이트 주소도 넣는 기능도 만들어놨었는데, 모두 없어졌네?"
+- **적용 목적 (헌장 1.1 최대 편익, 1.2 DB 무누락 보존, 2.1 R&R 분리 및 협업, 3.1 무수식어 건조 표준, 3.5 Z-패턴 완결, 5.5 WTT 무결성 입증)**:
+  1. **온라인 구매 URL 입력 및 원클릭 바로가기 링크 완전 복원 (`ConsumablePurchasesPage.tsx`)**:
+     - 소모품 구매신청 작성 시 `판매처 또는 구매 URL *` 필드로 변경하고, 온라인 구매 링크(`https://...` 또는 `www...`)를 직접 입력할 수 있도록 placeholder 및 안내 가이드 복원.
+     - 구매신청대장 테이블에서 `p.sellerName`이 웹 URL 형식인 경우 `[온라인 구매 바로가기 ↗]` 하이퍼링크로 자동 렌더링하여 새 탭에서 즉시 열람 가능하도록 구현.
+  2. **창고 실물 입고 후 구매신청자의 최종 [구매완결 및 지급요청] 단일 완결 파이프라인 탑재 (`AppContext.tsx`, `ConsumablePurchasesPage.tsx`, `ConsumableInOutPage.tsx`)**:
+     - 기존에 `inboundConsumablePurchase` 실행 시 신청자의 최종 검수 없이 자동으로 `COMPLETED`로 조기 마감되던 결함을 수정하여, 실물 입고 후에도 `ACCEPTED` 상태를 유지하고 구매신청대장에 `실물입고됨` 뱃지 표출.
+     - 구매신청대장 `관리 / 조치` 컬럼에 **`[구매완결 및 지급요청]`** 버튼 탑재.
+     - 완결 버튼 클릭 시:
+       1) 소모품 구매신청 행을 `status: 'COMPLETED'`, `completedDate: today`, `completerName: currentUser?.name`으로 최종 승인 마감.
+       2) 실물 `purchase_settlements`(`settlementType: 'CONSUMABLE'`, `status: 'CONFIRMED'`) 및 1:1 `purchase_settlement_items`(`sourceType: 'CONSUMABLE_PURCHASE'`)를 즉시 자동 생성하여 `[월말 매입 정산]` 대장에 다이렉트 꽂히도록 연결.
+       3) `db.generateNextId`(`PST-`, `PSI-`) 연계 및 거래명세서/영수증 증빙 파일 URL 1:1 바인딩.
+     - 창고 입고 대기 목록(`ConsumableInOutPage.tsx`)에서 신청 수량 전체가 이미 입고 완료된 건은 대기 목록에서 자동 제외하고, 미입고 잔여량이 남아있는 건만 표출되도록 정밀화.
+- **주요 변경 파일**:
+  - `src/services/db.ts` [MODIFY]: `ConsumablePurchaseRequest` 인터페이스에 `completerName`, `settlementId` 추가, `purchaseSettlements`/`purchaseSettlementItems` ID 채번 접두어(`PST-`, `PSI-`) 추가.
+  - `src/context/AppContext.tsx` [MODIFY]: `completeConsumablePurchase`에서 `PurchaseSettlement` 및 `PurchaseSettlementItem` 실물 DB 생성 연계, `inboundConsumablePurchase` 조기 COMPLETED 방지.
+  - `src/pages/ConsumablePurchasesPage.tsx` [MODIFY]: `ExternalLink` 임포트, 판매처 URL 바로가기 링크, 증빙 열람 버튼, 진행상태 뱃지(`실물입고됨`), `[구매완결 및 지급요청]` 버튼 연동, 엑셀 내보내기 확장.
+  - `src/pages/ConsumableInOutPage.tsx` [MODIFY]: `pendingInbounds` 잔여 미입고 수량 기준 필터링.
+  - Supabase 원격 DB: `consumable_purchases` 테이블에 `completerName`, `settlementId` 컬럼 추가.
+- **검증 결과**:
+  - WTT 시나리오 스크립트 실행으로 URL 입력 ➔ 창고 입고 ➔ 신청자 구매완결 ➔ 매입정산 마스터/상세 생성 ➔ 조인 검증 100% PASS 확인.
+  - `cmd /c npx tsc --noEmit`: TypeScript 0 Error.
+  - `cmd /c npm run build`: Production 번들 정상 완료 (`built in 1.23s`).
+
 ## [완료] 임차자산 대사 및 소모품 매입 지급요청 DB 저장 정합성 검증·즉시 반응성 보강 및 sourceType 정규화 (v1.12.0.Build.63)
 - **요구사항**: "그렇다면 임차자산 대사와 소모품 구입비용 지급요청은 저장 되는게 맞아?", "ㄹㅇ"
 - **적용 목적 (헌장 1.1 최대 편익, 1.2 DB 무누락 보존, 4.1 정밀 집계, 5.2 무음 실패 방지, 6.1 버전 관리, 6.2 'ㄹㅇ' 배포)**:

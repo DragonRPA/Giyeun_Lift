@@ -609,8 +609,10 @@ export interface ConsumablePurchaseRequest {
   accepterId?: string;
   accepterName?: string; // 접수자 이름 (로그인 계정)
   inbounderName?: string; // 입고 처리자 이름 (로그인 계정)
+  completerName?: string; // 구매 완결자 이름 (로그인 계정)
   receivedQty: number;
   statementFileUrl?: string;
+  settlementId?: string; // 연계된 매입 정산 ID
   createdAt: string;
   updatedAt: string;
 }
@@ -4617,6 +4619,8 @@ class LocalDB {
       case 'vehicleFuelLogs':     prefix = 'VFUEL-';  break;
       case 'equipmentManuals':    prefix = 'MAN-';    break;
       case 'standardOptions':     prefix = 'OPT-';    break;
+      case 'purchaseSettlements': prefix = 'PST-';    break;
+      case 'purchaseSettlementItems': prefix = 'PSI-'; break;
       default:
         prefix = key.slice(0, 4).toUpperCase() + '-';
     }

@@ -3,7 +3,8 @@ import React, { useState, useMemo } from 'react';
 import { useApp } from '../context/AppContext';
 import { 
   ShoppingCart, Plus, ClipboardList, Download, Search, RefreshCw, 
-  CheckCircle2, XCircle, Clock, FileText, Check, AlertCircle, AlertTriangle
+  CheckCircle2, XCircle, Clock, FileText, Check, AlertCircle, AlertTriangle,
+  ExternalLink
 } from 'lucide-react';
 import { exportToExcel } from '../services/excel';
 import { ConsumablePurchaseRequest, db } from '../services/db';
@@ -131,6 +132,17 @@ export const ConsumablePurchasesPage: React.FC = () => {
     }
   };
 
+  // 구매완결 및 대금 지급요청 실행 핸들러
+  const handleCompleteAndRequestPayment = async (p: ConsumablePurchaseRequest) => {
+    try {
+      await completeConsumablePurchase(p.id);
+      await db.awaitPendingWrites();
+      showToast(`[${p.modelName}] 구매완결 및 월말 매입정산 대장에 지급요청이 등록되었습니다.`);
+    } catch (err: any) {
+      showErrorModal(`⚠️ 구매 완결 및 지급요청 처리 실패:\n${err?.message || err}`);
+    }
+  };
+
   // 엑셀 내보내기
   const handleExportExcel = () => {
     const excelData = filteredPurchases.map((p, idx) => ({
@@ -139,13 +151,14 @@ export const ConsumablePurchasesPage: React.FC = () => {
       '신청일자': p.requestDate,
       '품목명': p.modelName,
       '신청수량': p.requestedQty,
-      '예상단가': `${p.unitPrice.toLocaleString()}원`,
-      '합계금액': `${(p.requestedQty * p.unitPrice).toLocaleString()}원`,
-      '공급처': p.sellerName,
+      '예상단가': `${(p.unitPrice || 0).toLocaleString()}원`,
+      '합계금액': `${((p.requestedQty || 0) * (p.unitPrice || 0)).toLocaleString()}원`,
+      '공급처/구매URL': p.sellerName,
       '신청자': p.requesterName || '-',
-      '진행상태': p.status === 'COMPLETED' ? '입고완료' : p.status === 'ACCEPTED' ? '승인접수' : '신청대기',
+      '진행상태': p.status === 'COMPLETED' ? '구매완결(지급요청)' : (p.status === 'ACCEPTED' && (p.receivedQty || 0) > 0) ? '실물입고됨' : p.status === 'ACCEPTED' ? '승인접수' : '신청대기',
       '입고수량': p.receivedQty || 0,
-      '입고일자': p.completedDate || '-'
+      '완결일자': p.completedDate || '-',
+      '증빙링크': p.statementFileUrl || '-'
     }));
 
     exportToExcel(excelData, `소모품구매신청대장_${new Date().toISOString().split('T')[0]}`, '구매신청대장');
@@ -325,8 +338,9 @@ export const ConsumablePurchasesPage: React.FC = () => {
                   <th style={{ padding: '8px 10px', textAlign: 'center', whiteSpace: 'nowrap' }}>수량</th>
                   <th style={{ padding: '8px 10px', textAlign: 'right', whiteSpace: 'nowrap' }}>예상단가</th>
                   <th style={{ padding: '8px 10px', textAlign: 'right', whiteSpace: 'nowrap' }}>합계금액</th>
-                  <th style={{ padding: '8px 10px', whiteSpace: 'nowrap' }}>공급처</th>
+                  <th style={{ padding: '8px 10px', whiteSpace: 'nowrap' }}>공급처 / 구매 URL</th>
                   <th style={{ padding: '8px 10px', whiteSpace: 'nowrap' }}>신청자</th>
+                  <th style={{ padding: '8px 10px', textAlign: 'center', whiteSpace: 'nowrap' }}>증빙</th>
                   <th style={{ padding: '8px 10px', textAlign: 'center', whiteSpace: 'nowrap' }}>진행상태</th>
                   <th style={{ padding: '8px 10px', textAlign: 'center', whiteSpace: 'nowrap' }}>관리 / 조치</th>
                 </tr>
@@ -334,61 +348,170 @@ export const ConsumablePurchasesPage: React.FC = () => {
               <tbody>
                 {filteredPurchases.length === 0 ? (
                   <tr>
-                    <td colSpan={10} style={{ textAlign: 'center', padding: '40px 0', color: 'var(--text-muted)' }}>
+                    <td colSpan={11} style={{ textAlign: 'center', padding: '40px 0', color: 'var(--text-muted)' }}>
                       조회 조건에 해당하는 구매 신청 내역이 없습니다.
                     </td>
                   </tr>
                 ) : (
-                  filteredPurchases.map(p => (
-                    <tr key={p.id} style={{ borderBottom: '1px solid var(--border-color)' }}>
-                      <td style={{ padding: '8px 10px', fontFamily: 'monospace', fontSize: '11px', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
-                        {p.id}
-                      </td>
-                      <td style={{ padding: '8px 10px', whiteSpace: 'nowrap' }}>{p.requestDate}</td>
-                      <td style={{ padding: '8px 10px', fontWeight: '700', color: 'var(--text-main)', whiteSpace: 'nowrap' }}>
-                        {p.modelName}
-                      </td>
-                      <td style={{ padding: '8px 10px', textAlign: 'center', fontWeight: '800', whiteSpace: 'nowrap' }}>
-                        {p.requestedQty}개
-                      </td>
-                      <td style={{ padding: '8px 10px', textAlign: 'right', whiteSpace: 'nowrap' }}>
-                        ₩{p.unitPrice.toLocaleString()}원
-                      </td>
-                      <td style={{ padding: '8px 10px', textAlign: 'right', fontWeight: '800', color: 'var(--primary)', whiteSpace: 'nowrap' }}>
-                        ₩{(p.requestedQty * p.unitPrice).toLocaleString()}원
-                      </td>
-                      <td style={{ padding: '8px 10px', whiteSpace: 'nowrap' }}>{p.sellerName}</td>
-                      <td style={{ padding: '8px 10px', whiteSpace: 'nowrap' }}>{p.requesterName || '-'}</td>
-                      <td style={{ padding: '8px 10px', textAlign: 'center', whiteSpace: 'nowrap' }}>
-                        <span style={{
-                          padding: '2px 8px',
-                          borderRadius: '4px',
-                          fontSize: '11px',
-                          fontWeight: 700,
-                          backgroundColor: p.status === 'COMPLETED' ? 'rgba(16, 185, 129, 0.12)' : p.status === 'ACCEPTED' ? 'rgba(59, 130, 246, 0.12)' : 'rgba(245, 158, 11, 0.12)',
-                          color: p.status === 'COMPLETED' ? '#059669' : p.status === 'ACCEPTED' ? '#2563eb' : '#d97706'
-                        }}>
-                          {p.status === 'COMPLETED' ? '입고완료' : p.status === 'ACCEPTED' ? '승인접수' : '신청대기'}
-                        </span>
-                      </td>
-                      <td style={{ padding: '8px 10px', textAlign: 'center', whiteSpace: 'nowrap' }}>
-                        {p.status === 'REQUESTED' && canSave ? (
-                          <button
-                            type="button"
-                            className="btn-primary"
-                            onClick={() => handleAccept(p.id, p.modelName)}
-                            style={{ padding: '2px 8px', fontSize: '11px', whiteSpace: 'nowrap' }}
-                          >
-                            승인
-                          </button>
-                        ) : p.status === 'ACCEPTED' ? (
-                          <span style={{ fontSize: '11px', color: '#2563eb', fontWeight: '600' }}>입고대기</span>
-                        ) : (
-                          <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>완료됨</span>
-                        )}
-                      </td>
-                    </tr>
-                  ))
+                  filteredPurchases.map(p => {
+                    const isUrl = (p.sellerName || '').toLowerCase().startsWith('http://') || 
+                                  (p.sellerName || '').toLowerCase().startsWith('https://') || 
+                                  (p.sellerName || '').toLowerCase().startsWith('www.');
+                    const isInbounded = (p.receivedQty || 0) > 0;
+                    const isFullyInbounded = isInbounded && (p.receivedQty >= p.requestedQty);
+
+                    return (
+                      <tr key={p.id} style={{ borderBottom: '1px solid var(--border-color)' }}>
+                        <td style={{ padding: '8px 10px', fontFamily: 'monospace', fontSize: '11px', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
+                          {p.id}
+                        </td>
+                        <td style={{ padding: '8px 10px', whiteSpace: 'nowrap' }}>{p.requestDate}</td>
+                        <td style={{ padding: '8px 10px', fontWeight: '700', color: 'var(--text-main)', whiteSpace: 'nowrap' }}>
+                          {p.modelName}
+                        </td>
+                        <td style={{ padding: '8px 10px', textAlign: 'center', fontWeight: '800', whiteSpace: 'nowrap' }}>
+                          <span>{p.requestedQty}개</span>
+                          {isInbounded && (
+                            <span style={{ fontSize: '11px', color: isFullyInbounded ? '#059669' : '#0284c7', marginLeft: '4px', fontWeight: '600' }}>
+                              ({isFullyInbounded ? `입고: ${p.receivedQty}개` : `부분: ${p.receivedQty}/${p.requestedQty}`})
+                            </span>
+                          )}
+                        </td>
+                        <td style={{ padding: '8px 10px', textAlign: 'right', whiteSpace: 'nowrap' }}>
+                          ₩{(p.unitPrice || 0).toLocaleString()}원
+                        </td>
+                        <td style={{ padding: '8px 10px', textAlign: 'right', fontWeight: '800', color: 'var(--primary)', whiteSpace: 'nowrap' }}>
+                          ₩{((p.requestedQty || 0) * (p.unitPrice || 0)).toLocaleString()}원
+                        </td>
+                        <td style={{ padding: '8px 10px', whiteSpace: 'nowrap' }}>
+                          {isUrl ? (
+                            <a 
+                              href={p.sellerName.startsWith('http') ? p.sellerName : `https://${p.sellerName}`} 
+                              target="_blank" 
+                              rel="noopener noreferrer" 
+                              style={{ 
+                                color: 'var(--primary)', 
+                                textDecoration: 'underline', 
+                                display: 'inline-flex', 
+                                alignItems: 'center', 
+                                gap: '3px', 
+                                fontWeight: 700,
+                                fontSize: '11.5px'
+                              }}
+                            >
+                              <span>온라인 구매 바로가기</span>
+                              <ExternalLink size={12} />
+                            </a>
+                          ) : (
+                            <span>{p.sellerName || '-'}</span>
+                          )}
+                        </td>
+                        <td style={{ padding: '8px 10px', whiteSpace: 'nowrap' }}>{p.requesterName || '-'}</td>
+                        <td style={{ padding: '8px 10px', textAlign: 'center', whiteSpace: 'nowrap' }}>
+                          {p.statementFileUrl ? (
+                            <a 
+                              href={p.statementFileUrl} 
+                              target="_blank" 
+                              rel="noopener noreferrer" 
+                              className="btn-secondary" 
+                              style={{ padding: '2px 6px', fontSize: '11px', display: 'inline-flex', alignItems: 'center', gap: '3px' }}
+                              title="거래명세서 / 영수증 증빙 열기"
+                            >
+                              <FileText size={11} />
+                              <span>명세서</span>
+                            </a>
+                          ) : (
+                            <span style={{ color: 'var(--text-muted)', fontSize: '11px' }}>-</span>
+                          )}
+                        </td>
+                        <td style={{ padding: '8px 10px', textAlign: 'center', whiteSpace: 'nowrap' }}>
+                          <span style={{
+                            padding: '2px 8px',
+                            borderRadius: '4px',
+                            fontSize: '11px',
+                            fontWeight: 700,
+                            backgroundColor: p.status === 'COMPLETED' ? 'rgba(16, 185, 129, 0.12)' : 
+                                             (p.status === 'ACCEPTED' && isInbounded) ? 'rgba(6, 182, 212, 0.12)' :
+                                             p.status === 'ACCEPTED' ? 'rgba(59, 130, 246, 0.12)' : 
+                                             'rgba(245, 158, 11, 0.12)',
+                            color: p.status === 'COMPLETED' ? '#059669' : 
+                                   (p.status === 'ACCEPTED' && isInbounded) ? '#0891b2' :
+                                   p.status === 'ACCEPTED' ? '#2563eb' : 
+                                   '#d97706'
+                          }}>
+                            {p.status === 'COMPLETED' ? '구매완결' : 
+                             (p.status === 'ACCEPTED' && isFullyInbounded) ? `실물입고됨` :
+                             (p.status === 'ACCEPTED' && isInbounded) ? `부분입고(${p.receivedQty})` :
+                             p.status === 'ACCEPTED' ? '승인접수' : '신청대기'}
+                          </span>
+                        </td>
+                        <td style={{ padding: '8px 10px', textAlign: 'center', whiteSpace: 'nowrap' }}>
+                          {/* 1. 신청대기: 승인 버튼 */}
+                          {p.status === 'REQUESTED' && canSave && (
+                            <button
+                              type="button"
+                              className="btn-primary"
+                              onClick={() => handleAccept(p.id, p.modelName)}
+                              style={{ padding: '3px 8px', fontSize: '11px', whiteSpace: 'nowrap' }}
+                            >
+                              승인
+                            </button>
+                          )}
+
+                          {/* 2. 승인접수 및 실물입고됨: 구매신청자의 최종 완결 및 지급요청 버튼 */}
+                          {p.status === 'ACCEPTED' && isInbounded && (
+                            <button
+                              type="button"
+                              className="btn-primary"
+                              onClick={() => handleCompleteAndRequestPayment(p)}
+                              style={{ 
+                                padding: '3px 9px', 
+                                fontSize: '11px', 
+                                fontWeight: 700, 
+                                backgroundColor: '#059669', 
+                                borderColor: '#059669', 
+                                color: '#ffffff',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '4px',
+                                whiteSpace: 'nowrap'
+                              }}
+                              title="실물 입고 확인 후 구매완결 및 월말 매입정산에 지급요청 생성"
+                            >
+                              <CheckCircle2 size={12} />
+                              <span>구매완결 및 지급요청</span>
+                            </button>
+                          )}
+
+                          {/* 3. 승인접수 후 아직 실물 미입고: 입고대기 안내 (관리자는 즉시완결 가능) */}
+                          {p.status === 'ACCEPTED' && !isInbounded && (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '4px', justifyContent: 'center' }}>
+                              <span style={{ fontSize: '11px', color: '#2563eb', fontWeight: '600' }}>입고대기</span>
+                              {canSave && (
+                                <button
+                                  type="button"
+                                  className="btn-secondary"
+                                  onClick={() => handleCompleteAndRequestPayment(p)}
+                                  style={{ padding: '2px 5px', fontSize: '10px', whiteSpace: 'nowrap' }}
+                                  title="실물 입고 없이 즉시 구매완결 및 지급요청"
+                                >
+                                  즉시완결
+                                </button>
+                              )}
+                            </div>
+                          )}
+
+                          {/* 4. 구매완결: 완료 및 지급요청됨 표시 */}
+                          {p.status === 'COMPLETED' && (
+                            <span style={{ fontSize: '11px', color: '#059669', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
+                              <Check size={12} />
+                              <span>지급요청완료</span>
+                            </span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })
                 )}
               </tbody>
             </table>
@@ -494,15 +617,18 @@ export const ConsumablePurchasesPage: React.FC = () => {
             {/* 공급처 & 신청일자 */}
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                <label style={{ fontSize: '11.5px', fontWeight: '700', color: 'var(--text-secondary)' }}>구매처 / 공급사 *</label>
+                <label style={{ fontSize: '11.5px', fontWeight: '700', color: 'var(--text-secondary)' }}>판매처 또는 구매 URL *</label>
                 <input
                   type="text"
                   value={reqSellerName}
                   onChange={e => setReqSellerName(e.target.value)}
-                  placeholder="예: 스카이잭코리아"
+                  placeholder="예: 세방상사 또는 온라인 구매 링크(https://...)"
                   required
                   style={{ padding: '8px', fontSize: '12.5px', borderRadius: '4px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-app)' }}
                 />
+                <span style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '2px' }}>
+                  * 거래처명을 입력하거나 온라인 판매의 경우 상품 상세 URL을 입력해 주세요.
+                </span>
               </div>
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>

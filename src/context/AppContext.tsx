@@ -4276,14 +4276,57 @@ ${currentTenant?.corporateName || tenantCorp} 배상
   };
 
   const completeConsumablePurchase = async (id: string) => {
-    const validUserId = getValidUserId(currentUser?.id);
+    const req = db.consumablePurchases.find(p => p.id === id);
+    if (!req) return;
+
+    const todayStr = new Date().toISOString().split('T')[0];
+    const nowIso = new Date().toISOString();
+    const settlementYm = req.requestDate ? req.requestDate.substring(0, 7) : todayStr.substring(0, 7);
+    const effectiveQty = (req.receivedQty && req.receivedQty > 0) ? req.receivedQty : req.requestedQty;
+    const totalAmount = effectiveQty * (req.unitPrice || 0);
+
+    // 1. 월말 매입 정산 마스터 레코드 (PurchaseSettlement) 생성
+    const settlementId = db.generateNextId('purchaseSettlements', db.purchaseSettlements);
+    const settlement = db.insertRow<PurchaseSettlement>('purchaseSettlements', {
+      id: settlementId,
+      settlementYm,
+      settlementType: 'CONSUMABLE',
+      vendorName: req.sellerName || '소모품 공급처',
+      totalAmount,
+      paidAmount: 0,
+      status: 'CONFIRMED',
+      confirmedAt: nowIso,
+      confirmedBy: currentUser?.name || req.requesterName || '구매신청자',
+      itemCount: 1,
+      memo: `[소모품 구매완결] ${req.modelName} ${effectiveQty}개 (신청자: ${req.requesterName || currentUser?.name || '담당자'})`,
+      createdAt: nowIso,
+      updatedAt: nowIso
+    });
+
+    // 2. 월말 매입 정산 1:1 상세 항목 (PurchaseSettlementItem) 생성
+    const settlementItemId = db.generateNextId('purchaseSettlementItems', db.purchaseSettlementItems);
+    db.insertRow<PurchaseSettlementItem>('purchaseSettlementItems', {
+      id: settlementItemId,
+      settlementId: settlement.id,
+      sourceType: 'CONSUMABLE_PURCHASE',
+      sourceId: req.id,
+      itemDescription: `${req.modelName} × ${effectiveQty}개 (${req.requestDate || todayStr})`,
+      quantity: effectiveQty,
+      unitPrice: req.unitPrice || 0,
+      amount: totalAmount,
+      evidenceFileUrl: req.statementFileUrl || undefined,
+      createdAt: nowIso
+    });
+
+    // 3. 소모품 구매신청 완결 상태 및 연계 정산 ID 업데이트
     db.updateRow<ConsumablePurchaseRequest>('consumablePurchases', id, {
       status: 'COMPLETED',
-      completedDate: new Date().toISOString().split('T')[0],
-      accepterId: validUserId,
-      accepterName: currentUser?.name || '시스템',
-      updatedAt: new Date().toISOString()
+      completedDate: todayStr,
+      completerName: currentUser?.name || '구매신청자',
+      settlementId: settlement.id,
+      updatedAt: nowIso
     });
+
     await db.awaitPendingWrites();
     refreshAllData();
   };
@@ -4293,15 +4336,11 @@ ${currentTenant?.corporateName || tenantCorp} 배상
     if (!req) return;
 
     const nextReceivedQty = req.receivedQty + qty;
-    const isCompleted = nextReceivedQty >= req.requestedQty;
-    const todayStr = new Date().toISOString().split('T')[0];
 
     db.updateRow<ConsumablePurchaseRequest>('consumablePurchases', id, {
       receivedQty: nextReceivedQty,
       statementFileUrl,
       inbounderName: currentUser?.name || '시스템',
-      status: isCompleted ? 'COMPLETED' : req.status,
-      completedDate: req.completedDate || todayStr,
       updatedAt: new Date().toISOString()
     });
 

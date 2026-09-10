@@ -200,8 +200,12 @@ export const LeaveApplicationPage: React.FC = () => {
     }
   };
 
-  // 4. 신청 취소 (삭제)
+  // 4. 신청 취소 (삭제) - ADMIN 권한만 가능
   const handleDelete = async (id: string, usedDays: number) => {
+    if (!isSystemAdmin) {
+      showErrorModal('⚠️ 연차/반차 신청 취소는 관리자(ADMIN) 권한만 가능합니다.');
+      return;
+    }
     try {
       await deleteLeaveUsage(id);
       showToast(`연차/반차 신청 내역(${usedDays}일 환원)이 정상 취소되었습니다.`);
@@ -520,7 +524,7 @@ export const LeaveApplicationPage: React.FC = () => {
             <table style={{ width: '100%', minWidth: '650px', borderCollapse: 'collapse', fontSize: '13px', textAlign: 'left' }}>
               <thead>
                 <tr style={{ backgroundColor: 'var(--bg-main)', borderBottom: '1px solid var(--border-color)', color: 'var(--text-muted)' }}>
-                  <th style={{ padding: '10px 14px', whiteSpace: 'nowrap', width: '70px' }}>취소</th>
+                  {isSystemAdmin && <th style={{ padding: '10px 14px', whiteSpace: 'nowrap', width: '70px', textAlign: 'center' }}>취소</th>}
                   <th style={{ padding: '10px 14px', whiteSpace: 'nowrap' }}>성명</th>
                   <th style={{ padding: '10px 14px', whiteSpace: 'nowrap' }}>구분</th>
                   <th style={{ padding: '10px 14px', whiteSpace: 'nowrap', textAlign: 'center' }}>차감 일수</th>
@@ -532,7 +536,7 @@ export const LeaveApplicationPage: React.FC = () => {
               <tbody>
                 {displayedUsages.length === 0 ? (
                   <tr>
-                    <td colSpan={7} style={{ padding: '32px', textAlign: 'center', color: 'var(--text-muted)' }}>
+                    <td colSpan={isSystemAdmin ? 7 : 6} style={{ padding: '32px', textAlign: 'center', color: 'var(--text-muted)' }}>
                       조회 조건에 해당하는 연차/반차 신청 내역이 없습니다.
                     </td>
                   </tr>
@@ -543,12 +547,11 @@ export const LeaveApplicationPage: React.FC = () => {
                       ? getApplicantDisplayName(currentUser) 
                       : (rawUser ? getApplicantDisplayName(rawUser) : (l.userId === 'sys-admin' ? '개발자' : '알 수 없음'));
                     const typeLabel = l.leaveType === 'ANNUAL' ? '연차' : l.leaveType === 'HALF_AM' ? '오전반차' : '오후반차';
-                    const canDelete = l.userId === currentUser?.id || isSystemAdmin;
 
                     return (
                       <tr key={l.id} style={{ borderBottom: '1px solid var(--border-color)' }}>
-                        <td style={{ padding: '10px 14px', whiteSpace: 'nowrap' }}>
-                          {canDelete && (
+                        {isSystemAdmin && (
+                          <td style={{ padding: '10px 14px', whiteSpace: 'nowrap', textAlign: 'center' }}>
                             <button
                               onClick={() => handleDelete(l.id, l.usedDays)}
                               className="btn btn-secondary"
@@ -557,8 +560,8 @@ export const LeaveApplicationPage: React.FC = () => {
                             >
                               <Trash2 size={12} />
                             </button>
-                          )}
-                        </td>
+                          </td>
+                        )}
                         <td style={{ padding: '10px 14px', whiteSpace: 'nowrap', fontWeight: 'bold' }}>
                           {uName}
                         </td>

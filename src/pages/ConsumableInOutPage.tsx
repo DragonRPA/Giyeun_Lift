@@ -157,10 +157,10 @@ export const ConsumableInOutPage: React.FC = () => {
     );
   }, [assets, assetSearchQuery]);
 
-  // 입고 대기 목록
+  // 입고 대기 목록 (신청 수량 중 미입고 잔여량이 남아있는 건만 표출)
   const pendingInbounds = useMemo(() => {
     return consumablePurchases
-      .filter(p => p.status !== 'COMPLETED')
+      .filter(p => p.status !== 'COMPLETED' && ((p.requestedQty || 0) - (p.receivedQty || 0)) > 0)
       .sort((a, b) => b.requestDate.localeCompare(a.requestDate));
   }, [consumablePurchases]);
 

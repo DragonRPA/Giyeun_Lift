@@ -8003,7 +8003,7 @@ ${currentTenant?.corporateName || tenantCorp} 배상
       aList.forEach(a => {
         db.insertRow<PurchaseSettlementItem>('purchaseSettlementItems', {
           settlementId,
-          sourceType: 'DELIVERY',
+          sourceType: 'EQUIPMENT_LEASE',
           sourceId: a.id,
           itemDescription: `장비임차: ${a.assetNo} (${a.modelName})`,
           quantity: 1,

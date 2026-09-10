@@ -976,6 +976,8 @@ export const RentAssets: React.FC = () => {
         totalAmount: partialTotalBilled,
         paidAmount: 0,
         status: 'CONFIRMED',
+        bankAccount: paymentBankAccount || undefined,
+        itemCount: targetRows.length,
         confirmedAt: nowStr,
         memo: paymentMemo || `[임차료 대사 완결] ${targetRows.length}건 승인 (입금계좌: ${paymentBankAccount})`,
         createdAt: nowStr,
@@ -998,6 +1000,7 @@ export const RentAssets: React.FC = () => {
       });
 
       await db.awaitPendingWrites();
+      await refreshAllData();
 
       setCreatedSettlementId(settlement.id);
 

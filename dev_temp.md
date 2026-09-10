@@ -1,10 +1,27 @@
-﻿# 개발 요구사항 임시 기록 (dev_temp.md)
+# 개발 요구사항 임시 기록 (dev_temp.md)
+
+## [완료] 임차자산 대사 및 소모품 매입 지급요청 DB 저장 정합성 검증·즉시 반응성 보강 및 sourceType 정규화 (v1.12.0.Build.63)
+- **요구사항**: "그렇다면 임차자산 대사와 소모품 구입비용 지급요청은 저장 되는게 맞아?", "ㄹㅇ"
+- **적용 목적 (헌장 1.1 최대 편익, 1.2 DB 무누락 보존, 4.1 정밀 집계, 5.2 무음 실패 방지, 6.1 버전 관리, 6.2 'ㄹㅇ' 배포)**:
+  1. **임차자산 대사 지급요청 실물 원장 적재 검증 및 실시간 반응성 보강 (`rent_assets.tsx`)**:
+     - Supabase 원격 DB 실측 결과 `purchase_settlements`(`EQUIPMENT_LEASE`) 42건 및 `purchase_settlement_items` 1:1 대사 항목이 정상 적재되고 있음을 전수 확인.
+     - 기존에 `await db.awaitPendingWrites()` 이후 `refreshAllData()` 호출이 누락되어 있어 브라우저를 새로고침(F5)하기 전까지 화면에 반영되지 않던 반응성 지연 현상을 즉시 갱신되도록 수정.
+     - 정산 마스터 레코드 생성 시 `itemCount: targetRows.length` 및 `bankAccount: paymentBankAccount` 컬럼을 명시적으로 DB에 동시 저장하도록 보강.
+  2. **소모품 매입 집계 정합성 및 sourceType 정규화 (`AppContext.tsx`)**:
+     - Supabase 원격 DB 실측 결과 `purchase_settlements`(`CONSUMABLE`) 11건이 정상 적재되어 있음을 전수 확인.
+     - [월말 매입 정산] 집계 엔진(`generateMonthlyPurchaseSettlements`)에서 임차료 정산 라인아이템 생성 시 레거시 복사 잔재로 `'DELIVERY'`로 기재되던 `sourceType`을 정식 표준인 `'EQUIPMENT_LEASE'`로 정규화.
+- **주요 변경 파일**:
+  - `src/pages/rent_assets.tsx` [MODIFY]: `itemCount`, `bankAccount` 컬럼 저장 보강 및 `await refreshAllData()` 반응성 연동.
+  - `src/context/AppContext.tsx` [MODIFY]: 임차료 정산 아이템 `sourceType`을 `'EQUIPMENT_LEASE'`로 정규화.
+- **검증 결과**:
+  - `cmd /c npx tsc --noEmit`: **TypeScript 0 Error, 정상 통과**.
+  - Supabase 원격 DB 실측 검증 완료 (`EQUIPMENT_LEASE` 42건, `CONSUMABLE` 11건).
 
 ## [완료] 운송료 대사 완료 후 지급요청 미생성 및 재조회 대기 상태 표출 결함 수정 (v1.12.0.Build.64 예정)
 - **요구사항**: "재조회 해보니가, 운송료 대사 완료 이후 지급 요청이 안생긴것 같은데?"
 - **적용 목적 (헌장 1.1 최대 편익, 1.2 DB 무누락 보존, 3.1 무수식어 건조 표준, 3.5 Z-패턴 완결)**:
   1. **원인 분석**:
-     - **원인 1: 매입 정산 마스터 DB 레코드 누락**: 기존 handleExecuteBundlePaymentRequest 로직에서 deliveries 테이블의 econciliationStatus만 'PAYMENT_REQUESTED'로 변경하고 실제 회계 원장인 purchaseSettlements 및 1:1 명세인 purchaseSettlementItems 테이블에 레코드를 전혀 INSERT하지 않아, [월말 매입 정산] 대장에 지급요청서가 실제로 생성되지 않았음.
+     - **원인 1: 매입 정산 마스터 DB 레코드 누락**: 기존 handleExecuteBundlePaymentRequest 로직에서 deliveries 테이블의 econciliationStatus만 'PAYMENT_REQUESTED'로 변경하고 실제 회계 원장인 purchaseSettlements 및 1:1 명세인 purchaseSettlementItems 테이블에 레코드를 전혀 INSERT하지 않아, [월말 매입 정산] 대장에 지급요청서가 실제로 생성되지 않았음.
      - **원인 2: Supabase 컬럼 미존재로 인한 비동기 저장 실패**: deliveries.paymentRequestedAt 컬럼이 원격 DB 스키마에 존재하지 않아 PostgreSQL 에러(42703)가 발생하면서 deliveries 업데이트가 원격 DB에 실패하고, 새로고침/재조회 시 원격 데이터로 덮어써져 상태가 UNRECONCILED로 롤백되는 침묵 실패 발생.
      - **원인 3: 재조회 시 대사 대기 하드코딩 및 필터 단절**:
        - 운송료 대사 탭에서 [조회] 시 econPairs가 초기화([])되는데, econPairs.length === 0일 때의 테이블 렌더링에서 상태 뱃지를 무조건 ⚪ 대기로 하드코딩 표출하고 있었음.

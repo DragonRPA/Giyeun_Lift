@@ -1,9 +1,9 @@
-const { execSync } = require('child_process');
+import { execSync } from 'child_process';
 
-function autoPurgeVercelDeployments(maxSlots = 20) {
+export function autoPurgeVercelDeployments(maxSlots = 12) {
   try {
     console.log('🔍 [Auto-Purge] Vercel 배포 슬롯 개수 자동 점검 중...');
-    const output = execSync('npx vercel list', { encoding: 'utf-8' });
+    const output = execSync('npx.cmd vercel list', { encoding: 'utf-8' });
     
     // Vercel deployment URLs 추출
     const lines = output.split('\n');
@@ -26,12 +26,12 @@ function autoPurgeVercelDeployments(maxSlots = 20) {
       for (const targetUrl of toRemove) {
         try {
           console.log(`🗑️ 자동 Purge 실행: ${targetUrl}`);
-          execSync(`npx vercel rm ${targetUrl} --yes`, { stdio: 'inherit' });
+          execSync(`npx.cmd vercel rm ${targetUrl} --yes`, { stdio: 'inherit' });
         } catch (err) {
           console.warn(`Purge 경고: ${targetUrl} 삭제 실패 - ${err.message}`);
         }
       }
-      console.log('✅ Vercel 20개 슬롯 유지 자동 Purge 완료!');
+      console.log(`✅ Vercel ${maxSlots}개 슬롯 유지 자동 Purge 완료!`);
     } else {
       console.log(`✅ 현재 배포 슬롯(${urls.length}개)이 한도(${maxSlots}개 이하) 내에서 안전하게 관리되고 있습니다.`);
     }
@@ -40,4 +40,4 @@ function autoPurgeVercelDeployments(maxSlots = 20) {
   }
 }
 
-autoPurgeVercelDeployments(20);
+autoPurgeVercelDeployments(12);

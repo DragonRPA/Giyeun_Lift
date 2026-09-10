@@ -10,6 +10,8 @@ import { db } from '../services/db';
 import { compressFileIfNeeded } from '../utils/imageCompressor';
 import { uploadToSupabaseStorage } from '../services/supabaseStorage';
 import { matchHangul } from '../utils/hangulSearch';
+import { normalizeMenuId } from '../config/menu_config';
+import { getRoleTemplatePermission } from '../config/role_templates';
 
 export const ConsumableInOutPage: React.FC = () => {
   const {
@@ -18,6 +20,7 @@ export const ConsumableInOutPage: React.FC = () => {
     consumablePurchases,
     assets,
     users,
+    permissions,
     currentUser,
     inboundConsumablePurchase,
     useConsumable,
@@ -64,9 +67,60 @@ export const ConsumableInOutPage: React.FC = () => {
   const [logEndDate, setLogEndDate] = useState(thisMonthEnd);
   const [logUserFilter, setLogUserFilter] = useState('ALL');
 
+  // 소모품 수령/출고 대상 정비사 (AS팀 실무자 및 소모품/정비/현장AS 권한 보유자)
   const mechanics = useMemo(() => {
-    return users.filter(u => u.role === 'MECHANIC' || u.role === 'ADMIN' || u.role === 'MANAGER');
-  }, [users]);
+    const asDeptIds = new Set(
+      (db.departments || [])
+        .filter(d => d.name?.includes('AS') || d.name?.includes('정비'))
+        .map(d => d.id)
+    );
+    asDeptIds.add('DEPT-0000005');
+
+    const vehicleTargetMenuIds = ['consumable_stock', 'consumable_inout', 'consumable', 'field_as', 'repair'];
+
+    const filtered = (users || []).filter(u => {
+      // 0. 퇴사자 전면 배제
+      if (!u || u.status === 'RETIRED') return false;
+
+      // 1. 최고관리자/대표이사 등 정비 비실무 임원진 기본 배제
+      if (u.id === 'sys-admin' || u.id === 'u-1' || u.loginId === 'admin') return false;
+      if (u.position === '대표이사' || u.position === '대표' || u.position?.includes('대표')) return false;
+      const dName = (u.department || '').trim();
+      if (dName.includes('대표') || dName.includes('임원') || dName.includes('시스템')) return false;
+
+      // 2. 소모품/현장AS/정비 관련 개별 권한 부여 여부 확인
+      const userPerms = (permissions || []).filter(p => p.userId === u.id || (p as any).user_id === u.id);
+      const hasExplicitPerm = userPerms.some(p => 
+        vehicleTargetMenuIds.includes(normalizeMenuId(p.menuId)) && (p.canView || p.canSave)
+      );
+      if (hasExplicitPerm) return true;
+
+      // 3. 직무 템플릿(RBAC) 기준 권한 확인
+      const dept = u.departmentId || u.department;
+      const canViewStock = getRoleTemplatePermission(u.role, dept, 'consumable_stock', 'view');
+      const canViewInout = getRoleTemplatePermission(u.role, dept, 'consumable_inout', 'view');
+      const canViewAs = getRoleTemplatePermission(u.role, dept, 'field_as', 'view');
+      if (canViewStock || canViewInout || canViewAs) return true;
+
+      // 4. 실무 정비 역할이나 AS팀 소속인 경우
+      const isAsDept = (u.departmentId && asDeptIds.has(u.departmentId)) || dName.includes('AS') || dName.includes('정비');
+      const isMechanicRole = u.role === 'MECHANIC';
+      if (isAsDept || isMechanicRole) return true;
+
+      return false;
+    });
+
+    // 정렬: AS팀원 우선 배치, 팀장 우선 및 이름순 정렬
+    return filtered.sort((a, b) => {
+      const aIsAs = (a.departmentId && asDeptIds.has(a.departmentId)) || (a.department || '').includes('AS');
+      const bIsAs = (b.departmentId && asDeptIds.has(b.departmentId)) || (b.department || '').includes('AS');
+      if (aIsAs && !bIsAs) return -1;
+      if (!aIsAs && bIsAs) return 1;
+      if (a.role === 'MANAGER' && b.role !== 'MANAGER') return -1;
+      if (b.role === 'MANAGER' && a.role !== 'MANAGER') return 1;
+      return a.name.localeCompare(b.name, 'ko');
+    });
+  }, [users, permissions]);
 
   const getUserName = (id?: string) => {
     if (!id) return '시스템';

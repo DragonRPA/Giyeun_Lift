@@ -595,6 +595,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [stocktakingAudits, setStocktakingAudits] = useState<StocktakingAudit[]>([]);
   const [stocktakingAuditItems, setStocktakingAuditItems] = useState<StocktakingAuditItem[]>([]);
   const [collectedParts, setCollectedParts] = useState<CollectedPart[]>([]);
+  const [mechanicConsumableStocks, setMechanicConsumableStocks] = useState<MechanicConsumableStock[]>([]);
   const [printStations, setPrintStations] = useState<PrintStation[]>([]);
   const [printQueue, setPrintQueue] = useState<PrintQueueItem[]>([]);
 
@@ -714,6 +715,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setStocktakingAudits([...db.stocktakingAudits]);
     setStocktakingAuditItems([...db.stocktakingAuditItems]);
     setCollectedParts([...db.collectedParts]);
+    setMechanicConsumableStocks([...db.mechanicConsumableStocks]);
     setPrintStations([...db.printStations]);
     setPrintQueue([...db.printQueue]);
 
@@ -8799,7 +8801,7 @@ ${currentTenant?.corporateName || tenantCorp} 배상
       tenants, currentTenant, setCurrentTenantId, saveTenant,
       addTenantWorkplace, updateTenantWorkplace, deleteTenantWorkplace,
       addTenantYard, updateTenantYard, deleteTenantYard, setDefaultYard,
-      users, permissions, customers, contacts, sites, products, assets, consumables, consumableLogs, consumablePurchases, mechanicConsumableStocks: db.mechanicConsumableStocks, contracts, contractAssets, contractHistory, deliveries, billings, billingDetails, payments, paymentDepositLinks, repairs, repairConsumables, transportCompanies, transportDrivers, transportNegotiations, subleaseNegotiations, todos,
+      users, permissions, customers, contacts, sites, products, assets, consumables, consumableLogs, consumablePurchases, mechanicConsumableStocks, contracts, contractAssets, contractHistory, deliveries, billings, billingDetails, payments, paymentDepositLinks, repairs, repairConsumables, transportCompanies, transportDrivers, transportNegotiations, subleaseNegotiations, todos,
       stocktakingAudits, stocktakingAuditItems, collectedParts,
       bankTransactions, bankMatchingRules, bankInitialBalances, assetInOutLogs, vendors, googleConfigs, cashFlowSnapshots, outboundInspections, depreciationLogs,
       purchaseSettlements, purchaseSettlementItems, settlementPaymentLogs: db.settlementPaymentLogs, externalLeases, inspectionChecklistItems,

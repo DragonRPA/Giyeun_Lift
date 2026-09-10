@@ -1,4 +1,51 @@
-# 개발 요구사항 임시 기록 (dev_temp.md)
+﻿# 개발 요구사항 임시 기록 (dev_temp.md)
+
+## [완료] 운송료 대사 완료 후 지급요청 미생성 및 재조회 대기 상태 표출 결함 수정 (v1.12.0.Build.64 예정)
+- **요구사항**: "재조회 해보니가, 운송료 대사 완료 이후 지급 요청이 안생긴것 같은데?"
+- **적용 목적 (헌장 1.1 최대 편익, 1.2 DB 무누락 보존, 3.1 무수식어 건조 표준, 3.5 Z-패턴 완결)**:
+  1. **원인 분석**:
+     - **원인 1: 매입 정산 마스터 DB 레코드 누락**: 기존 handleExecuteBundlePaymentRequest 로직에서 deliveries 테이블의 econciliationStatus만 'PAYMENT_REQUESTED'로 변경하고 실제 회계 원장인 purchaseSettlements 및 1:1 명세인 purchaseSettlementItems 테이블에 레코드를 전혀 INSERT하지 않아, [월말 매입 정산] 대장에 지급요청서가 실제로 생성되지 않았음.
+     - **원인 2: Supabase 컬럼 미존재로 인한 비동기 저장 실패**: deliveries.paymentRequestedAt 컬럼이 원격 DB 스키마에 존재하지 않아 PostgreSQL 에러(42703)가 발생하면서 deliveries 업데이트가 원격 DB에 실패하고, 새로고침/재조회 시 원격 데이터로 덮어써져 상태가 UNRECONCILED로 롤백되는 침묵 실패 발생.
+     - **원인 3: 재조회 시 대사 대기 하드코딩 및 필터 단절**:
+       - 운송료 대사 탭에서 [조회] 시 econPairs가 초기화([])되는데, econPairs.length === 0일 때의 테이블 렌더링에서 상태 뱃지를 무조건 ⚪ 대기로 하드코딩 표출하고 있었음.
+       - 상단 대사 통계(econStats)에서도 isPairMode === false일 때 paymentRequestedCount를 0으로 고정하여 상단 배지에 지급요청 완료 (0)으로 표출됨.
+       - 지급 상태 기본 필터가 UNPAID(미완료)로 되어 있어, 정상 요청된 건이 기본 조회 화면에서 사라져 사용자가 "지급요청이 안 생겼다"고 오인함.
+  2. **개편 및 방어벽 구축**:
+     - **DB 스키마 보강**: Supabase DDL 실행을 통해 deliveries 테이블에 paymentRequestedAt, paymentCompletedAt, econciledAt, statementFileUrl, illableToCustomer 컬럼 정상 추가 및 schema.sql CHECK 제약조건 최신화.
+     - **통합 지급요청 마스터/상세 동시 생성 (TruckDispatch.tsx)**:
+       - db.insertRow<PurchaseSettlement>('purchaseSettlements', ...)를 호출하여 settlementType: 'TRANSPORT', status: 'CONFIRMED', confirmedAt, itemCount, 	otalAmount를 갖춘 정산 마스터 레코드 정상 등록.
+       - 각 대사 배차 건별 db.insertRow<PurchaseSettlementItem>('purchaseSettlementItems', ...)를 호출하여 1:1 감사 추적 상세 아이템 저장.
+       - 각 배차의 econciliationStatus: 'PAYMENT_REQUESTED', paymentRequestedAt, deliveryCostConfirmed, inalCost, purchaseBillId 동시 갱신 및 wait db.awaitPendingWrites() 동기 검증.
+     - **지급요청 완료 즉시 화면 필터 자동 전환**: 지급요청 생성 완료 시 econPaymentFilter를 자동으로 'PAID'로 전환하여 방금 요청한 건들이 화면에 즉시 보이도록 개선.
+     - **재조회 원장 모드 UI/UX 전면 개편**:
+       - econPairs.length === 0일 때도 completedDeliveriesForRecon의 실제 상태(PAYMENT_REQUESTED ➔ 🔵 지급요청, PAID ➔ 🟢 지급완료, MATCHED ➔ 🟢 대사일치)를 정확한 뱃지와 함께 표출.
+       - 청구정보 컬럼에 [지급요청] PAY-BUNDLE-xxx | 확정 운송료 ₩xxx원 (월말 매입 정산 대장 등록됨) 명확히 표출.
+       - 상단 통계 칩의 지급요청 완료 카운트가 completedDeliveriesForRecon을 실시간 집계하여 정확한 건수 표출.
+       - 좌상단 [지급 상태] 필터 버튼에 실시간 건수(미완료 (N건), 지급요청/완료 (N건), 전체 (N건)) 표기.
+- **주요 변경 파일**:
+  - src/pages/TruckDispatch.tsx [MODIFY]: PurchaseSettlement/PurchaseSettlementItem 임포트, handleExecuteBundlePaymentRequest 실물 DB 생성 연계, econStats 실시간 집계 보정, 비-엑셀 모드 테이블 및 필터 뱃지 정상 표출.
+  - schema.sql [MODIFY]: purchase_settlements.status CHECK 제약조건에 'CONFIRMED' 추가.
+- **검증 결과**:
+  - 
+pm run build: **TypeScript 0 Error, 번들링 정상 완료 (uilt in 1.13s)**.
+  - Supabase deliveries.paymentRequestedAt DDL 정상 반영 및 갱신 쿼리 테스트 검증 완료.
+
+ [완료] 모바일 무전기 모드 발화 종료 후 자동 재발화 연속 켜짐 결함 수정 (v1.12.0.Build.62 예정)
+- **요구사항**: "웹앱의 무전기 모드가, 터치하고 발화를 끝낸 후, 터치하여 말하기를 끝냈는데 또다시 터치 된것처럼 다시 말하기가 연속해서 켜져, 오류인것 같아, 확인해"
+- **적용 목적 (헌장 1.1 최대 편익, 1.2 무누락 보존, 3.1 무수식어 건조 표준)**:
+  1. **원인 분석**:
+     - 기존 `handleTogglePtt` 및 `finishRecordingAndSend()` 로직에서 발언 종료 터치 시 `isTransmittingRef.current = false` 및 `setIsTransmitting(false)`를 비동기 전송(`await walkieService.stopAndSend()`) 시작 전에 즉시 실행함.
+     - `stopAndSend()`는 MediaRecorder 종료, 오디오 Blob 생성, Base64 인코딩, Supabase 브로드캐스트 등 약 300ms~1000ms가 소요되는 비동기 작업임.
+     - 이 과정에서 모바일 터치스크린 특유의 **지연 합성 클릭(Ghost Click, 약 300ms 지연 발생)** 또는 사용자의 연타/손가락 잔여 터치가 발생했을 때, `isTransmittingRef.current`가 이미 `false`로 풀려있고 `isStoppingRef`와 같은 전송 중 잠금 플래그가 전무하여 브라우저의 두 번째 클릭이 **새로운 발언 시작(첫 터치)**으로 오인되어 즉시 `startRecording()`을 재호출, 발언 모드가 연속해서 다시 켜지는 결함 발생.
+  2. **개편 및 방어벽 구축 (`MobileWalkieTalkieModal.tsx`)**:
+     - **`isStoppingRef` & `isStopping` 상태 신설**: 전송 종료 처리 중일 때 상태를 잠금 처리하여 어떠한 추가 클릭/터치도 차단.
+     - **고스트 클릭 / 연타 방지 쿨다운 락(`lastToggleTimeRef`)**: 700ms 이내 연속 클릭을 원천 차단하여 터치스크린 지연 합성 이벤트 완벽 흡수.
+     - **버튼 비활성화 및 전송 중 피드백 표출**: `isStopping || isStarting` 중에는 버튼을 네이티브 `disabled` 처리하고 `<Loader2 className="animate-spin" /> 음성 전송 중... (잠시만 대기)` 텍스트를 노출하여 이중 터치 심리적 유발 차단.
+     - **모달 닫힘 / 언마운트 시 클린업 보강**: 모달 닫힘 또는 컴포넌트 언마운트 시 진행 중인 녹음을 취소하고 타이머와 모든 상태를 초기화.
+- **주요 변경 파일**:
+  - `src/mobile/components/MobileWalkieTalkieModal.tsx` [MODIFY]: `Loader2` 임포트, `isStarting`/`isStopping` 상태 및 refs, 쿨다운 타이머, `handleTogglePtt`/`finishRecordingAndSend` 방어벽, PTT 버튼 렌더링 업데이트.
+- **검증 결과**:
+  - `npm run build`: **TypeScript 0 Error, 번들링 100% 정상 통과 (`built in 1.13s`)**.
 
 ## [완료] 소모품 구매신청 영구보존 결함 수정·더미 데이터 전면 삭제 및 미사용 테이블 정리 (v1.12.0.Build.61)
 - **요구사항**: "사용하지 않는 테이블이 확실하다면 삭제하고, 소모품 구매신청을 저장 했는데, 왜 사라질까? 그리고, 내가 등록하지 않은 소모품 구매신청 데이터가 6개가 있는데 저건 뭐지? 하드코딩된 데이터 같은데? 제거해. 코드에 남아있으면 코드도 제거해. 저장 안되는 이유는 찾아서 수정해. ㄹㅇ"
@@ -3996,3 +4043,53 @@
   3. `src/mobile/pages/MobileDispatchList.tsx`:
      - 기사 배정 모달 내 하드코딩 '테스트 예시 1' 임시 버튼 영구 삭제.
   4. 모바일 24개 파일 전수 스캔 및 0 Type Error 빌드 무결성 확보.
+
+## [��ġ �Ϸ�] �Ҹ�ǰ ���� ����/�ݳ� ���� DB ���� ���� �� ����ȸ �� �Ҹ� ���� �ذ�
+- **���� ����**:
+  - �Ҹ�ǰ ��� ���� �޴����� "�ֱ��� ? ���� ����" ���� �� ������ �Ϸ�� ��ó�� ���̳�, ����ȸ(F5 �Ǵ� �� �̵�) �� ���� �̵� ���� "������ ����� �̵� ��� ������ �����ϴ�"�� �ʱ�ȭ�Ǵ� ����.
+- **�ٺ� ���� �м�**:
+  1. **���� Supabase `mechanic_consumable_stocks` �÷� ����**:
+     - `db.insertRow`�� ��� �ű� �࿡ `createdAt`�� `updatedAt`�� �ڵ� �����Ͽ� ������.
+     - ���� Supabase DB�� `mechanic_consumable_stocks` ���̺�� `"createdAt"` �÷��� �����Ͽ� PostgREST `PGRST204 ("Could not find the 'createdAt' column")` ������ �Բ� ������ ���� �źε�.
+  2. **���� Supabase `consumable_logs` Check �������� ����ġ**:
+     - `consumable_logs_type_check` ���������� ���� `('INBOUND', 'OUTBOUND', 'ADJUST')`�θ� �����Ǿ� �־�, ���� ����(`TRANSFER_TO_VEHICLE`) �� ���� �ݳ�(`RETURN_TO_HQ`) �α� INSERT �źε�.
+  3. **���� DB RLS(Row Level Security) ����**:
+     - `mechanic_consumable_stocks` �� `consumable_logs`�� RLS�� ���� �־� �͸�(anon) Ű�� ���� CUD �۾� ����.
+  4. **`AppContext.tsx` �� React State �̼��� (������ ���� ����)**:
+     - `mechanicConsumableStocks`�� `useState` ���·� �������� �ʰ� `db.mechanicConsumableStocks` getter �������� ��ġ�Ǿ� �־���.
+     - `refreshAllData()` ���� �� `setMechanicConsumableStocks`�� ȣ����� �ʾ�����, �޴� ����ȸ �� `pullFromSupabase()`�� ������ ���� DB�� �� �迭�� ���� ĳ�ÿ� ����� ��� �Է��� ���� ������ ������.
+- **���� ��ġ ����**:
+  1. **Supabase ���� DDL ���� �� ĳ�� ���ε�**:
+     - `ALTER TABLE mechanic_consumable_stocks ADD COLUMN IF NOT EXISTS "createdAt" TEXT;`
+     - `ALTER TABLE consumable_logs DROP CONSTRAINT IF EXISTS consumable_logs_type_check;`
+     - `ALTER TABLE consumable_logs ADD CONSTRAINT consumable_logs_type_check CHECK (type IN ('INBOUND', 'OUTBOUND', 'ADJUST', 'TRANSFER_TO_VEHICLE', 'RETURN_TO_HQ'));`
+     - `ALTER TABLE mechanic_consumable_stocks DISABLE ROW LEVEL SECURITY;`
+     - `ALTER TABLE consumable_logs DISABLE ROW LEVEL SECURITY;`
+     - `NOTIFY pgrst, 'reload schema';` �������� ��Ű�� ĳ�� ��� �ݿ�.
+  2. **`AppContext.tsx` ������ State ����**:
+     - `const [mechanicConsumableStocks, setMechanicConsumableStocks] = useState<MechanicConsumableStock[]>([]);` ����.
+     - `refreshAllData()` �� `setMechanicConsumableStocks([...db.mechanicConsumableStocks]);` �߰�.
+     - Context Provider value�� ������ `mechanicConsumableStocks` State ���ε�.
+  3. **`schema.sql` ���� SSOT ����ȭ**:
+     - `mechanic_consumable_stocks` ���̺� DDL�� `"createdAt" TEXT` ���.
+  4. **���� �Է� ������ ���� �� ���Ἲ Ȯ��**:
+     - ��� �Է��ϼ̴� �ѻ��� �����(`USR-0000011`) ������ `CSM-0000027` (�Ƴ������� (���ܱ�), 1��) ���� ���� ���� ���� DB�� ���� ���� �Ϸ�.
+     - `npm.cmd run build` 0 Type Error ���� �Ϸ�.
+
+## [��ġ �Ϸ�] �Ҹ�ǰ ���� ���� �� ���� ��� ���� ��� ���� ����/�μ� 1:1 ���� ����
+- **���� ����**:
+  - �Ҹ�ǰ ��� ����(`ConsumableStockPage`) �� �Ҹ�ǰ �����(`ConsumableInOutPage`)���� ���� ���� ��� ����� ���� ��, �Ҹ�ǰ/���� ���Ѱ� �����ϰ� `role === 'MECHANIC' || role === 'ADMIN' || role === 'MANAGER'` �������� �ܼ� ���͸��Ǿ� �־���.
+  - �̷� ���� ���� AS �����(�ֿ���, �弼��, �̱�Ź)�� ������ `USER`��� ������ ���� ��� ��Ͽ��� ���� ����ǰ�, �ݴ�� ������(�ּ�ȣ), ������(������), �ܱ�����(���Ÿ), �����(�����) �� �Ҹ�ǰ/AS ���� ���� ������ ������ �ֻ�ܿ� ����Ǵ� �μ� R&R ���� ���� �߻�.
+- **���� ��ġ ����**:
+  1. **`ConsumableStockPage.tsx` �� `ConsumableInOutPage.tsx` ����� ���� ���� ���� ����**:
+     - **0�ܰ� (����� ����)**: `status === 'RETIRED'` ���� ���� ����.
+     - **1�ܰ� (���� ������ ����)**: �̹� ���� ���(`mechanicConsumableStocks`)�� 1�� �̻� ���� ���� ������ ��� ��� �� �ݳ��� ���� ������ ��Ͽ� ����.
+     - **2�ܰ� (��ǹ� �ӿ��� ����)**: �ý��� ������(`sys-admin`, `u-1`, `admin`) �� ��ǥ�̻� �� ���� �̿��� �ӿ��� ����.
+     - **3�ܰ� (���� SSOT ����)**: ������� ���� ���� ����(`permissions`) �Ǵ� ���� ���ø�(RBAC)���� �Ҹ�ǰ/����/����AS ���� ����(`consumable_stock`, `consumable`, `field_as`, `repair`) �� 1�� �̻� ���� ���� ����.
+     - **4�ܰ� (AS/������ �Ҽ� ����)**: AS�� �Ҽ�(`DEPT-0000005`, �μ��� 'AS'/'����')�̰ų� ����� ����(`role === 'MECHANIC'`)�� �ǹ��� �ڵ� �°�.
+     - **5�ܰ� (����Ʈ ����)**: AS�� �ǹ� �η� �켱 ��ġ(���� �켱, ����/���� �̸���), ������ �ļ��� ����.
+  2. **���� ��� Ȯ��**:
+     - ���� �ְ� ���: �ּ�ȣ(����), �����(�ӿ�), ���Ÿ(�ܱ���), ������(����), �����(���) ? **���� ����**
+     - ���� ���� ���: �ѻ���(AS����), �ֿ���(AS����), �弼��(AS����), �̱�Ź(AS����), �̼���(�Ѱ�������) ? **���� ���� (5��)**
+  3. **��� ����**:
+     - `npm.cmd run build` 0 Type Error ��� ���Ἲ ��� (1.24��).

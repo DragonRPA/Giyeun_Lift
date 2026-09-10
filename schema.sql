@@ -443,6 +443,7 @@ CREATE TABLE mechanic_consumable_stocks (
     "mechanicId"          TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     "consumableId"        TEXT NOT NULL REFERENCES consumables(id) ON DELETE CASCADE,
     "stockQty"            DOUBLE PRECISION NOT NULL DEFAULT 0,
+    "createdAt"           TEXT,
     "updatedAt"           TEXT NOT NULL,
     UNIQUE("mechanicId", "consumableId")
 );
@@ -1063,7 +1064,7 @@ CREATE TABLE purchase_settlements (
     "vendorName"          TEXT NOT NULL,
     "totalAmount"         DOUBLE PRECISION NOT NULL DEFAULT 0,
     "paidAmount"          DOUBLE PRECISION NOT NULL DEFAULT 0,
-    status                TEXT CHECK (status IN ('PENDING', 'APPROVED', 'PAID', 'REJECTED')) NOT NULL DEFAULT 'PENDING',
+    status                TEXT CHECK (status IN ('PENDING', 'APPROVED', 'CONFIRMED', 'PAID', 'REJECTED')) NOT NULL DEFAULT 'PENDING',
     "paymentDate"         TEXT,
     "paymentMethod"       TEXT,
     "bankAccount"         TEXT,

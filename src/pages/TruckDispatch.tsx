@@ -11,7 +11,7 @@ import {
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { exportToExcel } from '../services/excel';
-import { Delivery, TransportCompany, TransportDriver, TransportNegotiation, db, DeliveryStatus, Asset } from '../services/db';
+import { Delivery, TransportCompany, TransportDriver, TransportNegotiation, db, DeliveryStatus, Asset, PurchaseSettlement, PurchaseSettlementItem } from '../services/db';
 import { DestinationWeatherModal } from '../components/DestinationWeatherModal';
 import { matchHangul } from '../utils/hangulSearch';
 import { buildDispatchSmsText, launchDispatchSms } from '../utils/nativeLauncher';
@@ -875,6 +875,22 @@ export const TruckDispatch: React.FC = () => {
   const [reconNotificationMsg, setReconNotificationMsg] = useState<string>('');
   const [selectedSystemDeliveryId, setSelectedSystemDeliveryId] = useState<string | null>(null);
   const [selectedExcelRowIndex, setSelectedExcelRowIndex] = useState<number | null>(null);
+
+  // 매입 지급 요청 완료 성공 모달 state
+  const [paymentSuccessInfo, setPaymentSuccessInfo] = useState<{
+    bundleCode: string;
+    totalCount: number;
+    totalAmount: number;
+    companyName: string;
+    reconMonth: string;
+  } | null>(null);
+  const [isBundleCopied, setIsBundleCopied] = useState(false);
+
+  const handleCopyBundleCode = (code: string) => {
+    navigator.clipboard.writeText(code);
+    setIsBundleCopied(true);
+    setTimeout(() => setIsBundleCopied(false), 2000);
+  };
 
   // 💡 [사장님 지시] 대사 행 더블클릭 시 배차 상세 및 대사 비교 모달 state
   const [selectedReconDetailPair, setSelectedReconDetailPair] = useState<ReconPairRow | null>(null);
@@ -1843,16 +1859,55 @@ export const TruckDispatch: React.FC = () => {
 
     const reconciledPairs = reconPairs.filter(p => p.isReconciled && p.systemDelivery && !p.isExcluded);
 
-    const bundleCode = `PAY-BUNDLE-${new Date().toISOString().substring(0, 10).replace(/-/g, '')}-${Math.floor(1000 + Math.random() * 9000)}`;
+    const targetYm = reconStartDate ? reconStartDate.substring(0, 7) : new Date().toISOString().substring(0, 7);
+    const bundleCode = `PAY-BUNDLE-${targetYm.replace(/-/g, '')}-${Math.floor(1000 + Math.random() * 9000)}`;
     const totalBundleCost = reconciledPairs.reduce((acc, p) => acc + p.systemCost, 0);
 
+    const targetCompany = transportCompanies.find(tc => tc.id === selectedReconCompany || tc.name === selectedReconCompany);
+    const rawVendorName = targetCompany?.name || (selectedReconCompany !== 'ALL' ? selectedReconCompany : (reconciledPairs[0]?.systemDelivery?.transportCompany || '기타 운송사'));
+    const nowIso = new Date().toISOString();
+
     try {
+      // 1. 월말 매입 정산 마스터 레코드 (PurchaseSettlement) 생성
+      const settlementId = db.generateNextId('purchaseSettlements', db.purchaseSettlements);
+      const settlement = db.insertRow<PurchaseSettlement>('purchaseSettlements', {
+        id: settlementId,
+        settlementYm: targetYm,
+        settlementType: 'TRANSPORT',
+        vendorName: rawVendorName,
+        totalAmount: totalBundleCost,
+        paidAmount: 0,
+        status: 'CONFIRMED',
+        confirmedAt: nowIso,
+        confirmedBy: currentUser?.name || '운송대사담당',
+        itemCount: reconciledPairs.length,
+        memo: `[운송료 대사 완결] ${bundleCode} | ${reconciledPairs.length}건 지급 요청`,
+        createdAt: nowIso,
+        updatedAt: nowIso
+      });
+
+      // 2. 1:1 매칭 상세 항목 (PurchaseSettlementItem) 생성 및 배차(Delivery) 레코드 갱신
       for (const pair of reconciledPairs) {
         if (pair.systemDelivery) {
+          db.insertRow<PurchaseSettlementItem>('purchaseSettlementItems', {
+            settlementId: settlement.id,
+            sourceType: 'DELIVERY',
+            sourceId: pair.systemDelivery.id,
+            itemDescription: `[배차 운반비] ${pair.systemDelivery.originAddress || '상차지'} ➔ ${pair.systemDelivery.destinationAddress || '하차지'} (${pair.systemDelivery.driverName || '기사'}) [요청:${bundleCode}]`,
+            quantity: 1,
+            unitPrice: pair.systemCost,
+            amount: pair.systemCost,
+            evidenceFileUrl: uploadedFileName || undefined,
+            createdAt: nowIso
+          });
+
           await db.updateRow('deliveries', pair.systemDelivery.id, {
             reconciliationStatus: 'PAYMENT_REQUESTED',
-            paymentRequestedAt: new Date().toISOString(),
-            memo: `[통합지급요청: ${bundleCode}] ${pair.memo || ''}`
+            paymentRequestedAt: nowIso,
+            deliveryCostConfirmed: pair.systemCost,
+            finalCost: pair.systemCost,
+            purchaseBillId: settlement.id,
+            memo: `[통합지급요청: ${bundleCode}] ${pair.memo || pair.systemDelivery.memo || ''}`
           } as any);
         }
       }
@@ -1867,8 +1922,17 @@ export const TruckDispatch: React.FC = () => {
         return p;
       }));
 
-      setReconNotificationMsg(`🎉 [통합 지급요청 완료] 요청번호: ${bundleCode} | 총 ${reconciledPairs.length}건 (합계 ₩${totalBundleCost.toLocaleString()}원) 매입 지급 요청이 저장되었습니다.`);
-      showErrorModal(`🎉 [통합 지급 요청 완비]\n\n• 지급요청 번호: ${bundleCode}\n• 포함된 배차건수: ${reconciledPairs.length}건\n• 총 매입 지급금액: ₩${totalBundleCost.toLocaleString()}원\n\n매입 지급 요청이 성공적으로 저장되었습니다.`, '매입 지급 요청 완료');
+      // 💡 [사용자 편익] 지급 요청 완료 즉시 지급상태 필터를 'PAID'로 전환하여 등록된 건이 화면에서 즉시 확인되도록 보장
+      setReconPaymentFilter('PAID');
+
+      setReconNotificationMsg(`[통합 지급요청 완료] 요청번호: ${bundleCode} (정산ID: ${settlement.id}) | 총 ${reconciledPairs.length}건 (합계 ₩${totalBundleCost.toLocaleString()}원) 매입 지급 요청이 [월말 매입 정산] 대장에 등록되었습니다.`);
+      setPaymentSuccessInfo({
+        bundleCode,
+        totalCount: reconciledPairs.length,
+        totalAmount: totalBundleCost,
+        companyName: rawVendorName,
+        reconMonth: targetYm
+      });
     } catch (err: any) {
       showErrorModal('지급 요청 처리 중 오류가 발생하였습니다: ' + err.message);
     }
@@ -1914,18 +1978,21 @@ export const TruckDispatch: React.FC = () => {
       return acc + cost;
     }, 0);
 
+    const paymentRequestedDeliveries = completedDeliveriesForRecon.filter(d => (d as any).reconciliationStatus === 'PAYMENT_REQUESTED');
+    const matchedDeliveries = completedDeliveriesForRecon.filter(d => (d as any).reconciliationStatus === 'MATCHED' || (d as any).reconciliationStatus === 'RECONCILED');
+
     return {
       isPairMode: false,
       totalCount,
       totalCost,
-      matchedCount: 0,
-      matchedCost: 0,
+      matchedCount: matchedDeliveries.length,
+      matchedCost: matchedDeliveries.reduce((sum, d) => sum + getEffectiveDeliveryCost(d), 0),
       mismatchCount: 0,
       mismatchCost: 0,
       excludedCount: 0,
       excludedCost: 0,
-      paymentRequestedCount: 0,
-      paymentRequestedCost: 0,
+      paymentRequestedCount: paymentRequestedDeliveries.length,
+      paymentRequestedCost: paymentRequestedDeliveries.reduce((sum, d) => sum + getEffectiveDeliveryCost(d), 0),
       systemCount: totalCount
     };
   }, [reconPairs, completedDeliveriesForRecon]);
@@ -4409,30 +4476,37 @@ export const TruckDispatch: React.FC = () => {
               <div style={{ display: 'flex', gap: '8px', alignItems: 'center', justifyContent: 'space-between', paddingTop: '6px', borderTop: '1px dashed var(--border-color)' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                   <span style={{ fontSize: '11.5px', fontWeight: 700, color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>지급 상태:</span>
-                  {[
-                    { key: 'UNPAID', label: '미완료 (대사대상)' },
-                    { key: 'PAID', label: '지급요청/완료' },
-                    { key: 'ALL', label: '전체' }
-                  ].map(p => (
-                    <button
-                      key={p.key}
-                      onClick={() => setReconPaymentFilter(p.key as any)}
-                      style={{
-                        padding: '3px 8px',
-                        fontSize: '11px',
-                        fontWeight: reconPaymentFilter === p.key ? 800 : 500,
-                        borderRadius: '4px',
-                        border: '1px solid',
-                        borderColor: reconPaymentFilter === p.key ? (p.key === 'UNPAID' ? '#dc2626' : 'var(--primary)') : 'var(--border-color)',
-                        backgroundColor: reconPaymentFilter === p.key ? (p.key === 'UNPAID' ? 'rgba(239,68,68,0.12)' : 'rgba(59,130,246,0.12)') : 'var(--bg-body)',
-                        color: reconPaymentFilter === p.key ? (p.key === 'UNPAID' ? '#dc2626' : 'var(--primary)') : 'var(--text-muted)',
-                        cursor: 'pointer',
-                        whiteSpace: 'nowrap'
-                      }}
-                    >
-                      {p.label}
-                    </button>
-                  ))}
+                  {(() => {
+                    const companyStats = unpaidStatsByCompany[selectedReconCompany] || unpaidStatsByCompany.ALL;
+                    const unpaidCount = companyStats?.unpaid || 0;
+                    const paidCount = (companyStats?.total || 0) - unpaidCount;
+                    const totalCount = companyStats?.total || 0;
+
+                    return [
+                      { key: 'UNPAID', label: `미완료 (${unpaidCount}건)` },
+                      { key: 'PAID', label: `지급요청/완료 (${paidCount}건)` },
+                      { key: 'ALL', label: `전체 (${totalCount}건)` }
+                    ].map(p => (
+                      <button
+                        key={p.key}
+                        onClick={() => setReconPaymentFilter(p.key as any)}
+                        style={{
+                          padding: '3px 8px',
+                          fontSize: '11px',
+                          fontWeight: reconPaymentFilter === p.key ? 800 : 500,
+                          borderRadius: '4px',
+                          border: '1px solid',
+                          borderColor: reconPaymentFilter === p.key ? (p.key === 'UNPAID' ? '#dc2626' : 'var(--primary)') : 'var(--border-color)',
+                          backgroundColor: reconPaymentFilter === p.key ? (p.key === 'UNPAID' ? 'rgba(239,68,68,0.12)' : 'rgba(59,130,246,0.12)') : 'var(--bg-body)',
+                          color: reconPaymentFilter === p.key ? (p.key === 'UNPAID' ? '#dc2626' : 'var(--primary)') : 'var(--text-muted)',
+                          cursor: 'pointer',
+                          whiteSpace: 'nowrap'
+                        }}
+                      >
+                        {p.label}
+                      </button>
+                    ));
+                  })()}
                 </div>
 
                 <button
@@ -4712,42 +4786,99 @@ export const TruckDispatch: React.FC = () => {
                     completedDeliveriesForRecon.length === 0 ? (
                       <tr>
                         <td colSpan={10} style={{ textAlign: 'center', padding: '50px 10px', color: 'var(--text-muted)' }}>
-                          조회된 기간 내 배차 내역이 없습니다.
+                          {(() => {
+                            const companyStats = unpaidStatsByCompany[selectedReconCompany] || unpaidStatsByCompany.ALL;
+                            const unpaidCount = companyStats?.unpaid || 0;
+                            const paidCount = (companyStats?.total || 0) - unpaidCount;
+                            if (reconPaymentFilter === 'UNPAID' && paidCount > 0) {
+                              return `조회된 기간 내 미완료(대사대상) 배차 내역이 없습니다. (지급요청 완료된 배차 ${paidCount}건은 상단 [지급요청/완료] 필터에서 확인하실 수 있습니다.)`;
+                            }
+                            return '조회된 기간 내 배차 내역이 없습니다.';
+                          })()}
                         </td>
                       </tr>
                     ) : (
-                      completedDeliveriesForRecon.map(d => {
-                        const contract = contracts.find(c => c.id === d.contractId);
-                        const customer = contract ? customers.find(c => c.id === contract.customerId) : null;
-                        const memoCustomer = d.memo && d.memo.includes('업체:') ? d.memo.split('업체:')[1].split('|')[0].trim() : '';
-                        const displayCustomer = customer?.name || memoCustomer || '고객사미지정';
-                        const cost = getEffectiveDeliveryCost(d);
-                        return (
-                          <tr key={d.id} style={{ borderBottom: '1px solid var(--border-color)', height: '40px' }}>
-                            <td style={{ textAlign: 'center', padding: '6px' }}>
-                              <span style={{ padding: '2px 6px', borderRadius: '4px', fontSize: '11px', fontWeight: 700, backgroundColor: 'var(--bg-body)', color: 'var(--text-muted)', border: '1px solid var(--border-color)' }}>
-                                ⚪ 대기
-                              </span>
-                            </td>
-                            <td style={{ padding: '6px 10px', whiteSpace: 'nowrap' }}>{d.loadingDate || d.requestDate}</td>
-                            <td style={{ padding: '6px 10px' }}>
-                              <strong style={{ color: 'var(--text-primary)' }}>{displayCustomer}</strong> | {d.destinationAddress || '도착지미지정'} ({d.driverName || '기사미배정'})
-                            </td>
-                            <td style={{ padding: '6px 10px', textAlign: 'right', fontWeight: 800, color: 'var(--primary)' }}>
-                              ₩{cost.toLocaleString()}
-                            </td>
-                            <td style={{ textAlign: 'center', color: 'var(--text-muted)' }}>-</td>
-                            <td colSpan={4} style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: '11.5px' }}>
-                              상단 [거래명세서 업로드] 시 1:1 대사가 진행됩니다.
-                            </td>
-                            <td style={{ textAlign: 'center', padding: '6px' }}>
-                              <button onClick={(e) => handleOpenCostEdit(d, cost, e)} style={{ padding: '2px 6px', fontSize: '11px', borderRadius: '4px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-body)', cursor: 'pointer' }}>
-                                금액수정
-                              </button>
-                            </td>
-                          </tr>
-                        );
-                      })
+                      completedDeliveriesForRecon
+                        .filter(d => {
+                          if (reconStatusFilter === 'ALL') return true;
+                          if (reconStatusFilter === 'PAYMENT_REQUESTED') return (d as any).reconciliationStatus === 'PAYMENT_REQUESTED';
+                          if (reconStatusFilter === 'MATCHED') return (d as any).reconciliationStatus === 'MATCHED' || (d as any).reconciliationStatus === 'RECONCILED';
+                          if (reconStatusFilter === 'SYSTEM_ONLY' || reconStatusFilter === 'PENDING') {
+                            return !(d as any).reconciliationStatus || (d as any).reconciliationStatus === 'PENDING' || (d as any).reconciliationStatus === 'UNRECONCILED';
+                          }
+                          return false;
+                        })
+                        .map(d => {
+                          const contract = contracts.find(c => c.id === d.contractId);
+                          const customer = contract ? customers.find(c => c.id === contract.customerId) : null;
+                          const memoCustomer = d.memo && d.memo.includes('업체:') ? d.memo.split('업체:')[1].split('|')[0].trim() : '';
+                          const displayCustomer = customer?.name || memoCustomer || '고객사미지정';
+                          const cost = getEffectiveDeliveryCost(d);
+                          const isPaymentReq = (d as any).reconciliationStatus === 'PAYMENT_REQUESTED';
+                          const isPaidSettled = (d as any).reconciliationStatus === 'PAID' || (d as any).reconciliationStatus === 'SETTLED' || d.isCostSettled === true;
+                          const isMatched = (d as any).reconciliationStatus === 'MATCHED' || (d as any).reconciliationStatus === 'RECONCILED';
+
+                          return (
+                            <tr key={d.id} style={{ borderBottom: '1px solid var(--border-color)', height: '40px' }}>
+                              <td style={{ textAlign: 'center', padding: '6px' }}>
+                                {isPaymentReq ? (
+                                  <span style={{ padding: '2px 6px', borderRadius: '4px', fontSize: '11px', fontWeight: 800, backgroundColor: 'rgba(37,99,235,0.12)', color: '#2563eb', border: '1px solid rgba(37,99,235,0.35)', whiteSpace: 'nowrap' }}>
+                                    지급요청
+                                  </span>
+                                ) : isPaidSettled ? (
+                                  <span style={{ padding: '2px 6px', borderRadius: '4px', fontSize: '11px', fontWeight: 800, backgroundColor: 'rgba(16,185,129,0.12)', color: '#10b981', border: '1px solid rgba(16,185,129,0.35)', whiteSpace: 'nowrap' }}>
+                                    지급완료
+                                  </span>
+                                ) : isMatched ? (
+                                  <span style={{ padding: '2px 6px', borderRadius: '4px', fontSize: '11px', fontWeight: 800, backgroundColor: 'rgba(34,197,94,0.12)', color: '#16a34a', border: '1px solid rgba(34,197,94,0.35)', whiteSpace: 'nowrap' }}>
+                                    대사일치
+                                  </span>
+                                ) : (
+                                  <span style={{ padding: '2px 6px', borderRadius: '4px', fontSize: '11px', fontWeight: 700, backgroundColor: 'var(--bg-body)', color: 'var(--text-muted)', border: '1px solid var(--border-color)', whiteSpace: 'nowrap' }}>
+                                    대사대기
+                                  </span>
+                                )}
+                              </td>
+                              <td style={{ padding: '6px 10px', whiteSpace: 'nowrap' }}>{d.loadingDate || d.requestDate}</td>
+                              <td style={{ padding: '6px 10px' }}>
+                                <strong style={{ color: 'var(--text-primary)' }}>{displayCustomer}</strong> | {d.destinationAddress || '도착지미지정'} ({d.driverName || '기사미배정'})
+                              </td>
+                              <td style={{ padding: '6px 10px', textAlign: 'right', fontWeight: 800, color: 'var(--primary)' }}>
+                                ₩{cost.toLocaleString()}
+                              </td>
+                              <td style={{ textAlign: 'center', color: 'var(--text-muted)' }}>-</td>
+                              {isPaymentReq ? (
+                                <td colSpan={4} style={{ textAlign: 'center', padding: '6px 10px', fontSize: '11.5px', backgroundColor: 'rgba(37,99,235,0.03)' }}>
+                                  <span style={{ color: '#2563eb', fontWeight: 800 }}>
+                                    {d.memo && d.memo.includes('[통합지급요청:') ? d.memo.split(']')[0].replace('[', '') : '매입 지급요청 완료'}
+                                  </span>
+                                  <span style={{ color: 'var(--text-secondary)', marginLeft: '8px' }}>
+                                    {d.paymentRequestedAt ? `(요청일: ${d.paymentRequestedAt.slice(0, 10)})` : ''} | 확정 운송료 ₩{(d.deliveryCostConfirmed || cost).toLocaleString()}원 (월말 매입 정산 대장 등록됨)
+                                  </span>
+                                </td>
+                              ) : isPaidSettled ? (
+                                <td colSpan={4} style={{ textAlign: 'center', padding: '6px 10px', fontSize: '11.5px', color: '#10b981', fontWeight: 700, backgroundColor: 'rgba(16,185,129,0.03)' }}>
+                                  회계 정산 및 지급 집행 완료 (매입 정산 대장 반영됨)
+                                </td>
+                              ) : (
+                                <td colSpan={4} style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: '11.5px' }}>
+                                  상단 [엑셀 거래명세서 업로드] 시 1:1 대사가 진행됩니다.
+                                </td>
+                              )}
+                              <td style={{ textAlign: 'center', padding: '6px' }}>
+                                {isPaymentReq || isPaidSettled ? (
+                                  <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: 600 }}>
+                                    대사 마감됨
+                                  </span>
+                                ) : (
+                                  <button onClick={(e) => handleOpenCostEdit(d, cost, e)} style={{ padding: '2px 6px', fontSize: '11px', borderRadius: '4px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-body)', cursor: 'pointer' }}>
+                                    금액수정
+                                  </button>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })
                     )
                   ) : (
                     reconPairs
@@ -5524,6 +5655,224 @@ export const TruckDispatch: React.FC = () => {
           </div>
         );
       })()}
+
+      {/* 💳 매입 지급 요청 완료 성공 모달 (전용 완료 카드 UI) */}
+      {paymentSuccessInfo && (
+        <div 
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: 'rgba(0, 0, 0, 0.65)',
+            backdropFilter: 'blur(4px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 99999,
+            padding: '20px'
+          }}
+          onClick={() => setPaymentSuccessInfo(null)}
+        >
+          <div 
+            style={{
+              backgroundColor: 'var(--bg-card)',
+              border: '1px solid rgba(16, 185, 129, 0.4)',
+              borderRadius: '16px',
+              padding: '26px',
+              width: '100%',
+              maxWidth: '480px',
+              boxShadow: '0 20px 40px rgba(0, 0, 0, 0.45)',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '18px'
+            }}
+            onClick={e => e.stopPropagation()}
+          >
+            {/* 모달 헤더: 녹색 성공 아이콘 + 건조한 명사 타이틀 + 닫기 버튼 */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <div style={{
+                  width: '38px',
+                  height: '38px',
+                  borderRadius: '10px',
+                  backgroundColor: 'rgba(16, 185, 129, 0.15)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  border: '1px solid rgba(16, 185, 129, 0.3)'
+                }}>
+                  <CheckCircle2 size={22} style={{ color: '#10b981' }} />
+                </div>
+                <div>
+                  <h3 style={{ fontSize: '17px', fontWeight: 900, margin: 0, color: 'var(--text-primary)' }}>
+                    매입 지급 요청 완료
+                  </h3>
+                  <div style={{ fontSize: '11.5px', color: 'var(--text-muted)', marginTop: '2px' }}>
+                    운송료 대사 승인 및 회계 지급 요청 등록
+                  </div>
+                </div>
+              </div>
+              <button 
+                type="button" 
+                onClick={() => setPaymentSuccessInfo(null)} 
+                style={{ 
+                  background: 'none', 
+                  border: 'none', 
+                  color: 'var(--text-muted)', 
+                  cursor: 'pointer',
+                  padding: '4px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  borderRadius: '6px'
+                }}
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* 본문 1: 식별 번호 & 상태 배지 */}
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: '1fr 1fr',
+              gap: '10px'
+            }}>
+              <div style={{
+                backgroundColor: 'var(--bg-body)',
+                border: '1px solid var(--border-color)',
+                borderRadius: '10px',
+                padding: '12px',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '4px'
+              }}>
+                <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)' }}>지급요청 번호</span>
+                <span style={{ fontSize: '13px', fontWeight: 900, color: '#3b82f6', fontFamily: 'monospace' }}>
+                  {paymentSuccessInfo.bundleCode}
+                </span>
+              </div>
+              <div style={{
+                backgroundColor: 'var(--bg-body)',
+                border: '1px solid var(--border-color)',
+                borderRadius: '10px',
+                padding: '12px',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '4px'
+              }}>
+                <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)' }}>처리 상태</span>
+                <span style={{
+                  fontSize: '12px',
+                  fontWeight: 900,
+                  color: '#10b981',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '4px'
+                }}>
+                  <CheckCircle2 size={13} /> 지급 요청 등록됨
+                </span>
+              </div>
+            </div>
+
+            {/* 본문 2: 집계 상세 카드 */}
+            <div style={{
+              backgroundColor: 'var(--bg-body)',
+              border: '1px solid var(--border-color)',
+              borderRadius: '12px',
+              padding: '14px 16px',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '10px',
+              fontSize: '12.5px'
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ color: 'var(--text-muted)', fontWeight: 600 }}>운송 거래처</span>
+                <span style={{ color: 'var(--text-primary)', fontWeight: 800 }}>{paymentSuccessInfo.companyName}</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ color: 'var(--text-muted)', fontWeight: 600 }}>정산 대상월</span>
+                <span style={{ color: 'var(--text-primary)', fontWeight: 700, fontFamily: 'monospace' }}>{paymentSuccessInfo.reconMonth}</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ color: 'var(--text-muted)', fontWeight: 600 }}>대사 완결 배차 건수</span>
+                <span style={{ color: '#2563eb', fontWeight: 900 }}>{paymentSuccessInfo.totalCount}건</span>
+              </div>
+              <div style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                paddingTop: '10px',
+                borderTop: '1px dashed var(--border-color)',
+                marginTop: '2px'
+              }}>
+                <span style={{ color: 'var(--text-primary)', fontWeight: 800, fontSize: '13px' }}>총 매입 지급금액</span>
+                <span style={{ color: '#10b981', fontWeight: 900, fontSize: '18px' }}>
+                  ₩{paymentSuccessInfo.totalAmount.toLocaleString()}원
+                </span>
+              </div>
+            </div>
+
+            {/* 본문 3: 업무 프로세스 이관 안내 (건조한 텍스트) */}
+            <div style={{
+              backgroundColor: 'rgba(59, 130, 246, 0.08)',
+              border: '1px solid rgba(59, 130, 246, 0.25)',
+              borderRadius: '10px',
+              padding: '11px 14px',
+              fontSize: '11.5px',
+              color: 'var(--text-secondary)',
+              lineHeight: 1.5
+            }}>
+              운송료 대사 내역이 [월말 매입 정산] 대장에 정상 등록되었습니다. 관리부 검토 및 결재 후 최종 지급 집행 단계로 연계됩니다.
+              <div style={{ marginTop: '4px', fontSize: '11px', color: 'var(--text-muted)' }}>
+                ※ 현재 화면에서 재조회 시, 상단 범위 설정의 [지급 상태: 지급요청/완료] 필터를 선택하시면 등록된 지급요청 건들을 언제든지 확인하실 수 있습니다.
+              </div>
+            </div>
+
+            {/* 모달 하단 버튼군 */}
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '4px' }}>
+              <button
+                type="button"
+                onClick={() => handleCopyBundleCode(paymentSuccessInfo.bundleCode)}
+                style={{
+                  padding: '9px 15px',
+                  borderRadius: '8px',
+                  border: '1px solid var(--border-color)',
+                  backgroundColor: 'var(--bg-body)',
+                  color: 'var(--text-primary)',
+                  cursor: 'pointer',
+                  fontWeight: 700,
+                  fontSize: '12.5px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px'
+                }}
+              >
+                {isBundleCopied ? <Check size={14} style={{ color: '#10b981' }} /> : <Copy size={14} />}
+                {isBundleCopied ? '복사됨' : '요청번호 복사'}
+              </button>
+              <button
+                type="button"
+                onClick={() => setPaymentSuccessInfo(null)}
+                className="btn-primary"
+                style={{
+                  padding: '9px 22px',
+                  borderRadius: '8px',
+                  fontWeight: 800,
+                  fontSize: '13px',
+                  backgroundColor: '#10b981',
+                  color: '#fff',
+                  border: 'none',
+                  cursor: 'pointer'
+                }}
+              >
+                확인
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ☀️ 운송 하차지 실시간 날씨 및 주간 예보 모달 */}
       <DestinationWeatherModal

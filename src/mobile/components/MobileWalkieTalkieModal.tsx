@@ -4,7 +4,7 @@ import {
   Radio, Volume2, VolumeX, Mic, MicOff, Play, Square,
   X, Clock, Layers, MessageSquare, ListFilter, ArrowLeft, Bell, BellOff,
   FileText, ChevronRight, Plus, UserPlus, Users, Search, Check,
-  Trash2, LogOut
+  Trash2, LogOut, Loader2
 } from 'lucide-react';
 import { 
   walkieService, WalkieTalkieChannel, WalkieReceiveMode, WalkieMessage, soundEngine, TalkingStatus, WalkieSttEngine,
@@ -81,10 +81,14 @@ export const MobileWalkieTalkieModal: React.FC<MobileWalkieTalkieModalProps> = (
   const [sttStatus, setSttStatus] = useState<'IDLE' | 'LISTENING' | 'ERROR' | 'UNSUPPORTED'>('IDLE');
   const [sttErrorDetail, setSttErrorDetail] = useState<string>('');
 
-  // 🔒 PTT 비동기 트리거 레이스 컨디션 원천 방지용 Refs
+  // 🔒 PTT 비동기 트리거 레이스 컨디션 및 모바일 터치 고스트 클릭 방지 상태 & Refs
+  const [isStarting, setIsStarting] = useState<boolean>(false);
+  const [isStopping, setIsStopping] = useState<boolean>(false);
   const isTransmittingRef = useRef<boolean>(false);
   const isStartingRef = useRef<boolean>(false);
+  const isStoppingRef = useRef<boolean>(false);
   const stopRequestedRef = useRef<boolean>(false);
+  const lastToggleTimeRef = useRef<number>(0);
   const durationTimerRef = useRef<any>(null);
 
   // 📜 대화 스크롤용 Refs
@@ -169,7 +173,7 @@ export const MobileWalkieTalkieModal: React.FC<MobileWalkieTalkieModalProps> = (
     return m.channel === currentChannel;
   });
 
-  // 모달 오픈 시 오디오 컨텍스트 언락 & 닫힐 때 오디오 정지
+  // 모달 오픈 시 오디오 컨텍스트 언락 & 닫힐 때 오디오 정지 및 녹음 취소 세이프가드
   useEffect(() => {
     if (isOpen) {
       walkieService.unlockAudio();
@@ -178,10 +182,37 @@ export const MobileWalkieTalkieModal: React.FC<MobileWalkieTalkieModalProps> = (
         setChannels(walkieService.getChannels(currentUser.id));
       }
     } else {
+      if (durationTimerRef.current) {
+        clearInterval(durationTimerRef.current);
+        durationTimerRef.current = null;
+      }
+      if (isTransmittingRef.current) {
+        walkieService.cancelRecording(currentUser?.id);
+        isTransmittingRef.current = false;
+        setIsTransmitting(false);
+      }
+      isStartingRef.current = false;
+      isStoppingRef.current = false;
+      setIsStarting(false);
+      setIsStopping(false);
+      setRecordDuration(0);
       walkieService.stopAudio();
       setPlayingMessageId(null);
     }
   }, [isOpen, currentUser]);
+
+  // 컴포넌트 언마운트 시 녹음 및 타이머 안전 종료
+  useEffect(() => {
+    return () => {
+      if (durationTimerRef.current) {
+        clearInterval(durationTimerRef.current);
+        durationTimerRef.current = null;
+      }
+      if (isTransmittingRef.current) {
+        walkieService.cancelRecording(currentUser?.id);
+      }
+    };
+  }, []);
 
   // 스마트 스크롤: 스크롤 위치 감지
   const handleFeedScroll = (e: React.UIEvent<HTMLDivElement>) => {
@@ -287,17 +318,29 @@ export const MobileWalkieTalkieModal: React.FC<MobileWalkieTalkieModalProps> = (
   const handleTogglePtt = async () => {
     if (!isPowerOn) return;
 
+    // 🛡️ [고스트 클릭 / 모바일 연타 방지 쿨다운] 700ms 이내 연속 클릭 원천 무시
+    const now = Date.now();
+    if (now - lastToggleTimeRef.current < 700) {
+      return;
+    }
+
+    // 🛡️ 기동 중이거나 송신 전송/종료 처리 중일 때 터치 차단
+    if (isStartingRef.current || isStoppingRef.current) {
+      if (isStartingRef.current) {
+        stopRequestedRef.current = true;
+      }
+      return;
+    }
+
     if (isSomeoneElseTalking) {
       soundEngine.playErrorBeep();
       return;
     }
 
-    // 1. 이미 발언 중이거나 마이크 기동 중인 경우: 다시 터치했으므로 즉시 종료 및 전송!
-    if (isTransmittingRef.current || isStartingRef.current) {
-      if (isStartingRef.current) {
-        stopRequestedRef.current = true;
-        return;
-      }
+    lastToggleTimeRef.current = now;
+
+    // 1. 이미 발언 중인 경우: 다시 터치했으므로 즉시 종료 및 전송!
+    if (isTransmittingRef.current) {
       await finishRecordingAndSend();
       return;
     }
@@ -305,45 +348,57 @@ export const MobileWalkieTalkieModal: React.FC<MobileWalkieTalkieModalProps> = (
     // 2. 발언 시작 (첫 터치)
     walkieService.unlockAudio();
     isStartingRef.current = true;
+    setIsStarting(true);
     stopRequestedRef.current = false;
 
-    const started = await walkieService.startRecording(
-      currentUser ? {
-        id: currentUser.id,
-        name: currentUser.name,
-        deptName: currentUser.department || currentTenant?.displayName || currentTenant?.tradeName || 'eBro'
-      } : undefined,
-      { sttOnly: isMonologueOrderMode }
-    );
+    try {
+      const started = await walkieService.startRecording(
+        currentUser ? {
+          id: currentUser.id,
+          name: currentUser.name,
+          deptName: currentUser.department || currentTenant?.displayName || currentTenant?.tradeName || 'eBro'
+        } : undefined,
+        { sttOnly: isMonologueOrderMode }
+      );
 
-    isStartingRef.current = false;
+      if (started) {
+        if (stopRequestedRef.current) {
+          await finishRecordingAndSend();
+          return;
+        }
 
-    if (started) {
-      if (stopRequestedRef.current) {
-        await finishRecordingAndSend();
-        return;
+        isTransmittingRef.current = true;
+        setIsTransmitting(true);
+        setRecordDuration(0);
+
+        if (durationTimerRef.current) clearInterval(durationTimerRef.current);
+        durationTimerRef.current = setInterval(() => {
+          setRecordDuration(prev => {
+            if (prev >= 45) {
+              // 최대 45초 초과 시 자동 종료 및 전송 세이프가드
+              finishRecordingAndSend();
+              return 45;
+            }
+            return prev + 1;
+          });
+        }, 1000);
       }
-
-      isTransmittingRef.current = true;
-      setIsTransmitting(true);
-      setRecordDuration(0);
-
-      if (durationTimerRef.current) clearInterval(durationTimerRef.current);
-      durationTimerRef.current = setInterval(() => {
-        setRecordDuration(prev => {
-          if (prev >= 45) {
-            // 최대 45초 초과 시 자동 종료 및 전송 세이프가드
-            finishRecordingAndSend();
-            return 45;
-          }
-          return prev + 1;
-        });
-      }, 1000);
+    } catch (err) {
+      console.error('startRecording error:', err);
+    } finally {
+      isStartingRef.current = false;
+      setIsStarting(false);
     }
   };
 
   // ── 송신 완료 및 전송 실행 함수 ──
   const finishRecordingAndSend = async () => {
+    // 🛡️ 이미 종료 처리 중이면 중복 실행 방지
+    if (isStoppingRef.current) return;
+    isStoppingRef.current = true;
+    setIsStopping(true);
+    lastToggleTimeRef.current = Date.now();
+
     if (durationTimerRef.current) {
       clearInterval(durationTimerRef.current);
       durationTimerRef.current = null;
@@ -352,27 +407,38 @@ export const MobileWalkieTalkieModal: React.FC<MobileWalkieTalkieModalProps> = (
     isTransmittingRef.current = false;
     setIsTransmitting(false);
 
-    if (currentUser) {
-      const sent = await walkieService.stopAndSend(
-        {
-          id: currentUser.id,
-          name: currentUser.name,
-          role: currentUser.role,
-          deptName: currentUser.department || currentTenant?.displayName || currentTenant?.tradeName || 'eBro'
-        },
-        currentChannel
-      );
-      if (sent) {
-        setHistory([...walkieService.getHistory()]);
-        if (isMonologueOrderMode && sent.textTranscript) {
-          const base = currentOrderDraft || loadVoiceOrderDraft() || createEmptyDraft();
-          const { updatedDraft } = mergeVoiceFragmentToDraft(base, sent.textTranscript, customers, sites);
-          setCurrentOrderDraft(updatedDraft);
-          saveVoiceOrderDraft(updatedDraft);
+    try {
+      if (currentUser) {
+        const sent = await walkieService.stopAndSend(
+          {
+            id: currentUser.id,
+            name: currentUser.name,
+            role: currentUser.role,
+            deptName: currentUser.department || currentTenant?.displayName || currentTenant?.tradeName || 'eBro'
+          },
+          currentChannel
+        );
+        if (sent) {
+          setHistory([...walkieService.getHistory()]);
+          if (isMonologueOrderMode && sent.textTranscript) {
+            const base = currentOrderDraft || loadVoiceOrderDraft() || createEmptyDraft();
+            const { updatedDraft } = mergeVoiceFragmentToDraft(base, sent.textTranscript, customers, sites);
+            setCurrentOrderDraft(updatedDraft);
+            saveVoiceOrderDraft(updatedDraft);
+          }
         }
       }
+    } catch (err) {
+      console.error('finishRecordingAndSend error:', err);
+    } finally {
+      setRecordDuration(0);
+      // 🛡️ 모바일 브라우저의 지연 합성 클릭(300ms) 및 손가락 잔여 터치가 완전히 소멸된 후 버튼 잠금 해제
+      setTimeout(() => {
+        isStoppingRef.current = false;
+        setIsStopping(false);
+        lastToggleTimeRef.current = Date.now();
+      }, 500);
     }
-    setRecordDuration(0);
   };
 
   // 다시듣기 재생 (토글 정지 및 빈 오디오/오류 검증 피드백)
@@ -1161,20 +1227,24 @@ export const MobileWalkieTalkieModal: React.FC<MobileWalkieTalkieModalProps> = (
               {/* 가로 와이드 PTT 바 버튼 */}
               <button
                 type="button"
-                disabled={!isPowerOn}
+                disabled={!isPowerOn || isStarting || isStopping}
                 onClick={handleTogglePtt}
                 style={{
                   width: '100%',
                   height: '52px',
                   borderRadius: '14px',
-                  border: isTransmitting 
+                  border: isStopping || isStarting
+                    ? '1.5px solid #38bdf8'
+                    : isTransmitting 
                     ? '2px solid #f87171' 
                     : isSomeoneElseTalking
                     ? '2px solid #f59e0b'
                     : isPowerOn 
                     ? '1.5px solid #38bdf8' 
                     : '1px solid #475569',
-                  background: isTransmitting 
+                  background: isStopping || isStarting
+                    ? 'linear-gradient(135deg, #0369a1 0%, #0c4a6e 100%)'
+                    : isTransmitting 
                     ? 'linear-gradient(135deg, #dc2626 0%, #991b1b 100%)' 
                     : isSomeoneElseTalking
                     ? 'linear-gradient(135deg, #78350f 0%, #451a03 100%)'
@@ -1186,10 +1256,12 @@ export const MobileWalkieTalkieModal: React.FC<MobileWalkieTalkieModalProps> = (
                   alignItems: 'center',
                   justifyContent: 'center',
                   gap: '8px',
-                  cursor: isPowerOn ? 'pointer' : 'not-allowed',
+                  cursor: (!isPowerOn || isStarting || isStopping) ? 'not-allowed' : 'pointer',
                   userSelect: 'none',
                   WebkitUserSelect: 'none',
-                  boxShadow: isTransmitting 
+                  boxShadow: isStopping || isStarting
+                    ? '0 0 16px rgba(56, 189, 248, 0.4)'
+                    : isTransmitting 
                     ? '0 0 20px rgba(239, 68, 68, 0.7)' 
                     : isSomeoneElseTalking
                     ? '0 0 15px rgba(245, 158, 11, 0.4)'
@@ -1199,7 +1271,24 @@ export const MobileWalkieTalkieModal: React.FC<MobileWalkieTalkieModalProps> = (
                   transition: 'all 0.15s ease'
                 }}
               >
-                {isTransmitting ? (
+                {isStopping ? (
+                  <>
+                    <Loader2 size={20} className="animate-spin" color="#38bdf8" />
+                    <span style={{ fontSize: '14.5px', fontWeight: '800', color: '#e0f2fe' }}>
+                      음성 전송 중...
+                    </span>
+                    <span style={{ fontSize: '11px', opacity: 0.85, fontWeight: '500', color: '#bae6fd' }}>
+                      (잠시만 대기)
+                    </span>
+                  </>
+                ) : isStarting ? (
+                  <>
+                    <Loader2 size={20} className="animate-spin" color="#38bdf8" />
+                    <span style={{ fontSize: '14.5px', fontWeight: '800', color: '#e0f2fe' }}>
+                      마이크 연결 중...
+                    </span>
+                  </>
+                ) : isTransmitting ? (
                   <>
                     <Mic size={20} color="#ffffff" />
                     <span style={{ fontSize: '14.5px', fontWeight: '900', letterSpacing: '0.5px' }}>

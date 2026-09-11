@@ -5,7 +5,7 @@ import {
   LayoutDashboard, Users, UserCheck, Package, Layers, PlusCircle,
   Truck, Wrench, Shield, ShoppingBag, CreditCard, LogOut, Sun, Moon, Menu, X, Zap, Settings, Database as DatabaseIcon,
   TrendingUp, Clock, AlertTriangle, Building2, ChevronDown, ChevronRight, Briefcase, Box, FolderKanban, ShieldAlert, Terminal, ArrowLeftRight, CheckSquare,
-  Smartphone, Monitor, Car, FileText, Search, Printer, PackagePlus, Boxes, Calendar
+  Smartphone, Monitor, Car, FileText, Search, Printer, PackagePlus, Boxes, Calendar, Camera
 } from 'lucide-react';
 
 import { WeatherWidget } from './components/WeatherWidget';
@@ -28,25 +28,27 @@ import { Contracts } from './pages/Contracts';
 import { Billings } from './pages/Billings';
 import { Receivables } from './pages/Receivables';
 import { BankMatching } from './pages/BankMatching';
-import { TruckDispatch } from './pages/TruckDispatch';
 import { TransportMaster } from './pages/TransportMaster';
-import { DevDataUploader } from './pages/DevDataUploader';
+import { Deliveries } from './pages/Deliveries';
+import { TruckDispatch } from './pages/TruckDispatch';
 import { Repairs } from './pages/Repairs';
 import { SmartAsRequest } from './pages/SmartAsRequest';
 import { FieldAsManagement } from './pages/FieldAsManagement';
-import { SmartDispatch } from './pages/smart_dispatch';
-import { SmartDispatch4 } from './pages/smart_dispatch4';
-import { SmartReturn } from './pages/smart_return';
-import { AssetHistory } from './pages/asset_history';
-import { AssetAssignment } from './pages/asset_assignment';
 import { OrganizationSettings } from './pages/OrganizationSettings';
-import { Vendors } from './pages/Vendors';
-import { GoogleConfig } from './pages/GoogleConfig';
-import { LeaveOtPage } from './pages/LeaveOtPage';
+import { OtManagementPage } from './pages/OtManagementPage';
 import { LeaveApplicationPage } from './pages/LeaveApplicationPage';
 import { LeaveManagementPage } from './pages/LeaveManagementPage';
-import { OtManagementPage } from './pages/OtManagementPage';
+import { LeaveOtPage } from './pages/LeaveOtPage';
 import { VehicleOperationLogPage } from './pages/VehicleOperationLogPage';
+import { Vendors } from './pages/Vendors';
+import { SmartDispatch } from './pages/smart_dispatch';
+import { SmartDispatch2 } from './pages/smart_dispatch2';
+import { SmartDispatch3 } from './pages/smart_dispatch3';
+import { SmartDispatch4 } from './pages/smart_dispatch4';
+import { SmartReturn } from './pages/smart_return';
+import { DevDataUploader } from './pages/DevDataUploader';
+import { AssetHistory } from './pages/asset_history';
+import { AssetAssignment } from './pages/asset_assignment';
 import { PayrollPage } from './pages/PayrollPage';
 import { CorporateCardPage } from './pages/CorporateCardPage';
 import { CashFlowPage } from './pages/CashFlowPage';
@@ -55,8 +57,10 @@ import { OutboundInspections } from './pages/outbound_inspections';
 import { DepreciationExecution } from './pages/depreciation_execution';
 import { PurchaseSettlementPage } from './pages/PurchaseSettlementPage';
 import { RegularReportsPage } from './pages/RegularReportsPage';
+import { GoogleConfig } from './pages/GoogleConfig';
 import { InitialDbUploader } from './pages/InitialDbUploader';
 import { AgentHeaderBadge } from './components/AgentHeaderBadge';
+import { ManualStudioModal } from './components/ManualStudioModal';
 import { MirrorSyncProgressToast } from './components/MirrorSyncProgressToast';
 import { MobileApp } from './mobile/MobileApp';
 import { initWorkNotificationListener } from './utils/workNotificationService';
@@ -91,6 +95,9 @@ const App: React.FC = () => {
 
   // 모바일 메뉴 사이드바 토글 상태
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
+  // 📸 매뉴얼 스튜디오 가이드 & 다운로드 모달 상태
+  const [isManualStudioOpen, setIsManualStudioOpen] = useState(false);
 
   // ─── 메뉴 검색 네비게이터 상태 ───
   const [menuSearchOpen, setMenuSearchOpen] = useState(false);
@@ -283,6 +290,14 @@ const App: React.FC = () => {
         { id: 'permission', name: '사용자 및 권한', icon: <Shield size={16} />, component: <UsersPermissions /> },
         { id: 'payroll', name: '급여 정산', icon: <CreditCard size={16} />, component: <PayrollPage /> },
         { id: 'leave_management', name: '연차관리', icon: <UserCheck size={16} />, component: <LeaveManagementPage /> },
+      ]
+    },
+    {
+      id: 'grp_tools',
+      name: '도구 및 다운로드',
+      icon: <Camera size={17} />,
+      items: [
+        { id: 'manual_studio', name: '매뉴얼 스튜디오', icon: <Camera size={16} />, component: <ManualStudioModal isOpen={true} isInline={true} /> },
       ]
     },
     {
@@ -596,6 +611,43 @@ const App: React.FC = () => {
             <div>• 아이패드는 화면 회전 및 상단 모드 전환을 통해 모바일/PC 뷰를 자유롭게 선택할 수 있습니다.</div>
           </div>
 
+          {/* 📸 매뉴얼 스튜디오 안내 및 다운로드 (로그인 전 공용 배포) */}
+          <div style={{
+            marginTop: '12px',
+            padding: '10px 14px',
+            borderRadius: '12px',
+            backgroundColor: 'rgba(37, 99, 235, 0.08)',
+            border: '1px solid rgba(37, 99, 235, 0.25)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            fontSize: '12px'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <Camera size={15} color="#2563EB" />
+              <span style={{ fontWeight: '600', color: 'var(--text-primary)' }}>
+                업무 매뉴얼 제작 도구 (Manual Studio)
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setIsManualStudioOpen(true)}
+              style={{
+                padding: '5px 12px',
+                borderRadius: '6px',
+                backgroundColor: '#2563EB',
+                color: '#FFFFFF',
+                fontSize: '11px',
+                fontWeight: 'bold',
+                border: 'none',
+                cursor: 'pointer',
+                whiteSpace: 'nowrap'
+              }}
+            >
+              설명서 / 다운로드
+            </button>
+          </div>
+
           {/* 테스트 계정 안내 — 개발 환경(localhost)에서만 표시 */}
           {(window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') && (
             <div style={{ marginTop: '16px', padding: '12px', border: '1px dashed #f59e0b', borderRadius: 'var(--radius-sm)', backgroundColor: 'rgba(251,191,36,0.07)', fontSize: '12px' }}>
@@ -609,6 +661,9 @@ const App: React.FC = () => {
             </div>
           )}
         </div>
+
+        {/* 📸 매뉴얼 스튜디오 안내 및 다운로드 모달 (로그인 화면용) */}
+        <ManualStudioModal isOpen={isManualStudioOpen} onClose={() => setIsManualStudioOpen(false)} />
       </div>
     );
   }
@@ -809,6 +864,30 @@ const App: React.FC = () => {
 
           {/* 🤖 로컬 사이드카 에이전트 실시간 상태 미니 배지 */}
           <AgentHeaderBadge currentUser={currentUser} />
+
+          {/* 📸 매뉴얼 스튜디오 안내 및 다운로드 버튼 */}
+          <button
+            onClick={() => setIsManualStudioOpen(true)}
+            style={{
+              padding: '6px 13px',
+              borderRadius: '20px',
+              backgroundColor: 'var(--bg-app)',
+              color: 'var(--text-primary)',
+              border: '1px solid var(--border-color)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              fontSize: '12.5px',
+              fontWeight: '600',
+              cursor: 'pointer',
+              whiteSpace: 'nowrap',
+              transition: 'all 0.15s ease'
+            }}
+            title="매뉴얼 스튜디오 (Manual Studio) 사용설명서 및 다운로드"
+          >
+            <Camera size={14} color="#2563EB" />
+            매뉴얼 스튜디오
+          </button>
 
 
           {/* 모바일 현장 전용 뷰 전환 버튼 */}
@@ -1174,6 +1253,9 @@ const App: React.FC = () => {
 
       {/* 🚀 구글 드라이브 실시간 미러링 진행상황 플로팅 토스트 */}
       <MirrorSyncProgressToast />
+
+      {/* 📸 매뉴얼 스튜디오 안내 및 다운로드 모달 */}
+      <ManualStudioModal isOpen={isManualStudioOpen} onClose={() => setIsManualStudioOpen(false)} />
 
     </div>
   );

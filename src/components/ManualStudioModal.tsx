@@ -146,6 +146,29 @@ export const ManualStudioModal: React.FC<ManualStudioModalProps> = ({ isOpen = t
               <Download size={14} />
               다운로드 (27.97 MB)
             </a>
+            <a
+              href="https://www.dragonrpa.co.kr/downloads/ManualStudio.exe"
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                padding: '6px 12px',
+                borderRadius: '6px',
+                backgroundColor: 'var(--bg-app, #F8FAFC)',
+                color: 'var(--text-primary, #0F172A)',
+                border: '1px solid var(--border-color, #CBD5E1)',
+                fontSize: '12px',
+                fontWeight: '600',
+                textDecoration: 'none',
+                whiteSpace: 'nowrap'
+              }}
+              title="공식 홈페이지 백업 미러"
+            >
+              <ExternalLink size={13} />
+              공식 홈 미러
+            </a>
             {onClose && (
               <button
                 onClick={onClose}
@@ -255,13 +278,13 @@ export const ManualStudioModal: React.FC<ManualStudioModalProps> = ({ isOpen = t
                   }}
                 >
                   <div style={{ fontSize: '11px', color: 'var(--text-secondary, #64748B)', whiteSpace: 'nowrap' }}>
-                    파일 크기 (초경량)
+                    파일 크기
                   </div>
                   <div style={{ fontSize: '18px', fontWeight: 'bold', marginTop: '4px', whiteSpace: 'nowrap', color: '#2563EB' }}>
                     27.97 MB
                   </div>
                   <div style={{ fontSize: '11px', color: '#16A34A', marginTop: '2px' }}>
-                    기존 대비 52% 경량화
+                    58.4MB ➔ 27.97MB
                   </div>
                 </div>
 
@@ -277,10 +300,10 @@ export const ManualStudioModal: React.FC<ManualStudioModalProps> = ({ isOpen = t
                     실행 형태
                   </div>
                   <div style={{ fontSize: '18px', fontWeight: 'bold', marginTop: '4px', whiteSpace: 'nowrap' }}>
-                    무설치 단일 EXE
+                    단일 실행 파일
                   </div>
                   <div style={{ fontSize: '11px', color: 'var(--text-secondary, #64748B)', marginTop: '2px' }}>
-                    Python/런타임 불필요
+                    무설치 즉시 실행
                   </div>
                 </div>
 
@@ -293,13 +316,13 @@ export const ManualStudioModal: React.FC<ManualStudioModalProps> = ({ isOpen = t
                   }}
                 >
                   <div style={{ fontSize: '11px', color: 'var(--text-secondary, #64748B)', whiteSpace: 'nowrap' }}>
-                    컴파일 엔진
+                    빌드 엔진
                   </div>
                   <div style={{ fontSize: '18px', fontWeight: 'bold', marginTop: '4px', whiteSpace: 'nowrap' }}>
                     Nuitka C 기계어
                   </div>
                   <div style={{ fontSize: '11px', color: '#2563EB', marginTop: '2px' }}>
-                    GCC 15.2.0 네이티브
+                    GCC 15.2 네이티브
                   </div>
                 </div>
 
@@ -318,12 +341,12 @@ export const ManualStudioModal: React.FC<ManualStudioModalProps> = ({ isOpen = t
                     2026. 12. 31
                   </div>
                   <div style={{ fontSize: '11px', color: 'var(--text-secondary, #64748B)', marginTop: '2px' }}>
-                    전 기능 무제한 무료
+                    전사 무상 지원
                   </div>
                 </div>
               </div>
 
-              {/* 퀵스타트 배너 */}
+              {/* 다운로드 실행 배너 */}
               <div
                 style={{
                   padding: '16px',
@@ -332,37 +355,62 @@ export const ManualStudioModal: React.FC<ManualStudioModalProps> = ({ isOpen = t
                   border: '1px solid #BFDBFE',
                   display: 'flex',
                   alignItems: 'center',
-                  justifyContent: 'space-between'
+                  justifyContent: 'space-between',
+                  gap: '16px'
                 }}
               >
                 <div>
                   <div style={{ fontSize: '14px', fontWeight: 'bold', color: '#1E40AF' }}>
-                    🚀 프로그램 다운로드 및 즉시 실행
+                    프로그램 다운로드 및 실행
                   </div>
                   <div style={{ fontSize: '12px', color: '#1E3A8A', marginTop: '4px' }}>
-                    별도의 설치 과정 없이 다운로드 받은 <code>ManualStudio.exe</code>를 더블클릭하면 0.5초 만에 실행됩니다.
+                    설치 과정 없이 <code>ManualStudio.exe</code> 실행 시 즉시 구동됩니다.
                   </div>
                 </div>
-                <a
-                  href="/downloads/ManualStudio.exe"
-                  download="ManualStudio.exe"
-                  style={{
-                    padding: '8px 18px',
-                    borderRadius: '6px',
-                    backgroundColor: '#1D4ED8',
-                    color: '#FFFFFF',
-                    fontSize: '13px',
-                    fontWeight: 'bold',
-                    textDecoration: 'none',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '6px',
-                    whiteSpace: 'nowrap'
-                  }}
-                >
-                  <Download size={16} />
-                  ManualStudio.exe 다운로드
-                </a>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
+                  <a
+                    href="/downloads/ManualStudio.exe"
+                    download="ManualStudio.exe"
+                    style={{
+                      padding: '8px 16px',
+                      borderRadius: '6px',
+                      backgroundColor: '#1D4ED8',
+                      color: '#FFFFFF',
+                      fontSize: '12.5px',
+                      fontWeight: 'bold',
+                      textDecoration: 'none',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      whiteSpace: 'nowrap'
+                    }}
+                  >
+                    <Download size={15} />
+                    다운로드 (27.97 MB)
+                  </a>
+                  <a
+                    href="https://www.dragonrpa.co.kr/downloads/ManualStudio.exe"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{
+                      padding: '8px 14px',
+                      borderRadius: '6px',
+                      backgroundColor: '#FFFFFF',
+                      color: '#1D4ED8',
+                      border: '1px solid #BFDBFE',
+                      fontSize: '12.5px',
+                      fontWeight: 'bold',
+                      textDecoration: 'none',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      whiteSpace: 'nowrap'
+                    }}
+                  >
+                    <ExternalLink size={14} />
+                    공식홈 미러
+                  </a>
+                </div>
               </div>
 
               {/* 4단계 실무 워크플로우 카드 */}

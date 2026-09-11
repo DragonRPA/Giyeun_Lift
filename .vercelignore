@@ -8,7 +8,7 @@ node_modules
 scratch
 scripts
 src/tests
-public/downloads/*.exe
+public/downloads/eBroAgent.exe
 public/downloads/*.zip
 *.log
 *.md

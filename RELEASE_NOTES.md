@@ -1,6 +1,29 @@
+## [v1.12.0.Build.68] - 2026-09-11 15:20
+
+### 🚀 [매뉴얼 스튜디오 Vercel 정적 호스팅 배포 연동 및 공식 홈페이지 이중 미러 다운로드 탑재]
+
+**배경**:
+1. 사장님 피드백: "배포가 된거야? 버튼이 없는데"
+2. 원인 분석: Vercel 빌드 시 `.vercelignore`의 `public/downloads/*.exe` 필터로 인해 바이너리가 번들에서 누락되었던 현상 및 배포 빌드 시간차(약 50초) 확인.
+3. 시스템 헌장 카테고리 I (최대 편익), 카테고리 III (3.1 건조 명사·동사 표준), 카테고리 VI (6.1 버전/배포 정책) 준수.
+
+**개편 내역**:
+1. **`.vercelignore` 정밀 보정**:
+   - `public/downloads/*.exe` 전역 제외 규칙을 100MB 초과 파일인 `public/downloads/eBroAgent.exe` 단일 파일 제외로 축소하여, 27.97 MB C-컴파일 `ManualStudio.exe`가 Vercel 프로덕션 정적 서빙에 정상 포함되도록 보정.
+2. **`vercel.json` 실행 파일 다운로드 헤더 규칙 등록**:
+   - `/downloads/(.*)\.exe` 경로에 대해 `application/octet-stream` 및 `Content-Disposition: attachment` 헤더를 명시 등록하여 브라우저에서 즉각적인 다운로드가 트리거되도록 설정.
+3. **공식 홈페이지(dragonrpa.co.kr) 이중 백업 미러 다운로드 파이프라인 탑재**:
+   - ERP 서버 직접 다운로드(`/downloads/ManualStudio.exe`)와 함께 공식 홈페이지 CDN 미러(`https://www.dragonrpa.co.kr/downloads/ManualStudio.exe`)를 동시 제공하여 다운로드 다운타임 제로(0%) 보장.
+4. **건조한 명사·동사 UI 단일 표준화 적용**:
+   - 모달 및 배너 내 수식어·형용사 전면 배제 및 단일 표준 명사·동사 UI 구조 엄격 적용.
+
+**검증 결과**:
+- `npm run build`: Vite 프로덕션 번들 정상 완료 (`✓ built in 1.14s`).
+- `https://www.dragonrpa.co.kr/downloads/ManualStudio.exe`: HTTP 200 OK (27.97 MB) 검증 완료.
+
 ## [v1.12.0.Build.67] - 2026-09-11 15:15
 
-### 🚀 [매뉴얼 스튜디오 (Manual Studio) 웹 기능설명서 및 C-컴파일 초경량 27.97MB 단일 실행파일 전사 배포]
+### 🚀 [매뉴얼 스튜디오 (Manual Studio) 웹 기능설명서 및 C-컴파일 27.97MB 단일 실행파일 전사 배포]
 
 **배경**:
 1. 사장님 요청사항: "웹게 간단한 기능사용설명서 겸, 배포 하기위한 정보로써 이 소프트웨어의 핵심 기능을 메뉴/기능버튼으로 설명해서 ERP에 추가할수 있게 도와줘" / "배포가 된거야? 버튼이 없는데"

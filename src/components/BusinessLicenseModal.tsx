@@ -57,6 +57,7 @@ export const BusinessLicenseModal: React.FC<BusinessLicenseModalProps> = ({
 
   // 기존 고객 보완 항목 체크박스 상태
   const [diffSelections, setDiffSelections] = useState({
+    name: true,
     bizRegNo: true,
     representative: true,
     address: true,
@@ -167,14 +168,16 @@ export const BusinessLicenseModal: React.FC<BusinessLicenseModalProps> = ({
         paymentDueDay: 25
       });
 
-      // 기존 고객이 있는 경우, 기존 데이터가 '미상'이거나 비어있는 항목만 기본 체크
+      // 기존 고객이 있는 경우, 기존 데이터가 '미상'이거나 비어있는 항목 및 사장님 지시 항목(상호, 업태, 종목) 기본 체크
       if (matched) {
+        const isNameDifferent = Boolean(result.companyName && matched.name !== result.companyName);
         setDiffSelections({
+          name: isNameDifferent,
           bizRegNo: !matched.bizRegNo || matched.bizRegNo === '미상' || matched.bizRegNo !== result.bizRegNo,
           representative: !matched.representative || matched.representative === '미상' || (!!result.representative && matched.representative !== result.representative),
           address: !matched.address || matched.address === '미상' || (!!result.address && matched.address !== result.address),
-          bizType: !matched.bizType || (!!result.bizType && matched.bizType !== result.bizType),
-          bizItem: !matched.bizItem || (!!result.bizItem && matched.bizItem !== result.bizItem),
+          bizType: true, // 사장님 지시: 업태 항상 사업자등록증 기준으로 업데이트
+          bizItem: true, // 사장님 지시: 종목 항상 사업자등록증 기준으로 업데이트
           taxEmail: !matched.repEmail || matched.repEmail === '미상' || (!!result.taxEmail && matched.repEmail !== result.taxEmail),
           repContact: !matched.repContact || matched.repContact === '미상' || (!!result.repContact && matched.repContact !== result.repContact),
           openingDate: !matched.openingDate || (!!result.openingDate && matched.openingDate !== result.openingDate)
@@ -269,6 +272,7 @@ export const BusinessLicenseModal: React.FC<BusinessLicenseModalProps> = ({
       const isNtsClosed = ntsResult?.status === 'CLOSED';
       const updatedCust: Customer = {
         ...matchedCustomer,
+        name: (diffSelections.name && analysisResult.companyName) ? analysisResult.companyName.trim() : matchedCustomer.name,
         bizRegNo: (diffSelections.bizRegNo && analysisResult.bizRegNo) ? analysisResult.bizRegNo : matchedCustomer.bizRegNo,
         representative: (diffSelections.representative && analysisResult.representative) ? analysisResult.representative : matchedCustomer.representative,
         address: (diffSelections.address && analysisResult.address) ? analysisResult.address : matchedCustomer.address,
@@ -511,6 +515,28 @@ export const BusinessLicenseModal: React.FC<BusinessLicenseModalProps> = ({
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-800 bg-slate-900/60">
+                        {/* 0. 상호 (법인명) - 사장님 지시: 등록증 기준으로 개편 */}
+                        <tr className="hover:bg-slate-800/40">
+                          <td className="p-2.5 text-center">
+                            <input
+                              type="checkbox"
+                              checked={diffSelections.name}
+                              onChange={(e) => setDiffSelections({ ...diffSelections, name: e.target.checked })}
+                              className="rounded border-slate-600 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                            />
+                          </td>
+                          <td className="p-2.5 font-medium text-slate-300 whitespace-nowrap">상호 (법인명)</td>
+                          <td className="p-2.5 text-slate-400">{matchedCustomer.name || '미상'}</td>
+                          <td className="p-2.5 text-emerald-300 font-semibold">
+                            {analysisResult.companyName || '(미추출)'}
+                            {analysisResult.companyName && matchedCustomer.name !== analysisResult.companyName && (
+                              <span className="ml-2 px-1.5 py-0.5 rounded text-[10px] bg-amber-500/20 text-amber-300 font-normal">
+                                등록증 기준 교체
+                              </span>
+                            )}
+                          </td>
+                        </tr>
+
                         {/* 1. 사업자등록번호 */}
                         <tr className="hover:bg-slate-800/40">
                           <td className="p-2.5 text-center">

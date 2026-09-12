@@ -16,7 +16,8 @@ export const MENU_CATEGORIES = SYSTEM_MENU_CONFIG;
 export const UsersPermissions: React.FC = () => {
   const { 
     users, permissions, updatePermissions, saveUser, currentUser, hasPermission, showErrorModal,
-    customRoles, rolePermissions, saveCustomRole, deleteCustomRole, saveRolePermissions, assignUserRole 
+    customRoles, rolePermissions, saveCustomRole, deleteCustomRole, saveRolePermissions, assignUserRole,
+    loadTablesForMenu
   } = useApp();
 
   const isSuperAdmin = currentUser?.id === 'u-1' || currentUser?.id === 'sys-admin';
@@ -46,6 +47,13 @@ export const UsersPermissions: React.FC = () => {
   const [filterRole, setFilterRole] = useState('ALL');
   const [previewUser, setPreviewUser] = useState<User | null>(null);
   const [showGhostModal, setShowGhostModal] = useState(false);
+
+  // 권한 및 부서 테이블 로드 연동
+  useEffect(() => {
+    if (loadTablesForMenu) {
+      loadTablesForMenu('permission');
+    }
+  }, []);
 
   // 기본 권한 선택
   useEffect(() => {
@@ -83,14 +91,38 @@ export const UsersPermissions: React.FC = () => {
     setIsRoleDirty(false);
   }, [selectedRoleId, rolePermissions]);
 
-  // 임직원 소속 부서 매핑
+  // 조직도 부서 로딩 및 맵 생성 (DB 최신화 연동)
+  const departments: Department[] = useMemo(() => {
+    if (db.departments && db.departments.length > 0) {
+      return db.departments;
+    }
+    const local = localStorage.getItem('erp_departments');
+    if (local) {
+      try {
+        const parsed = JSON.parse(local);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      } catch {}
+    }
+    return [];
+  }, [users]);
+
+  // 부서 ID -> 부서명 맵
   const departmentMap = useMemo(() => {
     const map = new Map<string, string>();
-    (db.departments || []).forEach(d => {
+    departments.forEach(d => {
       if (d.id && d.name) map.set(d.id, d.name);
     });
     return map;
-  }, []);
+  }, [departments]);
+
+  // 부서 ID -> Department 객체 맵
+  const departmentObjMap = useMemo(() => {
+    const map = new Map<string, Department>();
+    departments.forEach(d => {
+      if (d.id) map.set(d.id, d);
+    });
+    return map;
+  }, [departments]);
 
   const getDeptName = (u: User): string => {
     if (u.departmentId && departmentMap.has(u.departmentId)) {
@@ -99,13 +131,52 @@ export const UsersPermissions: React.FC = () => {
     if (u.department && u.department.trim()) return u.department.trim();
     if (u.departmentId) {
       const dId = u.departmentId.toUpperCase();
-      if (dId.includes('0000001') || dId === 'DEPT-1') return '경영진';
+      if (dId.includes('0000001') || dId === 'DEPT-1') return '기연리프트';
       if (dId.includes('0000002') || dId === 'DEPT-2') return '관리부';
-      if (dId.includes('0000003') || dId === 'DEPT-3') return '영업팀';
+      if (dId.includes('0000003') || dId === 'DEPT-3') return '영업부';
       if (dId.includes('0000004') || dId === 'DEPT-4') return '출고팀';
       if (dId.includes('0000005') || dId === 'DEPT-5') return 'AS팀';
+      if (dId.includes('0000006') || dId === 'DEPT-6') return '외국인';
     }
     return '미배정';
+  };
+
+  // 🏛️ 조직계층레벨 계산 (1: 최상위 본사/기연리프트, 2: 1차 사업부서, 3: 2차 하위부서/외국인, 999: 미배정)
+  const getDeptHierarchyLevel = (u: User): number => {
+    const dName = getDeptName(u);
+    if (dName === '미배정') return 999;
+
+    // 1. Department 객체 트리 기반 계층 깊이 탐색
+    if (u.departmentId && departmentObjMap.has(u.departmentId)) {
+      let level = 1;
+      let cur: Department | undefined = departmentObjMap.get(u.departmentId);
+      const visited = new Set<string>();
+      while (cur && cur.parentDepartmentId) {
+        if (visited.has(cur.id)) break;
+        visited.add(cur.id);
+        cur = departmentObjMap.get(cur.parentDepartmentId);
+        level++;
+        if (level > 20) break;
+      }
+      return level;
+    }
+
+    // 2. 표준 Fallback ID 및 명칭 기반 레벨 매핑
+    const dId = (u.departmentId || '').toUpperCase();
+    if (dId.includes('0000001') || dId === 'DEPT-1' || dName === '기연리프트' || dName === '경영진') {
+      return 1;
+    }
+    if (
+      ['DEPT-0000002', 'DEPT-2', 'DEPT-0000003', 'DEPT-3', 'DEPT-0000004', 'DEPT-4', 'DEPT-0000005', 'DEPT-5'].some(id => dId.includes(id)) ||
+      ['관리부', '영업부', '영업팀', '출고팀', 'AS팀'].includes(dName)
+    ) {
+      return 2;
+    }
+    if (dId.includes('0000006') || dId === 'DEPT-6' || dName === '외국인') {
+      return 3;
+    }
+
+    return 4;
   };
 
   // 테스터 제외 실사용자 목록
@@ -362,9 +433,19 @@ export const UsersPermissions: React.FC = () => {
     }
   };
 
-  // 직원 목록 필터링
+  // 실제 임직원들이 속한 부서 목록 (필터 드롭다운용)
+  const availableDeptNames = useMemo(() => {
+    const set = new Set<string>();
+    activeUsers.forEach(u => {
+      const dName = getDeptName(u);
+      if (dName && dName !== '미배정') set.add(dName);
+    });
+    return Array.from(set).sort((a, b) => a.localeCompare(b, 'ko'));
+  }, [activeUsers, departmentMap]);
+
+  // 직원 목록 필터링 및 조직계층레벨 -> 부서 -> 이름 오름차순 정렬
   const filteredUsers = useMemo(() => {
-    return activeUsers.filter(u => {
+    const filtered = activeUsers.filter(u => {
       const matchText = !searchTerm || 
         u.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
         u.loginId?.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -385,7 +466,33 @@ export const UsersPermissions: React.FC = () => {
 
       return true;
     });
-  }, [activeUsers, searchTerm, filterDept, filterRole, departmentMap]);
+
+    // 🏛️ 정렬 기준:
+    // 1순위: 조직계층레벨 오름차순 (1: 최상위/기연리프트 -> 2: 1차 사업부서 -> 3: 2차 하위부서/외국인 -> 999: 미배정)
+    // 2순위: 부서명 오름차순 (가나다순)
+    // 3순위: 성명 오름차순 (가나다순)
+    return [...filtered].sort((a, b) => {
+      // 1. 조직계층레벨 오름차순
+      const levelA = getDeptHierarchyLevel(a);
+      const levelB = getDeptHierarchyLevel(b);
+      if (levelA !== levelB) return levelA - levelB;
+
+      // 2. 부서명 오름차순
+      const deptA = getDeptName(a);
+      const deptB = getDeptName(b);
+      const deptComp = deptA.localeCompare(deptB, 'ko');
+      if (deptComp !== 0) return deptComp;
+
+      // 3. 성명 오름차순
+      const nameA = a.name || '';
+      const nameB = b.name || '';
+      const nameComp = nameA.localeCompare(nameB, 'ko');
+      if (nameComp !== 0) return nameComp;
+
+      // 4. 사번/ID 오름차순 (동명이인 대비)
+      return (a.loginId || a.id || '').localeCompare(b.loginId || b.id || '', 'ko');
+    });
+  }, [activeUsers, searchTerm, filterDept, filterRole, departmentMap, departmentObjMap]);
 
   // 상속된 권한 메뉴 요약 헬퍼
   const getUserInheritedMenus = (u: User) => {
@@ -1001,11 +1108,12 @@ export const UsersPermissions: React.FC = () => {
                 }}
               >
                 <option value="ALL">전체 부서</option>
-                <option value="경영진">경영진</option>
-                <option value="관리부">관리부</option>
-                <option value="영업팀">영업팀</option>
-                <option value="출고팀">출고팀</option>
-                <option value="AS팀">AS팀</option>
+                {availableDeptNames.map(dept => (
+                  <option key={dept} value={dept}>{dept}</option>
+                ))}
+                {activeUsers.some(u => getDeptName(u) === '미배정') && (
+                  <option value="미배정">미배정</option>
+                )}
               </select>
 
               <select

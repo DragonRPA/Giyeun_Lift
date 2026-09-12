@@ -140,19 +140,16 @@ export const Customers: React.FC = () => {
       });
   }, [sites, selectedCustomerId]);
 
-  // 필수정보 누락 판정
+  // 📄 사업자등록증 누락 여부 판정 (사업자번호가 없거나 '미상'인 경우)
+  const isMissingBizCert = (c: Customer) => {
+    return !c.bizRegNo || c.bizRegNo.trim() === '' || c.bizRegNo === '미상';
+  };
+
+  // 필수 기본정보 누락 판정 (상호, 사업자번호, 대표자명, 주소 중 핵심 식별정보 결손 여부)
   const isIncompleteCustomer = (c: Customer) => {
-    const hasMissingInfo = 
-      c.bizRegNo === '미상' || !c.bizRegNo ||
-      c.representative === '미상' || !c.representative ||
-      c.repContact === '미상' || !c.repContact ||
-      c.repEmail === '미상' || !c.repEmail ||
-      c.address === '미상' || !c.address;
-
-    const custContacts = contacts.filter(cc => cc.customerId === c.id);
-    const custSites = sites.filter(cs => cs.customerId === c.id);
-
-    return hasMissingInfo || custContacts.length === 0 || custSites.length === 0;
+    return isMissingBizCert(c) ||
+           !c.representative || c.representative === '미상' ||
+           !c.address || c.address === '미상';
   };
 
   // 실시간 필터링 (초성 칩 필터 및 정규화 가나다 오름차순 정렬 통합)
@@ -173,7 +170,7 @@ export const Customers: React.FC = () => {
         statusFilter === 'BLOCKED' ? (c.transactionStatus === 'BLOCKED') :
         (c.isClosed === true);
 
-      const matchesIncomplete = !showOnlyIncomplete || isIncompleteCustomer(c);
+      const matchesIncomplete = !showOnlyIncomplete || isMissingBizCert(c);
 
       return matchesSearch && matchesChosung && matchesStatus && matchesIncomplete;
     });
@@ -900,7 +897,7 @@ export const Customers: React.FC = () => {
               onChange={e => setShowOnlyIncomplete(e.target.checked)}
               style={{ margin: 0, cursor: 'pointer' }}
             />
-            ⚠️ 보완필요 고객사만 필터
+            ⚠️ 등록증 미등록 고객사만 필터
           </label>
         </div>
 
@@ -1016,36 +1013,42 @@ export const Customers: React.FC = () => {
                         {cust.name}
                       </strong>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                        {isIncomplete && (
-                          <span style={{ fontSize: '9.5px', color: 'var(--danger)', backgroundColor: 'rgba(239,68,68,0.08)', padding: '1px 4px', borderRadius: '3px', fontWeight: 700 }}>
-                            보완필요
+                        {isMissingBizCert(cust) ? (
+                          <>
+                            <span style={{ fontSize: '9.5px', color: 'var(--danger)', backgroundColor: 'rgba(239,68,68,0.08)', padding: '1px 4px', borderRadius: '3px', fontWeight: 700 }}>
+                              등록증 미등록
+                            </span>
+                            {canSave && (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setTargetBizLicenseCustId(cust.id);
+                                  setShowBizLicenseModal(true);
+                                }}
+                                title="사업자등록증 업로드로 사업자 정보 등록"
+                                style={{
+                                  padding: '1px 5px',
+                                  fontSize: '9.5px',
+                                  border: '1px solid #059669',
+                                  borderRadius: '3px',
+                                  backgroundColor: 'rgba(5,150,105,0.12)',
+                                  color: '#059669',
+                                  cursor: 'pointer',
+                                  fontWeight: 700,
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: '2px'
+                                }}
+                              >
+                                <FileText size={10} /> 등록증 첨부
+                              </button>
+                            )}
+                          </>
+                        ) : (
+                          <span style={{ fontSize: '9.5px', color: '#059669', backgroundColor: 'rgba(5,150,105,0.08)', padding: '1px 4px', borderRadius: '3px', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '2px' }}>
+                            <Check size={10} /> 등록증 인증
                           </span>
-                        )}
-                        {isIncomplete && canSave && (
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setTargetBizLicenseCustId(cust.id);
-                              setShowBizLicenseModal(true);
-                            }}
-                            title="사업자등록증 업로드로 누락 정보 보완"
-                            style={{
-                              padding: '1px 5px',
-                              fontSize: '9.5px',
-                              border: '1px solid #059669',
-                              borderRadius: '3px',
-                              backgroundColor: 'rgba(5,150,105,0.12)',
-                              color: '#059669',
-                              cursor: 'pointer',
-                              fontWeight: 700,
-                              display: 'flex',
-                              alignItems: 'center',
-                              gap: '2px'
-                            }}
-                          >
-                            <FileText size={10} /> 등록증 보완
-                          </button>
                         )}
                         {cust.isClosed ? (
                           <span className="badge badge-danger" style={{ fontSize: '9.5px', padding: '1px 4px' }}>폐업</span>

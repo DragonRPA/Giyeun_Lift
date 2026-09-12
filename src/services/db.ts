@@ -1030,6 +1030,9 @@ export interface Vendor {
   passbookFileUrl?: string;          // 매입처 통장사본 URL (이미지/PDF)
   passbookFileName?: string;         // 매입처 통장사본 파일명
   businessCertFileUrl?: string;      // 사업자등록증 사본 URL
+  businessCertFileName?: string;     // 사업자등록증 사본 파일명
+  bizType?: string;                  // 업태
+  bizItem?: string;                  // 종목
   isActive?: boolean;
   memo?: string;
   firstTradeDate?: string;       // 최초 거래개시일 (YYYY-MM-DD)
@@ -1038,6 +1041,7 @@ export interface Vendor {
 
   // 🏛️ [신규] 국세청 홈택스 휴폐업 및 과세유형
   taxType?: string;
+  taxTypeCd?: string;
   businessStatus?: 'ACTIVE' | 'SUSPENDED' | 'CLOSED' | 'UNREGISTERED';
   closedDate?: string;
   lastStatusCheckDate?: string;

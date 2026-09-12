@@ -258,18 +258,22 @@ export async function processSingleLicense(
       }
 
       if (matchedCust) {
-        // 기존 고객 정보 보완 (기존 정보가 없거나 '미상'인 항목만 스마트 보완)
+        // 기존 고객 정보 보완 (사업자등록증 기준 상호명, 업태, 종목, 증빙파일 갱신)
+        const newName = analysis.companyName?.trim() || matchedCust.name;
+        const nameChanged = Boolean(analysis.companyName?.trim() && analysis.companyName.trim() !== matchedCust.name);
+
         const updatedCust: Customer = {
           ...matchedCust,
-          bizRegNo: (!matchedCust.bizRegNo || matchedCust.bizRegNo === '미상') ? (analysis.bizRegNo || matchedCust.bizRegNo) : matchedCust.bizRegNo,
-          representative: (!matchedCust.representative || matchedCust.representative === '미상') ? (analysis.representative || matchedCust.representative) : matchedCust.representative,
-          address: (!matchedCust.address || matchedCust.address === '미상') ? (analysis.address || matchedCust.address) : matchedCust.address,
-          bizType: !matchedCust.bizType ? (analysis.bizType || matchedCust.bizType) : matchedCust.bizType,
-          bizItem: !matchedCust.bizItem ? (analysis.bizItem || matchedCust.bizItem) : matchedCust.bizItem,
+          name: newName,
+          bizRegNo: analysis.bizRegNo?.trim() || matchedCust.bizRegNo,
+          representative: (!matchedCust.representative || matchedCust.representative === '미상') ? (analysis.representative || matchedCust.representative) : (analysis.representative || matchedCust.representative),
+          address: (!matchedCust.address || matchedCust.address === '미상') ? (analysis.address || matchedCust.address) : (analysis.address || matchedCust.address),
+          bizType: analysis.bizType?.trim() || matchedCust.bizType,
+          bizItem: analysis.bizItem?.trim() || matchedCust.bizItem,
           repEmail: (!matchedCust.repEmail || matchedCust.repEmail === '미상') ? (analysis.taxEmail || matchedCust.repEmail) : matchedCust.repEmail,
           repContact: (!matchedCust.repContact || matchedCust.repContact === '미상') ? (analysis.repContact || matchedCust.repContact) : matchedCust.repContact,
-          taxOffice: !matchedCust.taxOffice ? (analysis.taxOffice || matchedCust.taxOffice) : matchedCust.taxOffice,
-          openingDate: !matchedCust.openingDate ? (analysis.openingDate || matchedCust.openingDate) : matchedCust.openingDate,
+          taxOffice: analysis.taxOffice?.trim() || matchedCust.taxOffice,
+          openingDate: analysis.openingDate?.trim() || matchedCust.openingDate,
           businessCertFileUrl: fileUrl || matchedCust.businessCertFileUrl,
           taxType: ntsData?.taxType || matchedCust.taxType,
           taxTypeCd: ntsData?.taxTypeCd || matchedCust.taxTypeCd,
@@ -303,7 +307,9 @@ export async function processSingleLicense(
           ntsClosedDate: ntsData?.closedDate,
           details: isNtsClosed 
             ? `기존 고객사 보완 (국세청 폐업 확인: 폐업일 ${ntsData?.closedDate || '미상'} - 출고제한 적용)` 
-            : `기존 고객사 매칭 완료 (${matchedCust.name}) - 누락 정보 보완`,
+            : nameChanged
+              ? `기존 고객사 매칭 완료 (상호 정규화: ${matchedCust.name} ➔ ${updatedCust.name}, 업태/종목 등록증 기준 갱신)`
+              : `기존 고객사 매칭 완료 (${matchedCust.name}) - 등록증 기준 정보 갱신`,
           elapsedMs: Date.now() - t0
         };
       } else {
@@ -375,17 +381,24 @@ export async function processSingleLicense(
       const defaultType = options.defaultVendorType || 'RENTAL';
 
       if (matchedVendor) {
-        // 기존 매입처 정보 보완
+        // 기존 매입처 정보 보완 (사업자등록증 기준 상호명, 업태, 종목, 증빙파일 갱신)
         const existingTypes = matchedVendor.types || [matchedVendor.type];
         const updatedTypes = existingTypes.includes(defaultType) ? existingTypes : [...existingTypes, defaultType];
+        const newVendorName = analysis.companyName?.trim() || matchedVendor.name;
+        const vendorNameChanged = Boolean(analysis.companyName?.trim() && analysis.companyName.trim() !== matchedVendor.name);
 
         const updatedVendor: Vendor = {
           ...matchedVendor,
-          bizRegNo: (!matchedVendor.bizRegNo || matchedVendor.bizRegNo === '미상') ? (analysis.bizRegNo || matchedVendor.bizRegNo) : matchedVendor.bizRegNo,
-          representative: (!matchedVendor.representative || matchedVendor.representative === '미상') ? (analysis.representative || matchedVendor.representative) : matchedVendor.representative,
+          name: newVendorName,
+          bizRegNo: analysis.bizRegNo?.trim() || matchedVendor.bizRegNo,
+          representative: analysis.representative?.trim() || matchedVendor.representative,
           contact: (!matchedVendor.contact || matchedVendor.contact === '미상') ? (analysis.repContact || matchedVendor.contact) : matchedVendor.contact,
           email: (!matchedVendor.email || matchedVendor.email === '미상') ? (analysis.taxEmail || matchedVendor.email) : matchedVendor.email,
-          address: (!matchedVendor.address || matchedVendor.address === '미상') ? (analysis.address || matchedVendor.address) : matchedVendor.address,
+          address: (!matchedVendor.address || matchedVendor.address === '미상') ? (analysis.address || matchedVendor.address) : (analysis.address || matchedVendor.address),
+          bizType: analysis.bizType?.trim() || matchedVendor.bizType,
+          bizItem: analysis.bizItem?.trim() || matchedVendor.bizItem,
+          businessCertFileUrl: fileUrl || matchedVendor.businessCertFileUrl,
+          businessCertFileName: fileUrl ? file.name : matchedVendor.businessCertFileName,
           types: updatedTypes,
           taxType: ntsData?.taxType || matchedVendor.taxType,
           businessStatus: ntsData?.status || matchedVendor.businessStatus,
@@ -407,6 +420,8 @@ export async function processSingleLicense(
           repContact: updatedVendor.contact,
           repEmail: updatedVendor.email,
           address: updatedVendor.address,
+          bizType: updatedVendor.bizType,
+          bizItem: updatedVendor.bizItem,
           vendorType: defaultType,
           fileUrl,
           ntsStatus: ntsData?.statusLabel,
@@ -414,7 +429,9 @@ export async function processSingleLicense(
           ntsClosedDate: ntsData?.closedDate,
           details: isNtsClosed
             ? `기존 매입처 보완 (국세청 폐업 확인: 폐업일 ${ntsData?.closedDate || '미상'} - 비활성화)`
-            : `기존 매입처 매칭 완료 (${matchedVendor.name}) - 정보 보완`,
+            : vendorNameChanged
+              ? `기존 매입처 매칭 완료 (상호 정규화: ${matchedVendor.name} ➔ ${updatedVendor.name}, 업태/종목 등록증 기준 갱신)`
+              : `기존 매입처 매칭 완료 (${matchedVendor.name}) - 등록증 기준 정보 갱신`,
           elapsedMs: Date.now() - t0
         };
       } else {
@@ -431,6 +448,10 @@ export async function processSingleLicense(
           contact: analysis.repContact?.trim() || '',
           email: analysis.taxEmail?.trim() || '',
           address: analysis.address?.trim() || '',
+          bizType: analysis.bizType?.trim() || undefined,
+          bizItem: analysis.bizItem?.trim() || undefined,
+          businessCertFileUrl: fileUrl || undefined,
+          businessCertFileName: fileUrl ? file.name : undefined,
           isActive: isNtsClosed ? false : true,
           taxType: ntsData?.taxType,
           businessStatus: ntsData?.status || 'ACTIVE',

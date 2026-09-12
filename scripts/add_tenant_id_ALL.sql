@@ -1,91 +1,76 @@
 ﻿-- ============================================================
--- add_tenant_id_ALL.sql
+-- add_tenant_id_ALL.sql  (v2 - 테이블 미존재 자동 스킵)
 -- 멀티테넌트 전환 준비: 모든 비즈니스 테이블에 tenant_id 컬럼 추가
 -- 실행 방법: Supabase Dashboard -> SQL Editor -> 전체 복사 후 Run
--- 멱등성 보장: ADD COLUMN IF NOT EXISTS 사용 (중복 실행 안전)
--- 기본값: 'giyeun' (기연리프트 단일 테넌트 운영 중)
+-- 멱등성 보장: 이미 tenant_id 있거나 테이블 없으면 자동 스킵
 -- ============================================================
 
--- 도메인 1: 조직/HR
-ALTER TABLE "departments"               ADD COLUMN IF NOT EXISTS "tenant_id" TEXT NOT NULL DEFAULT 'giyeun';
-ALTER TABLE "users"                     ADD COLUMN IF NOT EXISTS "tenant_id" TEXT NOT NULL DEFAULT 'giyeun';
-ALTER TABLE "permissions"               ADD COLUMN IF NOT EXISTS "tenant_id" TEXT NOT NULL DEFAULT 'giyeun';
-ALTER TABLE "annual_leave_quotas"       ADD COLUMN IF NOT EXISTS "tenant_id" TEXT NOT NULL DEFAULT 'giyeun';
-ALTER TABLE "leave_usages"              ADD COLUMN IF NOT EXISTS "tenant_id" TEXT NOT NULL DEFAULT 'giyeun';
-ALTER TABLE "overtime_records"          ADD COLUMN IF NOT EXISTS "tenant_id" TEXT NOT NULL DEFAULT 'giyeun';
-ALTER TABLE "payroll_closings"          ADD COLUMN IF NOT EXISTS "tenant_id" TEXT NOT NULL DEFAULT 'giyeun';
+DO $$
+DECLARE
+  tables TEXT[] := ARRAY[
+    -- 도메인 1: 조직/HR
+    'departments','users','permissions','annual_leave_quotas',
+    'leave_usages','overtime_records','payroll_closings',
+    -- 도메인 2: 기준정보
+    'vendors','customers','customer_contacts','customer_sites',
+    'customer_bank_accounts','products','assets','consumables',
+    'consumable_purchases','mechanic_consumable_stocks',
+    'transport_companies','transport_drivers',
+    -- 도메인 3: 계약/운영
+    'contracts','contract_assets','external_leases','contract_history',
+    'deliveries','outbound_inspections','inbound_defect_details','asset_inout_logs',
+    -- 도메인 4: 정비
+    'repairs','repair_timeline_events','repair_consumables',
+    'consumable_logs','standard_options',
+    -- 도메인 5: 회계/청구/금융
+    'billings','billing_details','billing_invoices','receivables','payments',
+    'bank_transactions','payment_deposit_links','bank_matching_rules',
+    'bank_initial_balances','purchase_settlements','purchase_settlement_items',
+    'settlement_payment_logs','cash_flow_snapshots','prepaid_transactions',
+    'delinquency_action_logs','legal_notice_logs','depreciation_logs',
+    -- 도메인 6: 협업/시스템
+    'todos','announcements','announcement_reads','work_instructions',
+    'collaboration_requests','collaboration_request_history','document_jobs',
+    -- 도메인 7: 법인차량
+    'corporate_vehicles','vehicle_operation_logs','vehicle_fuel_logs',
+    -- 기타
+    'equipment_manuals','print_stations','print_queue'
+  ];
+  t TEXT;
+  col_exists BOOLEAN;
+BEGIN
+  FOREACH t IN ARRAY tables LOOP
+    BEGIN
+      -- 테이블 존재 여부 확인
+      IF NOT EXISTS (
+        SELECT 1 FROM information_schema.tables
+        WHERE table_schema = 'public' AND table_name = t
+      ) THEN
+        RAISE NOTICE '[SKIP - 테이블 없음] %', t;
+        CONTINUE;
+      END IF;
 
--- 도메인 2: 기준정보
-ALTER TABLE "vendors"                   ADD COLUMN IF NOT EXISTS "tenant_id" TEXT NOT NULL DEFAULT 'giyeun';
-ALTER TABLE "customers"                 ADD COLUMN IF NOT EXISTS "tenant_id" TEXT NOT NULL DEFAULT 'giyeun';
-ALTER TABLE "customer_contacts"         ADD COLUMN IF NOT EXISTS "tenant_id" TEXT NOT NULL DEFAULT 'giyeun';
-ALTER TABLE "customer_sites"            ADD COLUMN IF NOT EXISTS "tenant_id" TEXT NOT NULL DEFAULT 'giyeun';
-ALTER TABLE "customer_bank_accounts"    ADD COLUMN IF NOT EXISTS "tenant_id" TEXT NOT NULL DEFAULT 'giyeun';
-ALTER TABLE "products"                  ADD COLUMN IF NOT EXISTS "tenant_id" TEXT NOT NULL DEFAULT 'giyeun';
-ALTER TABLE "assets"                    ADD COLUMN IF NOT EXISTS "tenant_id" TEXT NOT NULL DEFAULT 'giyeun';
-ALTER TABLE "consumables"               ADD COLUMN IF NOT EXISTS "tenant_id" TEXT NOT NULL DEFAULT 'giyeun';
-ALTER TABLE "consumable_purchases"      ADD COLUMN IF NOT EXISTS "tenant_id" TEXT NOT NULL DEFAULT 'giyeun';
-ALTER TABLE "mechanic_consumable_stocks" ADD COLUMN IF NOT EXISTS "tenant_id" TEXT NOT NULL DEFAULT 'giyeun';
-ALTER TABLE "transport_companies"       ADD COLUMN IF NOT EXISTS "tenant_id" TEXT NOT NULL DEFAULT 'giyeun';
-ALTER TABLE "transport_drivers"         ADD COLUMN IF NOT EXISTS "tenant_id" TEXT NOT NULL DEFAULT 'giyeun';
+      -- 컬럼 이미 존재하는지 확인
+      SELECT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = 'public' AND table_name = t AND column_name = 'tenant_id'
+      ) INTO col_exists;
 
--- 도메인 3: 계약/운영
-ALTER TABLE "contracts"                 ADD COLUMN IF NOT EXISTS "tenant_id" TEXT NOT NULL DEFAULT 'giyeun';
-ALTER TABLE "contract_assets"           ADD COLUMN IF NOT EXISTS "tenant_id" TEXT NOT NULL DEFAULT 'giyeun';
-ALTER TABLE "external_leases"           ADD COLUMN IF NOT EXISTS "tenant_id" TEXT NOT NULL DEFAULT 'giyeun';
-ALTER TABLE "contract_history"          ADD COLUMN IF NOT EXISTS "tenant_id" TEXT NOT NULL DEFAULT 'giyeun';
-ALTER TABLE "deliveries"                ADD COLUMN IF NOT EXISTS "tenant_id" TEXT NOT NULL DEFAULT 'giyeun';
-ALTER TABLE "outbound_inspections"      ADD COLUMN IF NOT EXISTS "tenant_id" TEXT NOT NULL DEFAULT 'giyeun';
-ALTER TABLE "inbound_defect_details"    ADD COLUMN IF NOT EXISTS "tenant_id" TEXT NOT NULL DEFAULT 'giyeun';
-ALTER TABLE "asset_inout_logs"          ADD COLUMN IF NOT EXISTS "tenant_id" TEXT NOT NULL DEFAULT 'giyeun';
+      IF col_exists THEN
+        RAISE NOTICE '[SKIP - 이미 존재] %', t;
+      ELSE
+        EXECUTE format('ALTER TABLE %I ADD COLUMN "tenant_id" TEXT NOT NULL DEFAULT ''giyeun''', t);
+        RAISE NOTICE '[OK] % - tenant_id 추가 완료', t;
+      END IF;
 
--- 도메인 4: 정비
-ALTER TABLE "repairs"                   ADD COLUMN IF NOT EXISTS "tenant_id" TEXT NOT NULL DEFAULT 'giyeun';
-ALTER TABLE "repair_timeline_events"    ADD COLUMN IF NOT EXISTS "tenant_id" TEXT NOT NULL DEFAULT 'giyeun';
-ALTER TABLE "repair_consumables"        ADD COLUMN IF NOT EXISTS "tenant_id" TEXT NOT NULL DEFAULT 'giyeun';
-ALTER TABLE "consumable_logs"           ADD COLUMN IF NOT EXISTS "tenant_id" TEXT NOT NULL DEFAULT 'giyeun';
-ALTER TABLE "standard_options"          ADD COLUMN IF NOT EXISTS "tenant_id" TEXT NOT NULL DEFAULT 'giyeun';
+    EXCEPTION WHEN OTHERS THEN
+      RAISE NOTICE '[ERROR] % - %', t, SQLERRM;
+    END;
+  END LOOP;
+END $$;
 
--- 도메인 5: 회계/청구/금융
-ALTER TABLE "billings"                  ADD COLUMN IF NOT EXISTS "tenant_id" TEXT NOT NULL DEFAULT 'giyeun';
-ALTER TABLE "billing_details"           ADD COLUMN IF NOT EXISTS "tenant_id" TEXT NOT NULL DEFAULT 'giyeun';
-ALTER TABLE "billing_invoices"          ADD COLUMN IF NOT EXISTS "tenant_id" TEXT NOT NULL DEFAULT 'giyeun';
-ALTER TABLE "receivables"               ADD COLUMN IF NOT EXISTS "tenant_id" TEXT NOT NULL DEFAULT 'giyeun';
-ALTER TABLE "payments"                  ADD COLUMN IF NOT EXISTS "tenant_id" TEXT NOT NULL DEFAULT 'giyeun';
-ALTER TABLE "bank_transactions"         ADD COLUMN IF NOT EXISTS "tenant_id" TEXT NOT NULL DEFAULT 'giyeun';
-ALTER TABLE "payment_deposit_links"     ADD COLUMN IF NOT EXISTS "tenant_id" TEXT NOT NULL DEFAULT 'giyeun';
-ALTER TABLE "bank_matching_rules"       ADD COLUMN IF NOT EXISTS "tenant_id" TEXT NOT NULL DEFAULT 'giyeun';
-ALTER TABLE "bank_initial_balances"     ADD COLUMN IF NOT EXISTS "tenant_id" TEXT NOT NULL DEFAULT 'giyeun';
-ALTER TABLE "purchase_settlements"      ADD COLUMN IF NOT EXISTS "tenant_id" TEXT NOT NULL DEFAULT 'giyeun';
-ALTER TABLE "purchase_settlement_items" ADD COLUMN IF NOT EXISTS "tenant_id" TEXT NOT NULL DEFAULT 'giyeun';
-ALTER TABLE "settlement_payment_logs"   ADD COLUMN IF NOT EXISTS "tenant_id" TEXT NOT NULL DEFAULT 'giyeun';
-ALTER TABLE "cash_flow_snapshots"       ADD COLUMN IF NOT EXISTS "tenant_id" TEXT NOT NULL DEFAULT 'giyeun';
-ALTER TABLE "prepaid_transactions"      ADD COLUMN IF NOT EXISTS "tenant_id" TEXT NOT NULL DEFAULT 'giyeun';
-ALTER TABLE "delinquency_action_logs"   ADD COLUMN IF NOT EXISTS "tenant_id" TEXT NOT NULL DEFAULT 'giyeun';
-ALTER TABLE "legal_notice_logs"         ADD COLUMN IF NOT EXISTS "tenant_id" TEXT NOT NULL DEFAULT 'giyeun';
-ALTER TABLE "depreciation_logs"         ADD COLUMN IF NOT EXISTS "tenant_id" TEXT NOT NULL DEFAULT 'giyeun';
-
--- 도메인 6: 협업/시스템
-ALTER TABLE "todos"                          ADD COLUMN IF NOT EXISTS "tenant_id" TEXT NOT NULL DEFAULT 'giyeun';
-ALTER TABLE "announcements"                  ADD COLUMN IF NOT EXISTS "tenant_id" TEXT NOT NULL DEFAULT 'giyeun';
-ALTER TABLE "announcement_reads"             ADD COLUMN IF NOT EXISTS "tenant_id" TEXT NOT NULL DEFAULT 'giyeun';
-ALTER TABLE "work_instructions"              ADD COLUMN IF NOT EXISTS "tenant_id" TEXT NOT NULL DEFAULT 'giyeun';
-ALTER TABLE "collaboration_requests"         ADD COLUMN IF NOT EXISTS "tenant_id" TEXT NOT NULL DEFAULT 'giyeun';
-ALTER TABLE "collaboration_request_history"  ADD COLUMN IF NOT EXISTS "tenant_id" TEXT NOT NULL DEFAULT 'giyeun';
-ALTER TABLE "document_jobs"                  ADD COLUMN IF NOT EXISTS "tenant_id" TEXT NOT NULL DEFAULT 'giyeun';
-
--- 도메인 7: 법인차량
-ALTER TABLE "corporate_vehicles"       ADD COLUMN IF NOT EXISTS "tenant_id" TEXT NOT NULL DEFAULT 'giyeun';
-ALTER TABLE "vehicle_operation_logs"   ADD COLUMN IF NOT EXISTS "tenant_id" TEXT NOT NULL DEFAULT 'giyeun';
-ALTER TABLE "vehicle_fuel_logs"        ADD COLUMN IF NOT EXISTS "tenant_id" TEXT NOT NULL DEFAULT 'giyeun';
-
--- 장비 매뉴얼 / 인쇄 큐
-ALTER TABLE "equipment_manuals"        ADD COLUMN IF NOT EXISTS "tenant_id" TEXT NOT NULL DEFAULT 'giyeun';
-ALTER TABLE "print_stations"           ADD COLUMN IF NOT EXISTS "tenant_id" TEXT NOT NULL DEFAULT 'giyeun';
-ALTER TABLE "print_queue"              ADD COLUMN IF NOT EXISTS "tenant_id" TEXT NOT NULL DEFAULT 'giyeun';
-
--- 완료 확인 쿼리 (62행이 나오면 성공)
-SELECT table_name, column_name, column_default
+-- 완료 확인 (추가된 테이블 수 확인)
+SELECT table_name, column_default
 FROM information_schema.columns
 WHERE table_schema = 'public'
   AND column_name = 'tenant_id'

@@ -246,27 +246,61 @@ export const NtsStatusAuditModal: React.FC<NtsStatusAuditModalProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-3 sm:p-6 overflow-hidden">
-      <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-6xl h-[92vh] max-h-[900px] flex flex-col shadow-2xl overflow-hidden text-slate-200">
-        
+    <div style={{
+      position: 'fixed',
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      zIndex: 9999,
+      backgroundColor: 'rgba(0, 0, 0, 0.65)',
+      backdropFilter: 'blur(4px)',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      padding: '16px'
+    }}>
+      <div style={{
+        width: '100%',
+        maxWidth: '1320px',
+        height: '90vh',
+        maxHeight: '900px',
+        backgroundColor: 'var(--bg-card, #ffffff)',
+        color: 'var(--text-main, #0f172a)',
+        borderRadius: '12px',
+        border: '1px solid var(--border-color, #cbd5e1)',
+        boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.35)',
+        display: 'flex',
+        flexDirection: 'column',
+        overflow: 'hidden'
+      }}>
         {/* ─── ① 헤더 (Scope & Title) ─── */}
-        <div className="px-5 py-3.5 bg-slate-950 border-b border-slate-800 flex items-center justify-between flex-shrink-0">
-          <div className="flex items-center gap-3">
-            <div className="p-2 rounded-xl bg-blue-950/80 border border-blue-800/80 text-blue-400">
-              <Building2 className="w-5 h-5" />
+        <div style={{
+          padding: '14px 20px',
+          backgroundColor: 'var(--bg-secondary, #f8fafc)',
+          borderBottom: '1px solid var(--border-color, #cbd5e1)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          flexShrink: 0
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <div style={{
+              width: '32px',
+              height: '32px',
+              borderRadius: '8px',
+              backgroundColor: '#3b82f6',
+              color: '#ffffff',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center'
+            }}>
+              <Building2 size={18} />
             </div>
             <div>
-              <div className="flex items-center gap-2">
-                <h2 className="text-base font-bold text-white tracking-tight whitespace-nowrap">
-                  국세청 홈택스 사업자 휴폐업 전수 점검
-                </h2>
-                <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-800 border border-slate-700 text-slate-300">
-                  자산 부실/잠적 방어 스튜디오
-                </span>
-              </div>
-              <p className="text-[11px] text-slate-400 mt-0.5">
-                등록된 전 거래처의 사업자 상태를 국세청 공적 전산과 1:1 대사하여 폐업 업체를 탐지하고 대여 장비를 긴급 보호합니다.
-              </p>
+              <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 800, color: 'var(--text-main, #0f172a)', whiteSpace: 'nowrap' }}>
+                국세청 휴폐업 점검
+              </h3>
             </div>
           </div>
 
@@ -274,106 +308,187 @@ export const NtsStatusAuditModal: React.FC<NtsStatusAuditModalProps> = ({
             type="button"
             onClick={onClose}
             disabled={isScanning}
-            className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors disabled:opacity-50"
+            style={{
+              background: 'none',
+              border: 'none',
+              padding: '6px',
+              cursor: isScanning ? 'not-allowed' : 'pointer',
+              color: 'var(--text-muted, #64748b)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              borderRadius: '6px'
+            }}
             title="닫기"
           >
-            <X className="w-5 h-5" />
+            <X size={20} />
           </button>
         </div>
 
-        {/* ─── ② 파이프라인 및 필터 바 ─── */}
-        <div className="px-5 py-3 bg-slate-900 border-b border-slate-800/80 flex flex-wrap items-center justify-between gap-3 flex-shrink-0">
-          {/* 좌측: 대상 선택 및 필터 탭 */}
-          <div className="flex items-center gap-2.5 flex-wrap">
-            <div className="flex items-center bg-slate-950 p-1 rounded-xl border border-slate-800">
+        {/* ─── ② 조작 및 파이프라인 제어 바 (Gutenberg Z-Pattern) ─── */}
+        <div style={{
+          padding: '10px 20px',
+          backgroundColor: 'var(--bg-card, #ffffff)',
+          borderBottom: '1px solid var(--border-color, #e2e8f0)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: '12px',
+          flexWrap: 'wrap',
+          flexShrink: 0
+        }}>
+          {/* 좌상단: 대상 선택 및 필터 칩 */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+            {/* 세그먼트 버튼: 매출처 / 매입처 */}
+            <div style={{
+              display: 'flex',
+              padding: '2px',
+              borderRadius: '8px',
+              backgroundColor: 'var(--bg-secondary, #f1f5f9)',
+              border: '1px solid var(--border-color, #cbd5e1)'
+            }}>
               <button
                 type="button"
                 disabled={isScanning}
                 onClick={() => setTargetType('CUSTOMER')}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors flex items-center gap-1.5 whitespace-nowrap ${
-                  targetType === 'CUSTOMER'
-                    ? 'bg-blue-600 text-white shadow-sm'
-                    : 'text-slate-400 hover:text-slate-200'
-                }`}
+                style={{
+                  padding: '5px 12px',
+                  fontSize: '12px',
+                  fontWeight: targetType === 'CUSTOMER' ? 700 : 500,
+                  borderRadius: '6px',
+                  border: 'none',
+                  cursor: isScanning ? 'not-allowed' : 'pointer',
+                  backgroundColor: targetType === 'CUSTOMER' ? '#3b82f6' : 'transparent',
+                  color: targetType === 'CUSTOMER' ? '#ffffff' : 'var(--text-secondary, #475569)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '5px',
+                  whiteSpace: 'nowrap'
+                }}
               >
-                <Building2 className="w-3.5 h-3.5" />
-                <span>매출처 고객사 ({customers.length})</span>
+                <Building2 size={13} />
+                매출처 ({customers.length})
               </button>
               <button
                 type="button"
                 disabled={isScanning}
                 onClick={() => setTargetType('VENDOR')}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors flex items-center gap-1.5 whitespace-nowrap ${
-                  targetType === 'VENDOR'
-                    ? 'bg-emerald-600 text-white shadow-sm'
-                    : 'text-slate-400 hover:text-slate-200'
-                }`}
+                style={{
+                  padding: '5px 12px',
+                  fontSize: '12px',
+                  fontWeight: targetType === 'VENDOR' ? 700 : 500,
+                  borderRadius: '6px',
+                  border: 'none',
+                  cursor: isScanning ? 'not-allowed' : 'pointer',
+                  backgroundColor: targetType === 'VENDOR' ? '#10b981' : 'transparent',
+                  color: targetType === 'VENDOR' ? '#ffffff' : 'var(--text-secondary, #475569)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '5px',
+                  whiteSpace: 'nowrap'
+                }}
               >
-                <Layers className="w-3.5 h-3.5" />
-                <span>매입처 협력사 ({vendors.length})</span>
+                <Layers size={13} />
+                매입처 ({vendors.length})
               </button>
             </div>
 
             {/* 필터 칩 */}
-            <div className="flex items-center gap-1">
+            <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
               <button
                 type="button"
                 onClick={() => setFilterType('ALL')}
-                className={`px-2.5 py-1 rounded-lg text-xs font-bold border transition-colors whitespace-nowrap ${
-                  filterType === 'ALL'
-                    ? 'bg-slate-800 text-white border-slate-600'
-                    : 'bg-slate-950/60 text-slate-400 border-slate-800 hover:text-slate-200'
-                }`}
+                style={{
+                  padding: '4px 10px',
+                  fontSize: '12px',
+                  fontWeight: filterType === 'ALL' ? 700 : 500,
+                  borderRadius: '6px',
+                  border: filterType === 'ALL' ? '1px solid #475569' : '1px solid var(--border-color, #cbd5e1)',
+                  backgroundColor: filterType === 'ALL' ? '#334155' : 'transparent',
+                  color: filterType === 'ALL' ? '#ffffff' : 'var(--text-secondary, #475569)',
+                  cursor: 'pointer',
+                  whiteSpace: 'nowrap'
+                }}
               >
-                전체보기
+                전체 ({stats.total})
               </button>
               <button
                 type="button"
                 onClick={() => setFilterType('RENTED_RISK')}
-                className={`px-2.5 py-1 rounded-lg text-xs font-bold border transition-colors whitespace-nowrap flex items-center gap-1 ${
-                  filterType === 'RENTED_RISK'
-                    ? 'bg-rose-950 text-rose-300 border-rose-700 font-black'
-                    : 'bg-slate-950/60 text-rose-400 border-slate-800 hover:border-rose-900'
-                }`}
+                style={{
+                  padding: '4px 10px',
+                  fontSize: '12px',
+                  fontWeight: 700,
+                  borderRadius: '6px',
+                  border: '1px solid #e11d48',
+                  backgroundColor: filterType === 'RENTED_RISK' ? '#e11d48' : '#ffe4e6',
+                  color: filterType === 'RENTED_RISK' ? '#ffffff' : '#be123c',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                  whiteSpace: 'nowrap'
+                }}
               >
-                <Truck className="w-3 h-3" />
-                <span>장비 가동 중 폐업사 ({stats.rentedRisk})</span>
+                <Truck size={13} />
+                가동장비 위험 ({stats.rentedRisk})
               </button>
               <button
                 type="button"
                 onClick={() => setFilterType('CLOSED')}
-                className={`px-2.5 py-1 rounded-lg text-xs font-bold border transition-colors whitespace-nowrap ${
-                  filterType === 'CLOSED'
-                    ? 'bg-rose-900/60 text-rose-200 border-rose-600'
-                    : 'bg-slate-950/60 text-slate-400 border-slate-800 hover:text-slate-200'
-                }`}
+                style={{
+                  padding: '4px 10px',
+                  fontSize: '12px',
+                  fontWeight: filterType === 'CLOSED' ? 700 : 500,
+                  borderRadius: '6px',
+                  border: '1px solid #f43f5e',
+                  backgroundColor: filterType === 'CLOSED' ? '#f43f5e' : '#fff1f2',
+                  color: filterType === 'CLOSED' ? '#ffffff' : '#e11d48',
+                  cursor: 'pointer',
+                  whiteSpace: 'nowrap'
+                }}
               >
-                폐업사 ({stats.closed})
+                폐업 ({stats.closed})
               </button>
               <button
                 type="button"
                 onClick={() => setFilterType('ACTIVE')}
-                className={`px-2.5 py-1 rounded-lg text-xs font-bold border transition-colors whitespace-nowrap ${
-                  filterType === 'ACTIVE'
-                    ? 'bg-emerald-950 text-emerald-300 border-emerald-700'
-                    : 'bg-slate-950/60 text-slate-400 border-slate-800 hover:text-slate-200'
-                }`}
+                style={{
+                  padding: '4px 10px',
+                  fontSize: '12px',
+                  fontWeight: filterType === 'ACTIVE' ? 700 : 500,
+                  borderRadius: '6px',
+                  border: '1px solid #10b981',
+                  backgroundColor: filterType === 'ACTIVE' ? '#10b981' : '#ecfdf5',
+                  color: filterType === 'ACTIVE' ? '#ffffff' : '#047857',
+                  cursor: 'pointer',
+                  whiteSpace: 'nowrap'
+                }}
               >
-                정상 계속사 ({stats.active})
+                정상 ({stats.active})
               </button>
             </div>
           </div>
 
-          {/* 우측: 실행 버튼 및 검색창 */}
-          <div className="flex items-center gap-2">
-            <div className="relative">
-              <Search className="absolute left-2.5 top-2 w-3.5 h-3.5 text-slate-400" />
+          {/* 우상단: 검색창 및 실행 버튼군 */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <div style={{ position: 'relative', width: '220px' }}>
+              <Search size={14} style={{ position: 'absolute', left: '8px', top: '8px', color: 'var(--text-muted, #94a3b8)' }} />
               <input
                 type="text"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 placeholder="상호, 사업자번호 검색"
-                className="pl-8 pr-3 py-1 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 w-44"
+                style={{
+                  width: '100%',
+                  padding: '5px 8px 5px 28px',
+                  fontSize: '12px',
+                  borderRadius: '6px',
+                  border: '1px solid var(--border-color, #cbd5e1)',
+                  backgroundColor: 'var(--bg-card, #ffffff)',
+                  color: 'var(--text-main, #0f172a)',
+                  outline: 'none'
+                }}
               />
             </div>
 
@@ -381,223 +496,390 @@ export const NtsStatusAuditModal: React.FC<NtsStatusAuditModalProps> = ({
               type="button"
               disabled={isScanning || targetItems.length === 0}
               onClick={handleStartScan}
-              className="px-4 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold flex items-center gap-1.5 shadow-md active:scale-95 transition-all whitespace-nowrap disabled:opacity-40"
+              style={{
+                padding: '6px 14px',
+                fontSize: '12px',
+                fontWeight: 700,
+                borderRadius: '6px',
+                border: 'none',
+                backgroundColor: isScanning ? '#94a3b8' : '#2563eb',
+                color: '#ffffff',
+                cursor: isScanning ? 'not-allowed' : 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                boxShadow: '0 1px 3px rgba(0, 0, 0, 0.15)',
+                whiteSpace: 'nowrap'
+              }}
             >
-              <Play className={`w-3.5 h-3.5 fill-current ${isScanning ? 'animate-spin' : ''}`} />
-              <span>{isScanning ? `점검 중 (${scanProgress.processed}/${scanProgress.total})` : '국세청 전수 점검 시작'}</span>
+              <Play size={14} style={{ fill: '#ffffff' }} />
+              {isScanning ? `점검 중 (${scanProgress.processed}/${scanProgress.total})` : '국세청 전수 점검 시작'}
+            </button>
+
+            <button
+              type="button"
+              onClick={handleExportExcel}
+              style={{
+                padding: '6px 12px',
+                fontSize: '12px',
+                fontWeight: 600,
+                borderRadius: '6px',
+                border: '1px solid var(--border-color, #cbd5e1)',
+                backgroundColor: 'var(--bg-secondary, #f8fafc)',
+                color: 'var(--text-main, #0f172a)',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '5px',
+                whiteSpace: 'nowrap'
+              }}
+            >
+              <Download size={14} color="#059669" />
+              엑셀 내보내기
             </button>
           </div>
         </div>
 
-        {/* ─── ③ 진행 HUD 및 4대 KPI 요약 바 ─── */}
-        <div className="px-5 py-2.5 bg-slate-950/60 border-b border-slate-800 flex items-center justify-between gap-2 flex-wrap flex-shrink-0 text-xs font-mono">
-          <div className="flex items-center gap-2">
-            <span className="text-slate-400 font-sans text-[11px]">검사 대상:</span>
-            <strong className="text-white">{stats.total}개사</strong>
+        {/* ─── ③ 진행 HUD 요약 바 ─── */}
+        <div style={{
+          padding: '6px 20px',
+          backgroundColor: 'var(--bg-secondary, #f1f5f9)',
+          borderBottom: '1px solid var(--border-color, #e2e8f0)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          flexWrap: 'wrap',
+          fontSize: '12px',
+          flexShrink: 0
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <span style={{ color: 'var(--text-muted, #64748b)' }}>점검 대상:</span>
+            <strong>{stats.total}개사</strong>
             {scanResults.size > 0 && (
-              <span className="text-slate-500 text-[11px]">
-                (국세청 대사 완료: {scanResults.size}개사)
+              <span style={{ color: '#0284c7', fontWeight: 600 }}>
+                (국세청 대사 완료: {scanResults.size}건)
               </span>
             )}
           </div>
 
-          <div className="flex items-center gap-1.5 flex-wrap">
-            <span className="px-2 py-0.5 rounded-md bg-emerald-950 text-emerald-300 border border-emerald-800 text-[11px] font-bold">
-              정상 <strong>{stats.active}</strong>
-            </span>
-            <span className="px-2 py-0.5 rounded-md bg-amber-950 text-amber-300 border border-amber-800 text-[11px] font-bold">
-              휴업 <strong>{stats.suspended}</strong>
-            </span>
-            <span className="px-2 py-0.5 rounded-md bg-rose-950 text-rose-300 border border-rose-800 text-[11px] font-bold">
-              폐업 <strong>{stats.closed}</strong>
-            </span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <span style={{ color: '#059669' }}>정상: <strong>{stats.active}</strong></span>
+            <span style={{ color: '#d97706' }}>휴업: <strong>{stats.suspended}</strong></span>
+            <span style={{ color: '#e11d48' }}>폐업: <strong>{stats.closed}</strong></span>
             {stats.rentedRisk > 0 && (
-              <span className="px-2.5 py-0.5 rounded-md bg-rose-600 text-white text-[11px] font-black animate-pulse flex items-center gap-1 shadow">
-                <AlertTriangle className="w-3 h-3" />
-                <span>가동장비 위험 {stats.rentedRisk}개사</span>
+              <span style={{
+                padding: '2px 8px',
+                borderRadius: '4px',
+                backgroundColor: '#e11d48',
+                color: '#ffffff',
+                fontWeight: 800,
+                display: 'flex',
+                alignItems: 'center',
+                gap: '4px'
+              }}>
+                <AlertTriangle size={12} />
+                가동장비 위험 {stats.rentedRisk}개사
               </span>
             )}
           </div>
         </div>
 
         {/* ─── ④ 고밀도 실시간 대사 그리드 테이블 ─── */}
-        <div className="flex-1 min-h-0 overflow-auto bg-slate-900/60 relative">
-          <table className="w-full text-left border-collapse font-sans text-xs">
-            <thead className="bg-slate-950 text-slate-400 font-bold sticky top-0 z-10 border-b border-slate-800">
-              <tr className="h-9">
-                <th className="px-3 py-1 text-center w-12 whitespace-nowrap flex-shrink-0">No.</th>
-                <th className="px-3 py-1 whitespace-nowrap flex-shrink-0">거래처명</th>
-                <th className="px-3 py-1 whitespace-nowrap flex-shrink-0">사업자등록번호</th>
-                <th className="px-3 py-1 whitespace-nowrap flex-shrink-0">대표자</th>
-                <th className="px-3 py-1 whitespace-nowrap flex-shrink-0">국세청 공식 상태</th>
-                <th className="px-3 py-1 whitespace-nowrap flex-shrink-0">과세유형</th>
-                <th className="px-3 py-1 whitespace-nowrap flex-shrink-0">폐업일자</th>
-                <th className="px-3 py-1 whitespace-nowrap flex-shrink-0">대여중 장비</th>
-                <th className="px-3 py-1 whitespace-nowrap flex-shrink-0">ERP 상태</th>
-                <th className="px-3 py-1 text-right whitespace-nowrap flex-shrink-0">원클릭 방어 조치</th>
+        <div style={{
+          flex: 1,
+          minHeight: 0,
+          overflow: 'auto',
+          backgroundColor: 'var(--bg-card, #ffffff)'
+        }}>
+          <table style={{
+            width: '100%',
+            borderCollapse: 'collapse',
+            fontSize: '12px',
+            textAlign: 'left'
+          }}>
+            <thead style={{
+              position: 'sticky',
+              top: 0,
+              zIndex: 5,
+              backgroundColor: 'var(--bg-secondary, #f8fafc)',
+              borderBottom: '2px solid var(--border-color, #cbd5e1)',
+              boxShadow: '0 1px 2px rgba(0, 0, 0, 0.05)'
+            }}>
+              <tr style={{ height: '38px' }}>
+                <th style={{ padding: '6px 10px', textAlign: 'center', width: '48px', whiteSpace: 'nowrap', fontWeight: 700 }}>No.</th>
+                <th style={{ padding: '6px 12px', whiteSpace: 'nowrap', fontWeight: 700 }}>거래처명</th>
+                <th style={{ padding: '6px 12px', whiteSpace: 'nowrap', fontWeight: 700 }}>사업자등록번호</th>
+                <th style={{ padding: '6px 12px', whiteSpace: 'nowrap', fontWeight: 700 }}>대표자</th>
+                <th style={{ padding: '6px 12px', whiteSpace: 'nowrap', fontWeight: 700 }}>국세청 공식 상태</th>
+                <th style={{ padding: '6px 12px', whiteSpace: 'nowrap', fontWeight: 700 }}>과세유형</th>
+                <th style={{ padding: '6px 12px', whiteSpace: 'nowrap', fontWeight: 700 }}>폐업일자</th>
+                <th style={{ padding: '6px 12px', whiteSpace: 'nowrap', fontWeight: 700 }}>대여중 장비</th>
+                <th style={{ padding: '6px 12px', whiteSpace: 'nowrap', fontWeight: 700 }}>ERP 상태</th>
+                <th style={{ padding: '6px 12px', textAlign: 'right', whiteSpace: 'nowrap', fontWeight: 700 }}>조치</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-800/60 font-normal text-slate-300">
-              {filteredItems.map((item, idx) => {
-                const isNtsClosed = item.nts?.status === 'CLOSED';
-                const isNtsActive = item.nts?.status === 'ACTIVE';
-                const isNtsSuspended = item.nts?.status === 'SUSPENDED';
-                const hasRentedRisk = (isNtsClosed || item.isClosed) && item.rentedCount > 0;
-                const isAlreadyApplied = appliedIds.has(item.id) || item.transactionStatus === 'BLOCKED';
+            <tbody>
+              {filteredItems.length === 0 ? (
+                <tr>
+                  <td colSpan={10} style={{ padding: '40px 20px', textAlign: 'center', color: 'var(--text-muted, #94a3b8)' }}>
+                    조회 조건에 해당하는 거래처가 없습니다.
+                  </td>
+                </tr>
+              ) : (
+                filteredItems.map((item, idx) => {
+                  const isNtsClosed = item.nts?.status === 'CLOSED';
+                  const isNtsActive = item.nts?.status === 'ACTIVE';
+                  const isNtsSuspended = item.nts?.status === 'SUSPENDED';
+                  const hasRentedRisk = (isNtsClosed || item.isClosed) && item.rentedCount > 0;
+                  const isAlreadyApplied = appliedIds.has(item.id) || item.transactionStatus === 'BLOCKED';
 
-                return (
-                  <tr 
-                    key={item.id}
-                    className={`h-9 hover:bg-slate-800/50 transition-colors ${
-                      hasRentedRisk ? 'bg-rose-950/20' : ''
-                    }`}
-                  >
-                    <td className="px-3 py-1 text-center font-mono text-slate-500 whitespace-nowrap">
-                      {idx + 1}
-                    </td>
+                  return (
+                    <tr 
+                      key={item.id}
+                      style={{
+                        height: '38px',
+                        borderBottom: '1px solid var(--border-color, #e2e8f0)',
+                        backgroundColor: hasRentedRisk ? '#fff1f2' : (idx % 2 === 1 ? 'var(--bg-secondary, #f8fafc)' : 'transparent')
+                      }}
+                    >
+                      <td style={{ padding: '6px 10px', textAlign: 'center', color: 'var(--text-muted, #94a3b8)', fontFamily: 'monospace', whiteSpace: 'nowrap' }}>
+                        {idx + 1}
+                      </td>
 
-                    <td className="px-3 py-1 font-bold text-white whitespace-nowrap max-w-[170px] truncate">
-                      {item.name}
-                    </td>
+                      <td style={{ padding: '6px 12px', fontWeight: 700, color: 'var(--text-main, #0f172a)', whiteSpace: 'nowrap', maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        {item.name}
+                      </td>
 
-                    <td className="px-3 py-1 font-mono text-slate-300 whitespace-nowrap">
-                      {formatBizNo(item.cleanNo)}
-                    </td>
+                      <td style={{ padding: '6px 12px', fontFamily: 'monospace', color: 'var(--text-secondary, #475569)', whiteSpace: 'nowrap' }}>
+                        {formatBizNo(item.cleanNo)}
+                      </td>
 
-                    <td className="px-3 py-1 whitespace-nowrap">
-                      {item.representative || '-'}
-                    </td>
+                      <td style={{ padding: '6px 12px', whiteSpace: 'nowrap', color: 'var(--text-secondary, #475569)' }}>
+                        {item.representative || '-'}
+                      </td>
 
-                    {/* 국세청 공식 상태 배지 */}
-                    <td className="px-3 py-1 whitespace-nowrap">
-                      {isNtsClosed ? (
-                        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-bold bg-rose-950 border border-rose-800 text-rose-300">
-                          <AlertCircle className="w-3 h-3" />
-                          <span>폐업자</span>
-                        </span>
-                      ) : isNtsSuspended ? (
-                        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-bold bg-amber-950 border border-amber-800 text-amber-300">
-                          <span>휴업자</span>
-                        </span>
-                      ) : isNtsActive ? (
-                        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-bold bg-emerald-950 border border-emerald-800 text-emerald-300">
-                          <CheckCircle2 className="w-3 h-3" />
-                          <span>계속사업자</span>
-                        </span>
-                      ) : (
-                        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] text-slate-500 bg-slate-800/60">
-                          <span>{item.isClosed ? '폐업(기록)' : '미조회'}</span>
-                        </span>
-                      )}
-                    </td>
+                      {/* 국세청 공식 상태 배지 */}
+                      <td style={{ padding: '6px 12px', whiteSpace: 'nowrap' }}>
+                        {isNtsClosed ? (
+                          <span style={{
+                            padding: '2px 8px',
+                            borderRadius: '4px',
+                            fontSize: '11px',
+                            fontWeight: 700,
+                            backgroundColor: '#fee2e2',
+                            border: '1px solid #fca5a5',
+                            color: '#b91c1c',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '3px'
+                          }}>
+                            <AlertCircle size={12} /> 폐업자
+                          </span>
+                        ) : isNtsSuspended ? (
+                          <span style={{
+                            padding: '2px 8px',
+                            borderRadius: '4px',
+                            fontSize: '11px',
+                            fontWeight: 700,
+                            backgroundColor: '#fef3c7',
+                            border: '1px solid #fcd34d',
+                            color: '#b45309',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '3px'
+                          }}>
+                            휴업자
+                          </span>
+                        ) : isNtsActive ? (
+                          <span style={{
+                            padding: '2px 8px',
+                            borderRadius: '4px',
+                            fontSize: '11px',
+                            fontWeight: 700,
+                            backgroundColor: '#dcfce7',
+                            border: '1px solid #86efac',
+                            color: '#15803d',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '3px'
+                          }}>
+                            <CheckCircle2 size={12} /> 계속사업자
+                          </span>
+                        ) : (
+                          <span style={{
+                            padding: '2px 6px',
+                            borderRadius: '4px',
+                            fontSize: '11px',
+                            color: 'var(--text-muted, #94a3b8)',
+                            backgroundColor: 'var(--bg-secondary, #f1f5f9)'
+                          }}>
+                            {item.isClosed ? '폐업(ERP)' : '미조회'}
+                          </span>
+                        )}
+                      </td>
 
-                    {/* 과세유형 */}
-                    <td className="px-3 py-1 text-slate-400 text-[11px] whitespace-nowrap max-w-[140px] truncate">
-                      {item.nts?.taxType || item.taxType || '-'}
-                    </td>
+                      {/* 과세유형 */}
+                      <td style={{ padding: '6px 12px', fontSize: '11px', color: 'var(--text-muted, #64748b)', whiteSpace: 'nowrap', maxWidth: '160px', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        {item.nts?.taxType || item.taxType || '-'}
+                      </td>
 
-                    {/* 폐업일자 */}
-                    <td className="px-3 py-1 font-mono text-slate-300 whitespace-nowrap">
-                      {item.nts?.closedDate || item.closedDate || '-'}
-                    </td>
+                      {/* 폐업일자 */}
+                      <td style={{ padding: '6px 12px', fontFamily: 'monospace', color: 'var(--text-secondary, #475569)', whiteSpace: 'nowrap' }}>
+                        {item.nts?.closedDate || item.closedDate || '-'}
+                      </td>
 
-                    {/* 가동 장비수 */}
-                    <td className="px-3 py-1 whitespace-nowrap">
-                      {item.rentedCount > 0 ? (
-                        <span className={`px-2 py-0.5 rounded-full font-mono font-bold text-[11px] flex items-center gap-1 ${
-                          isNtsClosed || item.isClosed
-                            ? 'bg-rose-600 text-white font-black animate-pulse'
-                            : 'bg-emerald-950 text-emerald-400 border border-emerald-800'
-                        }`}>
-                          <Truck className="w-3 h-3" />
-                          <span>{item.rentedCount}대 가동</span>
-                        </span>
-                      ) : (
-                        <span className="text-slate-500 text-[11px] font-mono">0대</span>
-                      )}
-                    </td>
+                      {/* 가동 장비수 */}
+                      <td style={{ padding: '6px 12px', whiteSpace: 'nowrap' }}>
+                        {item.rentedCount > 0 ? (
+                          <span style={{
+                            padding: '2px 8px',
+                            borderRadius: '12px',
+                            fontSize: '11px',
+                            fontWeight: 800,
+                            fontFamily: 'monospace',
+                            backgroundColor: (isNtsClosed || item.isClosed) ? '#e11d48' : '#ecfdf5',
+                            color: (isNtsClosed || item.isClosed) ? '#ffffff' : '#047857',
+                            border: (isNtsClosed || item.isClosed) ? 'none' : '1px solid #a7f3d0',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '4px'
+                          }}>
+                            <Truck size={12} /> {item.rentedCount}대 가동
+                          </span>
+                        ) : (
+                          <span style={{ color: 'var(--text-muted, #94a3b8)', fontSize: '11px', fontFamily: 'monospace' }}>0대</span>
+                        )}
+                      </td>
 
-                    {/* ERP 거래상태 */}
-                    <td className="px-3 py-1 whitespace-nowrap">
-                      {item.transactionStatus === 'BLOCKED' ? (
-                        <span className="px-1.5 py-0.5 rounded bg-rose-950 border border-rose-800 text-rose-300 text-[10px] font-bold">
-                          출고제한
-                        </span>
-                      ) : (
-                        <span className="px-1.5 py-0.5 rounded bg-emerald-950 border border-emerald-800 text-emerald-300 text-[10px]">
-                          정상거래
-                        </span>
-                      )}
-                    </td>
+                      {/* ERP 거래상태 */}
+                      <td style={{ padding: '6px 12px', whiteSpace: 'nowrap' }}>
+                        {item.transactionStatus === 'BLOCKED' ? (
+                          <span style={{
+                            padding: '2px 6px',
+                            borderRadius: '4px',
+                            fontSize: '11px',
+                            fontWeight: 700,
+                            backgroundColor: '#fee2e2',
+                            color: '#b91c1c',
+                            border: '1px solid #fca5a5'
+                          }}>
+                            출고제한
+                          </span>
+                        ) : (
+                          <span style={{
+                            padding: '2px 6px',
+                            borderRadius: '4px',
+                            fontSize: '11px',
+                            backgroundColor: '#ecfdf5',
+                            color: '#047857',
+                            border: '1px solid #a7f3d0'
+                          }}>
+                            정상거래
+                          </span>
+                        )}
+                      </td>
 
-                    {/* 원클릭 방어 조치 버튼 */}
-                    <td className="px-3 py-1 text-right whitespace-nowrap">
-                      {isNtsClosed && !isAlreadyApplied ? (
-                        <button
-                          type="button"
-                          onClick={() => handleApplySingleRestriction(item)}
-                          className="px-2.5 py-1 rounded-lg bg-rose-600 hover:bg-rose-500 text-white text-[11px] font-bold flex items-center gap-1 active:scale-95 shadow ml-auto"
-                        >
-                          <ShieldAlert className="w-3 h-3" />
-                          <span>출고제한/회수 지시</span>
-                        </button>
-                      ) : isAlreadyApplied ? (
-                        <span className="text-slate-500 text-[11px] flex items-center justify-end gap-0.5">
-                          <Check className="w-3 h-3 text-emerald-400" /> 조치완료
-                        </span>
-                      ) : (
-                        <span className="text-slate-600 text-[11px]">-</span>
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
+                      {/* 원클릭 조치 버튼 */}
+                      <td style={{ padding: '6px 12px', textAlign: 'right', whiteSpace: 'nowrap' }}>
+                        {isNtsClosed && !isAlreadyApplied ? (
+                          <button
+                            type="button"
+                            onClick={() => handleApplySingleRestriction(item)}
+                            style={{
+                              padding: '3px 8px',
+                              borderRadius: '4px',
+                              fontSize: '11px',
+                              fontWeight: 700,
+                              backgroundColor: '#e11d48',
+                              color: '#ffffff',
+                              border: 'none',
+                              cursor: 'pointer',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '4px'
+                            }}
+                          >
+                            <ShieldAlert size={12} /> 출고제한/회수 지시
+                          </button>
+                        ) : isAlreadyApplied ? (
+                          <span style={{ fontSize: '11px', color: '#059669', display: 'inline-flex', alignItems: 'center', gap: '2px' }}>
+                            <Check size={12} /> 조치완료
+                          </span>
+                        ) : (
+                          <span style={{ color: 'var(--text-muted, #cbd5e1)', fontSize: '11px' }}>-</span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
             </tbody>
           </table>
         </div>
 
         {/* ─── ⑤ 우하단 마감 바 (Terminal Action) ─── */}
-        <div className="px-5 py-3 bg-slate-950 border-t border-slate-800 flex items-center justify-between flex-shrink-0">
-          <div className="text-xs text-slate-400 font-mono flex items-center gap-2">
-            <span>표시: <strong className="text-white">{filteredItems.length}개사</strong></span>
+        <div style={{
+          padding: '12px 20px',
+          backgroundColor: 'var(--bg-secondary, #f8fafc)',
+          borderTop: '1px solid var(--border-color, #cbd5e1)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          flexShrink: 0
+        }}>
+          <div style={{ fontSize: '12px', color: 'var(--text-secondary, #475569)' }}>
+            총 <strong>{filteredItems.length}</strong>개사 표시
             {stats.rentedRisk > 0 && (
-              <span className="text-rose-400 font-bold">
-                (🚨 장비 가동 중 폐업 {stats.rentedRisk}개사 즉시 회수 필요)
+              <span style={{ color: '#e11d48', fontWeight: 800, marginLeft: '8px' }}>
+                (가동장비 위험: {stats.rentedRisk}개사 즉시 회수 필요)
               </span>
             )}
           </div>
 
-          <div className="flex items-center gap-2.5">
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             {stats.closed > 0 && (
               <button
                 type="button"
                 onClick={handleApplyAllRestrictions}
-                className="px-3 py-1.5 rounded-xl bg-rose-700 hover:bg-rose-600 text-white text-xs font-bold flex items-center gap-1.5 shadow active:scale-95 transition-all whitespace-nowrap"
+                style={{
+                  padding: '6px 12px',
+                  borderRadius: '6px',
+                  fontSize: '12px',
+                  fontWeight: 700,
+                  backgroundColor: '#e11d48',
+                  color: '#ffffff',
+                  border: 'none',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '5px',
+                  whiteSpace: 'nowrap'
+                }}
               >
-                <ShieldAlert className="w-3.5 h-3.5" />
-                <span>폐업 감지사 전건 출고제한/회수 일괄 적용</span>
+                <ShieldAlert size={14} />
+                폐업처 일괄 출고제한/회수 지시
               </button>
             )}
 
             <button
               type="button"
-              onClick={handleExportExcel}
-              className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-bold flex items-center gap-1.5 active:scale-95 transition-all whitespace-nowrap"
-            >
-              <Download className="w-3.5 h-3.5 text-emerald-400" />
-              <span>결과 엑셀 다운로드</span>
-            </button>
-
-            <button
-              type="button"
               onClick={onClose}
-              className="px-4 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold active:scale-95 transition-all whitespace-nowrap"
+              style={{
+                padding: '6px 16px',
+                borderRadius: '6px',
+                fontSize: '12px',
+                fontWeight: 700,
+                backgroundColor: 'var(--primary, #4f46e5)',
+                color: '#ffffff',
+                border: 'none',
+                cursor: 'pointer',
+                whiteSpace: 'nowrap'
+              }}
             >
-              확인 및 닫기
+              닫기
             </button>
           </div>
         </div>
-
       </div>
     </div>
   );

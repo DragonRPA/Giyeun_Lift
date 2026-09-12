@@ -1,4 +1,29 @@
+## [v1.12.0.Build.76] - 2026-09-12 17:40
+
+### 🎨 [국세청 휴폐업 점검 & 폴더 일괄등록 모달 Tailwind 의존성 전면 소탕 및 전사 표준 Z-패턴 인라인 스타일 스튜디오 복원]
+
+**배경**:
+- 사장님 피드백: "국세청 휴폐업조회 메뉴 눌렀더니 화면 결과가 이런식이야. UIUX 전혀 고려되지 않은 화면같아"
+- **근본 원인 규명**:
+  - 본 프로젝트는 Tailwind CSS를 설치/사용하지 않는 프로젝트임에도 불구하고, `NtsStatusAuditModal.tsx` 및 `BatchBusinessLicenseModal.tsx`가 Tailwind 유틸리티 클래스(`fixed inset-0 z-50 bg-black/80 ...`)로 작성되어 스타일이 브라우저에서 100% 무시됨.
+  - 이로 인해 모달 팝업이 성립되지 않고, 페이지 하단에 날것의 HTML 표(Raw Table)로 노출되어 상단 헤더·HUD가 스크롤 밖으로 밀려나고 92번~117번 행만 빽빽하게 렌더링되던 심각한 UI 결함 발생.
+
+**개편 내역 (헌장 3.1, 3.2, 3.5, 3.6 아키타입 준수)**:
+1. **`src/components/NtsStatusAuditModal.tsx` — 전사 표준 인라인 스타일 & Z-패턴 고밀도 대사 스튜디오 전면 재구축**:
+   - 오버레이: `position: fixed, zIndex: 9999, backgroundColor: rgba(0, 0, 0, 0.65), backdropFilter: blur(4px)`.
+   - 모달 본체: `maxWidth: 1320px, height: 90vh, borderRadius: 12px, border: 1px solid var(--border-color), boxShadow: 0 25px 50px -12px`.
+   - ① 헤더(Scope & Title): 건조한 단일 명칭 `국세청 휴폐업 점검` 및 우측 상단 `X` 닫기 버튼.
+   - ② 파이프라인 제어 바(Z-Pattern): `[매출처 (고객사 N)]` / `[매입처 (협력사 N)]` 세그먼트 토글, 필터 칩(`전체`, `가동장비 위험`, `폐업`, `정상`), 상호/사업자번호 검색창, `[국세청 전수 점검 시작]`, `[엑셀 내보내기]`.
+   - ③ 진행 HUD 요약 바: 대상 수, 국세청 대사 완료 건수, 정상/휴업/폐업 및 가동장비 위험 배지.
+   - ④ 고밀도 실시간 대사 테이블: 38px 행 높이, `sticky thead` 고정 헤더, `whiteSpace: nowrap`, 가동장비 위험 시 옅은 레드 하이라이트, 국세청 공적 상태 컬러 배지, 원클릭 `[출고제한/회수 지시]` 액션.
+   - ⑤ 우하단 종결 바: 폐업처 일괄 조치 버튼 및 `[닫기]` 버튼.
+2. **`src/components/BatchBusinessLicenseModal.tsx` — Tailwind 의존성 동일 소탕 및 표준 인라인 스타일 전환**:
+   - 동일한 잠재 렌더링 붕괴를 원천 방지하기 위해 드래그앤드롭 폴더/파일 일괄 등록 모달도 전사 표준 인라인 스타일로 전면 리팩터링 완료.
+
+---
+
 ## [v1.12.0.Build.75] - 2026-09-12 17:30
+
 
 ### 🚀 [Vercel 배포 번들 91.3% 다이어트 — 100MB eBroAgent.exe 바이너리 GitHub Release 영구 분리 및 CDN 다운로드 전환]
 

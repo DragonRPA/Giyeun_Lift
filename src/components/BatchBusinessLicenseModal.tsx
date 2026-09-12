@@ -267,9 +267,35 @@ export const BatchBusinessLicenseModal: React.FC<BatchBusinessLicenseModalProps>
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-3 sm:p-6 overflow-hidden">
+    <div style={{
+      position: 'fixed',
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      zIndex: 9999,
+      backgroundColor: 'rgba(0, 0, 0, 0.65)',
+      backdropFilter: 'blur(4px)',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      padding: '16px'
+    }}>
       <div 
-        className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-6xl h-[92vh] max-h-[900px] flex flex-col shadow-2xl overflow-hidden text-slate-200"
+        style={{
+          width: '100%',
+          maxWidth: '1320px',
+          height: '90vh',
+          maxHeight: '900px',
+          backgroundColor: 'var(--bg-card, #ffffff)',
+          color: 'var(--text-main, #0f172a)',
+          borderRadius: '12px',
+          border: '1px solid var(--border-color, #cbd5e1)',
+          boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.35)',
+          display: 'flex',
+          flexDirection: 'column',
+          overflow: 'hidden'
+        }}
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
@@ -282,7 +308,7 @@ export const BatchBusinessLicenseModal: React.FC<BatchBusinessLicenseModalProps>
           webkitdirectory=""
           directory=""
           multiple
-          className="hidden"
+          style={{ display: 'none' }}
           onChange={handleFilesChosen}
         />
         <input 
@@ -290,28 +316,37 @@ export const BatchBusinessLicenseModal: React.FC<BatchBusinessLicenseModalProps>
           type="file"
           multiple
           accept=".pdf,.png,.jpg,.jpeg,.webp,image/*,application/pdf"
-          className="hidden"
+          style={{ display: 'none' }}
           onChange={handleFilesChosen}
         />
 
-        {/* ─── ① 모달 상단 헤더 (Scope & Target) ─── */}
-        <div className="px-5 py-3.5 bg-slate-950 border-b border-slate-800 flex items-center justify-between flex-shrink-0">
-          <div className="flex items-center gap-3">
-            <div className="p-2 rounded-xl bg-sky-950/80 border border-sky-800/80 text-sky-400">
-              <FolderOpen className="w-5 h-5" />
+        {/* ─── ① 모달 상단 헤더 ─── */}
+        <div style={{
+          padding: '14px 20px',
+          backgroundColor: 'var(--bg-secondary, #f8fafc)',
+          borderBottom: '1px solid var(--border-color, #cbd5e1)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          flexShrink: 0
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <div style={{
+              width: '32px',
+              height: '32px',
+              borderRadius: '8px',
+              backgroundColor: '#0284c7',
+              color: '#ffffff',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center'
+            }}>
+              <FolderOpen size={18} />
             </div>
             <div>
-              <div className="flex items-center gap-2">
-                <h2 className="text-base font-bold text-white tracking-tight whitespace-nowrap">
-                  사업자등록증 폴더 일괄 등록
-                </h2>
-                <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-800 border border-slate-700 text-slate-300">
-                  Vision AI 순회 엔진
-                </span>
-              </div>
-              <p className="text-[11px] text-slate-400 mt-0.5">
-                지정된 폴더 내 사업자등록증(PDF, 이미지)을 전수 순회하여 상호·사업자번호·대표자 정보를 자동 등록 및 보완합니다.
-              </p>
+              <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 800, color: 'var(--text-main, #0f172a)', whiteSpace: 'nowrap' }}>
+                사업자등록증 폴더 일괄 등록
+              </h3>
             </div>
           </div>
 
@@ -319,19 +354,44 @@ export const BatchBusinessLicenseModal: React.FC<BatchBusinessLicenseModalProps>
             type="button"
             onClick={onClose}
             disabled={isProcessing}
-            className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors disabled:opacity-50"
+            style={{
+              background: 'none',
+              border: 'none',
+              padding: '6px',
+              cursor: isProcessing ? 'not-allowed' : 'pointer',
+              color: 'var(--text-muted, #64748b)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              borderRadius: '6px'
+            }}
             title="닫기"
           >
-            <X className="w-5 h-5" />
+            <X size={20} />
           </button>
         </div>
 
-        {/* ─── ② 조작 및 파이프라인 제어 바 (Gutenberg Z-Pattern: 좌상단 Scope -> 우상단 Pipeline) ─── */}
-        <div className="px-5 py-3 bg-slate-900 border-b border-slate-800/80 flex flex-wrap items-center justify-between gap-3 flex-shrink-0">
+        {/* ─── ② 조작 및 파이프라인 제어 바 (Gutenberg Z-Pattern) ─── */}
+        <div style={{
+          padding: '10px 20px',
+          backgroundColor: 'var(--bg-card, #ffffff)',
+          borderBottom: '1px solid var(--border-color, #e2e8f0)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: '12px',
+          flexWrap: 'wrap',
+          flexShrink: 0
+        }}>
           {/* 좌측: 등록 대상 선택 탭 및 폴더 선택 버튼군 */}
-          <div className="flex items-center gap-2.5 flex-wrap">
-            {/* 등록 대상 토글 */}
-            <div className="flex items-center bg-slate-950 p-1 rounded-xl border border-slate-800">
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+            <div style={{
+              display: 'flex',
+              padding: '2px',
+              borderRadius: '8px',
+              backgroundColor: 'var(--bg-secondary, #f1f5f9)',
+              border: '1px solid var(--border-color, #cbd5e1)'
+            }}>
               <button
                 type="button"
                 disabled={isProcessing}
@@ -341,14 +401,23 @@ export const BatchBusinessLicenseModal: React.FC<BatchBusinessLicenseModalProps>
                     setResults(prev => prev.map(r => ({ ...r, targetType: 'CUSTOMER' })));
                   }
                 }}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors flex items-center gap-1.5 whitespace-nowrap ${
-                  targetType === 'CUSTOMER'
-                    ? 'bg-sky-600 text-white shadow-sm'
-                    : 'text-slate-400 hover:text-slate-200'
-                }`}
+                style={{
+                  padding: '5px 12px',
+                  fontSize: '12px',
+                  fontWeight: targetType === 'CUSTOMER' ? 700 : 500,
+                  borderRadius: '6px',
+                  border: 'none',
+                  cursor: isProcessing ? 'not-allowed' : 'pointer',
+                  backgroundColor: targetType === 'CUSTOMER' ? '#0284c7' : 'transparent',
+                  color: targetType === 'CUSTOMER' ? '#ffffff' : 'var(--text-secondary, #475569)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '5px',
+                  whiteSpace: 'nowrap'
+                }}
               >
-                <Building2 className="w-3.5 h-3.5" />
-                <span>매출처 (고객사)</span>
+                <Building2 size={13} />
+                매출처 (고객사)
               </button>
               <button
                 type="button"
@@ -359,21 +428,29 @@ export const BatchBusinessLicenseModal: React.FC<BatchBusinessLicenseModalProps>
                     setResults(prev => prev.map(r => ({ ...r, targetType: 'VENDOR', vendorType: defaultVendorType })));
                   }
                 }}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors flex items-center gap-1.5 whitespace-nowrap ${
-                  targetType === 'VENDOR'
-                    ? 'bg-emerald-600 text-white shadow-sm'
-                    : 'text-slate-400 hover:text-slate-200'
-                }`}
+                style={{
+                  padding: '5px 12px',
+                  fontSize: '12px',
+                  fontWeight: targetType === 'VENDOR' ? 700 : 500,
+                  borderRadius: '6px',
+                  border: 'none',
+                  cursor: isProcessing ? 'not-allowed' : 'pointer',
+                  backgroundColor: targetType === 'VENDOR' ? '#10b981' : 'transparent',
+                  color: targetType === 'VENDOR' ? '#ffffff' : 'var(--text-secondary, #475569)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '5px',
+                  whiteSpace: 'nowrap'
+                }}
               >
-                <Layers className="w-3.5 h-3.5" />
-                <span>매입처 (공급/외주처)</span>
+                <Layers size={13} />
+                매입처 (협력사)
               </button>
             </div>
 
-            {/* 매입처 선택 시 기본 거래유형 셀렉터 */}
             {targetType === 'VENDOR' && (
-              <div className="flex items-center gap-1.5 bg-slate-950 px-2.5 py-1 rounded-xl border border-slate-800">
-                <span className="text-[11px] text-slate-400 font-medium whitespace-nowrap">기본 유형:</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '4px 8px', borderRadius: '6px', backgroundColor: 'var(--bg-secondary, #f1f5f9)', border: '1px solid var(--border-color, #cbd5e1)' }}>
+                <span style={{ fontSize: '11px', color: 'var(--text-muted, #64748b)', whiteSpace: 'nowrap' }}>유형:</span>
                 <select
                   disabled={isProcessing}
                   value={defaultVendorType}
@@ -384,7 +461,14 @@ export const BatchBusinessLicenseModal: React.FC<BatchBusinessLicenseModalProps>
                       setResults(prev => prev.map(r => ({ ...r, vendorType: nextVal })));
                     }
                   }}
-                  className="bg-slate-900 border border-slate-700 text-xs text-white rounded-lg px-2 py-1 focus:outline-none focus:border-emerald-500"
+                  style={{
+                    fontSize: '11px',
+                    padding: '2px 6px',
+                    borderRadius: '4px',
+                    border: '1px solid var(--border-color, #cbd5e1)',
+                    backgroundColor: 'var(--bg-card, #ffffff)',
+                    color: 'var(--text-main, #0f172a)'
+                  }}
                 >
                   <option value="RENTAL">장비 임차처</option>
                   <option value="PURCHASE">장비 구매처</option>
@@ -397,48 +481,101 @@ export const BatchBusinessLicenseModal: React.FC<BatchBusinessLicenseModalProps>
             )}
 
             {/* 폴더 선택 / 파일 복수 선택 버튼 */}
-            <div className="flex items-center gap-1.5">
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
               <button
                 type="button"
                 disabled={isProcessing}
                 onClick={() => folderInputRef.current?.click()}
-                className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-bold flex items-center gap-1.5 active:scale-95 disabled:opacity-50 transition-all whitespace-nowrap"
+                style={{
+                  padding: '5px 12px',
+                  fontSize: '12px',
+                  fontWeight: 600,
+                  borderRadius: '6px',
+                  border: '1px solid var(--border-color, #cbd5e1)',
+                  backgroundColor: 'var(--bg-secondary, #f8fafc)',
+                  color: 'var(--text-main, #0f172a)',
+                  cursor: isProcessing ? 'not-allowed' : 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '5px',
+                  whiteSpace: 'nowrap'
+                }}
               >
-                <FolderOpen className="w-3.5 h-3.5 text-amber-400" />
-                <span>폴더 선택</span>
+                <FolderOpen size={14} color="#d97706" />
+                폴더 선택
               </button>
               <button
                 type="button"
                 disabled={isProcessing}
                 onClick={() => filesInputRef.current?.click()}
-                className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-bold flex items-center gap-1.5 active:scale-95 disabled:opacity-50 transition-all whitespace-nowrap"
+                style={{
+                  padding: '5px 12px',
+                  fontSize: '12px',
+                  fontWeight: 600,
+                  borderRadius: '6px',
+                  border: '1px solid var(--border-color, #cbd5e1)',
+                  backgroundColor: 'var(--bg-secondary, #f8fafc)',
+                  color: 'var(--text-main, #0f172a)',
+                  cursor: isProcessing ? 'not-allowed' : 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '5px',
+                  whiteSpace: 'nowrap'
+                }}
               >
-                <FileText className="w-3.5 h-3.5 text-sky-400" />
-                <span>파일 복수 선택</span>
+                <FileText size={14} color="#0284c7" />
+                파일 선택
               </button>
             </div>
           </div>
 
           {/* 우측: 실행 / 정지 / 초기화 컨트롤 */}
-          <div className="flex items-center gap-2">
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             {!isProcessing ? (
               <button
                 type="button"
                 disabled={selectedFiles.length === 0}
                 onClick={handleStartBatch}
-                className="px-4 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold flex items-center gap-1.5 shadow-md active:scale-95 disabled:opacity-40 disabled:pointer-events-none transition-all whitespace-nowrap"
+                style={{
+                  padding: '6px 14px',
+                  fontSize: '12px',
+                  fontWeight: 700,
+                  borderRadius: '6px',
+                  border: 'none',
+                  backgroundColor: selectedFiles.length === 0 ? '#94a3b8' : '#2563eb',
+                  color: '#ffffff',
+                  cursor: selectedFiles.length === 0 ? 'not-allowed' : 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  boxShadow: '0 1px 3px rgba(0, 0, 0, 0.15)',
+                  whiteSpace: 'nowrap'
+                }}
               >
-                <Play className="w-3.5 h-3.5 fill-current" />
-                <span>일괄 분석 및 등록 시작</span>
+                <Play size={14} style={{ fill: '#ffffff' }} />
+                일괄 분석 및 등록 시작
               </button>
             ) : (
               <button
                 type="button"
                 onClick={handleStopBatch}
-                className="px-4 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold flex items-center gap-1.5 shadow-md active:scale-95 transition-all whitespace-nowrap"
+                style={{
+                  padding: '6px 14px',
+                  fontSize: '12px',
+                  fontWeight: 700,
+                  borderRadius: '6px',
+                  border: 'none',
+                  backgroundColor: '#e11d48',
+                  color: '#ffffff',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  whiteSpace: 'nowrap'
+                }}
               >
-                <Pause className="w-3.5 h-3.5 fill-current" />
-                <span>일시 정지 / 중단</span>
+                <Pause size={14} style={{ fill: '#ffffff' }} />
+                일시 정지 / 중단
               </button>
             )}
 
@@ -446,101 +583,128 @@ export const BatchBusinessLicenseModal: React.FC<BatchBusinessLicenseModalProps>
               type="button"
               disabled={isProcessing || selectedFiles.length === 0}
               onClick={handleReset}
-              className="p-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 disabled:opacity-40 transition-colors"
-              title="대기열 초기화"
+              style={{
+                padding: '6px 8px',
+                borderRadius: '6px',
+                border: '1px solid var(--border-color, #cbd5e1)',
+                backgroundColor: 'var(--bg-secondary, #f8fafc)',
+                color: 'var(--text-secondary, #475569)',
+                cursor: (isProcessing || selectedFiles.length === 0) ? 'not-allowed' : 'pointer'
+              }}
+              title="초기화"
             >
-              <RotateCcw className="w-3.5 h-3.5" />
+              <RotateCcw size={14} />
             </button>
           </div>
         </div>
 
         {/* ─── ③ 실시간 진행 HUD & 현황 통계 배지 ─── */}
-        <div className="px-5 py-2.5 bg-slate-950/60 border-b border-slate-800 flex flex-col gap-2 flex-shrink-0">
+        <div style={{
+          padding: '8px 20px',
+          backgroundColor: 'var(--bg-secondary, #f1f5f9)',
+          borderBottom: '1px solid var(--border-color, #e2e8f0)',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '6px',
+          flexShrink: 0
+        }}>
           {/* 프로그레스 바 */}
-          <div className="w-full bg-slate-800/80 rounded-full h-2 overflow-hidden flex">
+          <div style={{ width: '100%', height: '6px', borderRadius: '3px', backgroundColor: '#e2e8f0', overflow: 'hidden' }}>
             <div 
-              className={`h-full transition-all duration-300 ${
-                isProcessing ? 'bg-gradient-to-r from-blue-500 to-sky-400' : 'bg-emerald-500'
-              }`}
-              style={{ width: `${currentProgress.percent}%` }}
+              style={{
+                height: '100%',
+                width: `${currentProgress.percent}%`,
+                backgroundColor: isProcessing ? '#0284c7' : '#10b981',
+                transition: 'width 0.3s ease'
+              }}
             />
           </div>
 
           {/* 진행 통계 카운터 카드 */}
-          <div className="flex items-center justify-between text-xs flex-wrap gap-2 font-mono">
-            <div className="flex items-center gap-2">
-              <span className="text-slate-400 font-sans text-[11px]">진행률:</span>
-              <strong className="text-white font-bold">{currentProgress.percent}%</strong>
-              <span className="text-slate-500">({currentProgress.processed} / {currentProgress.total}건)</span>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '12px', flexWrap: 'wrap', gap: '8px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span style={{ color: 'var(--text-muted, #64748b)' }}>진행률:</span>
+              <strong>{currentProgress.percent}%</strong>
+              <span style={{ color: 'var(--text-muted, #64748b)' }}>({currentProgress.processed} / {currentProgress.total}건)</span>
               {isProcessing && (
-                <span className="flex items-center gap-1 text-[11px] text-sky-400 font-sans animate-pulse">
-                  <RefreshCw className="w-3 h-3 animate-spin" />
-                  <span>분석 순회 중...</span>
+                <span style={{ color: '#0284c7', display: 'flex', alignItems: 'center', gap: '3px', fontWeight: 600 }}>
+                  <RefreshCw size={12} className="animate-spin" /> 분석 중...
                 </span>
               )}
               {isAborted && (
-                <span className="text-[11px] text-amber-400 font-sans font-bold">
-                  [일시 중단됨]
-                </span>
+                <span style={{ color: '#d97706', fontWeight: 700 }}>[중단됨]</span>
               )}
             </div>
 
-            <div className="flex items-center gap-1.5 flex-wrap">
-              <span className="px-2 py-0.5 rounded-md bg-slate-800 text-slate-300 border border-slate-700 text-[11px]">
-                전체 <strong>{currentProgress.total}</strong>
-              </span>
-              <span className="px-2 py-0.5 rounded-md bg-emerald-950/80 text-emerald-300 border border-emerald-800/60 text-[11px]">
-                신규 <strong>{currentProgress.successNew}</strong>
-              </span>
-              <span className="px-2 py-0.5 rounded-md bg-sky-950/80 text-sky-300 border border-sky-800/60 text-[11px]">
-                보완 <strong>{currentProgress.successUpdated}</strong>
-              </span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <span>전체: <strong>{currentProgress.total}</strong></span>
+              <span style={{ color: '#059669' }}>신규: <strong>{currentProgress.successNew}</strong></span>
+              <span style={{ color: '#0284c7' }}>보완: <strong>{currentProgress.successUpdated}</strong></span>
               {currentProgress.failed > 0 && (
-                <span className="px-2 py-0.5 rounded-md bg-rose-950/80 text-rose-300 border border-rose-800/60 text-[11px]">
-                  오류 <strong>{currentProgress.failed}</strong>
-                </span>
+                <span style={{ color: '#e11d48' }}>오류: <strong>{currentProgress.failed}</strong></span>
               )}
               {currentProgress.skipped > 0 && (
-                <span className="px-2 py-0.5 rounded-md bg-amber-950/80 text-amber-300 border border-amber-800/60 text-[11px]">
-                  건너뜀 <strong>{currentProgress.skipped}</strong>
-                </span>
+                <span style={{ color: '#d97706' }}>건너뜀: <strong>{currentProgress.skipped}</strong></span>
               )}
             </div>
           </div>
         </div>
 
-        {/* ─── ④ 고밀도 실시간 스트리밍 대사 테이블 (Inspection: 화면의 75~80% 차지) ─── */}
-        <div className="flex-1 min-h-0 overflow-auto bg-slate-900/60 relative">
+        {/* ─── ④ 고밀도 실시간 스트리밍 대사 테이블 ─── */}
+        <div style={{
+          flex: 1,
+          minHeight: 0,
+          overflow: 'auto',
+          backgroundColor: 'var(--bg-card, #ffffff)'
+        }}>
           {selectedFiles.length === 0 ? (
-            /* 드래그앤드롭 유도 화면 */
             <div 
-              className={`h-full flex flex-col items-center justify-center p-8 text-center transition-colors cursor-pointer ${
-                isDragOver ? 'bg-sky-950/30 border-2 border-dashed border-sky-500' : ''
-              }`}
+              style={{
+                height: '100%',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                padding: '40px 20px',
+                textAlign: 'center',
+                cursor: 'pointer',
+                backgroundColor: isDragOver ? 'rgba(2, 132, 199, 0.05)' : 'transparent',
+                border: isDragOver ? '2px dashed #0284c7' : 'none'
+              }}
               onClick={() => folderInputRef.current?.click()}
             >
-              <div className="w-16 h-16 rounded-2xl bg-slate-800/80 border border-slate-700 flex items-center justify-center text-slate-400 mb-4 shadow-inner">
-                <FolderOpen className="w-8 h-8 text-sky-400" />
+              <div style={{ width: '56px', height: '56px', borderRadius: '14px', backgroundColor: 'var(--bg-secondary, #f1f5f9)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '14px' }}>
+                <FolderOpen size={28} color="#0284c7" />
               </div>
-              <h3 className="text-base font-bold text-white">
+              <h4 style={{ margin: 0, fontSize: '15px', fontWeight: 700, color: 'var(--text-main, #0f172a)' }}>
                 사업자등록증 폴더를 이곳으로 드래그하거나 클릭하여 선택하십시오
-              </h3>
-              <p className="text-xs text-slate-400 max-w-md mt-1.5 leading-relaxed">
-                PDF 파일 및 이미지(PNG, JPG, WEBP)가 포함된 폴더를 통째로 지정하면 모든 파일을 순회하여 
-                {targetType === 'CUSTOMER' ? ' 매출처(고객사)' : ' 매입처(협력사)'} 마스터에 
-                자동으로 등록하거나 기존 정보를 보완합니다.
+              </h4>
+              <p style={{ margin: '8px 0 20px 0', fontSize: '12px', color: 'var(--text-muted, #64748b)', maxWidth: '460px', lineHeight: '1.5' }}>
+                PDF 및 이미지(PNG, JPG, WEBP)가 포함된 폴더를 통째로 지정하면 모든 파일을 순회하여 
+                {targetType === 'CUSTOMER' ? ' 매출처(고객사)' : ' 매입처(협력사)'}에 자동으로 등록하거나 보완합니다.
               </p>
-              <div className="flex items-center gap-2 mt-5">
+              <div style={{ display: 'flex', gap: '8px' }}>
                 <button
                   type="button"
                   onClick={(e) => {
                     e.stopPropagation();
                     folderInputRef.current?.click();
                   }}
-                  className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold flex items-center gap-1.5 shadow-md active:scale-95"
+                  style={{
+                    padding: '8px 16px',
+                    borderRadius: '6px',
+                    backgroundColor: '#0284c7',
+                    color: '#ffffff',
+                    fontSize: '12px',
+                    fontWeight: 700,
+                    border: 'none',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px'
+                  }}
                 >
-                  <FolderOpen className="w-4 h-4" />
-                  <span>사업자등록증 폴더 열기</span>
+                  <FolderOpen size={14} /> 폴더 열기
                 </button>
                 <button
                   type="button"
@@ -548,30 +712,52 @@ export const BatchBusinessLicenseModal: React.FC<BatchBusinessLicenseModalProps>
                     e.stopPropagation();
                     filesInputRef.current?.click();
                   }}
-                  className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-bold flex items-center gap-1.5 active:scale-95"
+                  style={{
+                    padding: '8px 16px',
+                    borderRadius: '6px',
+                    backgroundColor: 'var(--bg-secondary, #f1f5f9)',
+                    color: 'var(--text-main, #0f172a)',
+                    fontSize: '12px',
+                    fontWeight: 600,
+                    border: '1px solid var(--border-color, #cbd5e1)',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px'
+                  }}
                 >
-                  <FileText className="w-4 h-4 text-sky-400" />
-                  <span>개별 파일 다중 선택</span>
+                  <FileText size={14} /> 파일 선택
                 </button>
               </div>
             </div>
           ) : (
-            /* 실시간 고밀도 스트리밍 대사 테이블 */
-            <table className="w-full text-left border-collapse font-sans text-xs">
-              <thead className="bg-slate-950 text-slate-400 font-bold sticky top-0 z-10 border-b border-slate-800">
-                <tr className="h-9">
-                  <th className="px-3 py-1 text-center w-12 whitespace-nowrap flex-shrink-0">No.</th>
-                  <th className="px-3 py-1 whitespace-nowrap flex-shrink-0">상태</th>
-                  <th className="px-3 py-1 whitespace-nowrap flex-shrink-0">파일명 / 경로</th>
-                  <th className="px-3 py-1 whitespace-nowrap flex-shrink-0">상호 (법인명)</th>
-                  <th className="px-3 py-1 whitespace-nowrap flex-shrink-0">사업자등록번호</th>
-                  <th className="px-3 py-1 whitespace-nowrap flex-shrink-0">대표자</th>
-                  <th className="px-3 py-1 whitespace-nowrap flex-shrink-0">연락처 / 이메일</th>
-                  <th className="px-3 py-1 whitespace-nowrap flex-shrink-0">소재지</th>
-                  <th className="px-3 py-1 whitespace-nowrap flex-shrink-0">처리 결과 및 상세</th>
+            <table style={{
+              width: '100%',
+              borderCollapse: 'collapse',
+              fontSize: '12px',
+              textAlign: 'left'
+            }}>
+              <thead style={{
+                position: 'sticky',
+                top: 0,
+                zIndex: 5,
+                backgroundColor: 'var(--bg-secondary, #f8fafc)',
+                borderBottom: '2px solid var(--border-color, #cbd5e1)',
+                boxShadow: '0 1px 2px rgba(0, 0, 0, 0.05)'
+              }}>
+                <tr style={{ height: '38px' }}>
+                  <th style={{ padding: '6px 10px', textAlign: 'center', width: '48px', whiteSpace: 'nowrap', fontWeight: 700 }}>No.</th>
+                  <th style={{ padding: '6px 12px', whiteSpace: 'nowrap', fontWeight: 700 }}>상태</th>
+                  <th style={{ padding: '6px 12px', whiteSpace: 'nowrap', fontWeight: 700 }}>파일명</th>
+                  <th style={{ padding: '6px 12px', whiteSpace: 'nowrap', fontWeight: 700 }}>상호</th>
+                  <th style={{ padding: '6px 12px', whiteSpace: 'nowrap', fontWeight: 700 }}>사업자등록번호</th>
+                  <th style={{ padding: '6px 12px', whiteSpace: 'nowrap', fontWeight: 700 }}>대표자</th>
+                  <th style={{ padding: '6px 12px', whiteSpace: 'nowrap', fontWeight: 700 }}>연락처 / 이메일</th>
+                  <th style={{ padding: '6px 12px', whiteSpace: 'nowrap', fontWeight: 700 }}>소재지</th>
+                  <th style={{ padding: '6px 12px', whiteSpace: 'nowrap', fontWeight: 700 }}>처리 결과</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-800/60 font-normal text-slate-300">
+              <tbody>
                 {results.map((row) => {
                   const isCurProcessing = row.status === 'PROCESSING';
                   const isNew = row.status === 'SUCCESS_NEW';
@@ -582,90 +768,78 @@ export const BatchBusinessLicenseModal: React.FC<BatchBusinessLicenseModalProps>
                   return (
                     <tr 
                       key={row.index} 
-                      className={`h-9 hover:bg-slate-800/50 transition-colors ${
-                        isCurProcessing ? 'bg-sky-950/30' : ''
-                      }`}
+                      style={{
+                        height: '38px',
+                        borderBottom: '1px solid var(--border-color, #e2e8f0)',
+                        backgroundColor: isCurProcessing ? '#e0f2fe' : (row.index % 2 === 1 ? 'var(--bg-secondary, #f8fafc)' : 'transparent')
+                      }}
                     >
-                      {/* 순번 */}
-                      <td className="px-3 py-1 text-center font-mono text-slate-500 whitespace-nowrap">
+                      <td style={{ padding: '6px 10px', textAlign: 'center', color: 'var(--text-muted, #94a3b8)', fontFamily: 'monospace', whiteSpace: 'nowrap' }}>
                         {row.index}
                       </td>
 
-                      {/* 상태 배지 */}
-                      <td className="px-3 py-1 whitespace-nowrap">
+                      <td style={{ padding: '6px 12px', whiteSpace: 'nowrap' }}>
                         {isNew && (
-                          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-bold bg-emerald-950 border border-emerald-800 text-emerald-300">
-                            <CheckCircle2 className="w-3 h-3" />
-                            <span>신규등록</span>
+                          <span style={{ padding: '2px 8px', borderRadius: '4px', fontSize: '11px', fontWeight: 700, backgroundColor: '#dcfce7', color: '#15803d', border: '1px solid #86efac', display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
+                            <CheckCircle2 size={12} /> 신규등록
                           </span>
                         )}
                         {isUpdated && (
-                          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-bold bg-sky-950 border border-sky-800 text-sky-300">
-                            <CheckCircle2 className="w-3 h-3" />
-                            <span>정보보완</span>
+                          <span style={{ padding: '2px 8px', borderRadius: '4px', fontSize: '11px', fontWeight: 700, backgroundColor: '#e0f2fe', color: '#0369a1', border: '1px solid #7dd3fc', display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
+                            <CheckCircle2 size={12} /> 정보보완
                           </span>
                         )}
                         {isCurProcessing && (
-                          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-bold bg-blue-950 border border-blue-800 text-blue-300 animate-pulse">
-                            <RefreshCw className="w-3 h-3 animate-spin" />
-                            <span>분석중</span>
+                          <span style={{ padding: '2px 8px', borderRadius: '4px', fontSize: '11px', fontWeight: 700, backgroundColor: '#dbeafe', color: '#1d4ed8', border: '1px solid #93c5fd', display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
+                            <RefreshCw size={12} className="animate-spin" /> 분석중
                           </span>
                         )}
                         {isFail && (
-                          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-bold bg-rose-950 border border-rose-800 text-rose-300">
-                            <AlertCircle className="w-3 h-3" />
-                            <span>오류</span>
+                          <span style={{ padding: '2px 8px', borderRadius: '4px', fontSize: '11px', fontWeight: 700, backgroundColor: '#fee2e2', color: '#b91c1c', border: '1px solid #fca5a5', display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
+                            <AlertCircle size={12} /> 오류
                           </span>
                         )}
                         {isPending && (
-                          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-medium bg-slate-800 text-slate-400">
-                            <Clock className="w-3 h-3" />
-                            <span>대기</span>
+                          <span style={{ padding: '2px 6px', borderRadius: '4px', fontSize: '11px', color: 'var(--text-muted, #94a3b8)', backgroundColor: 'var(--bg-secondary, #f1f5f9)' }}>
+                            대기
                           </span>
                         )}
                         {row.status === 'SKIPPED' && (
-                          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-medium bg-amber-950 border border-amber-800 text-amber-300">
-                            <span>건너뜀</span>
+                          <span style={{ padding: '2px 6px', borderRadius: '4px', fontSize: '11px', color: '#b45309', backgroundColor: '#fef3c7' }}>
+                            건너뜀
                           </span>
                         )}
                       </td>
 
-                      {/* 파일명 */}
-                      <td className="px-3 py-1 font-mono text-[11px] text-slate-300 whitespace-nowrap max-w-[180px] truncate" title={row.filePath}>
+                      <td style={{ padding: '6px 12px', fontFamily: 'monospace', fontSize: '11px', color: 'var(--text-secondary, #475569)', whiteSpace: 'nowrap', maxWidth: '180px', overflow: 'hidden', textOverflow: 'ellipsis' }} title={row.filePath}>
                         {row.fileName}
                       </td>
 
-                      {/* 상호 */}
-                      <td className="px-3 py-1 font-bold text-white whitespace-nowrap max-w-[160px] truncate" title={row.companyName || ''}>
+                      <td style={{ padding: '6px 12px', fontWeight: 700, color: 'var(--text-main, #0f172a)', whiteSpace: 'nowrap', maxWidth: '160px', overflow: 'hidden', textOverflow: 'ellipsis' }} title={row.companyName || ''}>
                         {row.companyName || (isPending ? '-' : '판독 중...')}
                       </td>
 
-                      {/* 사업자번호 */}
-                      <td className="px-3 py-1 font-mono text-slate-300 whitespace-nowrap">
+                      <td style={{ padding: '6px 12px', fontFamily: 'monospace', color: 'var(--text-secondary, #475569)', whiteSpace: 'nowrap' }}>
                         {row.bizRegNo || '-'}
                       </td>
 
-                      {/* 대표자 */}
-                      <td className="px-3 py-1 whitespace-nowrap">
+                      <td style={{ padding: '6px 12px', whiteSpace: 'nowrap', color: 'var(--text-secondary, #475569)' }}>
                         {row.representative || '-'}
                       </td>
 
-                      {/* 연락처 / 이메일 */}
-                      <td className="px-3 py-1 font-mono text-[11px] text-slate-400 whitespace-nowrap max-w-[160px] truncate">
+                      <td style={{ padding: '6px 12px', fontSize: '11px', color: 'var(--text-muted, #64748b)', whiteSpace: 'nowrap', maxWidth: '160px', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                         {row.repContact || row.repEmail ? `${row.repContact || ''} ${row.repEmail ? `(${row.repEmail})` : ''}` : '-'}
                       </td>
 
-                      {/* 소재지 */}
-                      <td className="px-3 py-1 text-slate-400 whitespace-nowrap max-w-[180px] truncate" title={row.address || ''}>
+                      <td style={{ padding: '6px 12px', fontSize: '11px', color: 'var(--text-muted, #64748b)', whiteSpace: 'nowrap', maxWidth: '180px', overflow: 'hidden', textOverflow: 'ellipsis' }} title={row.address || ''}>
                         {row.address || '-'}
                       </td>
 
-                      {/* 처리 결과 및 상세 */}
-                      <td className="px-3 py-1 text-[11px] whitespace-nowrap max-w-[220px] truncate">
+                      <td style={{ padding: '6px 12px', fontSize: '11px', whiteSpace: 'nowrap', maxWidth: '220px', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                         {row.error ? (
-                          <span className="text-rose-400 font-bold" title={row.error}>{row.error}</span>
+                          <span style={{ color: '#e11d48', fontWeight: 700 }} title={row.error}>{row.error}</span>
                         ) : (
-                          <span className="text-slate-400" title={row.details || ''}>{row.details || '-'}</span>
+                          <span style={{ color: 'var(--text-muted, #64748b)' }} title={row.details || ''}>{row.details || '-'}</span>
                         )}
                       </td>
                     </tr>
@@ -676,45 +850,73 @@ export const BatchBusinessLicenseModal: React.FC<BatchBusinessLicenseModalProps>
           )}
         </div>
 
-        {/* ─── ⑤ 하단 마감 및 엑셀 다운로드 바 (Terminal Action: 우하단 종결) ─── */}
-        <div className="px-5 py-3 bg-slate-950 border-t border-slate-800 flex items-center justify-between flex-shrink-0">
-          <div className="flex items-center gap-2 text-xs text-slate-400">
-            <span className="font-mono">
-              대기열: <strong className="text-white">{results.length}건</strong>
-            </span>
+        {/* ─── ⑤ 하단 마감 및 엑셀 다운로드 바 ─── */}
+        <div style={{
+          padding: '12px 20px',
+          backgroundColor: 'var(--bg-secondary, #f8fafc)',
+          borderTop: '1px solid var(--border-color, #cbd5e1)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          flexShrink: 0
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '12px', color: 'var(--text-secondary, #475569)' }}>
+            <span>대기열: <strong>{results.length}건</strong></span>
             <span>•</span>
-            <span className="font-mono">
-              완료: <strong className="text-emerald-400">{currentProgress.successNew + currentProgress.successUpdated}건</strong>
-            </span>
+            <span style={{ color: '#059669' }}>완료: <strong>{currentProgress.successNew + currentProgress.successUpdated}건</strong></span>
             {currentProgress.failed > 0 && (
               <>
                 <span>•</span>
-                <span className="font-mono text-rose-400">
-                  오류: <strong>{currentProgress.failed}건</strong>
-                </span>
+                <span style={{ color: '#e11d48' }}>오류: <strong>{currentProgress.failed}건</strong></span>
               </>
             )}
           </div>
 
-          <div className="flex items-center gap-2.5">
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <button
               type="button"
               disabled={results.length === 0}
               onClick={handleExportExcel}
-              className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-bold flex items-center gap-1.5 active:scale-95 disabled:opacity-40 transition-all whitespace-nowrap"
+              style={{
+                padding: '6px 12px',
+                borderRadius: '6px',
+                fontSize: '12px',
+                fontWeight: 600,
+                border: '1px solid var(--border-color, #cbd5e1)',
+                backgroundColor: 'var(--bg-card, #ffffff)',
+                color: 'var(--text-main, #0f172a)',
+                cursor: results.length === 0 ? 'not-allowed' : 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '5px',
+                whiteSpace: 'nowrap'
+              }}
             >
-              <Download className="w-3.5 h-3.5 text-emerald-400" />
-              <span>결과 엑셀 다운로드</span>
+              <Download size={14} color="#059669" />
+              결과 엑셀 다운로드
             </button>
 
             <button
               type="button"
               disabled={isProcessing}
               onClick={handleFinishAndClose}
-              className="px-4 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold flex items-center gap-1.5 shadow-md active:scale-95 transition-all whitespace-nowrap disabled:opacity-40"
+              style={{
+                padding: '6px 16px',
+                borderRadius: '6px',
+                fontSize: '12px',
+                fontWeight: 700,
+                backgroundColor: 'var(--primary, #4f46e5)',
+                color: '#ffffff',
+                border: 'none',
+                cursor: isProcessing ? 'not-allowed' : 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '5px',
+                whiteSpace: 'nowrap'
+              }}
             >
-              <ShieldCheck className="w-4 h-4" />
-              <span>완료 및 닫기</span>
+              <ShieldCheck size={15} />
+              완료 및 닫기
             </button>
           </div>
         </div>

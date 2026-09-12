@@ -246,7 +246,6 @@ export const BatchBusinessLicenseModal: React.FC<BatchBusinessLicenseModalProps>
       '사업장소재지': r.address || '-',
       '업태': r.bizType || '-',
       '종목': r.bizItem || '-',
-      '관할세무서': r.taxOffice || '-',
       '개업연월일': r.openingDate || '-',
       '처리상태': r.status === 'SUCCESS_NEW' ? '신규등록' :
                   r.status === 'SUCCESS_UPDATED' ? '정보보완' :

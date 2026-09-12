@@ -11,20 +11,23 @@ interface Props {
 interface State {
   hasError: boolean;
   error: Error | null;
+  errorInfo: ErrorInfo | null;
 }
 
 export class ErrorBoundary extends Component<Props, State> {
   public state: State = {
     hasError: false,
-    error: null
+    error: null,
+    errorInfo: null
   };
 
-  public static getDerivedStateFromError(error: Error): State {
+  public static getDerivedStateFromError(error: Error): Partial<State> {
     return { hasError: true, error };
   }
 
   public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
     console.error('ErrorBoundary caught an unhandled error:', error, errorInfo);
+    this.setState({ errorInfo });
   }
 
   private handleReload = () => {
@@ -101,23 +104,43 @@ export class ErrorBoundary extends Component<Props, State> {
               </div>
             </div>
 
-            {this.state.error && (
-              <div style={{
-                padding: '10px',
-                borderRadius: '8px',
-                backgroundColor: '#020617',
-                border: '1px solid #334155',
-                fontSize: '11px',
-                color: '#f87171',
-                fontFamily: 'monospace',
-                wordBreak: 'break-all',
-                marginBottom: '16px',
-                maxHeight: '90px',
-                overflowY: 'auto'
-              }}>
-                {this.state.error.message || String(this.state.error)}
-              </div>
-            )}
+            {this.state.error && (() => {
+              const rawMsg = this.state.error.message || String(this.state.error);
+              let decodedNote = '';
+              if (rawMsg.includes('310')) {
+                decodedNote = ' [진단: React Hook 호출 순서/개수 불일치 오류]';
+              } else if (rawMsg.includes('300')) {
+                decodedNote = ' [진단: React Hook 조건부 호출 오류]';
+              } else if (rawMsg.includes('185')) {
+                decodedNote = ' [진단: 무한 재렌더링 루프 (Maximum update depth exceeded)]';
+              }
+
+              return (
+                <div style={{
+                  padding: '10px',
+                  borderRadius: '8px',
+                  backgroundColor: '#020617',
+                  border: '1px solid #334155',
+                  fontSize: '11px',
+                  color: '#f87171',
+                  fontFamily: 'monospace',
+                  wordBreak: 'break-all',
+                  marginBottom: '16px',
+                  maxHeight: '120px',
+                  overflowY: 'auto'
+                }}>
+                  <div>{rawMsg}{decodedNote}</div>
+                  {this.state.errorInfo?.componentStack && (
+                    <details style={{ marginTop: '6px', color: '#94a3b8', fontSize: '10px' }}>
+                      <summary style={{ cursor: 'pointer', color: '#cbd5e1' }}>컴포넌트 호출 스택</summary>
+                      <pre style={{ margin: '4px 0 0 0', whiteSpace: 'pre-wrap' }}>
+                        {this.state.errorInfo.componentStack.slice(0, 500)}
+                      </pre>
+                    </details>
+                  )}
+                </div>
+              );
+            })()}
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
               <button

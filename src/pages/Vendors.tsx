@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
-import { Search, Plus, Edit2, Trash2, Download, Building2, Check, RefreshCw, Calendar, DollarSign, Clock, FolderOpen, ShieldAlert } from 'lucide-react';
+import { Search, Plus, Edit2, Trash2, Download, Building2, Check, RefreshCw, Calendar, DollarSign, Clock, FolderOpen, ShieldAlert, CreditCard, Upload, FileText } from 'lucide-react';
 import { exportToExcel } from '../services/excel';
 import { Vendor } from '../services/db';
 import { BatchBusinessLicenseModal } from '../components/BatchBusinessLicenseModal';
 import { NtsStatusAuditModal } from '../components/NtsStatusAuditModal';
+import { uploadToSupabaseStorage } from '../services/supabaseStorage';
 
 type VendorTypeOption = 'RENTAL' | 'PURCHASE' | 'TRANSPORT' | 'REPAIR' | 'OTHER';
 
@@ -77,6 +78,9 @@ export const Vendors: React.FC = () => {
       contact: '',
       email: '',
       address: '',
+      bankName: '',
+      accountNumber: '',
+      accountHolder: '',
       type: 'RENTAL',
       types: ['RENTAL'],
       isActive: true,
@@ -89,7 +93,23 @@ export const Vendors: React.FC = () => {
   };
 
   const handleOpenEditModal = (v: Vendor) => {
-    setEditingVendor({ ...v });
+    let bName = v.bankName || '';
+    let bAcc = v.accountNumber || '';
+    let bHolder = v.accountHolder || '';
+    if (!bName && !bAcc && v.bankAccount) {
+      const match = v.bankAccount.match(/^([^\s]+)\s+([0-9\-]+)(?:\s*\((.*?)\))?$/);
+      if (match) {
+        bName = match[1];
+        bAcc = match[2];
+        bHolder = match[3] || '';
+      }
+    }
+    setEditingVendor({
+      ...v,
+      bankName: bName,
+      accountNumber: bAcc,
+      accountHolder: bHolder,
+    });
     // v.types가 문자열/배열/PG배열 등 어떤 형식이든 키워드 스캔으로 안전하게 파싱
     const TYPE_KEYS: VendorTypeOption[] = ['RENTAL', 'PURCHASE', 'TRANSPORT', 'REPAIR', 'OTHER'];
     const raw = JSON.stringify(v.types ?? v.type ?? '');
@@ -123,6 +143,98 @@ export const Vendors: React.FC = () => {
     }
   };
 
+  // 💳 매입처 모달 내 통장사본 첨부 선택 핸들러
+  const handleVendorModalPassbookSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !editingVendor) return;
+    try {
+      let fileUrl = '';
+      try {
+        const ext = file.name.split('.').pop() || 'png';
+        const cleanNo = (editingVendor.bizRegNo || 'vnd').replace(/[^0-9]/g, '') || editingVendor.id || 'new';
+        const uploadRes = await uploadToSupabaseStorage({
+          file,
+          fileName: `vendor_bankbook_${cleanNo}_${Date.now()}.${ext}`,
+          folder: 'vendor_bankbooks'
+        });
+        if (uploadRes.success && uploadRes.fileUrl) {
+          fileUrl = uploadRes.fileUrl;
+        }
+      } catch (err) {
+        console.warn('[Vendor Passbook] Fallback to DataURL:', err);
+      }
+      if (!fileUrl) {
+        fileUrl = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result as string);
+          reader.onerror = reject;
+          reader.readAsDataURL(file);
+        });
+      }
+      setEditingVendor(prev => prev ? ({ ...prev, passbookFileUrl: fileUrl, passbookFileName: file.name }) : prev);
+    } catch (err: any) {
+      showErrorModal(`통장사본 처리 실패: ${err?.message || err}`);
+    } finally {
+      e.target.value = '';
+    }
+  };
+
+  // 💳 매입처 목록 테이블에서 통장사본 직접 등록/변경 핸들러
+  const handleDirectUploadVendorPassbook = async (v: Vendor, e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      let fileUrl = '';
+      try {
+        const ext = file.name.split('.').pop() || 'png';
+        const cleanNo = (v.bizRegNo || 'vnd').replace(/[^0-9]/g, '') || v.id;
+        const uploadRes = await uploadToSupabaseStorage({
+          file,
+          fileName: `vendor_bankbook_${cleanNo}_${Date.now()}.${ext}`,
+          folder: 'vendor_bankbooks'
+        });
+        if (uploadRes.success && uploadRes.fileUrl) {
+          fileUrl = uploadRes.fileUrl;
+        }
+      } catch (err) {
+        console.warn('[Vendor Direct Passbook] Fallback to DataURL:', err);
+      }
+      if (!fileUrl) {
+        fileUrl = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result as string);
+          reader.onerror = reject;
+          reader.readAsDataURL(file);
+        });
+      }
+      await saveVendor({
+        ...v,
+        passbookFileUrl: fileUrl,
+        passbookFileName: file.name,
+        updatedAt: new Date().toISOString()
+      });
+    } catch (err: any) {
+      showErrorModal(`통장사본 업로드 실패: ${err?.message || err}`);
+    } finally {
+      e.target.value = '';
+    }
+  };
+
+  // 💳 매입처 통장사본 삭제 핸들러
+  const handleRemoveVendorPassbook = async (v: Vendor) => {
+    if (!window.confirm(`[${v.name}] 매입처의 등록된 통장사본을 삭제하시겠습니까?`)) return;
+    try {
+      await saveVendor({
+        ...v,
+        passbookFileUrl: undefined,
+        passbookFileName: undefined,
+        updatedAt: new Date().toISOString()
+      });
+    } catch (err: any) {
+      showErrorModal(`통장사본 삭제 실패: ${err?.message || err}`);
+    }
+  };
+
   const handleSaveSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingVendor || !editingVendor.name) {
@@ -147,6 +259,15 @@ export const Vendors: React.FC = () => {
       contact: editingVendor.contact || '',
       email: editingVendor.email || '',
       address: editingVendor.address || '',
+      bankName: editingVendor.bankName?.trim() || undefined,
+      accountNumber: editingVendor.accountNumber?.trim() || undefined,
+      accountHolder: editingVendor.accountHolder?.trim() || undefined,
+      bankAccount: editingVendor.bankName && editingVendor.accountNumber
+        ? `${editingVendor.bankName} ${editingVendor.accountNumber}${editingVendor.accountHolder ? ` (${editingVendor.accountHolder})` : ''}`
+        : (editingVendor.bankAccount || undefined),
+      passbookFileUrl: editingVendor.passbookFileUrl,
+      passbookFileName: editingVendor.passbookFileName,
+      businessCertFileUrl: editingVendor.businessCertFileUrl,
       type: payloadTypes[0], // 하위 호환 primary type
       types: payloadTypes, // 복수 선택 속성
       isActive: editingVendor.isActive ?? true,
@@ -257,6 +378,10 @@ export const Vendors: React.FC = () => {
         '이메일': v.email || '-',
         '주소': v.address || '-',
         '매입/거래구분': typeLabels,
+        '지급은행': v.bankName || '-',
+        '지급계좌번호': v.accountNumber || v.bankAccount || '-',
+        '예금주': v.accountHolder || '-',
+        '통장사본등록': v.passbookFileUrl ? '등록됨' : '미등록',
         '거래개시일': v.firstTradeDate || '-',
         '거래기간': calculateTradeDuration(v.firstTradeDate),
         '누적거래액': (v.totalPurchaseAmount || 0).toLocaleString() + '원',
@@ -428,6 +553,8 @@ export const Vendors: React.FC = () => {
               <col style={{ width: '75px' }} /> {/* 대표자명 */}
               <col style={{ width: '80px' }} /> {/* 담당자 */}
               <col style={{ width: '105px' }} />{/* 연락처 */}
+              <col style={{ width: '140px' }} />{/* 지급 계좌 */}
+              <col style={{ width: '100px' }} />{/* 통장사본 */}
               <col style={{ width: '130px' }} />{/* 주소 */}
               <col style={{ width: '130px' }} />{/* 이메일 */}
               <col style={{ width: '55px' }} /> {/* 상태 */}
@@ -458,6 +585,8 @@ export const Vendors: React.FC = () => {
                   담당자 {renderSortArrow('contactName')}
                 </th>
                 <th style={{ padding: '8px 6px', whiteSpace: 'nowrap' }}>연락처</th>
+                <th style={{ padding: '8px 6px', whiteSpace: 'nowrap' }}>지급 계좌</th>
+                <th style={{ padding: '8px 6px', whiteSpace: 'nowrap' }}>통장사본</th>
                 <th style={{ padding: '8px 6px', whiteSpace: 'nowrap' }}>주소</th>
                 <th style={{ padding: '8px 6px', whiteSpace: 'nowrap' }}>이메일</th>
                 <th style={{ padding: '8px 6px', whiteSpace: 'nowrap' }}>상태</th>
@@ -467,7 +596,7 @@ export const Vendors: React.FC = () => {
             <tbody>
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={canSave ? 13 : 12} style={{ textAlign: 'center', padding: '32px', color: 'var(--text-muted)' }}>
+                  <td colSpan={canSave ? 15 : 14} style={{ textAlign: 'center', padding: '32px', color: 'var(--text-muted)' }}>
                     {vendors.length === 0 ? '📭 등록된 매입처(공급자)가 없습니다.' : '🔍 조회 조건에 맞는 매입처가 없습니다. 검색 조건을 변경해 보세요.'}
                   </td>
                 </tr>
@@ -510,6 +639,95 @@ export const Vendors: React.FC = () => {
                       <td style={{ fontSize: '12px', padding: '6px 6px', whiteSpace: 'nowrap' }}>{v.representative || '-'}</td>
                       <td style={{ fontSize: '12px', padding: '6px 6px', fontWeight: '600', color: 'var(--text-main)', whiteSpace: 'nowrap' }}>{v.contactName || '-'}</td>
                       <td style={{ fontSize: '12px', padding: '6px 6px', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>{v.contact || '-'}</td>
+                      {/* 💳 지급 계좌 */}
+                      <td style={{ fontSize: '12px', padding: '6px 6px', whiteSpace: 'nowrap' }}>
+                        {v.bankName || v.accountNumber ? (
+                          <div>
+                            <span style={{ fontWeight: 600, color: 'var(--text-main)' }}>{v.bankName || ''}</span>
+                            <span style={{ marginLeft: '4px', fontFamily: 'monospace', fontSize: '11.5px', color: 'var(--primary)' }}>
+                              {v.accountNumber || ''}
+                            </span>
+                            {v.accountHolder && (
+                              <span style={{ marginLeft: '4px', fontSize: '11px', color: 'var(--text-muted)' }}>
+                                ({v.accountHolder})
+                              </span>
+                            )}
+                          </div>
+                        ) : v.bankAccount ? (
+                          <span style={{ color: 'var(--text-secondary)' }}>{v.bankAccount}</span>
+                        ) : (
+                          <span style={{ color: 'var(--text-muted)' }}>-</span>
+                        )}
+                      </td>
+                      {/* 📄 통장사본 */}
+                      <td style={{ padding: '6px 6px', whiteSpace: 'nowrap' }}>
+                        {v.passbookFileUrl ? (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                            <a
+                              href={v.passbookFileUrl}
+                              target="_blank"
+                              rel="noreferrer"
+                              style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '3px',
+                                padding: '2px 6px',
+                                borderRadius: '4px',
+                                fontSize: '11px',
+                                fontWeight: 600,
+                                backgroundColor: 'rgba(37, 99, 235, 0.1)',
+                                color: 'var(--primary)',
+                                textDecoration: 'none'
+                              }}
+                              title={v.passbookFileName || '통장사본 열람'}
+                            >
+                              <FileText size={11} /> 사본 열람 ↗
+                            </a>
+                            {canSave && (
+                              <button
+                                type="button"
+                                onClick={() => handleRemoveVendorPassbook(v)}
+                                style={{
+                                  border: 'none',
+                                  background: 'none',
+                                  cursor: 'pointer',
+                                  color: '#ef4444',
+                                  padding: '2px',
+                                  fontSize: '11px',
+                                  lineHeight: 1
+                                }}
+                                title="통장사본 삭제"
+                              >
+                                ✕
+                              </button>
+                            )}
+                          </div>
+                        ) : canSave ? (
+                          <label style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '3px',
+                            padding: '2px 6px',
+                            borderRadius: '4px',
+                            fontSize: '11px',
+                            fontWeight: 500,
+                            backgroundColor: 'var(--bg-app)',
+                            border: '1px dashed var(--border-color)',
+                            color: 'var(--text-muted)',
+                            cursor: 'pointer'
+                          }}>
+                            <Upload size={11} /> 등록
+                            <input
+                              type="file"
+                              accept="image/*,application/pdf"
+                              style={{ display: 'none' }}
+                              onChange={e => handleDirectUploadVendorPassbook(v, e)}
+                            />
+                          </label>
+                        ) : (
+                          <span style={{ color: 'var(--text-muted)', fontSize: '11px' }}>미등록</span>
+                        )}
+                      </td>
                       <td style={{ fontSize: '11.5px', padding: '6px 6px', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>
                         {v.address || '-'}
                       </td>
@@ -599,7 +817,7 @@ export const Vendors: React.FC = () => {
           position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
           backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000
         }}>
-          <div className="card" style={{ width: '90%', maxWidth: '640px', backgroundColor: 'var(--bg-card)', padding: '24px' }}>
+          <div className="card" style={{ width: '90%', maxWidth: '640px', maxHeight: '90vh', overflowY: 'auto', backgroundColor: 'var(--bg-card)', padding: '24px' }}>
             <h3 style={{ margin: '0 0 16px 0', fontWeight: '700', borderBottom: '1px solid var(--border-color)', paddingBottom: '12px' }}>
               {editingVendor.id ? '매입처(공급자) 정보 수정' : '신규 매입처(공급자) 등록'}
             </h3>
@@ -779,6 +997,125 @@ export const Vendors: React.FC = () => {
                   />
                 </div>
 
+                {/* 💳 대금 지급 계좌 & 통장사본 섹션 */}
+                <div style={{
+                  gridColumn: 'span 2',
+                  backgroundColor: 'var(--bg-app)',
+                  border: '1px solid var(--border-color)',
+                  borderRadius: '6px',
+                  padding: '12px'
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+                    <label style={{ fontSize: '13px', fontWeight: '700', color: 'var(--text-main)', display: 'flex', alignItems: 'center', gap: '6px', margin: 0 }}>
+                      <CreditCard size={15} style={{ color: 'var(--primary)' }} /> 대금 지급 계좌
+                    </label>
+                  </div>
+                  
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.5fr 1fr', gap: '8px', marginBottom: '10px' }}>
+                    <div>
+                      <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', marginBottom: '4px' }}>은행명</label>
+                      <input
+                        type="text"
+                        value={editingVendor.bankName || ''}
+                        onChange={e => setEditingVendor({ ...editingVendor, bankName: e.target.value })}
+                        placeholder="예: 기업은행"
+                        style={{ width: '100%', padding: '6px 8px', fontSize: '12.5px' }}
+                      />
+                    </div>
+                    <div>
+                      <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', marginBottom: '4px' }}>계좌번호</label>
+                      <input
+                        type="text"
+                        value={editingVendor.accountNumber || ''}
+                        onChange={e => setEditingVendor({ ...editingVendor, accountNumber: e.target.value })}
+                        placeholder="예: 010-12345-67890"
+                        style={{ width: '100%', padding: '6px 8px', fontSize: '12.5px' }}
+                      />
+                    </div>
+                    <div>
+                      <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', marginBottom: '4px' }}>예금주</label>
+                      <input
+                        type="text"
+                        value={editingVendor.accountHolder || ''}
+                        onChange={e => setEditingVendor({ ...editingVendor, accountHolder: e.target.value })}
+                        placeholder="예: (주)한국중장비"
+                        style={{ width: '100%', padding: '6px 8px', fontSize: '12.5px' }}
+                      />
+                    </div>
+                  </div>
+
+                  {/* 통장사본 첨부 영역 */}
+                  <div style={{ borderTop: '1px dashed var(--border-color)', paddingTop: '8px' }}>
+                    <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', marginBottom: '4px' }}>통장사본 증빙</label>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1, minWidth: 0 }}>
+                        {editingVendor.passbookFileUrl ? (
+                          <>
+                            <a
+                              href={editingVendor.passbookFileUrl}
+                              target="_blank"
+                              rel="noreferrer"
+                              style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '4px',
+                                padding: '4px 8px',
+                                borderRadius: '4px',
+                                fontSize: '12px',
+                                fontWeight: '600',
+                                backgroundColor: 'rgba(37, 99, 235, 0.1)',
+                                color: 'var(--primary)',
+                                textDecoration: 'none',
+                                whiteSpace: 'nowrap'
+                              }}
+                            >
+                              <FileText size={13} /> {editingVendor.passbookFileName || '통장사본 열람'} ↗
+                            </a>
+                            <button
+                              type="button"
+                              onClick={() => setEditingVendor({ ...editingVendor, passbookFileUrl: undefined, passbookFileName: undefined })}
+                              style={{
+                                border: 'none',
+                                background: 'none',
+                                color: '#ef4444',
+                                cursor: 'pointer',
+                                fontSize: '12px',
+                                fontWeight: '600'
+                              }}
+                            >
+                              삭제
+                            </button>
+                          </>
+                        ) : (
+                          <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>등록된 통장사본 없음</span>
+                        )}
+                      </div>
+                      <label style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '4px',
+                        padding: '5px 10px',
+                        borderRadius: '4px',
+                        fontSize: '12px',
+                        fontWeight: '600',
+                        backgroundColor: 'var(--bg-card)',
+                        border: '1px solid var(--border-color)',
+                        color: 'var(--text-main)',
+                        cursor: 'pointer',
+                        whiteSpace: 'nowrap'
+                      }}>
+                        <Upload size={12} /> {editingVendor.passbookFileUrl ? '사본 변경' : '사본 파일 첨부'}
+                        <input
+                          type="file"
+                          accept="image/*,application/pdf"
+                          style={{ display: 'none' }}
+                          onChange={handleVendorModalPassbookSelect}
+                        />
+                      </label>
+                    </div>
+                  </div>
+                </div>
+
                 <div style={{ gridColumn: 'span 2' }}>
                   <label style={{ display: 'block', fontSize: '13px', fontWeight: '600', marginBottom: '4px' }}>비고 / 특기사항</label>
                   <textarea
@@ -801,18 +1138,22 @@ export const Vendors: React.FC = () => {
       )}
 
       {/* 📂 사업자등록증 폴더 일괄 등록 모달 */}
-      <BatchBusinessLicenseModal
-        isOpen={showBatchLicenseModal}
-        onClose={() => setShowBatchLicenseModal(false)}
-        initialTargetType="VENDOR"
-      />
+      {showBatchLicenseModal && (
+        <BatchBusinessLicenseModal
+          isOpen={showBatchLicenseModal}
+          onClose={() => setShowBatchLicenseModal(false)}
+          initialTargetType="VENDOR"
+        />
+      )}
 
       {/* 🏛️ 국세청 홈택스 사업자 휴폐업 전수 점검 스튜디오 */}
-      <NtsStatusAuditModal
-        isOpen={showNtsAuditModal}
-        onClose={() => setShowNtsAuditModal(false)}
-        initialTarget="VENDOR"
-      />
+      {showNtsAuditModal && (
+        <NtsStatusAuditModal
+          isOpen={showNtsAuditModal}
+          onClose={() => setShowNtsAuditModal(false)}
+          initialTarget="VENDOR"
+        />
+      )}
     </div>
   );
 };

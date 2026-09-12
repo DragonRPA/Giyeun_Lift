@@ -64,17 +64,6 @@ export const MobileAsDetail: React.FC<MobileAsDetailProps> = ({ ticketId, onBack
   });
   const [showNavOptions, setShowNavOptions] = useState(false);
 
-  if (!ticket) {
-    return (
-      <div className="p-8 text-center text-slate-400">
-        티켓을 찾을 수 없습니다.
-        <button onClick={onBack} className="block mt-4 text-blue-400 underline mx-auto">
-          목록으로 돌아가기
-        </button>
-      </div>
-    );
-  }
-
   // 🌟 정밀 도로명 주소 다단계 역추적 (siteId -> siteName -> contract -> asset 계약 -> 고객사 현장)
   const resolvedAddress = useMemo(() => {
     if (!ticket) return '';
@@ -93,6 +82,17 @@ export const MobileAsDetail: React.FC<MobileAsDetailProps> = ({ ticketId, onBack
       customers: db.customers,
     });
   }, [ticket, db.customerSites, db.contracts, db.contractAssets, db.customers]);
+
+  if (!ticket) {
+    return (
+      <div className="p-8 text-center text-slate-400">
+        티켓을 찾을 수 없습니다.
+        <button onClick={onBack} className="block mt-4 text-blue-400 underline mx-auto">
+          목록으로 돌아가기
+        </button>
+      </div>
+    );
+  }
 
   // 안전한 길안내 열기 (현장명 대신 실제 상세 도로명 주소 우선 전송)
   const handleOpenNav = (app: NavAppType = selectedNavApp) => {

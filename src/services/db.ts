@@ -251,6 +251,8 @@ export interface CustomerBankAccount {
   accountNumber: string; // 계좌번호
   accountHolder?: string;// 예금주명
   memo?: string;         // 메모 (예: 대표 계좌, 현장 전용 등)
+  passbookFileUrl?: string;  // 통장사본 파일 URL (이미지/PDF)
+  passbookFileName?: string; // 통장사본 파일명
 }
 
 export interface SpecItem {
@@ -347,11 +349,13 @@ export interface Customer {
   defaultCheckedSpecs?: Record<string, boolean>; // 기본 요구 사양 체크 상태
   specialNotes?: string;             // 고객사 특이사항 메모 (예: '재임대 출고건으로 운반비 및 배차 한솔렌탈 부담')
 
-  // 📄 [신규] 사업자등록증 Vision AI 연동 및 증빙 스토리지
+  // 📄 사업자등록증 및 💳 통장사본 증빙 스토리지
   businessCertFileUrl?: string;      // 사업자등록증 첨부/스토리지 URL
   taxOffice?: string;                // 관할 세무서 (예: '평택세무서')
   openingDate?: string;              // 개업연월일 (YYYY-MM-DD)
   headOfficeAddress?: string;        // 본점 소재지
+  passbookFileUrl?: string;          // 고객사 대표 통장사본 URL (이미지/PDF)
+  passbookFileName?: string;         // 고객사 대표 통장사본 파일명
 
   // 🏛️ [신규] 국세청 홈택스 휴폐업 및 과세유형 진위확인
   taxType?: string;                  // 과세유형 (예: '부가가치세 일반과세자', '간이과세자', '면세사업자')
@@ -992,6 +996,12 @@ export interface Vendor {
   email?: string;
   address?: string;
   bankAccount?: string;
+  bankName?: string;                 // 대금 지급 은행명
+  accountNumber?: string;            // 대금 지급 계좌번호
+  accountHolder?: string;            // 대금 지급 예금주명
+  passbookFileUrl?: string;          // 매입처 통장사본 URL (이미지/PDF)
+  passbookFileName?: string;         // 매입처 통장사본 파일명
+  businessCertFileUrl?: string;      // 사업자등록증 사본 URL
   isActive?: boolean;
   memo?: string;
   firstTradeDate?: string;       // 최초 거래개시일 (YYYY-MM-DD)
@@ -4853,12 +4863,22 @@ class LocalDB {
               delete fallbackPayload.repairingQty;
               delete fallbackPayload.bankTransactionId;
               delete fallbackPayload.department;
+
+              // 💡 미반영 컬럼 동적 감지 및 즉각 제거 후 재시도
+              const colMatch = msg.match(/Could not find the '([^']+)' column/) || msg.match(/column "?([^"\s]+)"? of relation/);
+              if (colMatch && colMatch[1]) {
+                delete fallbackPayload[colMatch[1]];
+              }
+
               return supabase.from(tableName).upsert([fallbackPayload], { onConflict: 'id' }).then(({ data: d2, error: e2 }) => {
-                if (e2) console.warn(`Supabase fallback upsert failed for ${tableName}:`, e2);
+                if (e2) {
+                  console.error(`Supabase fallback upsert failed for ${tableName}:`, e2);
+                  throw new Error(`[Supabase DB 저장 실패] ${tableName} (ID: ${newId})\n\n사유: ${e2.message || String(e2)}`);
+                }
                 return d2;
               });
             }
-            return null;
+            throw new Error(`[Supabase DB 저장 실패] ${tableName} (ID: ${newId})\n\n사유: ${msg}`);
           }
           return data;
         });
@@ -4936,12 +4956,22 @@ class LocalDB {
               delete fallbackPayload.note;
               delete fallbackPayload.repairingQty;
               delete fallbackPayload.bankTransactionId;
+
+              // 💡 미반영 컬럼 동적 감지 및 즉각 제거 후 재시도
+              const colMatch = msg.match(/Could not find the '([^']+)' column/) || msg.match(/column "?([^"\s]+)"? of relation/);
+              if (colMatch && colMatch[1]) {
+                delete fallbackPayload[colMatch[1]];
+              }
+
               return supabase.from(tableName).update(fallbackPayload as any).eq('id', id).then(({ data: d2, error: e2 }) => {
-                if (e2) console.warn(`Supabase fallback update failed for ${tableName}:`, e2);
+                if (e2) {
+                  console.error(`Supabase fallback update failed for ${tableName}:`, e2);
+                  throw new Error(`[Supabase DB 수정 실패] ${tableName} (ID: ${id})\n\n사유: ${e2.message || String(e2)}`);
+                }
                 return d2;
               });
             }
-            return null;
+            throw new Error(`[Supabase DB 수정 실패] ${tableName} (ID: ${id})\n\n사유: ${msg}`);
           }
           return data;
         });

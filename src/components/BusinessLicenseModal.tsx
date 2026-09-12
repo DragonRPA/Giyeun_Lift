@@ -49,7 +49,6 @@ export const BusinessLicenseModal: React.FC<BusinessLicenseModalProps> = ({
     address: '',
     bizType: '',
     bizItem: '',
-    taxOffice: '',
     openingDate: '',
     defaultBillingDay: 30,
     defaultStatementClosingDay: 25,
@@ -65,7 +64,6 @@ export const BusinessLicenseModal: React.FC<BusinessLicenseModalProps> = ({
     bizItem: true,
     taxEmail: true,
     repContact: true,
-    taxOffice: true,
     openingDate: true
   });
 
@@ -163,7 +161,6 @@ export const BusinessLicenseModal: React.FC<BusinessLicenseModalProps> = ({
         address: result.address || '',
         bizType: result.bizType || '',
         bizItem: result.bizItem || '',
-        taxOffice: result.taxOffice || '',
         openingDate: result.openingDate || '',
         defaultBillingDay: 30,
         defaultStatementClosingDay: 25,
@@ -180,7 +177,6 @@ export const BusinessLicenseModal: React.FC<BusinessLicenseModalProps> = ({
           bizItem: !matched.bizItem || (!!result.bizItem && matched.bizItem !== result.bizItem),
           taxEmail: !matched.repEmail || matched.repEmail === '미상' || (!!result.taxEmail && matched.repEmail !== result.taxEmail),
           repContact: !matched.repContact || matched.repContact === '미상' || (!!result.repContact && matched.repContact !== result.repContact),
-          taxOffice: !matched.taxOffice || (!!result.taxOffice && matched.taxOffice !== result.taxOffice),
           openingDate: !matched.openingDate || (!!result.openingDate && matched.openingDate !== result.openingDate)
         });
       }
@@ -249,7 +245,6 @@ export const BusinessLicenseModal: React.FC<BusinessLicenseModalProps> = ({
           address: newForm.address.trim() || '미상',
           bizType: newForm.bizType.trim() || undefined,
           bizItem: newForm.bizItem.trim() || undefined,
-          taxOffice: newForm.taxOffice.trim() || undefined,
           openingDate: newForm.openingDate.trim() || undefined,
           businessCertFileUrl: fileUrl || undefined,
           isClosed: isNtsClosed,
@@ -281,7 +276,6 @@ export const BusinessLicenseModal: React.FC<BusinessLicenseModalProps> = ({
         bizItem: (diffSelections.bizItem && analysisResult.bizItem) ? analysisResult.bizItem : matchedCustomer.bizItem,
         repEmail: (diffSelections.taxEmail && analysisResult.taxEmail) ? analysisResult.taxEmail : matchedCustomer.repEmail,
         repContact: (diffSelections.repContact && analysisResult.repContact) ? analysisResult.repContact : matchedCustomer.repContact,
-        taxOffice: (diffSelections.taxOffice && analysisResult.taxOffice) ? analysisResult.taxOffice : matchedCustomer.taxOffice,
         openingDate: (diffSelections.openingDate && analysisResult.openingDate) ? analysisResult.openingDate : matchedCustomer.openingDate,
         businessCertFileUrl: fileUrl || matchedCustomer.businessCertFileUrl,
         taxType: ntsResult?.taxType || matchedCustomer.taxType,
@@ -639,25 +633,6 @@ export const BusinessLicenseModal: React.FC<BusinessLicenseModalProps> = ({
                             </td>
                           </tr>
                         )}
-
-                        {/* 8. 관할 세무서 */}
-                        {analysisResult.taxOffice && (
-                          <tr className="hover:bg-slate-800/40">
-                            <td className="p-2.5 text-center">
-                              <input
-                                type="checkbox"
-                                checked={diffSelections.taxOffice}
-                                onChange={(e) => setDiffSelections({ ...diffSelections, taxOffice: e.target.checked })}
-                                className="rounded border-slate-600 text-blue-600 focus:ring-blue-500"
-                              />
-                            </td>
-                            <td className="p-2.5 font-medium text-slate-300 whitespace-nowrap">관할 세무서</td>
-                            <td className="p-2.5 text-slate-400">{matchedCustomer.taxOffice || '(미등록)'}</td>
-                            <td className="p-2.5 text-emerald-300 font-semibold">
-                              {analysisResult.taxOffice}
-                            </td>
-                          </tr>
-                        )}
                       </tbody>
                     </table>
                   </div>
@@ -759,18 +734,6 @@ export const BusinessLicenseModal: React.FC<BusinessLicenseModalProps> = ({
                         value={newForm.repEmail}
                         onChange={(e) => setNewForm({ ...newForm, repEmail: e.target.value })}
                         placeholder="tax@company.com"
-                        className="bg-slate-800 border border-slate-700 rounded-md px-3 py-1.5 text-xs text-white focus:outline-none focus:border-blue-500"
-                      />
-                    </div>
-
-                    {/* 관할 세무서 */}
-                    <div className="flex flex-col gap-1">
-                      <label className="text-xs text-slate-300 font-medium">관할 세무서</label>
-                      <input
-                        type="text"
-                        value={newForm.taxOffice}
-                        onChange={(e) => setNewForm({ ...newForm, taxOffice: e.target.value })}
-                        placeholder="예: 평택세무서"
                         className="bg-slate-800 border border-slate-700 rounded-md px-3 py-1.5 text-xs text-white focus:outline-none focus:border-blue-500"
                       />
                     </div>

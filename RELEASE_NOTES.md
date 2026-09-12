@@ -1,3 +1,51 @@
+## [v1.12.0.Build.72] - 2026-09-12 15:46
+
+### 🚀 [매입처 대금지급 계좌·통장사본 체계 구축, 사업자등록증 원격 DB 26개 컬럼 증설 및 upsert 무음실패 원천차단·자동검색 포커스 구축, "ㄹㅇ" 배포]
+
+**배경**:
+1. 사장님 지시사항:
+   - "고객정보중 통장사본 업로드도 지원해줘. 그리고 사업자등록증 올릴 때, 관할 세무서 정보는 필요 없는것 같아"
+   - "음, 매출처 통장계좌 정보는 은행 입출금내역 조회에서 안나와서 사용할 수 없다는게 실무자들의 말이고, 매입처는 우리가 대금을 지급해줘야 하기 때문에 거래상대방이 우리에게 통장 사본을 제출해줘. 그러므로 매입처만 통장사본을 등록 하는거야"
+   - "국세청 휴폐업조회 버튼 누르니까 오류나"
+   - "사업자 등록증 넣고 정상 확인 돼서 고객등록을 눌렀는데 고객 등록이 되지 않았어(저장되지 않았어) 등록이 된건데 안보이는건가?"
+   - "ㄹㅇ"
+2. 시스템 헌장 카테고리 I (1.1 최대 편익, 1.2 렌탈 도메인 3대 핵심 가치), 카테고리 II (2.1 부서간 R&R 엄격 분리), 카테고리 III (3.1 건조 명사·동사 표준, 3.2 줄바꿈 방지, 3.4 상하 스택, 3.5 Z-패턴 동선), 카테고리 V (5.2 무음 실패 방지), 카테고리 VI (6.1 버전 관리, 6.2 "ㄹㅇ" 배포), 카테고리 VII (7.2 경험.md E-096, E-097 기록) 준수.
+
+**개편 내역**:
+1. **매입처(협력사) 대금 지급 계좌 및 통장사본 등록 체계 구축 (`src/pages/Vendors.tsx`, `src/services/db.ts`)**:
+   - 매입처는 당사가 외주비, 장비임차료, 운송비, 부품대금을 지급해야 하므로 통장사본 증빙이 세무/정산의 핵심 필수 요소임.
+   - `Vendor` DB 모델 확장: `bankName`, `accountNumber`, `accountHolder`, `passbookFileUrl`, `passbookFileName`, `businessCertFileUrl`.
+   - PC 매입처 대장 그리드에 `지급 계좌` 및 `통장사본` 전용 컬럼 신설 (No-Wrap, 은행명+계좌번호+예금주 인라인 렌더링).
+   - 테이블 행 인라인 액션: 등록된 통장사본 즉시 새 창 열람(`사본 열람 ↗`), 원터치 삭제(`✕`), 미등록 시 테이블에서 바로 파일 등록/변경 업로드(`+ 등록`).
+   - 매입처 등록/수정 모달 내 "대금 지급 계좌" 및 "통장사본 증빙" 블록 추가, 엑셀 내보내기 컬럼 확장.
+2. **매출처 (Customer) 실무 정합성 반영 및 사업자등록증 '관할 세무서' 필드 제거**:
+   - 매출처 계좌번호는 은행 입출금내역에 미표기되어 자동 매칭 효용이 없다는 실무 피드백을 반영하여, 고객 상세/모달에서 통장사본 UI를 전면 배제하고 입금계좌 그리드를 비노출 처리.
+   - 사업자등록증 OCR 모달(`BusinessLicenseModal.tsx`) 및 일괄 등록 모달, 비전 프롬프트(`api/vision-ocr.ts`)에서 불필요한 `taxOffice` 완전 제거로 파싱 속도 향상.
+3. **원격 Supabase DB 26개 신규 컬럼 DDL 일괄 증설 및 `schema.sql` 동기화**:
+   - `customers` 및 `vendors` 테이블에 최근 확장된 도메인 컬럼(`bizItem`, `bizType`, `taxType`, `taxTypeCd`, `businessStatus`, `closedDate`, `lastStatusCheckDate`, `openingDate`, `businessCertFileUrl`, `bankName`, `accountNumber`, `accountHolder`, `passbookFileUrl` 등)이 원격 PostgreSQL에 미생성되어 발생하던 `PGRST204 (Could not find the 'bizItem' column)` 에러 원천 차단.
+   - `dev_exec_ddl` RPC를 통해 원격 실서버 DDL 26개 컬럼을 일괄 생성 완료하고 `schema.sql` 단일 진실의 원천에 영구 반영.
+4. **헌장 5.2 무음 실패(Zero Silent Failures) 원천 차단 및 동적 컬럼 탈거 2차 폴백 엔진 장착 (`src/services/db.ts`)**:
+   - `insertRow` / `updateRow`에서 DB 에러 발생 시 고정 컬럼만 제거하고 `return null`로 삼켜버리던 결함 전면 개편.
+   - 에러 메시지(`msg`)에서 미반영 컬럼명을 실시간 동적 추출하여 `fallbackPayload`에서 즉각 제거 후 2차 재시도하도록 안전망 고도화.
+   - fallback마저 실패할 경우 무음 처리 없이 `throw new Error(...)`를 강제 발생시켜 즉각 에러 모달(`showErrorModal`)이 표출되도록 강제.
+5. **고객 등록 완료 즉시 자동 검색 포커스 & 스크롤 동기화 (`src/pages/Customers.tsx`)**:
+   - 사업자등록증 신규 등록(`handleBizLicenseSuccess`) 및 수동 등록(`handleSaveCustSubmit`) 완료 즉시:
+     - `setSearchTerm(savedCustomer.name)`: 검색창에 등록된 상호명을 즉시 자동 기입하여, 수백 개 고객 목록 중 방금 등록한 고객사가 화면 최상단 1순위로 즉시 노출.
+     - `setStatusFilter('ALL')`, `setShowOnlyIncomplete(false)`: 필터 초기화로 숨김 원천 제거.
+     - `setSelectedCustomerId(savedCustomer.id)`: 우측 상세 화면에 신규 고객사 카드를 즉시 마운트.
+     - `scrollIntoView({ block: 'nearest', behavior: 'smooth' })`: 선택된 DOM 요소를 부드럽게 스크롤 동기화.
+6. **국세청 휴폐업 점검 버튼 클릭 시 React Error #310 원천 차단 및 모달 렌더링 가드 확립**:
+   - `NtsStatusAuditModal.tsx`: 조기 반환(`if (!isOpen) return null;`)을 모든 `useMemo` 이후로 재배치.
+   - `Customers.tsx`, `Vendors.tsx`, `MobileCustomerManage.tsx`: 모달 호출부를 `{showNtsAuditModal && <NtsStatusAuditModal ... />}`로 이중 가드 적용.
+   - `ErrorBoundary.tsx`: 미니파이된 React 에러(#310, #300, #185 등) 발생 시 친절한 진단 해설 및 componentStack 표출 지원.
+
+**검증 결과**:
+- Supabase `customers` 테이블 실서버 전수 컬럼 대상 `upsert` 테스트: `error: null` 100% 무결 통과.
+- `cmd /c npm run build`: **TypeScript 0 Error 및 Vite 번들링 완료 (`✓ built in 1.18s`)**.
+- `000.skelton`: 발상/경험 기록 및 원격 푸시 완료 (`3490922`).
+
+---
+
 ## [v1.12.0.Build.71] - 2026-09-12 14:25
 
 ### 🚀 [국세청 홈택스 사업자 휴폐업 실시간 진위확인 및 전사 거래처 전수 점검 스튜디오 구축, "ㄹㅇ" 배포]

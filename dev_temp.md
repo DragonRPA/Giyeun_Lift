@@ -1,5 +1,74 @@
 # 개발 요구사항 임시 기록 (dev_temp.md)
 
+## [완료] 사업자등록증 신규 고객 등록 원격 DB upsert 42703/PGRST204 무음 실패 해결, Supabase DDL 26개 컬럼 일괄 증설, 동적 컬럼 탈거 2차 폴백 및 등록 즉시 검색어 자동 포커스·스크롤 동기화 확립 (v1.12.0.Build.73)
+- **요구사항**: "사업자 등록증 넣고 정상 확인 돼서 고객등록을 눌렀는데 고객 등록이 되지 않았어(저장되지 않았어) 등록이 된건데 안보이는건가?"
+- **도메인 R&R 및 적용 목적 (헌장 1.1 최대 편익, 1.2 렌탈 도메인 3대 핵심 가치, 3.1 무수식어 건조 표준, 3.2 No-Wrap, 3.4 상하 스택, 3.5 Z-패턴, 5.2 무음 실패 방지)**:
+  1. **원격 Supabase DB와 TypeScript 모델 간 1:1 정합성 확보 (DDL 26개 컬럼 증설)**:
+     - `Customer` 및 `Vendor`에 추가된 신규 도메인 컬럼(`taxType`, `taxTypeCd`, `businessStatus`, `closedDate`, `lastStatusCheckDate`, `bizType`, `bizItem`, `openingDate`, `businessCertFileUrl`, `passbookFileUrl`, `bankName`, `accountNumber` 등)이 원격 PostgreSQL 테이블에 존재하지 않아 `Could not find the 'bizItem' column of 'customers' in the schema cache (PGRST204)` 오류로 저장이 차단되었던 현상 규명.
+     - `public.dev_exec_ddl` RPC를 통해 `customers` 및 `vendors` 테이블에 26개 누락 컬럼을 `ALTER TABLE ... ADD COLUMN IF NOT EXISTS`로 일괄 패치 완료.
+     - SSOT 원본인 `schema.sql`에 해당 컬럼 정의를 100% 동기화 영구 보존.
+  2. **헌장 5.2 무음 실패(Zero Silent Failures) 원천 차단 및 동적 컬럼 탈거 2차 폴백 엔진 장착 (`src/services/db.ts`)**:
+     - 기존 `insertRow` / `updateRow`가 Supabase 거부 에러 시 고정 컬럼만 제거하고 `return null;`로 삼켜버려 상위 UI가 정상 저장된 것으로 오인하고 성공 토스트를 띄우던 결함 완벽 소탕.
+     - 에러 메시지(`msg`) 내 미반영 컬럼명을 정규식으로 실시간 자동 추출하여 `fallbackPayload`에서 동적 삭제 후 2차 재시도하도록 안전망 고도화.
+     - fallback마저 실패할 경우 절대로 무음 처리하지 않고 `throw new Error(...)`를 강제 발생시켜 즉각 `showErrorModal`이 표출되도록 조치.
+  3. **고객 등록/수정 완료 시 1-Way 시각 포커스 및 스크롤 동기화 (`src/pages/Customers.tsx`)**:
+     - 신규 고객 등록(`handleBizLicenseSuccess`) 및 수동 등록/수정(`handleSaveCustSubmit`) 완료 시:
+       - `setSearchTerm(savedCustomer.name)`: 검색창에 등록된 상호명을 즉시 자동 기입하여, 수백 개 고객 목록 중 방금 등록한 고객사가 화면 최상단 1순위로 즉시 노출되도록 동선 단축.
+       - `setStatusFilter('ALL')`, `setShowOnlyIncomplete(false)`: 필터 설정으로 인한 신규 등록 고객 숨김을 원천 방지.
+       - `setSelectedCustomerId(savedCustomer.id)`: 우측 상세 화면에 신규 고객사 카드를 즉시 마운트.
+       - `scrollIntoView({ block: 'nearest', behavior: 'smooth' })`: 선택된 DOM 요소를 부드럽게 스크롤하여 작업자의 확인 피로와 의구심을 제로화.
+- **주요 변경 파일**:
+  - `src/services/db.ts` [MODIFY]: `insertRow`, `updateRow`에 미반영 컬럼 정규식 동적 탈거 재시도 및 무음 반환 배제(`throw new Error`) 헌장 5.2 준수.
+  - `src/pages/Customers.tsx` [MODIFY]: `handleBizLicenseSuccess` 및 `handleSaveCustSubmit`에 `searchTerm` 자동 설정, 필터 리셋, `scrollIntoView` 연동.
+  - `schema.sql` [MODIFY]: `customers`, `vendors` 테이블에 NTS, 계좌, 증빙 URL 관련 26개 컬럼 정식 반영.
+  - `~/.gemini/config/경험.md` [MODIFY]: `E-097` 지식 베이스 등록.
+- **검증 결과**:
+  - Supabase `customers` 테이블 실서버 전수 컬럼 대상 `upsert` 테스트: `error: null` 100% 무결 통과.
+  - `cmd /c npm run build`: TypeScript 컴파일 0 에러 및 Vite 번들 정상 완료 (`✓ built in 1.18s`).
+
+## [완료] 매입처(협력사) 대금 지급 계좌 및 통장사본 등록 체계 구축, 매출처 통장사본 배제 정돈 및 사업자등록증 관할 세무서 필드 제거 (v1.12.0.Build.72)
+- **요구사항**:
+  - "고객정보중 통장사본 업로드도 지원해줘. 그리고 사업자등록증 올릴 때, 관할 세무서 정보는 필요 없는것 같아"
+  - "음, 매출처 통장계좌 정보는 은행 입출금내역 조회에서 안나와서 사용할 수 없다는게 실무자들의 말이고, 매입처는 우리가 대금을 지급해줘야 하기 때문에 거래상대방이 우리에게 통장 사본을 제출해줘. 그러므로 매입처만 통장사본을 등록 하는거야"
+- **도메인 R&R 및 적용 목적 (헌장 1.1 최대 편익, 1.2 렌탈 도메인 3대 핵심 가치, 2.1 R&R 엄격 분리, 3.1 무수식어 건조 표준, 3.2 No-Wrap, 3.4 상하 스택, 5.2 무음 실패 방지)**:
+  1. **매출처 (Customer) 실무 정합성 반영**:
+     - 은행 입출금 거래내역 조회 시 매출처 계좌번호가 표기되지 않아 자동 매칭 효용이 없다는 현장 피드백을 수용.
+     - PC 고객 상세(`Customers.tsx`) 및 모바일 고객 관리(`MobileCustomerManage.tsx`)에서 통장사본 UI를 전면 제거하고, 입금 계좌 그리드는 비노출(주석) 처리하여 실무 혼선 원천 방지.
+  2. **매입처 (Vendor) 대금 지급 계좌 및 통장사본 관리 체계 구축 (`src/services/db.ts`, `src/pages/Vendors.tsx`)**:
+     - 당사가 장비 임차료, 운송비, 외주 정비비, 부품 매입대금을 직접 송금 지급해야 하므로, 거래상대방이 제출한 통장사본이 정산 및 세무 증빙의 핵심 자산임.
+     - `Vendor` DB 모델 확장: `bankName`, `accountNumber`, `accountHolder`, `passbookFileUrl`, `passbookFileName`, `businessCertFileUrl`.
+     - **PC 매입처 대장 (`Vendors.tsx`)**:
+       - 테이블 그리드에 `지급 계좌` 및 `통장사본` 전용 컬럼 신설 (No-Wrap, 은행명+계좌번호+예금주 렌더링).
+       - 테이블 행 인라인 액션: 등록된 통장사본 즉시 새 창 열람(`사본 열람 ↗`), 원터치 삭제(`✕`), 미등록 시 테이블에서 바로 파일 등록/변경 업로드(`+ 등록`).
+       - 매입처 등록/수정 모달 내 "대금 지급 계좌" (은행명, 계좌번호, 예금주) 및 "통장사본 증빙" (미리보기, 열람, 파일 첨부, 삭제) 블록 추가.
+       - 엑셀 내보내기에 `지급은행`, `지급계좌번호`, `예금주`, `통장사본등록` 컬럼 반영.
+       - Supabase Storage `vendor_bankbooks` 폴더 자동 업로드 및 오프라인 Base64 DataURL 이중 무중단 폴백.
+  3. **사업자등록증 프로세스 내 불필요한 '관할 세무서' 정보 배제**:
+     - `src/components/BusinessLicenseModal.tsx`: 상태, 차이 비교 그리드(diff table), 등록 폼 입력창, 저장 페이로드에서 `taxOffice` 완전 제거.
+     - `src/components/BatchBusinessLicenseModal.tsx`: 엑셀 내보내기 항목에서 `관할세무서` 컬럼 제거.
+     - `api/vision-ocr.ts`: Vision AI 프롬프트 지시문 및 JSON 스키마에서 `taxOffice` 추출 제거로 OCR 속도 및 정확도 향상.
+  4. **국세청 휴폐업 점검 버튼 클릭 시 React Error #310 원천 차단 및 모달 렌더링 가드 확립**:
+     - **증상**: "국세청 휴폐업 점검" 버튼 클릭 시 `Minified React error #310` 발생 및 ErrorBoundary 표출.
+     - **근본 원인**: `NtsStatusAuditModal.tsx` 내부에 `if (!isOpen) return null;`이 8개의 `useState`와 3개의 `useMemo` 사이에 위치하여, 닫혀 있을 때(8개 실행)와 열릴 때(11개 실행) 간 Hook 실행 개수가 불일치함.
+     - **완결 조치**:
+       - `NtsStatusAuditModal.tsx`: 조기 반환(`if (!isOpen) return null;`)을 모든 `useMemo` 이후로 재배치.
+       - `Customers.tsx`, `Vendors.tsx`, `MobileCustomerManage.tsx`: 모달 호출부를 `{showNtsAuditModal && <NtsStatusAuditModal ... />}`로 이중 가드 적용. 닫힘 상태 시 불필요한 useMemo 연산(수백 개 거래처/자산 루프) 메모리 낭비를 제로화하고, 열림 시 항상 100% 일정한 Hook 사이클로 깨끗하게 마운트되도록 보장.
+       - `ErrorBoundary.tsx`: 미니파이된 React 에러(#310: Hook 순서/개수 불일치, #300, #185 등) 발생 시 친절한 진단 해설 및 컴포넌트 호출 스택(componentStack) 표출 추가.
+- **주요 변경 파일**:
+  - `src/services/db.ts` [MODIFY]: `Vendor` 모델에 은행명, 계좌번호, 예금주, 통장사본 URL/파일명, 사업자등록증 URL 속성 추가.
+  - `src/pages/Vendors.tsx` [MODIFY]: 지급계좌/통장사본 컬럼 추가, 인라인 업로드/열람/삭제 핸들러 탑재, 등록/수정 모달 지급계좌 섹션 추가, 엑셀 출력 컬럼 확장, 모달 조건부 마운트 가드 적용.
+  - `src/pages/Customers.tsx` [MODIFY]: 매출처 통장사본 섹션/모달 제거 및 입금계좌 그리드 비노출 주석 처리, 모달 조건부 마운트 가드 적용.
+  - `src/mobile/pages/MobileCustomerManage.tsx` [MODIFY]: 모바일 카드 및 등록/수정 모달에서 통장사본 필드 제거, 모달 조건부 마운트 가드 적용.
+  - `src/components/NtsStatusAuditModal.tsx` [MODIFY]: Hook 호출 순서 정상화 (조기 반환 위치 이동).
+  - `src/components/ErrorBoundary.tsx` [MODIFY]: React 에러 코드 자동 진단 해설 및 componentStack 표시 지원.
+  - `src/components/BusinessLicenseModal.tsx` [MODIFY]: 관할 세무서(`taxOffice`) UI 및 저장 로직 제거.
+  - `src/components/BatchBusinessLicenseModal.tsx` [MODIFY]: 엑셀 컬럼에서 관할세무서 제거.
+  - `api/vision-ocr.ts` [MODIFY]: AI 프롬프트 및 스키마에서 taxOffice 제거.
+  - `src/mobile/pages/MobileAsDetail.tsx` [MODIFY]: Hook 호출 순서 정상화.
+  - `src/pages/asset_assignment.tsx` [MODIFY]: Hook 호출 순서 정상화.
+- **검증 결과**:
+  - `cmd /c npm run build`: TypeScript 0 Error 및 Vite 번들 정상 완료 (`✓ built in 1.22s`).
+
 ## [완료] 국세청 홈택스 사업자 휴폐업 실시간 진위확인 및 전사 거래처 전수 점검 스튜디오 구축 (v1.12.0.Build.71)
 - **요구사항**: "사업자 등록증의 사업자번호를 홈택스 사업자 휴폐업조회를 확인한 후에 등록 해줘야 할것 같은데. 어떤구성이 가능할까? 필요에 따라서, 정기적으로 등록된 고객의 사업자 상태를 확인 점검 하는 프로세스를 연계해서 구성한다면?"
 - **적용 목적 (헌장 1.1 최대 편익, 1.2 렌탈 도메인 3대 핵심 가치, 2.1 R&R 엄격 분리, 3.1 무수식어 건조 표준, 3.2 No-Wrap, 3.4 상하 스택, 3.5 Z-패턴, 5.2 무음 실패 방지)**:

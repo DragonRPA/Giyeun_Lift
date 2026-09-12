@@ -149,8 +149,7 @@ async function analyzeBusinessLicenseWithAI(imageUrl: string, textHint?: string)
 8. bizItem (종목): 사업의 종류 중 "종목" (예: 고소작업대 임대, 가설재 설치 및 해체, 기계장비 등).
 9. taxEmail (세금계산서 전용 이메일): 사업자등록증 여백에 수기 또는 도장/인쇄로 기재된 이메일 주소가 있는 경우 추출, 없으면 null.
 10. repContact (대표 전화번호): 기재되어 있는 유선전화 또는 휴대전화 번호가 있는 경우 추출, 없으면 null.
-11. taxOffice (관할 세무서): 사업자등록증 최하단의 관할 세무서명 (예: 평택세무서장 ➔ "평택세무서").
-12. isCorporate (법인 여부): 법인사업자이면 true, 개인사업자이면 false. (상호에 주식회사/유한회사 등이 있거나 법인등록번호가 있으면 true).
+11. isCorporate (법인 여부): 법인사업자이면 true, 개인사업자이면 false. (상호에 주식회사/유한회사 등이 있거나 법인등록번호가 있으면 true).
 
 [주의사항]:
 - 오탈자 없이 한국어 상호와 한글 주소를 정확히 판별하세요.
@@ -169,7 +168,6 @@ JSON 응답 포맷:
   "bizItem": "고소작업대 임대, 건설기계대여",
   "taxEmail": "tax@samhwa.com",
   "repContact": "031-667-0000",
-  "taxOffice": "평택세무서",
   "isCorporate": true,
   "confidence": 0.95
 }`;

@@ -970,19 +970,23 @@ export const MobileCustomerManage: React.FC<MobileCustomerManageProps> = ({ onNa
       )}
 
       {/* 📄 사업자등록증 AI 신규 등록 및 정보 보완 모달 */}
-      <BusinessLicenseModal
-        isOpen={showBizLicenseModal}
-        onClose={() => setShowBizLicenseModal(false)}
-        targetCustomerId={targetBizLicenseCustId}
-        onSuccess={() => refreshAllData()}
-      />
+      {showBizLicenseModal && (
+        <BusinessLicenseModal
+          isOpen={showBizLicenseModal}
+          onClose={() => setShowBizLicenseModal(false)}
+          targetCustomerId={targetBizLicenseCustId}
+          onSuccess={() => refreshAllData()}
+        />
+      )}
 
       {/* 📂 사업자등록증 폴더 일괄 등록 모달 */}
-      <BatchBusinessLicenseModal
-        isOpen={showBatchLicenseModal}
-        onClose={() => setShowBatchLicenseModal(false)}
-        initialTargetType="CUSTOMER"
-      />
+      {showBatchLicenseModal && (
+        <BatchBusinessLicenseModal
+          isOpen={showBatchLicenseModal}
+          onClose={() => setShowBatchLicenseModal(false)}
+          initialTargetType="CUSTOMER"
+        />
+      )}
     </div>
   );
 };

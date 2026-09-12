@@ -51,8 +51,12 @@ export const Customers: React.FC = () => {
   const [showBatchLicenseModal, setShowBatchLicenseModal] = useState(false);
   const [showNtsAuditModal, setShowNtsAuditModal] = useState(false);
 
-  const handleBizLicenseSuccess = (savedCustomer: Customer, isNew: boolean) => {
+  const handleBizLicenseSuccess = async (savedCustomer: Customer, isNew: boolean) => {
+    setSearchTerm(savedCustomer.name);
+    setStatusFilter('ALL');
+    setShowOnlyIncomplete(false);
     setSelectedCustomerId(savedCustomer.id);
+    await refreshAllData();
     showToast(isNew ? `신규 고객사 [${savedCustomer.name}] 등록 완료` : `고객사 [${savedCustomer.name}] 정보 보완 완료`, 'success');
   };
 
@@ -106,6 +110,7 @@ export const Customers: React.FC = () => {
       setSelectedCustomerId(customers[0].id);
     }
   }, [customers, selectedCustomerId]);
+
 
   const activeCustomer = useMemo(() => {
     return customers.find(c => c.id === selectedCustomerId) || null;
@@ -169,6 +174,16 @@ export const Customers: React.FC = () => {
       return matchesSearch && matchesStatus && matchesIncomplete;
     });
   }, [customers, searchTerm, statusFilter, showOnlyIncomplete, contacts, sites]);
+
+  // 선택된 고객사 목록 스크롤 동기화
+  useEffect(() => {
+    if (selectedCustomerId) {
+      const el = document.getElementById(`customer-item-${selectedCustomerId}`);
+      if (el) {
+        el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+      }
+    }
+  }, [selectedCustomerId, filteredCustomers]);
 
   // KPI 집계
   const kpiStats = useMemo(() => {
@@ -283,6 +298,9 @@ export const Customers: React.FC = () => {
       setShowCustModal(false);
       setEditingCust(null);
       setSelectedCustomerId(saved.id);
+      setSearchTerm(saved.name);
+      setStatusFilter('ALL');
+      setShowOnlyIncomplete(false);
       await refreshAllData();
     } catch (err: any) {
       showToast(`고객 정보 저장 실패: ${err?.message || err}`, 'error');
@@ -952,6 +970,7 @@ export const Customers: React.FC = () => {
                 return (
                   <div
                     key={cust.id}
+                    id={`customer-item-${cust.id}`}
                     onClick={() => setSelectedCustomerId(cust.id)}
                     style={{
                       padding: '8px 10px',
@@ -1128,8 +1147,9 @@ export const Customers: React.FC = () => {
                   <div style={{ gridColumn: 'span 4' }}>
                     <span style={{ color: 'var(--text-secondary)' }}>사업장 주소:</span> {activeCustomer.address || '-'}
                   </div>
+                  {/* 📄 사업자등록증 증빙 영역 */}
                   {activeCustomer.businessCertFileUrl && (
-                    <div style={{ gridColumn: 'span 4', display: 'flex', alignItems: 'center', gap: '6px', paddingTop: '4px' }}>
+                    <div style={{ gridColumn: 'span 4', display: 'flex', alignItems: 'center', gap: '6px', paddingTop: '4px', borderTop: '1px solid var(--border-color)' }}>
                       <span style={{ color: 'var(--text-secondary)' }}>사업자등록증 원본:</span>
                       <a
                         href={activeCustomer.businessCertFileUrl}
@@ -1850,26 +1870,32 @@ export const Customers: React.FC = () => {
       )}
 
       {/* 📄 사업자등록증 AI 신규 등록 및 정보 보완 모달 */}
-      <BusinessLicenseModal
-        isOpen={showBizLicenseModal}
-        onClose={() => setShowBizLicenseModal(false)}
-        targetCustomerId={targetBizLicenseCustId}
-        onSuccess={handleBizLicenseSuccess}
-      />
+      {showBizLicenseModal && (
+        <BusinessLicenseModal
+          isOpen={showBizLicenseModal}
+          onClose={() => setShowBizLicenseModal(false)}
+          targetCustomerId={targetBizLicenseCustId}
+          onSuccess={handleBizLicenseSuccess}
+        />
+      )}
 
       {/* 📂 사업자등록증 폴더 일괄 등록 모달 */}
-      <BatchBusinessLicenseModal
-        isOpen={showBatchLicenseModal}
-        onClose={() => setShowBatchLicenseModal(false)}
-        initialTargetType="CUSTOMER"
-      />
+      {showBatchLicenseModal && (
+        <BatchBusinessLicenseModal
+          isOpen={showBatchLicenseModal}
+          onClose={() => setShowBatchLicenseModal(false)}
+          initialTargetType="CUSTOMER"
+        />
+      )}
 
       {/* 🏛️ 국세청 홈택스 사업자 휴폐업 전수 점검 스튜디오 */}
-      <NtsStatusAuditModal
-        isOpen={showNtsAuditModal}
-        onClose={() => setShowNtsAuditModal(false)}
-        initialTarget="CUSTOMER"
-      />
+      {showNtsAuditModal && (
+        <NtsStatusAuditModal
+          isOpen={showNtsAuditModal}
+          onClose={() => setShowNtsAuditModal(false)}
+          initialTarget="CUSTOMER"
+        />
+      )}
 
       {/* ⑦ 담당자 등록/수정 모달 */}
       {showContactModal && editingContact && (

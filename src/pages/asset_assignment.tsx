@@ -30,10 +30,6 @@ export const AssetAssignment: React.FC = () => {
   const canEdit = hasPermission('dispatch_assign', 'save');
   const canView = hasPermission('dispatch_assign', 'view');
 
-  if (!canView && !canEdit) {
-    return <div style={{ padding: '16px', fontSize: '13px' }}>이 메뉴에 접근할 권한이 없습니다. (dispatch_assign)</div>;
-  }
-
   // 대차 교체 의뢰 접수 건 (EXCHANGE 이력 기반)
   const exchangeRequests = (contractHistory || []).filter(h => h.changeType === 'EXCHANGE');
   const exchangeContractIds = Array.from(new Set(exchangeRequests.map(h => h.contractId)));
@@ -432,6 +428,10 @@ export const AssetAssignment: React.FC = () => {
     exportToExcel(exportRows, `장비할당현황대장_${new Date().toISOString().split('T')[0]}`, '장비할당현황');
     showToast(`총 ${exportRows.length}건의 장비 할당 현황이 엑셀로 내보내기 되었습니다.`);
   };
+
+  if (!canView && !canEdit) {
+    return <div style={{ padding: '16px', fontSize: '13px' }}>이 메뉴에 접근할 권한이 없습니다. (dispatch_assign)</div>;
+  }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', fontSize: '13px' }}>

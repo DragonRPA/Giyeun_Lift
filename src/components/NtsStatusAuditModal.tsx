@@ -33,8 +33,6 @@ export const NtsStatusAuditModal: React.FC<NtsStatusAuditModalProps> = ({
   const [scanResults, setScanResults] = useState<Map<string, NtsStatusResult>>(new Map());
   const [appliedIds, setAppliedIds] = useState<Set<string>>(new Set());
 
-  if (!isOpen) return null;
-
   // 1. 대상 목록 정제
   const targetItems = useMemo(() => {
     if (targetType === 'CUSTOMER') {
@@ -244,6 +242,8 @@ export const NtsStatusAuditModal: React.FC<NtsStatusAuditModalProps> = ({
     const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, '');
     exportToExcel(excelData, `국세청_휴폐업_전수점검결과_${dateStr}`, '전수점검');
   };
+
+  if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-3 sm:p-6 overflow-hidden">

@@ -227,11 +227,21 @@ CREATE TABLE vendors (
     email                 TEXT,
     address               TEXT,
     "bankAccount"         TEXT,
+    "bankName"            TEXT,
+    "accountNumber"       TEXT,
+    "accountHolder"       TEXT,
+    "passbookFileUrl"     TEXT,
+    "passbookFileName"    TEXT,
+    "businessCertFileUrl" TEXT,
     "isActive"            BOOLEAN NOT NULL DEFAULT TRUE,
     memo                  TEXT,
     "firstTradeDate"       TEXT, -- 최초 거래개시일 (YYYY-MM-DD)
     "lastTradeDate"        TEXT, -- 최근 거래일 (YYYY-MM-DD)
     "totalPurchaseAmount"  BIGINT DEFAULT 0, -- 누적 거래액 (원, 매입거래 누계액)
+    "taxType"             TEXT,
+    "businessStatus"      TEXT DEFAULT 'ACTIVE',
+    "closedDate"          TEXT,
+    "lastStatusCheckDate" TEXT,
     "createdAt"           TEXT NOT NULL,
     "updatedAt"           TEXT NOT NULL
 );
@@ -258,6 +268,17 @@ CREATE TABLE customers (
     "defaultCheckedSpecs" JSONB, -- 고객사 기본 요구사양 체크 상태
     "bankAccounts"        JSONB, -- 고객사 환불/거래 계좌 목록
     "driveFolderId"       TEXT,
+    "openingDate"         TEXT, -- 개업연월일
+    "taxOffice"           TEXT, -- 관할 세무서
+    "headOfficeAddress"   TEXT, -- 본점 소재지
+    "businessCertFileUrl" TEXT, -- 사업자등록증 URL
+    "passbookFileUrl"     TEXT, -- 통장사본 URL
+    "passbookFileName"    TEXT, -- 통장사본 파일명
+    "taxType"             TEXT, -- 국세청 과세유형
+    "taxTypeCd"           TEXT, -- 국세청 과세유형 코드
+    "businessStatus"      TEXT DEFAULT 'ACTIVE', -- 사업자 상태
+    "closedDate"          TEXT, -- 폐업일자
+    "lastStatusCheckDate" TEXT, -- 최근 국세청 조회일시
     "isClosed"            BOOLEAN NOT NULL DEFAULT FALSE,
     "specialNotes"        TEXT,
     "createdAt"           TEXT NOT NULL,

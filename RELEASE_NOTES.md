@@ -1,3 +1,35 @@
+## [v1.12.0.Build.73] - 2026-09-12 16:30
+
+### 🏗️ [멀티테넌트 전환 준비 — 전 비즈니스 테이블 62개 `tenant_id` 컬럼 선제 추가 (schema.sql SSOT 동기화)]
+
+**배경**:
+1. 사장님 지시사항:
+   - "[지금 ~ 기연리프트 1.0 완성] → 현재 아키텍처 유지 → tenant_id 컬럼만 모든 테이블에 선제 추가 (마이그레이션 준비) 실행"
+2. 장기 B2B SaaS 전환 검토 결과:
+   - 방안 B(테넌트별 독립 Supabase 프로젝트 + 마스터 레지스트리)가 장기적으로 최선이나, 1.0 완성 전까지는 현 아키텍처 유지.
+   - 지금 당장: `tenant_id TEXT NOT NULL DEFAULT 'giyeun'` 컬럼만 62개 테이블에 선제 추가 (비용 0원, 기능 변화 없음, 미래 마이그레이션 준비).
+3. 시스템 헌장 카테고리 V (5.3 SSOT 정합성), 카테고리 VI (6.1 버전 관리, 6.2 "ㄹㅇ" 배포) 준수.
+
+**개편 내역**:
+1. **`schema.sql` SSOT — 62개 비즈니스 테이블 `tenant_id` 컬럼 선제 추가**:
+   - 제외 테이블 (공통 인프라/마스터): `agent_registry`, `google_configs`, `inspection_checklist_items`, `legal_notice_templates` (4개)
+   - 추가 대상 (전 비즈니스 도메인):
+     - 도메인 1 (HR/조직): `departments`, `users`, `permissions`, `annual_leave_quotas`, `leave_usages`, `overtime_records`, `payroll_closings` (7개)
+     - 도메인 2 (기준정보): `vendors`, `customers`, `customer_contacts`, `customer_sites`, `customer_bank_accounts`, `products`, `assets`, `consumables`, `consumable_purchases`, `mechanic_consumable_stocks`, `transport_companies`, `transport_drivers` (12개)
+     - 도메인 3 (계약/운영): `contracts`, `contract_assets`, `external_leases`, `contract_history`, `deliveries`, `outbound_inspections`, `inbound_defect_details`, `asset_inout_logs` (8개)
+     - 도메인 4 (정비): `repairs`, `repair_timeline_events`, `repair_consumables`, `consumable_logs`, `standard_options` (5개)
+     - 도메인 5 (회계/청구/금융): `billings`, `billing_details`, `billing_invoices`, `receivables`, `payments`, `bank_transactions`, `payment_deposit_links`, `bank_matching_rules`, `bank_initial_balances`, `purchase_settlements`, `purchase_settlement_items`, `settlement_payment_logs`, `cash_flow_snapshots`, `prepaid_transactions`, `delinquency_action_logs`, `legal_notice_logs`, `depreciation_logs` (17개)
+     - 도메인 6 (협업/시스템): `todos`, `announcements`, `announcement_reads`, `work_instructions`, `collaboration_requests`, `collaboration_request_history`, `document_jobs` (7개)
+     - 도메인 7 (법인차량): `corporate_vehicles`, `vehicle_operation_logs`, `vehicle_fuel_logs` (3개)
+     - 기타: `equipment_manuals`, `print_stations`, `print_queue` (3개)
+   - 컬럼 정의: `"tenant_id" TEXT NOT NULL DEFAULT 'giyeun'` — 기존 데이터 100% 무영향, 기연리프트 단일 테넌트로 자동 설정.
+   - `ADD COLUMN IF NOT EXISTS` 멱등성 보장 SQL 스크립트: `scripts/add_tenant_id_ALL.sql` 생성.
+2. **원격 DB 적용 대기 (`scripts/add_tenant_id_ALL.sql`)**:
+   - Supabase Dashboard → SQL Editor에서 해당 파일 실행 필요.
+   - 실행 후 결과: 62행 반환되면 완료.
+
+---
+
 ## [v1.12.0.Build.72] - 2026-09-12 15:46
 
 ### 🚀 [매입처 대금지급 계좌·통장사본 체계 구축, 사업자등록증 원격 DB 26개 컬럼 증설 및 upsert 무음실패 원천차단·자동검색 포커스 구축, "ㄹㅇ" 배포]

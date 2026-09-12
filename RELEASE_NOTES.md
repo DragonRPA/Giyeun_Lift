@@ -1,4 +1,29 @@
+## [v1.12.0.Build.75] - 2026-09-12 17:30
+
+### 🚀 [Vercel 배포 번들 91.3% 다이어트 — 100MB eBroAgent.exe 바이너리 GitHub Release 영구 분리 및 CDN 다운로드 전환]
+
+**배경**:
+- Vercel 배포 시마다 스토리지 사용량이 0.1GB씩 누적 급증하던 근본 원인 규명:
+  `public/downloads/eBroAgent.exe` (99.65 MB, Node.js SEA 실행파일)가 배포 번들에 포함되어 매 배포마다 100MB가 고스란히 복제·저장되던 구조.
+- 사장님 지시: "100MB짜리 eBroAgent.exe를 Vercel 코드 번들에서 빼고 영구 다운로드 링크로 전환 적용".
+
+**개편 내역**:
+1. **GitHub Release 영구 바이너리 저장소 구축 및 고속 CDN 에셋 발행**:
+   - GitHub Releases (`agent-v1.0.0`)에 `eBroAgent.exe` (99.65 MB) 등록 완료 (`Status: 201 Created`).
+   - 글로벌 다운로드 엔드포인트: `https://github.com/DragonRPA/Giyeun_Lift/releases/download/agent-v1.0.0/eBroAgent.exe` (전 세계 초고속 분산 캐싱, 무제한 대역폭, Vercel 스토리지 0B 소모).
+2. **프론트엔드 다운로드 파이프라인 단일 진실의 원천(SSOT) 전환**:
+   - `src/services/agentService.ts`: `AGENT_EXE_URL`을 GitHub Releases CDN 고속 영구 URL로 전환.
+   - `src/pages/Dashboard.tsx`: `AGENT_EXE_URL` 임포트 및 원클릭 다운로드 연계.
+   - `src/pages/GoogleConfig.tsx`: `AGENT_EXE_URL` 임포트 및 원클릭 다운로드 연계.
+3. **Vercel 빌드 번들 크기 91.3% 압축 소탕**:
+   - `public/downloads/eBroAgent.exe` 로컬 안전 보관 폴더(`agent_binaries/`)로 백업 후 배포 대상에서 완전 격리.
+   - Vite 빌드 산출물(`dist/`) 크기: **109.13 MB ➔ 9.49 MB (91.3% 격감 달성)**.
+   - 배포 5개 슬롯 유지 시 총 Vercel 스토리지 사용량: **약 47 MB (0.047 GB)**로 수렴하여 10 GB 무료 한도 대비 0.5% 미만 청정 상태 영구 유지.
+
+---
+
 ## [v1.12.0.Build.74] - 2026-09-12 16:45
+
 
 ### 🧹 [Vercel 스토리지 자동 관리 체계 구축 — 3개 프로젝트 일괄 Purge + GitHub Actions 영구 자동화]
 

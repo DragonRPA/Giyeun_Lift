@@ -13,7 +13,7 @@ import {
 } from '../services/excelTemplateEngine';
 import { PDFDocument } from 'pdf-lib';
 import JSZip from 'jszip';
-import { EXPECTED_AGENT_VERSION, AGENT_CERT_URL, AGENT_INSTALL_BAT_URL } from '../services/agentService';
+import { EXPECTED_AGENT_VERSION, AGENT_CERT_URL, AGENT_INSTALL_BAT_URL, AGENT_EXE_URL } from '../services/agentService';
 import { executeR2MirrorSync, testR2Connection } from '../services/r2MirrorSync';
 
 export const GoogleConfig: React.FC = () => {
@@ -133,7 +133,7 @@ export const GoogleConfig: React.FC = () => {
     setIsDownloadingAgent(true);
     try {
       const link = document.createElement('a');
-      link.href = '/downloads/eBroAgent.exe';
+      link.href = AGENT_EXE_URL;
       link.download = 'eBroAgent.exe';
       document.body.appendChild(link);
       link.click();

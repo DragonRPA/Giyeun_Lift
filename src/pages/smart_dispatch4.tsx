@@ -15,7 +15,7 @@ import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react'
 import { useApp } from '../context/AppContext';
 import { db, Customer, CustomerSite, findCustomerByNormalizedName, StandardOption } from '../services/db';
 import { EQUIPMENT_SPEC_MATRIX } from '../services/voiceOrderDraftService';
-import { matchHangul } from '../utils/hangulSearch';
+import { matchHangul, sortCustomersByName } from '../utils/hangulSearch';
 import {
   fetchMyDrafts, subscribeDraftUpdates, submitDraft, discardDraft,
   createDraftOrder, DraftDispatchOrder, mergeDrafts,
@@ -570,7 +570,7 @@ export const SmartDispatch4: React.FC = () => {
   // 🌟 검색어가 없을 때는 고객사를 일절 추천/제시하지 않음 (사용자 피드백 100% 반영)
   const filteredCustomers = useMemo(() => {
     if (!customerQuery.trim()) return [];
-    return customers.filter(c => matchHangul(c.name, customerQuery)).slice(0, 16);
+    return sortCustomersByName(customers.filter(c => matchHangul(c.name, customerQuery))).slice(0, 16);
   }, [customers, customerQuery]);
 
   // 🌟 [고객 지정 전 현장 노출 완전 차단] 고객사 미선택 시 현장 목록 일절 노출 금지!

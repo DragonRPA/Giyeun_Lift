@@ -10,7 +10,8 @@ import {
 } from 'lucide-react';
 import { db, Customer, CustomerContact, CustomerSite, CustomerBankAccount, StandardOption } from '../services/db';
 import { exportToExcel } from '../services/excel';
-import { matchHangul } from '../utils/hangulSearch';
+import { matchHangul, matchesChosungFilter, sortCustomersByName } from '../utils/hangulSearch';
+import { ChosungFilterBar } from '../components/ChosungFilterBar';
 import { BusinessLicenseModal } from '../components/BusinessLicenseModal';
 import { BatchBusinessLicenseModal } from '../components/BatchBusinessLicenseModal';
 import { NtsStatusAuditModal } from '../components/NtsStatusAuditModal';
@@ -33,6 +34,7 @@ export const Customers: React.FC = () => {
 
   // 실시간 검색 및 필터 상태 (헌장 1.1 & 1.2: 지연 조회 제거)
   const [searchTerm, setSearchTerm] = useState('');
+  const [chosungFilter, setChosungFilter] = useState<string>('전체');
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'ACTIVE' | 'BLOCKED' | 'CLOSED'>('ALL');
   const [showOnlyIncomplete, setShowOnlyIncomplete] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -153,15 +155,17 @@ export const Customers: React.FC = () => {
     return hasMissingInfo || custContacts.length === 0 || custSites.length === 0;
   };
 
-  // 실시간 필터링
+  // 실시간 필터링 (초성 칩 필터 및 정규화 가나다 오름차순 정렬 통합)
   const filteredCustomers = useMemo(() => {
-    return customers.filter(c => {
+    const list = customers.filter(c => {
       const matchesSearch = 
         !searchTerm ||
         matchHangul(c.name, searchTerm) ||
         (c.bizRegNo || '').includes(searchTerm) ||
         matchHangul(c.representative, searchTerm) ||
         (c.repContact || '').includes(searchTerm);
+
+      const matchesChosung = matchesChosungFilter(c.name, chosungFilter);
 
       const matchesStatus = 
         statusFilter === 'ALL' ? true :
@@ -171,9 +175,11 @@ export const Customers: React.FC = () => {
 
       const matchesIncomplete = !showOnlyIncomplete || isIncompleteCustomer(c);
 
-      return matchesSearch && matchesStatus && matchesIncomplete;
+      return matchesSearch && matchesChosung && matchesStatus && matchesIncomplete;
     });
-  }, [customers, searchTerm, statusFilter, showOnlyIncomplete, contacts, sites]);
+
+    return sortCustomersByName(list);
+  }, [customers, searchTerm, chosungFilter, statusFilter, showOnlyIncomplete, contacts, sites]);
 
   // 선택된 고객사 목록 스크롤 동기화
   useEffect(() => {
@@ -843,7 +849,7 @@ export const Customers: React.FC = () => {
             <Search size={13} style={{ position: 'absolute', left: '8px', top: '7px', color: 'var(--text-muted)' }} />
             <input
               type="text"
-              placeholder="고객명, 사업자번호, 대표자명, 연락처 검색..."
+              placeholder="고객명/초성 (예: ㅅㅅ, ㅎㄷ), 사업자번호, 대표자명, 연락처 검색..."
               value={searchTerm}
               onChange={e => setSearchTerm(e.target.value)}
               style={{
@@ -898,9 +904,9 @@ export const Customers: React.FC = () => {
           </label>
         </div>
 
-        {(searchTerm || statusFilter !== 'ALL' || showOnlyIncomplete) && (
+        {(searchTerm || chosungFilter !== '전체' || statusFilter !== 'ALL' || showOnlyIncomplete) && (
           <button
-            onClick={() => { setSearchTerm(''); setStatusFilter('ALL'); setShowOnlyIncomplete(false); }}
+            onClick={() => { setSearchTerm(''); setChosungFilter('전체'); setStatusFilter('ALL'); setShowOnlyIncomplete(false); }}
             style={{
               marginTop: '16px',
               padding: '4px 8px',
@@ -919,6 +925,27 @@ export const Customers: React.FC = () => {
             <RefreshCw size={11} /> 초기화
           </button>
         )}
+      </div>
+
+      {/* ④ 초성 자음 빠른 검색 필터 바 (SSOT 표준) */}
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: '8px',
+        padding: '3px 12px',
+        backgroundColor: 'var(--bg-card)',
+        borderRadius: '6px',
+        border: '1px solid var(--border-color)',
+        flexShrink: 0
+      }}>
+        <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-secondary)', whiteSpace: 'nowrap', flexShrink: 0 }}>
+          초성 필터
+        </span>
+        <ChosungFilterBar
+          selected={chosungFilter}
+          onChange={setChosungFilter}
+          compact
+        />
       </div>
 
       {/* ④ 중앙 본문: 마스터-디테일 2분할 스튜디오 (헌장 3.6 유형 A) */}

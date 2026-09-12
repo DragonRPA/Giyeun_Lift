@@ -3,13 +3,12 @@ import React, { useState, useMemo } from 'react';
 import { useApp } from '../context/AppContext';
 import {
   Plus, Calendar, Search, Download, Edit3, Repeat, Clock, Wrench, ChevronLeft,
-  Building2, ArrowLeftRight, Receipt, FolderOpen, AlertCircle, ExternalLink, Copy, AlertTriangle
+  Building2, ArrowLeftRight, Receipt, FolderOpen, AlertCircle, ExternalLink, Copy, AlertTriangle, FileText
 } from 'lucide-react';
 import { Contract, db, Customer, CustomerContact, CustomerSite, ContractAsset, ContractHistory, Delivery, Asset, normalizeEndDate, formatContractEndDate, isIndefiniteEndDate } from '../services/db';
 import { exportToExcel } from '../services/excel';
 import { ContractDocumentBundleModal } from '../components/ContractDocumentBundleModal';
-import { FileText, CheckCircle2 } from 'lucide-react';
-import { matchHangul } from '../utils/hangulSearch';
+import { matchHangul, sortCustomersByName, compareCustomerNames } from '../utils/hangulSearch';
 
 export const Contracts: React.FC = () => {
   const {
@@ -64,7 +63,18 @@ export const Contracts: React.FC = () => {
 
   // --- 계약 등록 폼 상태 ---
   const [custSelect, setCustSelect] = useState(customers[0]?.id || '');
+  const [custModalSearch, setCustModalSearch] = useState('');
   const [overdueAcknowledged, setOverdueAcknowledged] = useState(false);
+
+  const filteredCustModalList = useMemo(() => {
+    const list = customers.filter(c => 
+      !custModalSearch.trim() || 
+      matchHangul(c.name, custModalSearch) || 
+      matchHangul(c.representative, custModalSearch) ||
+      (c.bizRegNo && c.bizRegNo.includes(custModalSearch.trim()))
+    );
+    return sortCustomersByName(list);
+  }, [customers, custModalSearch]);
 
   const selectedCustOverdue = useMemo(() => {
     if (!custSelect || custSelect === 'NEW') return null;
@@ -971,7 +981,7 @@ export const Contracts: React.FC = () => {
                     }}
                     onFocus={() => setCustomerDropdownOpen(true)}
                     onBlur={() => setTimeout(() => setCustomerDropdownOpen(false), 150)}
-                    placeholder="전체 고객사"
+                    placeholder="고객사명 / 초성 (예: ㅅㅅ, ㅎㄷ)"
                     style={{ padding: '6px 28px 6px 10px', borderRadius: '6px', fontSize: '12.5px', border: '1px solid var(--border-color)', outline: 'none', backgroundColor: 'var(--bg-card)', color: 'var(--text-primary)', whiteSpace: 'nowrap', minWidth: '160px', width: '100%' }}
                   />
                   {customerInputText && (
@@ -986,8 +996,7 @@ export const Contracts: React.FC = () => {
                         onMouseDown={() => { setCustomerFilter('ALL'); setCustomerInputText(''); setSiteFilter('ALL'); setSiteInputText(''); setCustomerDropdownOpen(false); }}
                         style={{ padding: '8px 12px', fontSize: '12.5px', cursor: 'pointer', color: customerFilter === 'ALL' ? 'var(--primary)' : 'var(--text-primary)', fontWeight: customerFilter === 'ALL' ? 700 : 400 }}
                       >전체 고객사</div>
-                      {customers
-                        .filter(c => !customerInputText || matchHangul(c.name, customerInputText))
+                      {sortCustomersByName(customers.filter(c => !customerInputText || matchHangul(c.name, customerInputText)))
                         .map(c => (
                           <div
                             key={c.id}
@@ -2279,8 +2288,24 @@ export const Contracts: React.FC = () => {
           )}
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px', marginBottom: '16px' }}>
-            <div>
-              <label>고객사 선택 *</label>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <label style={{ fontSize: '12px', fontWeight: 600 }}>고객사 선택 *</label>
+                {custModalSearch && (
+                  <button
+                    type="button"
+                    onClick={() => setCustModalSearch('')}
+                    style={{ fontSize: '11px', color: 'var(--primary)', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
+                  >검색 초기화</button>
+                )}
+              </div>
+              <input
+                type="text"
+                value={custModalSearch}
+                onChange={e => setCustModalSearch(e.target.value)}
+                placeholder="고객명 / 초성 검색 (예: ㅅㅅ, ㅎㄷ)..."
+                style={{ width: '100%', padding: '5px 8px', fontSize: '12px', borderRadius: '4px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-app)', color: 'var(--text-main)' }}
+              />
               <select
                 value={custSelect}
                 onChange={e => {
@@ -2296,9 +2321,12 @@ export const Contracts: React.FC = () => {
                   }
                 }}
                 required
-                style={{ width: '100%', padding: '8px' }}
+                style={{ width: '100%', padding: '7px 8px', fontSize: '12.5px', borderRadius: '4px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-card)', color: 'var(--text-main)' }}
               >
-                {customers.map(c => (
+                <option value="">
+                  {custModalSearch ? `검색 결과 (${filteredCustModalList.length}개사)` : '고객사를 선택하세요'}
+                </option>
+                {filteredCustModalList.map(c => (
                   <option key={c.id} value={c.id}>
                     {c.transactionStatus === 'BLOCKED' ? `🚫 [거래제한] ${c.name}` : c.name} ({c.bizRegNo})
                   </option>

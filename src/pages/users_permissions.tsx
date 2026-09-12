@@ -1,672 +1,429 @@
 // src/pages/users_permissions.tsx
+// 권한 관리 체계: 관리자 정의 권한 명칭(CustomRole) 생성 및 직원 권한 자동 상속 스튜디오
 import React, { useState, useEffect, useMemo } from 'react';
 import { useApp } from '../context/AppContext';
-import { Shield, Check, Lock, Save, FolderKanban, ChevronDown, ChevronRight, Download } from 'lucide-react';
-import { MenuPermission, User, createMenuPermission, db, Department } from '../services/db';
+import { 
+  Shield, Check, Lock, Save, FolderKanban, ChevronDown, ChevronRight, 
+  Download, Plus, Trash2, Key, Users, CheckSquare, Square, Eye, Edit3, AlertCircle, Info
+} from 'lucide-react';
+import { MenuPermission, User, CustomRole, RolePermission, createMenuPermission, db, Department } from '../services/db';
 import { exportToExcel } from '../services/excel';
-
 import { SYSTEM_MENU_CONFIG, getAllSystemMenuIds, MenuGroupConfig, normalizeMenuId } from '../config/menu_config';
-import { getRoleTemplatePermission } from '../config/role_templates';
 
 export type MenuCategoryGroup = MenuGroupConfig;
 export const MENU_CATEGORIES = SYSTEM_MENU_CONFIG;
 
 export const UsersPermissions: React.FC = () => {
-  const { users, permissions, updatePermissions, saveUser, currentUser, hasPermission, showErrorModal } = useApp();
+  const { 
+    users, permissions, updatePermissions, saveUser, currentUser, hasPermission, showErrorModal,
+    customRoles, rolePermissions, saveCustomRole, deleteCustomRole, saveRolePermissions, assignUserRole 
+  } = useApp();
 
   const isSuperAdmin = currentUser?.id === 'u-1' || currentUser?.id === 'sys-admin';
   const canSave = hasPermission('permission', 'save');
 
-  const [selectedUserId, setSelectedUserId] = useState<string>('');
-  const [localUsers, setLocalUsers] = useState<User[]>([]);
-  const [localPermissions, setLocalPermissions] = useState<MenuPermission[]>([]);
-  const [isDirty, setIsDirty] = useState<boolean>(false);
+  // 상단 메인 탭 ('ROLES': 권한 명칭 정의 마스터 | 'USERS': 직원 권한 상속 배정)
+  const [activeTab, setActiveTab] = useState<'ROLES' | 'USERS'>('ROLES');
 
-  // 🏢 부서 및 팀 정보 캐시 로드 & 자동 동기화 (SSOT)
-  const [departments, setDepartments] = useState<Department[]>(() => {
-    try {
-      const saved = localStorage.getItem('erp_departments');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
-      }
-    } catch (e) {}
-    return db.departments || [];
-  });
-
-  useEffect(() => {
-    const syncDepts = async () => {
-      try {
-        if (db.isSupabaseConnected()) {
-          const remote = await db.pullTableFromSupabase('departments');
-          if (remote && Array.isArray(remote) && remote.length > 0) {
-            setDepartments(remote);
-            return;
-          }
-        }
-      } catch (e) {}
-      if (db.departments && db.departments.length > 0) {
-        setDepartments(db.departments);
-      }
-    };
-    syncDepts();
-  }, []);
-
-  const departmentMap = useMemo(() => {
-    const map = new Map<string, string>();
-    departments.forEach(d => {
-      if (d.id && d.name) map.set(d.id, d.name);
-    });
-    return map;
-  }, [departments]);
-
-  // 🏷️ 임직원별 소속 팀명 정밀 판정 헬퍼 (oo팀 이름 형식 SSOT)
-  const getDeptName = (u: User): string => {
-    // 1. departmentId 기반 부서 마스터 매핑
-    if (u.departmentId && departmentMap.has(u.departmentId)) {
-      const name = departmentMap.get(u.departmentId);
-      if (name && name.trim()) return name.trim();
-    }
-    // 2. u.department 속성 확인
-    if (u.department && u.department.trim()) {
-      return u.department.trim();
-    }
-    // 3. 표준 부서 ID 매핑 (role_templates SSOT)
-    if (u.departmentId) {
-      const dId = u.departmentId.toUpperCase();
-      if (dId === 'DEPT-0000001' || dId === 'DEPT-1') return '경영진';
-      if (dId === 'DEPT-0000002' || dId === 'DEPT-2') return '관리부';
-      if (dId === 'DEPT-0000003' || dId === 'DEPT-3') return '영업팀';
-      if (dId === 'DEPT-0000004' || dId === 'DEPT-4') return '출고팀';
-      if (dId === 'DEPT-0000005' || dId === 'DEPT-5') return 'AS팀';
-    }
-    // 4. Role 및 관리 계정 식별
-    const r = (u.role || '').toUpperCase();
-    const login = (u.loginId || '').toLowerCase();
-
-    if (login.includes('dispatch')) return '출고팀';
-    if (login.includes('mechanic')) return 'AS팀';
-    if (r === 'ADMIN' || login === 'admin' || u.id === 'sys-admin' || u.id === 'u-1') return '경영지원';
-
-    // 5. 직무 템플릿의 Role 기반 부서 추론
-    if (r.includes('ACCOUNT') || r.includes('PURCHASE')) return '관리부';
-    if (r.includes('SALE')) return '영업팀';
-    if (r.includes('LOGISTIC') || r.includes('DELIVERY') || r.includes('DISPATCH')) return '출고팀';
-    if (r.includes('MECHANIC') || r.includes('REPAIR')) return 'AS팀';
-
-    return '미배정';
-  };
-
-  // 상위 카테고리 접힘/펼침 상태
-  const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
-  // 토스트 알림 상태 (헌장 5.2: 브라우저 alert/confirm 전면 퇴출)
+  // 🔔 인앱 토스트 알림
   const [toastMessage, setToastMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const showToast = (text: string, type: 'success' | 'error' = 'success') => {
     setToastMessage({ type, text });
     setTimeout(() => setToastMessage(null), 3500);
   };
 
-  // 테스터 계정 배제 필터
-  const isTester = (u: any) =>
-    u.id?.startsWith('usr-tester') ||
-    u.name?.includes('테스터') ||
-    u.loginId?.includes('tester');
+  // ─── [탭 1: 권한 명칭 관리 (CustomRole Master)] 상태 ───
+  const [selectedRoleId, setSelectedRoleId] = useState<string>('');
+  const [newRoleName, setNewRoleName] = useState('');
+  const [newRoleDesc, setNewRoleDesc] = useState('');
+  const [workingRolePerms, setWorkingRolePerms] = useState<Record<string, { canView: boolean; canSave: boolean }>>({});
+  const [isRoleDirty, setIsRoleDirty] = useState(false);
+  const [collapsedRoleGroups, setCollapsedRoleGroups] = useState<Record<string, boolean>>({});
 
-  const filteredUsers = users.filter(u => !isTester(u));
+  // ─── [탭 2: 직원 권한 상속 배정 (User Mapping)] 상태 ───
+  const [searchTerm, setSearchTerm] = useState('');
+  const [filterDept, setFilterDept] = useState('ALL');
+  const [filterRole, setFilterRole] = useState('ALL');
+  const [previewUser, setPreviewUser] = useState<User | null>(null);
+  const [showGhostModal, setShowGhostModal] = useState(false);
 
+  // 기본 권한 선택
   useEffect(() => {
-    setLocalUsers([...filteredUsers]);
-  }, [users]);
-
-  useEffect(() => {
-    if (filteredUsers.length > 0 && !selectedUserId) {
-      setSelectedUserId(filteredUsers[0].id);
+    if (customRoles.length > 0 && !selectedRoleId) {
+      setSelectedRoleId(customRoles[0].id);
     }
-  }, [filteredUsers, selectedUserId]);
+  }, [customRoles, selectedRoleId]);
 
+  // 선택된 권한 변경 시 작업용 권한 맵 동기화
   useEffect(() => {
-    // 모든 시스템 메뉴 ID 스캔 및 누락된 권한 항목 자가 복구 (Auto Backfill - 직무 템플릿 상속 보존)
+    if (!selectedRoleId) return;
+    const map: Record<string, { canView: boolean; canSave: boolean }> = {};
     const allMenuIds = getAllSystemMenuIds();
-    const merged = [...permissions];
-    let addedCount = 0;
-
-    filteredUsers.forEach(u => {
-      const dept = u.departmentId || u.department;
-      allMenuIds.forEach(menuId => {
-        const normId = normalizeMenuId(menuId);
-        const exists = merged.some(p => p.userId === u.id && normalizeMenuId(p.menuId) === normId);
-        if (!exists) {
-          const isAdmin = u.role === 'ADMIN' || u.id === 'u-1' || u.id === 'sys-admin' || u.id === 'USR-0000002';
-          // 직무 템플릿 표준 기본값 상속 (false 하드코딩으로 직무 권한을 파괴하던 결함 해결)
-          const templateView = isAdmin ? true : (getRoleTemplatePermission(u.role, dept, normId, 'view') ?? false);
-          const templateSave = isAdmin ? true : (getRoleTemplatePermission(u.role, dept, normId, 'save') ?? false);
-          merged.push(createMenuPermission(u.id, normId, templateView, templateSave));
-          addedCount++;
-        }
-      });
+    
+    // 전체 메뉴 기본 false 초기화
+    allMenuIds.forEach(mId => {
+      const norm = normalizeMenuId(mId);
+      map[norm] = { canView: false, canSave: false };
     });
 
-    setLocalPermissions(merged);
-    setIsDirty(false);
-  }, [permissions, users]);
+    // DB에 등록된 해당 role의 permissions 덮어쓰기
+    rolePermissions
+      .filter(p => p.roleId === selectedRoleId)
+      .forEach(p => {
+        const norm = normalizeMenuId(p.menuId);
+        map[norm] = { canView: Boolean(p.canView), canSave: Boolean(p.canSave) };
+      });
 
-  const selectedUser = localUsers.find(u => u.id === selectedUserId);
+    // 기본 공통 메뉴는 상시 조회 허용
+    map['dashboard'] = { canView: true, canSave: false };
+    map['leave_application'] = { canView: true, canSave: true };
+    map['vehicle_log'] = { canView: true, canSave: true };
 
-  const toggleGroupCollapse = (grpId: string) => {
-    setCollapsedGroups(prev => ({
-      ...prev,
-      [grpId]: !prev[grpId]
-    }));
+    setWorkingRolePerms(map);
+    setIsRoleDirty(false);
+  }, [selectedRoleId, rolePermissions]);
+
+  // 임직원 소속 부서 매핑
+  const departmentMap = useMemo(() => {
+    const map = new Map<string, string>();
+    (db.departments || []).forEach(d => {
+      if (d.id && d.name) map.set(d.id, d.name);
+    });
+    return map;
+  }, []);
+
+  const getDeptName = (u: User): string => {
+    if (u.departmentId && departmentMap.has(u.departmentId)) {
+      return departmentMap.get(u.departmentId)!;
+    }
+    if (u.department && u.department.trim()) return u.department.trim();
+    if (u.departmentId) {
+      const dId = u.departmentId.toUpperCase();
+      if (dId.includes('0000001') || dId === 'DEPT-1') return '경영진';
+      if (dId.includes('0000002') || dId === 'DEPT-2') return '관리부';
+      if (dId.includes('0000003') || dId === 'DEPT-3') return '영업팀';
+      if (dId.includes('0000004') || dId === 'DEPT-4') return '출고팀';
+      if (dId.includes('0000005') || dId === 'DEPT-5') return 'AS팀';
+    }
+    return '미배정';
   };
 
-  const handleRoleChange = async (userId: string, newRole: string) => {
+  // 테스터 제외 실사용자 목록
+  const activeUsers = useMemo(() => {
+    return users.filter(u => 
+      !u.id?.startsWith('usr-tester') &&
+      !u.name?.includes('테스터') &&
+      !u.loginId?.includes('tester')
+    );
+  }, [users]);
+
+  // 권한별 상속 인원 수 집계
+  const roleUserCountMap = useMemo(() => {
+    const map: Record<string, number> = {};
+    customRoles.forEach(r => { map[r.id] = 0; });
+    activeUsers.forEach(u => {
+      if (u.customRoleId && map[u.customRoleId] !== undefined) {
+        map[u.customRoleId]++;
+      }
+    });
+    return map;
+  }, [customRoles, activeUsers]);
+
+  const selectedRole = useMemo(() => {
+    return customRoles.find(r => r.id === selectedRoleId) || customRoles[0];
+  }, [customRoles, selectedRoleId]);
+
+  // ── [액션 1: 신규 권한 명칭 추가] ──
+  const handleCreateRole = async (e: React.FormEvent) => {
+    e.preventDefault();
     if (!canSave) return;
-    
-    if (userId === 'u-1' || userId === 'sys-admin') {
-      showToast('개발자 계정의 시스템 등급은 변경할 수 없습니다.', 'error');
+    const name = newRoleName.trim();
+    if (!name) {
+      showToast('권한 명칭을 입력해 주십시오.', 'error');
+      return;
+    }
+    // 중복 체크
+    if (customRoles.some(r => r.name.toLowerCase() === name.toLowerCase())) {
+      showToast('이미 동일한 이름의 권한 명칭이 존재합니다.', 'error');
       return;
     }
 
-    if (newRole === 'ADMIN' && !isSuperAdmin) {
-      showToast('ADMIN(개발자) 등급은 오직 개발자(sys-admin) 계정만 승인 권한이 있습니다.', 'error');
-      return;
-    }
-
-    const targetUser = localUsers.find(u => u.id === userId);
-    if (!targetUser) return;
-
-    if (targetUser.role === 'ADMIN' && newRole !== 'ADMIN' && !isSuperAdmin) {
-      showToast('ADMIN 권한 박탈은 오직 개발자(sys-admin)만 가능합니다.', 'error');
-      return;
-    }
-
-    const updatedUser: User = {
-      ...targetUser,
-      role: newRole as 'ADMIN' | 'MANAGER' | 'USER'
+    const newId = `role_${Date.now()}`;
+    const newRole: CustomRole = {
+      id: newId,
+      name,
+      description: newRoleDesc.trim() || undefined,
+      isSystem: false,
+      createdAt: new Date().toISOString()
     };
 
-    await saveUser(updatedUser);
-    await db.awaitPendingWrites();
-    setLocalUsers(prev => prev.map(u => u.id === userId ? updatedUser : u));
-    showToast(`${targetUser.name} 님의 등급이 [${newRole}] (으)로 변경되었습니다.`);
+    try {
+      await saveCustomRole(newRole);
+      // 기본 공통 메뉴 권한 자동 주입
+      await saveRolePermissions(newId, [
+        { menuId: 'dashboard', canView: true, canSave: false },
+        { menuId: 'leave_application', canView: true, canSave: true },
+        { menuId: 'vehicle_log', canView: true, canSave: true }
+      ]);
+      setNewRoleName('');
+      setNewRoleDesc('');
+      setSelectedRoleId(newId);
+      showToast(`신규 권한 [${name}] 등록이 완료되었습니다.`);
+    } catch (err: any) {
+      showErrorModal(`권한 등록 실패: ${err?.message || err}`);
+    }
   };
 
-  const handlePermissionToggle = (menuId: string, type: 'view' | 'save') => {
-    if (!canSave || !selectedUserId) return;
-    
-    const targetUser = localUsers.find(u => u.id === selectedUserId);
-    // 절대 대표이사 및 슈퍼 관리자 계정은 권한 회수 불가
-    if (targetUser?.id === 'u-1' || targetUser?.id === 'sys-admin' || targetUser?.loginId === 'admin' || targetUser?.id === 'USR-0000002' || targetUser?.loginId === '이수용') {
-      showToast('대표이사 및 시스템 개발자 계정의 메뉴 권한은 변경할 수 없습니다.', 'error');
+  // ── [액션 2: 권한 명칭 삭제] ──
+  const handleDeleteRole = async (role: CustomRole) => {
+    if (!canSave) return;
+    if (role.isSystem) {
+      showToast('시스템 기본 권한은 삭제할 수 없습니다.', 'error');
+      return;
+    }
+    const count = roleUserCountMap[role.id] || 0;
+    if (count > 0) {
+      showToast(`해당 권한을 상속받은 직원이 ${count}명 존재합니다. 직원들의 권한을 먼저 변경해 주십시오.`, 'error');
       return;
     }
 
-    // 사용자 권한 설정(permission) 메뉴는 오직 ADMIN 등급에게만 부여 가능
-    if (menuId === 'permission' && targetUser?.role !== 'ADMIN') {
-      showToast('사용자 권한 설정 메뉴는 오직 개발자(ADMIN) 등급에게만 부여할 수 있습니다.', 'error');
-      return;
+    try {
+      await deleteCustomRole(role.id);
+      if (selectedRoleId === role.id) {
+        setSelectedRoleId(customRoles.find(r => r.id !== role.id)?.id || '');
+      }
+      showToast(`[${role.name}] 권한이 삭제되었습니다.`);
+    } catch (err: any) {
+      showErrorModal(`권한 삭제 실패: ${err?.message || err}`);
     }
+  };
 
-    // 연차신청은 모든 임직원의 기본 공통 기능으로 항상 활성화
-    if (menuId === 'leave_application') {
+  // ── [액션 3: 단일 메뉴 권한 토글 (선택된 권한)] ──
+  const handleRolePermToggle = (menuId: string, type: 'view' | 'save') => {
+    if (!canSave || !selectedRoleId) return;
+    const norm = normalizeMenuId(menuId);
+
+    // 공통 연차신청은 필수
+    if (norm === 'leave_application') {
       showToast('연차신청은 모든 임직원의 기본 공통 기능으로 항상 활성화됩니다.');
       return;
     }
 
-    // 연차관리는 급여 정산 권한과 100% 동일 연동
-    if (menuId === 'leave_management') {
-      showToast('연차관리 권한은 급여 정산 권한과 100% 동일 연동됩니다. [급여 정산] 권한을 조정해 주십시오.');
-      return;
-    }
+    setWorkingRolePerms(prev => {
+      const cur = prev[norm] || { canView: false, canSave: false };
+      let nextView = cur.canView;
+      let nextSave = cur.canSave;
 
-    setLocalPermissions(prev => {
-      const index = prev.findIndex(p => p.userId === selectedUserId && p.menuId === menuId);
-      let updatedList = [...prev];
-      let nextView = false;
-      let nextSave = false;
-      
-      if (index > -1) {
-        const current = updatedList[index];
-        nextView = current.canView;
-        nextSave = current.canSave;
-
-        if (type === 'view') {
-          nextView = !current.canView;
-          if (!nextView) nextSave = false;
-        } else {
-          nextSave = !current.canSave;
-          if (nextSave) nextView = true;
-        }
-
-        updatedList[index] = { ...current, canView: nextView, canSave: nextSave };
+      if (type === 'view') {
+        nextView = !cur.canView;
+        if (!nextView) nextSave = false; // 조회 끄면 저장도 자동 OFF
       } else {
-        nextView = type === 'view' ? true : true;
-        nextSave = type === 'save' ? true : false;
-        updatedList.push({
-          id: `perm-${selectedUserId}-${menuId}`,
-          userId: selectedUserId,
-          menuId: menuId,
-          canView: nextView,
-          canSave: nextSave,
-          createdAt: new Date().toISOString()
-        });
+        nextSave = !cur.canSave;
+        if (nextSave) nextView = true;  // 저장 켜면 조회도 자동 ON
       }
 
-      // 급여 정산(payroll) 변경 시 연차관리(leave_management) 권한도 100% 동기화
-      if (menuId === 'payroll') {
-        const lmIndex = updatedList.findIndex(p => p.userId === selectedUserId && p.menuId === 'leave_management');
-        if (lmIndex > -1) {
-          updatedList[lmIndex] = { ...updatedList[lmIndex], canView: nextView, canSave: nextSave };
-        } else {
-          updatedList.push({
-            id: `perm-${selectedUserId}-leave_management`,
-            userId: selectedUserId,
-            menuId: 'leave_management',
-            canView: nextView,
-            canSave: nextSave,
-            createdAt: new Date().toISOString()
-          });
-        }
+      const updated = { ...prev, [norm]: { canView: nextView, canSave: nextSave } };
+
+      // 급여 정산(payroll) 토글 시 연차관리(leave_management) 자동 동기화
+      if (norm === 'payroll') {
+        updated['leave_management'] = { canView: nextView, canSave: nextSave };
       }
 
-      setIsDirty(true);
-      return updatedList;
+      return updated;
     });
+    setIsRoleDirty(true);
   };
 
-  // 상위 그룹 전체 일괄 권한 설정 (조회/저장)
-  const handleToggleCategoryGroup = (grp: MenuCategoryGroup, type: 'view' | 'save') => {
-    if (!canSave || !selectedUserId) return;
-    const targetUser = localUsers.find(u => u.id === selectedUserId);
-    // 절대 슈퍼 관리자 계정은 권한 회수 불가
-    if (targetUser?.id === 'u-1' || targetUser?.id === 'sys-admin' || targetUser?.loginId === 'admin') {
-      showToast('시스템 개발자 계정의 메뉴 권한은 변경할 수 없습니다.', 'error');
-      return;
-    }
+  // ── [액션 4: 카테고리 일괄 토글 (선택된 권한)] ──
+  const handleCategoryBulkToggle = (grp: MenuCategoryGroup, type: 'view' | 'save') => {
+    if (!canSave || !selectedRoleId) return;
 
-    // 그룹 내 메뉴 항목들의 현재 권한 상태 검사 (모두 true이면 전체 false로, 아니면 전체 true로)
     const allChecked = grp.items.every(item => {
-      if (item.id === 'leave_application') return true;
-      if (item.id === 'leave_management') {
-        const payP = localPermissions.find(p => p.userId === selectedUserId && p.menuId === 'payroll');
-        return type === 'view' ? payP?.canView : payP?.canSave;
-      }
-      const perm = localPermissions.find(p => p.userId === selectedUserId && p.menuId === item.id);
+      const norm = normalizeMenuId(item.id);
+      const perm = workingRolePerms[norm];
       return type === 'view' ? perm?.canView : perm?.canSave;
     });
 
     const targetVal = !allChecked;
 
-    setLocalPermissions(prev => {
-      let updatedList = [...prev];
-
+    setWorkingRolePerms(prev => {
+      const updated = { ...prev };
       grp.items.forEach(item => {
-        // 연차신청은 전원 공통 기능으로 항상 활성화 유지
-        if (item.id === 'leave_application') {
-          const idx = updatedList.findIndex(p => p.userId === selectedUserId && p.menuId === item.id);
-          if (idx > -1) {
-            updatedList[idx] = { ...updatedList[idx], canView: true, canSave: true };
-          } else {
-            updatedList.push({
-              id: `perm-${selectedUserId}-leave_application`,
-              userId: selectedUserId,
-              menuId: 'leave_application',
-              canView: true,
-              canSave: true,
-              createdAt: new Date().toISOString()
-            });
-          }
+        const norm = normalizeMenuId(item.id);
+        if (norm === 'leave_application') {
+          updated[norm] = { canView: true, canSave: true };
           return;
         }
-
-        // 연차관리는 급여 정산 권한과 100% 동일 연동되므로 단독 토글 건너뜀 (아래 payroll 처리 시 동기화)
-        if (item.id === 'leave_management') {
-          return;
-        }
-
-        if (item.id === 'payroll' && targetVal) {
-          // 급여 정산 일괄 승인 시 보안 체크
-          const existingPayrollHolder = updatedList.find(p => {
-            if (p.menuId !== 'payroll' || p.userId === selectedUserId) return false;
-            const u = localUsers.find(user => user.id === p.userId);
-            return u && u.role !== 'ADMIN' && (p.canView || p.canSave);
-          });
-          if (existingPayrollHolder) return; // 기존 보유자 있을 경우 스킵
-        }
-
-        const idx = updatedList.findIndex(p => p.userId === selectedUserId && p.menuId === item.id);
-        let nextView = false;
-        let nextSave = false;
-
-        if (idx > -1) {
-          const cur = updatedList[idx];
-          if (type === 'view') {
-            nextView = targetVal;
-            nextSave = nextView ? cur.canSave : false;
-            updatedList[idx] = { ...cur, canView: nextView, canSave: nextSave };
-          } else {
-            nextSave = targetVal;
-            nextView = nextSave ? true : cur.canView;
-            updatedList[idx] = { ...cur, canView: nextView, canSave: nextSave };
-          }
+        const cur = prev[norm] || { canView: false, canSave: false };
+        if (type === 'view') {
+          const nextView = targetVal;
+          const nextSave = nextView ? cur.canSave : false;
+          updated[norm] = { canView: nextView, canSave: nextSave };
         } else {
-          nextView = type === 'view' ? targetVal : targetVal;
-          nextSave = type === 'save' ? targetVal : false;
-          updatedList.push({
-            id: `perm-${selectedUserId}-${item.id}`,
-            userId: selectedUserId,
-            menuId: item.id,
-            canView: nextView,
-            canSave: nextSave,
-            createdAt: new Date().toISOString()
-          });
+          const nextSave = targetVal;
+          const nextView = nextSave ? true : cur.canView;
+          updated[norm] = { canView: nextView, canSave: nextSave };
         }
 
-        // 급여 정산 변경 시 연차관리도 함께 동기화
-        if (item.id === 'payroll') {
-          const lmIdx = updatedList.findIndex(p => p.userId === selectedUserId && p.menuId === 'leave_management');
-          if (lmIdx > -1) {
-            updatedList[lmIdx] = { ...updatedList[lmIdx], canView: nextView, canSave: nextSave };
-          } else {
-            updatedList.push({
-              id: `perm-${selectedUserId}-leave_management`,
-              userId: selectedUserId,
-              menuId: 'leave_management',
-              canView: nextView,
-              canSave: nextSave,
-              createdAt: new Date().toISOString()
-            });
-          }
+        if (norm === 'payroll') {
+          updated['leave_management'] = updated[norm];
         }
       });
-
-      setIsDirty(true);
-      return updatedList;
+      return updated;
     });
+    setIsRoleDirty(true);
   };
 
-  // 모든 카테고리 전체 메뉴 최상위 일괄 권한 설정 (조회/저장)
-  const handleToggleAllMenus = (type: 'view' | 'save') => {
-    if (!canSave || !selectedUserId) return;
-    const targetUser = localUsers.find(u => u.id === selectedUserId);
-    if (targetUser?.id === 'u-1' || targetUser?.id === 'sys-admin' || targetUser?.loginId === 'admin') {
-      showToast('시스템 개발자 계정의 메뉴 권한은 변경할 수 없습니다.', 'error');
-      return;
-    }
+  // ── [액션 5: 전체 메뉴 일괄 토글 (선택된 권한)] ──
+  const handleAllMenusBulkToggle = (type: 'view' | 'save' | 'off') => {
+    if (!canSave || !selectedRoleId) return;
+    const allItems = MENU_CATEGORIES.flatMap(g => g.items);
 
-    const allItems = MENU_CATEGORIES.flatMap(grp => grp.items);
-    const allChecked = allItems.every(item => {
-      if (item.id === 'leave_application') return true;
-      if (item.id === 'leave_management') {
-        const payP = localPermissions.find(p => p.userId === selectedUserId && p.menuId === 'payroll');
-        return type === 'view' ? payP?.canView : payP?.canSave;
-      }
-      const perm = localPermissions.find(p => p.userId === selectedUserId && p.menuId === item.id);
-      return type === 'view' ? perm?.canView : perm?.canSave;
-    });
-
-    const targetVal = !allChecked;
-
-    setLocalPermissions(prev => {
-      let updatedList = [...prev];
-
+    setWorkingRolePerms(prev => {
+      const updated = { ...prev };
       allItems.forEach(item => {
-        if (item.id === 'leave_application') {
-          const idx = updatedList.findIndex(p => p.userId === selectedUserId && p.menuId === item.id);
-          if (idx > -1) {
-            updatedList[idx] = { ...updatedList[idx], canView: true, canSave: true };
-          } else {
-            updatedList.push({
-              id: `perm-${selectedUserId}-leave_application`,
-              userId: selectedUserId,
-              menuId: 'leave_application',
-              canView: true,
-              canSave: true,
-              createdAt: new Date().toISOString()
-            });
-          }
+        const norm = normalizeMenuId(item.id);
+        if (norm === 'leave_application') {
+          updated[norm] = { canView: true, canSave: true };
           return;
         }
-
-        if (item.id === 'leave_management') {
-          return;
-        }
-
-        if (item.id === 'payroll' && targetVal) {
-          const existingPayrollHolder = updatedList.find(p => {
-            if (p.menuId !== 'payroll' || p.userId === selectedUserId) return false;
-            const u = localUsers.find(user => user.id === p.userId);
-            return u && u.role !== 'ADMIN' && (p.canView || p.canSave);
-          });
-          if (existingPayrollHolder) return;
-        }
-
-        const idx = updatedList.findIndex(p => p.userId === selectedUserId && p.menuId === item.id);
-        let nextView = false;
-        let nextSave = false;
-
-        if (idx > -1) {
-          const cur = updatedList[idx];
-          if (type === 'view') {
-            nextView = targetVal;
-            nextSave = nextView ? cur.canSave : false;
-            updatedList[idx] = { ...cur, canView: nextView, canSave: nextSave };
-          } else {
-            nextSave = targetVal;
-            nextView = nextSave ? true : cur.canView;
-            updatedList[idx] = { ...cur, canView: nextView, canSave: nextSave };
-          }
-        } else {
-          nextView = type === 'view' ? targetVal : targetVal;
-          nextSave = type === 'save' ? targetVal : false;
-          updatedList.push({
-            id: `perm-${selectedUserId}-${item.id}`,
-            userId: selectedUserId,
-            menuId: item.id,
-            canView: nextView,
-            canSave: nextSave,
-            createdAt: new Date().toISOString()
-          });
-        }
-
-        if (item.id === 'payroll') {
-          const lmIdx = updatedList.findIndex(p => p.userId === selectedUserId && p.menuId === 'leave_management');
-          if (lmIdx > -1) {
-            updatedList[lmIdx] = { ...updatedList[lmIdx], canView: nextView, canSave: nextSave };
-          } else {
-            updatedList.push({
-              id: `perm-${selectedUserId}-leave_management`,
-              userId: selectedUserId,
-              menuId: 'leave_management',
-              canView: nextView,
-              canSave: nextSave,
-              createdAt: new Date().toISOString()
-            });
-          }
+        if (type === 'off') {
+          updated[norm] = { canView: false, canSave: false };
+        } else if (type === 'view') {
+          updated[norm] = { canView: true, canSave: prev[norm]?.canSave || false };
+        } else if (type === 'save') {
+          updated[norm] = { canView: true, canSave: true };
         }
       });
-
-      setIsDirty(true);
-      return updatedList;
+      return updated;
     });
+    setIsRoleDirty(true);
   };
 
-  // 고스트/무효 권한 진단 모달 상태
-  const [showGhostModal, setShowGhostModal] = useState<boolean>(false);
-
-  // 🔍 기 저장된 무효(FK 위반) 권한 데이터 진단 헬퍼
-  const validUserIds = useMemo(() => new Set(localUsers.map(u => u.id)), [localUsers]);
-
-  // 조직도 부서 배치 순서 기준 정렬 맵 (조직/인사 관리 화면 조직도와 동일 순서)
-  const DEPT_ORDER_MAP: Record<string, number> = {
-    'DEPT-0000001': 0, 'DEPT-1': 0,  // 기연리프트 (경영진)
-    'DEPT-0000002': 1, 'DEPT-2': 1,  // 관리부
-    'DEPT-0000003': 2, 'DEPT-3': 2,  // 영업부
-    'DEPT-0000004': 3, 'DEPT-4': 3,  // 출고팀
-    'DEPT-0000005': 4, 'DEPT-5': 4,  // AS팀
-  };
-
-  const getDeptOrder = (u: User): number => {
-    if (u.id === 'u-1' || u.id === 'sys-admin' || u.role === 'ADMIN') return -1; // ADMIN 최상단
-    if (u.departmentId) {
-      const order = DEPT_ORDER_MAP[u.departmentId] ?? DEPT_ORDER_MAP[u.departmentId.toUpperCase()];
-      if (order !== undefined) return order;
-    }
-    // 부서명 기반 fallback
-    const deptName = getDeptName(u);
-    if (deptName === '경영진' || deptName === '경영지원') return 0;
-    if (deptName === '관리부') return 1;
-    if (deptName === '영업부' || deptName === '영업팀') return 2;
-    if (deptName === '출고팀') return 3;
-    if (deptName === 'AS팀') return 4;
-    return 99; // 미배정 맨 뒤
-  };
-
-  // 조직도 순서 + 동일 부서 내 이름순 정렬
-  const sortedUsers = useMemo(() => {
-    return [...localUsers].sort((a, b) => {
-      const orderA = getDeptOrder(a);
-      const orderB = getDeptOrder(b);
-      if (orderA !== orderB) return orderA - orderB;
-      return (a.name || '').localeCompare(b.name || '', 'ko');
-    });
-  }, [localUsers, departmentMap]);
-
-
-  const ghostPermissions = useMemo(() => {
-    return localPermissions.filter((p: MenuPermission) => !validUserIds.has(p.userId));
-  }, [localPermissions, validUserIds]);
-
-  const invalidUserIdsList = useMemo(() => {
-    return Array.from(new Set(ghostPermissions.map((p: MenuPermission) => p.userId)));
-  }, [ghostPermissions]);
-
-  // 💳 급여 관리 권한 소유 임직원 현황 (1인 강제 제한 제거 및 시각적 현황 노출)
-  const payrollHolders = useMemo(() => {
-    const holderUserIds = new Set(
-      localPermissions
-        .filter((p: MenuPermission) => (p.menuId === 'payroll' || p.menuId === 'payroll_settlements') && (p.canView || p.canSave))
-        .map((p: MenuPermission) => p.userId)
-    );
-    return localUsers.filter(u => holderUserIds.has(u.id));
-  }, [localPermissions, localUsers]);
-
-  // 1-Click 고스트 권한 자동 정돈 및 정상 데이터 재저장
-  const handleCleanGhostPermissions = async () => {
-    if (ghostPermissions.length === 0) {
-      showToast('현재 무효(고스트) 권한 데이터가 없습니다. 모든 데이터가 정상입니다.');
-      setShowGhostModal(false);
-      return;
-    }
+  // ── [액션 6: 권한 설정 저장 (역할별 권한 확정 및 전 직원 실시간 상속)] ──
+  const handleSaveRolePermissions = async () => {
+    if (!canSave || !selectedRoleId) return;
+    const permsArray = Object.entries(workingRolePerms).map(([menuId, p]) => ({
+      menuId,
+      canView: p.canView,
+      canSave: p.canSave
+    }));
 
     try {
-      const cleanList = localPermissions.filter(p => validUserIds.has(p.userId));
-      await updatePermissions(cleanList);
-      await db.awaitPendingWrites();
-      setLocalPermissions(cleanList);
-      setIsDirty(false);
-      setShowGhostModal(false);
-      showToast(`무효 고스트 권한 ${ghostPermissions.length}건 정돈 완료 (정상 권한 ${cleanList.length}건 보존)`);
+      await saveRolePermissions(selectedRoleId, permsArray);
+      setIsRoleDirty(false);
+      const inheritedCount = roleUserCountMap[selectedRoleId] || 0;
+      showToast(`[${selectedRole?.name || '권한'}] 설정 저장 완료 (상속 직원 ${inheritedCount}명 실시간 적용)`);
     } catch (err: any) {
-      console.error('Clean ghost permissions error:', err);
-      showErrorModal(`⚠️ 고스트 권한 정돈 저장 중 오류가 발생했습니다:\n\n${err?.message || err}`);
+      showErrorModal(`권한 저장 실패: ${err?.message || err}`);
     }
   };
 
-  // ─── [Gutenberg Z-패턴 4단계 최하단 임직원 권한 대차대조식 검증] ───
-  const permissionAuditSummary = useMemo(() => {
-    const totalUsers = localUsers.length;
-    const adminCount = localUsers.filter(u => u.role === 'ADMIN').length;
-    const managerCount = localUsers.filter(u => u.role === 'MANAGER').length;
-    const userCount = localUsers.filter(u => u.role !== 'ADMIN' && u.role !== 'MANAGER').length;
-    const totalPermCount = localPermissions.length;
-    const ghostCount = ghostPermissions.length;
-
-    return { totalUsers, adminCount, managerCount, userCount, totalPermCount, ghostCount };
-  }, [localUsers, localPermissions, ghostPermissions]);
-
-  const handleSavePermissions = async () => {
+  // ── [액션 7: 직원에게 권한 명칭 상속 배정 (Tab 2)] ──
+  const handleAssignUserRole = async (userId: string, roleId: string) => {
     if (!canSave) return;
+    const targetUser = users.find(u => u.id === userId);
+    if (!targetUser) return;
 
-    // 🛡️ [저장 전 예방 팝업] 참조키(FK) 위반 사전 실시간 파악 및 저장 차단
-    if (ghostPermissions.length > 0) {
-      const warningMsg = 
-        `⚠️ [참조키(FK) 위반 위험 감지 - 저장 사전 차단]\n\n` +
-        `현재 저장하려는 권한 목록에 DB 임직원 마스터(users)에 존재하지 않는 무효 유저 ID가 포함되어 있습니다.\n\n` +
-        `■ 발견된 무효 유저 ID 목록 (${invalidUserIdsList.length}개): [${invalidUserIdsList.join(', ')}]\n` +
-        `■ 무효 고스트 권한 데이터 건수: 총 ${ghostPermissions.length}건\n\n` +
-        `💡 원천 해결: 상단의 [🔍 고스트 권한 진단 및 정돈] 버튼을 누르시면 무효 데이터만 자동으로 깔끔히 정리하여 안전하게 저장할 수 있습니다.`;
-      
-      showErrorModal(warningMsg, '저장 사전 차단 - 참조키(FK) 위반 방지');
-      setShowGhostModal(true); // 자동 팝업 가이드 오픈
+    if (userId === 'u-1' || userId === 'sys-admin') {
+      showToast('개발자 계정의 권한은 변경할 수 없습니다.', 'error');
       return;
     }
 
     try {
-      // 🛡️ 연차신청(전원 상시 허용) 및 연차관리(급여 정산 100% 동기화) 불변원칙 보정
-      const sanitizedPermissions = localPermissions.map(p => {
-        if (p.menuId === 'leave_application') {
-          return { ...p, canView: true, canSave: true };
-        }
-        if (p.menuId === 'leave_management') {
-          const payrollP = localPermissions.find(x => x.userId === p.userId && x.menuId === 'payroll');
-          return {
-            ...p,
-            canView: payrollP?.canView ?? false,
-            canSave: payrollP?.canSave ?? false
-          };
-        }
-        return p;
-      });
-
-      await updatePermissions(sanitizedPermissions);
-      await db.awaitPendingWrites();
-      setLocalPermissions(sanitizedPermissions);
-      setIsDirty(false);
-      showToast('메뉴 권한 설정이 성공적으로 저장되었습니다.');
+      await assignUserRole(userId, roleId || null);
+      const roleName = customRoles.find(r => r.id === roleId)?.name || '권한 미지정';
+      showToast(`${targetUser.name} 님에게 [${roleName}] 권한이 상속 배정되었습니다.`);
     } catch (err: any) {
-      console.error('Save permissions error:', err);
-      showErrorModal(`⚠️ 메뉴 권한 설정 저장 중 오류가 발생했습니다:\n\n${err?.message || err}`);
+      showErrorModal(`권한 상속 배정 실패: ${err?.message || err}`);
     }
   };
 
-  // 사용자 권한 대장 엑셀 내보내기
-  const handleExportPermissionsExcel = () => {
-    if (localUsers.length === 0) {
-      showToast('내보낼 사용자 데이터가 없습니다.', 'error');
+  // ── [액션 8: 직원 시스템 등급(Role) 변경 (ADMIN / USER)] ──
+  const handleUserGradeChange = async (userId: string, newRole: string) => {
+    if (!canSave) return;
+    if (userId === 'u-1' || userId === 'sys-admin') {
+      showToast('개발자 계정의 시스템 등급은 변경할 수 없습니다.', 'error');
       return;
     }
-    const rows = localUsers.map((u, idx) => {
-      const userPerms = localPermissions.filter(p => p.userId === u.id);
-      const viewCount = userPerms.filter(p => p.canView).length;
-      const saveCount = userPerms.filter(p => p.canSave).length;
-      const hasPayroll = userPerms.some(p => p.menuId === 'payroll' && p.canView);
-      const deptName = getDeptName(u);
+    if (newRole === 'ADMIN' && !isSuperAdmin) {
+      showToast('ADMIN 등급 승인은 최고관리자 계정만 가능합니다.', 'error');
+      return;
+    }
+    const targetUser = users.find(u => u.id === userId);
+    if (!targetUser) return;
 
+    try {
+      await saveUser({ ...targetUser, role: newRole as any });
+      await db.awaitPendingWrites();
+      showToast(`${targetUser.name} 님의 시스템 등급이 [${newRole}] (으)로 변경되었습니다.`);
+    } catch (err: any) {
+      showErrorModal(`등급 변경 실패: ${err?.message || err}`);
+    }
+  };
+
+  // 직원 목록 필터링
+  const filteredUsers = useMemo(() => {
+    return activeUsers.filter(u => {
+      const matchText = !searchTerm || 
+        u.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        u.loginId?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        u.position?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        getDeptName(u).toLowerCase().includes(searchTerm.toLowerCase());
+
+      if (!matchText) return false;
+
+      if (filterDept !== 'ALL') {
+        const dName = getDeptName(u);
+        if (dName !== filterDept) return false;
+      }
+
+      if (filterRole !== 'ALL') {
+        if (filterRole === 'NONE' && u.customRoleId) return false;
+        if (filterRole !== 'NONE' && u.customRoleId !== filterRole) return false;
+      }
+
+      return true;
+    });
+  }, [activeUsers, searchTerm, filterDept, filterRole, departmentMap]);
+
+  // 상속된 권한 메뉴 요약 헬퍼
+  const getUserInheritedMenus = (u: User) => {
+    if (u.role === 'ADMIN') return { total: '전체 (관리자)', preview: '전 메뉴 허용' };
+    if (!u.customRoleId) return { total: '0개', preview: '권한 미지정' };
+    const perms = rolePermissions.filter(p => p.roleId === u.customRoleId && (p.canView || p.canSave));
+    const allItems = MENU_CATEGORIES.flatMap(g => g.items);
+    const names = perms.map(p => allItems.find(i => normalizeMenuId(i.id) === normalizeMenuId(p.menuId))?.name || p.menuId);
+    return {
+      total: `${perms.length}개 메뉴`,
+      preview: names.slice(0, 3).join(', ') + (names.length > 3 ? ` 외 ${names.length - 3}개` : '')
+    };
+  };
+
+  // 엑셀 내보내기
+  const handleExportExcel = () => {
+    const rows = filteredUsers.map((u, idx) => {
+      const roleObj = customRoles.find(r => r.id === u.customRoleId);
+      const summary = getUserInheritedMenus(u);
       return {
-        'No': idx + 1,
-        '사용자ID': u.id,
-        '로그인ID': u.loginId || '-',
+        'NO': idx + 1,
+        '사번/ID': u.loginId || u.id,
         '성명': u.name,
-        '소속부서': deptName,
+        '소속부서': getDeptName(u),
         '직급': u.position || '-',
-        '시스템역할': u.role || 'USER',
-        '조회권한수': viewCount,
-        '저장권한수': saveCount,
-        '급여열람권한': hasPayroll ? '보유' : '미보유',
-        '관리자여부': u.role === 'ADMIN' ? '관리자' : '일반',
-        '상태': u.status === 'ACTIVE' ? '재직' : u.status === 'RETIRED' ? '퇴사' : '휴직'
+        '시스템등급': u.role,
+        '상속권한명칭': roleObj?.name || '미지정',
+        '허용메뉴수': summary.total,
+        '주요허용메뉴': summary.preview
       };
     });
-
-    const todayStr = new Date().toISOString().slice(0, 10);
-    exportToExcel(rows, `사용자권한대장_${todayStr}`, '사용자권한');
-    showToast(`사용자 권한 대장 ${rows.length}건 엑셀 내보내기 완료`);
+    const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+    exportToExcel(rows, `임직원_권한_상속대장_${dateStr}`, '권한대장');
   };
 
   return (
-    <div style={{ position: 'relative' }}>
-      {/* 🔔 인앱 토스트 알림 (헌장 5.2) */}
+    <div style={{ padding: '0 4px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+      {/* 🔔 인앱 토스트 */}
       {toastMessage && (
         <div style={{
           position: 'fixed',
@@ -678,575 +435,923 @@ export const UsersPermissions: React.FC = () => {
           backgroundColor: toastMessage.type === 'error' ? '#ef4444' : '#10b981',
           color: '#ffffff',
           boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
-          fontWeight: 600,
+          fontWeight: 700,
           fontSize: '13px'
         }}>
           {toastMessage.text}
         </div>
       )}
-      <div className="card-header" style={{ marginBottom: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <div>
-          <h2 style={{ fontWeight: '700', display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <Shield className="text-primary" /> 사용자 및 메뉴 권한 통합 관리
-          </h2>
-          <p style={{ fontSize: '13px', color: 'var(--text-muted)', marginTop: '4px' }}>
-            사이드바 계층 구조(상위-하위)에 따라 직원별 조회 및 저장(수정/삭제) 권한을 정밀 통제합니다.
-          </p>
+
+      {/* ─── 최상단: 타이틀 & 탭 전환 바 ─── */}
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        flexWrap: 'wrap',
+        gap: '12px',
+        paddingBottom: '12px',
+        borderBottom: '1px solid var(--border-color, #e2e8f0)'
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <div style={{
+            width: '38px',
+            height: '38px',
+            borderRadius: '8px',
+            backgroundColor: 'var(--primary, #4f46e5)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            color: '#ffffff'
+          }}>
+            <Shield size={22} />
+          </div>
+          <div>
+            <h1 style={{ margin: 0, fontSize: '18px', fontWeight: 800, color: 'var(--text-main, #0f172a)' }}>
+              권한 관리
+            </h1>
+            <span style={{ fontSize: '12px', color: 'var(--text-muted, #64748b)' }}>
+              권한 명칭 정의 및 직원 권한 자동 상속 스튜디오
+            </span>
+          </div>
         </div>
-        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+
+        {/* 2대 탭 세그먼트 버튼 */}
+        <div style={{
+          display: 'flex',
+          backgroundColor: 'var(--bg-secondary, #f1f5f9)',
+          borderRadius: '8px',
+          padding: '4px',
+          gap: '4px'
+        }}>
           <button
             type="button"
-            className={ghostPermissions.length > 0 ? 'btn-danger' : 'btn-secondary'}
-            onClick={() => setShowGhostModal(true)}
+            onClick={() => setActiveTab('ROLES')}
             style={{
-              display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px',
-              backgroundColor: ghostPermissions.length > 0 ? 'rgba(239, 68, 68, 0.15)' : undefined,
-              color: ghostPermissions.length > 0 ? '#ef4444' : undefined,
-              borderColor: ghostPermissions.length > 0 ? 'rgba(239, 68, 68, 0.4)' : undefined,
-              fontWeight: ghostPermissions.length > 0 ? 'bold' : 'normal'
+              padding: '6px 16px',
+              fontSize: '13px',
+              fontWeight: activeTab === 'ROLES' ? 700 : 500,
+              borderRadius: '6px',
+              border: 'none',
+              backgroundColor: activeTab === 'ROLES' ? 'var(--bg-card, #ffffff)' : 'transparent',
+              color: activeTab === 'ROLES' ? 'var(--primary, #4f46e5)' : 'var(--text-secondary, #475569)',
+              boxShadow: activeTab === 'ROLES' ? '0 1px 3px rgba(0, 0, 0, 0.1)' : 'none',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              whiteSpace: 'nowrap'
             }}
           >
-            🔍 고스트 권한 진단 {ghostPermissions.length > 0 && `(${ghostPermissions.length}건 발각)`}
+            <Key size={15} />
+            권한 명칭 관리 (역할 정의)
           </button>
           <button
             type="button"
-            className="btn-secondary"
-            onClick={handleExportPermissionsExcel}
-            style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', whiteSpace: 'nowrap' }}
+            onClick={() => setActiveTab('USERS')}
+            style={{
+              padding: '6px 16px',
+              fontSize: '13px',
+              fontWeight: activeTab === 'USERS' ? 700 : 500,
+              borderRadius: '6px',
+              border: 'none',
+              backgroundColor: activeTab === 'USERS' ? 'var(--bg-card, #ffffff)' : 'transparent',
+              color: activeTab === 'USERS' ? 'var(--primary, #4f46e5)' : 'var(--text-secondary, #475569)',
+              boxShadow: activeTab === 'USERS' ? '0 1px 3px rgba(0, 0, 0, 0.1)' : 'none',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              whiteSpace: 'nowrap'
+            }}
           >
-            <Download size={14} /> 엑셀 내보내기
+            <Users size={15} />
+            직원 권한 상속 배정
           </button>
-          {canSave && (
-            <button 
-              className={`btn-${isDirty ? 'primary' : 'secondary'}`} 
-              onClick={handleSavePermissions}
-              disabled={!isDirty}
-              style={{ 
-                display: 'flex', alignItems: 'center', gap: '6px',
-                boxShadow: isDirty ? '0 0 12px rgba(59, 130, 246, 0.5)' : 'none',
-                transition: 'all 0.3s ease'
-              }}
-            >
-              <Save size={16} /> {isDirty ? '변경사항 저장 적용' : '저장 완료'}
-            </button>
-          )}
         </div>
       </div>
 
-      {/* 📊 사용자 및 권한 현황 실시간 요약 바 */}
-      {(() => {
-        const adminCount = users.filter(u => u.role === 'ADMIN' || u.id === 'u-1' || u.id === 'sys-admin').length;
-        const totalPermRecords = localPermissions.length;
+      {/* ═════════════════════════════════════════════════════════════════
+          탭 1: 권한 명칭 관리 (Master Studio)
+          ═════════════════════════════════════════════════════════════════ */}
+      {activeTab === 'ROLES' && (
+        <div style={{ display: 'grid', gridTemplateColumns: '320px 1fr', gap: '16px', alignItems: 'start' }}>
+          {/* 좌측 패널: 권한 명칭 생성 및 목록 */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            {/* 신규 권한 등록 폼 */}
+            {canSave && (
+              <form onSubmit={handleCreateRole} style={{
+                backgroundColor: 'var(--bg-card, #ffffff)',
+                borderRadius: '8px',
+                border: '1px solid var(--border-color, #cbd5e1)',
+                padding: '14px',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '10px'
+              }}>
+                <div style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-main, #0f172a)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <Plus size={15} color="var(--primary, #4f46e5)" />
+                  신규 권한 명칭 등록
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                  <label style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary, #475569)', whiteSpace: 'nowrap' }}>
+                    권한 명칭 (자유입력)
+                  </label>
+                  <input
+                    type="text"
+                    value={newRoleName}
+                    onChange={(e) => setNewRoleName(e.target.value)}
+                    placeholder="예: 영업팀장, 현장출고원, 자산경리"
+                    style={{
+                      padding: '6px 10px',
+                      fontSize: '12px',
+                      borderRadius: '6px',
+                      border: '1px solid var(--border-color, #cbd5e1)',
+                      backgroundColor: 'var(--bg-card, #ffffff)',
+                      color: 'var(--text-main, #0f172a)',
+                      outline: 'none'
+                    }}
+                  />
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                  <label style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary, #475569)', whiteSpace: 'nowrap' }}>
+                    권한 설명 (선택)
+                  </label>
+                  <input
+                    type="text"
+                    value={newRoleDesc}
+                    onChange={(e) => setNewRoleDesc(e.target.value)}
+                    placeholder="예: 영업 계약 및 고객 관리 총괄"
+                    style={{
+                      padding: '6px 10px',
+                      fontSize: '12px',
+                      borderRadius: '6px',
+                      border: '1px solid var(--border-color, #cbd5e1)',
+                      backgroundColor: 'var(--bg-card, #ffffff)',
+                      color: 'var(--text-main, #0f172a)',
+                      outline: 'none'
+                    }}
+                  />
+                </div>
+                <button
+                  type="submit"
+                  style={{
+                    marginTop: '2px',
+                    padding: '7px',
+                    fontSize: '12px',
+                    fontWeight: 700,
+                    borderRadius: '6px',
+                    border: 'none',
+                    backgroundColor: 'var(--primary, #4f46e5)',
+                    color: '#ffffff',
+                    cursor: 'pointer',
+                    whiteSpace: 'nowrap'
+                  }}
+                >
+                  권한 명칭 생성
+                </button>
+              </form>
+            )}
 
-        return (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '10px', marginBottom: '16px' }}>
-            <div style={{ padding: '10px 14px', backgroundColor: 'var(--bg-card)', borderRadius: '6px', border: '1px solid var(--border-color)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span style={{ fontSize: '11.5px', color: 'var(--text-secondary)', fontWeight: 600 }}>총 시스템 사용자</span>
-              <strong style={{ fontSize: '15px', color: 'var(--primary)' }}>{users.length}명</strong>
-            </div>
-            <div style={{ padding: '10px 14px', backgroundColor: 'var(--bg-card)', borderRadius: '6px', border: '1px solid var(--border-color)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span style={{ fontSize: '11.5px', color: 'var(--text-secondary)', fontWeight: 600 }}>시스템 관리자(ADMIN)</span>
-              <strong style={{ fontSize: '15px', color: '#16a34a' }}>{adminCount}명</strong>
-            </div>
-            <div style={{ padding: '10px 14px', backgroundColor: 'var(--bg-card)', borderRadius: '6px', border: '1px solid var(--border-color)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span style={{ fontSize: '11.5px', color: 'var(--text-secondary)', fontWeight: 600 }}>메뉴 권한 레코드</span>
-              <strong style={{ fontSize: '15px', color: '#0070C0' }}>{totalPermRecords}건</strong>
+            {/* 권한 명칭 목록 카드 리스트 */}
+            <div style={{
+              backgroundColor: 'var(--bg-card, #ffffff)',
+              borderRadius: '8px',
+              border: '1px solid var(--border-color, #cbd5e1)',
+              overflow: 'hidden',
+              display: 'flex',
+              flexDirection: 'column'
+            }}>
+              <div style={{
+                padding: '10px 14px',
+                backgroundColor: 'var(--bg-secondary, #f8fafc)',
+                borderBottom: '1px solid var(--border-color, #e2e8f0)',
+                fontSize: '12px',
+                fontWeight: 700,
+                color: 'var(--text-secondary, #475569)',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center'
+              }}>
+                <span>등록된 권한 명칭 ({customRoles.length})</span>
+              </div>
+
+              <div style={{ maxHeight: '600px', overflowY: 'auto' }}>
+                {customRoles.map(role => {
+                  const isSelected = role.id === selectedRoleId;
+                  const count = roleUserCountMap[role.id] || 0;
+                  return (
+                    <div
+                      key={role.id}
+                      onClick={() => setSelectedRoleId(role.id)}
+                      style={{
+                        padding: '12px 14px',
+                        borderBottom: '1px solid var(--border-color, #f1f5f9)',
+                        backgroundColor: isSelected ? '#eff6ff' : 'transparent',
+                        borderLeft: isSelected ? '4px solid var(--primary, #4f46e5)' : '4px solid transparent',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '4px',
+                        transition: 'all 0.15s ease'
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                        <strong style={{ fontSize: '13px', color: isSelected ? 'var(--primary, #4f46e5)' : 'var(--text-main, #0f172a)' }}>
+                          {role.name}
+                        </strong>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <span style={{
+                            padding: '1px 6px',
+                            borderRadius: '10px',
+                            fontSize: '11px',
+                            fontWeight: 700,
+                            backgroundColor: count > 0 ? '#dbeafe' : '#f1f5f9',
+                            color: count > 0 ? '#1d4ed8' : '#64748b'
+                          }}>
+                            {count}명 상속
+                          </span>
+                          {!role.isSystem && canSave && count === 0 && (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleDeleteRole(role);
+                              }}
+                              title="권한 삭제"
+                              style={{
+                                background: 'none',
+                                border: 'none',
+                                cursor: 'pointer',
+                                padding: '2px',
+                                color: '#ef4444'
+                              }}
+                            >
+                              <Trash2 size={13} />
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                      {role.description && (
+                        <span style={{ fontSize: '11px', color: 'var(--text-muted, #64748b)' }}>
+                          {role.description}
+                        </span>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           </div>
-        );
-      })()}
 
-      {/* 💳 급여 관리 권한 소유 임직원 현황 시각화 배너 (1인 강제 제한 제거 & 현황 투명 노출) */}
-      <div style={{
-        marginBottom: '16px', padding: '10px 16px', backgroundColor: 'var(--bg-card)',
-        borderRadius: '8px', border: '1px solid var(--border-color)', display: 'flex',
-        alignItems: 'center', justifyContent: 'space-between', fontSize: '13px'
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <span style={{ fontWeight: 'bold', color: 'var(--primary)' }}>💳 급여 관리 권한 소유 임직원:</span>
-          <span>
-            {payrollHolders.length > 0
-              ? payrollHolders.map(u => `${u.name}(${u.position || u.role})`).join(', ')
-              : '현재 권한 소유자 없음'}
-          </span>
-        </div>
-        <div style={{ color: 'var(--text-secondary)', fontSize: '12px' }}>
-          총 <strong style={{ color: 'var(--primary)' }}>{payrollHolders.length}</strong> 명 보유 중 (자유롭게 조정 가능)
-        </div>
-      </div>
-
-      {/* ⚠️ 고스트/무효 권한 진단 및 1-Click 자동 정돈 모달 팝업 */}
-      {showGhostModal && (
-        <div style={{
-          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-          backgroundColor: 'rgba(0, 0, 0, 0.65)', backdropFilter: 'blur(4px)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999
-        }}>
-          <div className="card" style={{
-            width: '100%', maxWidth: '560px', padding: '24px', backgroundColor: 'var(--bg-card)',
-            borderRadius: '12px', border: '1px solid var(--border-color)', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.3)'
+          {/* 우측 패널: 선택된 권한의 메뉴별 권한 설정 매트릭스 */}
+          <div style={{
+            backgroundColor: 'var(--bg-card, #ffffff)',
+            borderRadius: '8px',
+            border: '1px solid var(--border-color, #cbd5e1)',
+            overflow: 'hidden',
+            display: 'flex',
+            flexDirection: 'column'
           }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', borderBottom: '1px solid var(--border-color)', paddingBottom: '10px' }}>
-              <h3 style={{ margin: 0, fontWeight: '800', fontSize: '16px', color: ghostPermissions.length > 0 ? 'var(--danger)' : 'var(--success)', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <Shield size={18} />
-                {ghostPermissions.length > 0 ? '기 저장된 무효(FK 위반) 고스트 권한 데이터 발각' : '권한 데이터 정합성 정상 검증 완료'}
-              </h3>
-              <button type="button" onClick={() => setShowGhostModal(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)' }}>✕</button>
+            {/* 권한 헤더 & 일괄 설정 바 */}
+            <div style={{
+              padding: '12px 18px',
+              backgroundColor: 'var(--bg-secondary, #f8fafc)',
+              borderBottom: '1px solid var(--border-color, #e2e8f0)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              flexWrap: 'wrap',
+              gap: '10px'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Key size={16} color="var(--primary, #4f46e5)" />
+                <h2 style={{ margin: 0, fontSize: '14px', fontWeight: 800, color: 'var(--text-main, #0f172a)' }}>
+                  [{selectedRole?.name}] 메뉴 권한 매트릭스
+                </h2>
+                <span style={{
+                  padding: '2px 8px',
+                  borderRadius: '4px',
+                  fontSize: '11px',
+                  fontWeight: 700,
+                  backgroundColor: '#e0e7ff',
+                  color: '#4338ca'
+                }}>
+                  상속 직원: {roleUserCountMap[selectedRoleId] || 0}명
+                </span>
+                {isRoleDirty && (
+                  <span style={{
+                    padding: '2px 6px',
+                    borderRadius: '4px',
+                    fontSize: '11px',
+                    fontWeight: 800,
+                    backgroundColor: '#fee2e2',
+                    color: '#b91c1c'
+                  }}>
+                    미저장 변경사항 있음
+                  </span>
+                )}
+              </div>
+
+              {/* 일괄 액션 버튼군 */}
+              {canSave && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <button
+                    type="button"
+                    onClick={() => handleAllMenusBulkToggle('view')}
+                    style={{
+                      padding: '4px 10px',
+                      fontSize: '11.5px',
+                      fontWeight: 600,
+                      borderRadius: '4px',
+                      border: '1px solid var(--border-color, #cbd5e1)',
+                      backgroundColor: 'var(--bg-card, #ffffff)',
+                      color: 'var(--text-main, #0f172a)',
+                      cursor: 'pointer',
+                      whiteSpace: 'nowrap'
+                    }}
+                  >
+                    전체 조회 ON
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleAllMenusBulkToggle('save')}
+                    style={{
+                      padding: '4px 10px',
+                      fontSize: '11.5px',
+                      fontWeight: 600,
+                      borderRadius: '4px',
+                      border: '1px solid var(--border-color, #cbd5e1)',
+                      backgroundColor: 'var(--bg-card, #ffffff)',
+                      color: 'var(--text-main, #0f172a)',
+                      cursor: 'pointer',
+                      whiteSpace: 'nowrap'
+                    }}
+                  >
+                    전체 저장 ON
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleAllMenusBulkToggle('off')}
+                    style={{
+                      padding: '4px 10px',
+                      fontSize: '11.5px',
+                      fontWeight: 600,
+                      borderRadius: '4px',
+                      border: '1px solid var(--border-color, #cbd5e1)',
+                      backgroundColor: 'var(--bg-card, #ffffff)',
+                      color: 'var(--text-secondary, #475569)',
+                      cursor: 'pointer',
+                      whiteSpace: 'nowrap'
+                    }}
+                  >
+                    전체 OFF
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleSaveRolePermissions}
+                    disabled={!isRoleDirty}
+                    style={{
+                      padding: '5px 14px',
+                      fontSize: '12px',
+                      fontWeight: 700,
+                      borderRadius: '5px',
+                      border: 'none',
+                      backgroundColor: isRoleDirty ? 'var(--primary, #4f46e5)' : '#94a3b8',
+                      color: '#ffffff',
+                      cursor: isRoleDirty ? 'pointer' : 'not-allowed',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '4px',
+                      boxShadow: isRoleDirty ? '0 2px 4px rgba(79, 70, 229, 0.3)' : 'none',
+                      whiteSpace: 'nowrap'
+                    }}
+                  >
+                    <Save size={13} />
+                    {isRoleDirty ? '권한 설정 저장' : '저장 완료'}
+                  </button>
+                </div>
+              )}
             </div>
 
-            {ghostPermissions.length > 0 ? (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-                <div style={{ padding: '12px', backgroundColor: 'rgba(239, 68, 68, 0.08)', borderRadius: '8px', border: '1px solid rgba(239, 68, 68, 0.2)', fontSize: '13px', lineHeight: '1.6' }}>
-                  ⚠️ DB 임직원 마스터(`users`)에서 이미 삭제되었거나 존재하지 않는 무효 유저 ID의 권한 찌꺼기 레코드가 발각되었습니다. 이 데이터가 포함되어 있으면 저장 시 Supabase FK 참조키 오류(`23503`)가 발생할 수 있습니다.
-                </div>
+            {/* 고밀도 카테고리별 아코디언 메뉴 테이블 */}
+            <div style={{ maxHeight: '680px', overflowY: 'auto' }}>
+              {MENU_CATEGORIES.map(grp => {
+                const isCollapsed = collapsedRoleGroups[grp.id];
+                const allViewsChecked = grp.items.every(i => workingRolePerms[normalizeMenuId(i.id)]?.canView);
+                const allSavesChecked = grp.items.every(i => workingRolePerms[normalizeMenuId(i.id)]?.canSave);
 
-                <div style={{ fontSize: '13px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                  <div><strong>발각된 무효 유저 ID 목록 ({invalidUserIdsList.length}개):</strong></div>
-                  <div style={{ padding: '8px 12px', backgroundColor: 'var(--bg-app)', borderRadius: '6px', fontFamily: 'monospace', fontSize: '12px', color: 'var(--danger)', wordBreak: 'break-all' }}>
-                    {invalidUserIdsList.join(', ')}
+                return (
+                  <div key={grp.id} style={{ borderBottom: '1px solid var(--border-color, #e2e8f0)' }}>
+                    {/* 카테고리 헤더 행 */}
+                    <div style={{
+                      padding: '8px 18px',
+                      backgroundColor: 'var(--bg-secondary, #f1f5f9)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      userSelect: 'none'
+                    }}>
+                      <div
+                        onClick={() => setCollapsedRoleGroups(p => ({ ...p, [grp.id]: !p[grp.id] }))}
+                        style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontWeight: 700, fontSize: '12.5px', color: 'var(--text-main, #0f172a)' }}
+                      >
+                        {isCollapsed ? <ChevronRight size={14} /> : <ChevronDown size={14} />}
+                        <span>{grp.name}</span>
+                        <span style={{ fontSize: '11px', color: 'var(--text-muted, #64748b)', fontWeight: 500 }}>
+                          ({grp.items.length}개 메뉴)
+                        </span>
+                      </div>
+
+                      {canSave && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+                          <label style={{ fontSize: '11.5px', fontWeight: 600, color: 'var(--text-secondary, #475569)', display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                            <input
+                              type="checkbox"
+                              checked={allViewsChecked}
+                              onChange={() => handleCategoryBulkToggle(grp, 'view')}
+                              style={{ cursor: 'pointer' }}
+                            />
+                            조회 일괄
+                          </label>
+                          <label style={{ fontSize: '11.5px', fontWeight: 600, color: 'var(--text-secondary, #475569)', display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                            <input
+                              type="checkbox"
+                              checked={allSavesChecked}
+                              onChange={() => handleCategoryBulkToggle(grp, 'save')}
+                              style={{ cursor: 'pointer' }}
+                            />
+                            저장 일괄
+                          </label>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* 카테고리 세부 메뉴 항목들 */}
+                    {!isCollapsed && (
+                      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
+                        <tbody>
+                          {grp.items.map(item => {
+                            const norm = normalizeMenuId(item.id);
+                            const perm = workingRolePerms[norm] || { canView: false, canSave: false };
+                            const isLeaveApp = norm === 'leave_application';
+
+                            return (
+                              <tr
+                                key={item.id}
+                                style={{
+                                  borderBottom: '1px solid var(--border-color, #f8fafc)',
+                                  backgroundColor: perm.canView ? 'transparent' : 'rgba(0,0,0,0.015)'
+                                }}
+                              >
+                                <td style={{ padding: '8px 18px 8px 36px', color: perm.canView ? 'var(--text-main, #0f172a)' : 'var(--text-muted, #94a3b8)', fontWeight: perm.canView ? 600 : 400 }}>
+                                  {item.name}
+                                  {isLeaveApp && (
+                                    <span style={{ marginLeft: '6px', fontSize: '10.5px', color: '#10b981', fontWeight: 700 }}>(전원 기본)</span>
+                                  )}
+                                </td>
+                                <td style={{ padding: '8px 18px', width: '100px', textAlign: 'center', whiteSpace: 'nowrap' }}>
+                                  <label style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', cursor: isLeaveApp ? 'not-allowed' : 'pointer' }}>
+                                    <input
+                                      type="checkbox"
+                                      checked={perm.canView}
+                                      disabled={!canSave || isLeaveApp}
+                                      onChange={() => handleRolePermToggle(item.id, 'view')}
+                                      style={{ cursor: isLeaveApp ? 'not-allowed' : 'pointer' }}
+                                    />
+                                    <span style={{ color: perm.canView ? '#2563eb' : 'var(--text-muted, #94a3b8)', fontWeight: perm.canView ? 700 : 400 }}>
+                                      조회
+                                    </span>
+                                  </label>
+                                </td>
+                                <td style={{ padding: '8px 18px', width: '100px', textAlign: 'center', whiteSpace: 'nowrap' }}>
+                                  <label style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', cursor: isLeaveApp ? 'not-allowed' : 'pointer' }}>
+                                    <input
+                                      type="checkbox"
+                                      checked={perm.canSave}
+                                      disabled={!canSave || isLeaveApp}
+                                      onChange={() => handleRolePermToggle(item.id, 'save')}
+                                      style={{ cursor: isLeaveApp ? 'not-allowed' : 'pointer' }}
+                                    />
+                                    <span style={{ color: perm.canSave ? '#16a34a' : 'var(--text-muted, #94a3b8)', fontWeight: perm.canSave ? 700 : 400 }}>
+                                      저장/수정
+                                    </span>
+                                  </label>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    )}
                   </div>
-                  <div><strong>무효 권한 데이터 총 건수:</strong> <span style={{ color: 'var(--danger)', fontWeight: 'bold' }}>{ghostPermissions.length} 건</span> (전체 {localPermissions.length}건 중)</div>
-                </div>
-
-                <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', marginTop: '10px' }}>
-                  <button type="button" className="btn-secondary" onClick={() => setShowGhostModal(false)} style={{ padding: '8px 14px', fontSize: '13px' }}>닫기</button>
-                  {canSave && (
-                    <button type="button" className="btn-danger" onClick={handleCleanGhostPermissions} style={{ padding: '8px 16px', fontSize: '13px', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                      <Check size={16} /> 🧹 고스트 권한 정돈 & 정상 데이터 저장
-                    </button>
-                  )}
-                </div>
-              </div>
-            ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', textAlign: 'center', padding: '16px 0' }}>
-                <div style={{ fontSize: '14px', color: 'var(--success)', fontWeight: 'bold' }}>
-                  ✅ 현재 권한 목록에 무효(고스트) 유저 데이터가 존재하지 않습니다!
-                </div>
-                <p style={{ fontSize: '13px', color: 'var(--text-secondary)', margin: 0 }}>
-                  모든 권한 레코드({localPermissions.length}건)가 임직원 마스터(`users`)와 100% 안전하게 연결되어 있으며, 저장 시 FK 참조키 위반 오류가 발생하지 않습니다.
-                </p>
-                <div style={{ display: 'flex', justifyContent: 'center', marginTop: '10px' }}>
-                  <button type="button" className="btn-primary" onClick={() => setShowGhostModal(false)} style={{ padding: '8px 20px', fontSize: '13px', fontWeight: 'bold' }}>확인</button>
-                </div>
-              </div>
-            )}
+                );
+              })}
+            </div>
           </div>
         </div>
       )}
 
-      <div style={{ display: 'grid', gridTemplateColumns: '320px 1fr', gap: '20px' }}>
-        
-        {/* 사용자 리스트 (좌측 패널) */}
-        <div className="card" style={{ margin: 0, height: '700px', display: 'flex', flexDirection: 'column', padding: '16px' }}>
-          <div className="card-header" style={{ paddingBottom: '12px', borderBottom: '1px solid var(--border-color)', marginBottom: '12px' }}>
-            <h3 className="card-title" style={{ fontSize: '15px' }}>등록 임직원 리스트</h3>
-            <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>직원 선택 후 권한 설정</span>
-          </div>
+      {/* ═════════════════════════════════════════════════════════════════
+          탭 2: 직원 권한 상속 배정 (User Mapping)
+          ═════════════════════════════════════════════════════════════════ */}
+      {activeTab === 'USERS' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+          {/* 상단 컨트롤 바 (필터, 검색, 통계, 엑셀 내보내기) */}
+          <div style={{
+            backgroundColor: 'var(--bg-card, #ffffff)',
+            borderRadius: '8px',
+            border: '1px solid var(--border-color, #cbd5e1)',
+            padding: '12px 18px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            flexWrap: 'wrap',
+            gap: '10px'
+          }}>
+            {/* 좌측 필터군 */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+              <input
+                type="text"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                placeholder="성명, 사번, 직급, 부서 검색"
+                style={{
+                  width: '200px',
+                  padding: '6px 10px',
+                  fontSize: '12px',
+                  borderRadius: '6px',
+                  border: '1px solid var(--border-color, #cbd5e1)',
+                  backgroundColor: 'var(--bg-card, #ffffff)',
+                  color: 'var(--text-main, #0f172a)',
+                  outline: 'none'
+                }}
+              />
 
-          <div className="table-container" style={{ flex: 1, overflowY: 'auto', border: 'none' }}>
-            <table style={{ width: '100%' }}>
-              <thead>
-                <tr>
-                  <th>임직원명</th>
-                  <th>등급</th>
-                </tr>
-              </thead>
-              <tbody>
-                {sortedUsers.map(u => {
-                  const isSelected = selectedUserId === u.id;
-                  const deptName = getDeptName(u);
-                  return (
-                    <tr 
-                      key={u.id} 
-                      onClick={() => setSelectedUserId(u.id)}
-                      style={{ 
-                        cursor: 'pointer', 
-                        backgroundColor: isSelected ? 'var(--primary-light)' : 'transparent',
-                        borderLeft: isSelected ? '4px solid var(--primary)' : '4px solid transparent'
-                      }}
-                    >
-                      <td style={{ padding: '8px 10px' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', whiteSpace: 'nowrap' }}>
-                          <span style={{
-                            fontSize: '11px',
-                            fontWeight: '800',
-                            padding: '1px 6px',
-                            borderRadius: '4px',
-                            backgroundColor: isSelected ? 'rgba(37, 99, 235, 0.18)' : 'rgba(100, 116, 139, 0.12)',
-                            color: isSelected ? 'var(--primary)' : (deptName === '미배정' ? 'var(--text-muted)' : 'var(--text-secondary)'),
-                            border: isSelected ? '1px solid rgba(37, 99, 235, 0.35)' : '1px solid var(--border-color)',
-                            flexShrink: 0
-                          }}>
-                            {deptName}
-                          </span>
-                          <strong style={{ color: isSelected ? 'var(--primary)' : 'var(--text-primary)', fontSize: '13px' }}>
-                            {u.name}
-                          </strong>
-                        </div>
-                        <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '2px' }}>
-                          ({u.loginId || '미등록'}){u.position ? ` · ${u.position}` : ''}
-                        </div>
-                      </td>
-                      <td onClick={(e) => e.stopPropagation()}>
-                        <select 
-                          value={u.role || 'USER'}
-                          onChange={(e) => handleRoleChange(u.id, e.target.value)}
-                          disabled={!canSave || u.id === 'sys-admin'}
-                          style={{
-                            padding: '3px 6px', fontSize: '11.5px', borderRadius: '4px',
-                            border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-card)',
-                            fontWeight: 'bold',
-                            color: u.role === 'ADMIN' ? 'var(--danger)' : u.role === 'MANAGER' ? 'var(--success)' : 'var(--info)'
-                          }}
-                        >
-                          {isSuperAdmin && <option value="ADMIN">ADMIN</option>}
-                          {(!isSuperAdmin && u.role === 'ADMIN') && <option value="ADMIN" disabled>ADMIN</option>}
-                          <option value="MANAGER">MANAGER</option>
-                          <option value="USER">USER</option>
-                        </select>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </div>
+              <select
+                value={filterDept}
+                onChange={(e) => setFilterDept(e.target.value)}
+                style={{
+                  padding: '6px 10px',
+                  fontSize: '12px',
+                  borderRadius: '6px',
+                  border: '1px solid var(--border-color, #cbd5e1)',
+                  backgroundColor: 'var(--bg-card, #ffffff)',
+                  color: 'var(--text-main, #0f172a)',
+                  outline: 'none'
+                }}
+              >
+                <option value="ALL">전체 부서</option>
+                <option value="경영진">경영진</option>
+                <option value="관리부">관리부</option>
+                <option value="영업팀">영업팀</option>
+                <option value="출고팀">출고팀</option>
+                <option value="AS팀">AS팀</option>
+              </select>
 
-        {/* 계층형 메뉴 권한 매트릭스 (우측 패널) */}
-        <div className="card" style={{ margin: 0, height: '700px', display: 'flex', flexDirection: 'column', padding: '16px' }}>
-          <div className="card-header" style={{ paddingBottom: '12px', borderBottom: '1px solid var(--border-color)', marginBottom: '12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <div>
-              <h3 className="card-title" style={{ fontSize: '15px' }}>
-                상위-하위 계층 메뉴 권한 매트릭스
-                {selectedUser && (
-                  <span style={{ marginLeft: '10px', fontSize: '14px', color: 'var(--primary)' }}>
-                    [{getDeptName(selectedUser)} {selectedUser.name} {selectedUser.role}]
-                  </span>
-                )}
-              </h3>
+              <select
+                value={filterRole}
+                onChange={(e) => setFilterRole(e.target.value)}
+                style={{
+                  padding: '6px 10px',
+                  fontSize: '12px',
+                  borderRadius: '6px',
+                  border: '1px solid var(--border-color, #cbd5e1)',
+                  backgroundColor: 'var(--bg-card, #ffffff)',
+                  color: 'var(--text-main, #0f172a)',
+                  outline: 'none'
+                }}
+              >
+                <option value="ALL">전체 권한 명칭</option>
+                <option value="NONE">[권한 미지정]</option>
+                {customRoles.map(r => (
+                  <option key={r.id} value={r.id}>{r.name}</option>
+                ))}
+              </select>
             </div>
-            {selectedUser?.role === 'ADMIN' && (
-              <span style={{ fontSize: '12px', color: 'var(--danger)', fontWeight: 'bold' }}>* ADMIN 등급은 전권 자동 소유</span>
-            )}
+
+            {/* 우측 통계 및 엑셀 다운로드 */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <span style={{ fontSize: '12px', color: 'var(--text-secondary, #475569)' }}>
+                총 <strong>{filteredUsers.length}</strong>명 / 상속 완료 <strong>{activeUsers.filter(u => u.customRoleId).length}</strong>명
+              </span>
+              <button
+                type="button"
+                onClick={handleExportExcel}
+                style={{
+                  padding: '6px 12px',
+                  fontSize: '12px',
+                  fontWeight: 600,
+                  borderRadius: '6px',
+                  border: '1px solid var(--border-color, #cbd5e1)',
+                  backgroundColor: 'var(--bg-secondary, #f8fafc)',
+                  color: 'var(--text-main, #0f172a)',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '5px',
+                  whiteSpace: 'nowrap'
+                }}
+              >
+                <Download size={13} color="#059669" />
+                엑셀 내보내기
+              </button>
+            </div>
           </div>
 
-          <div className="table-container" style={{ flex: 1, overflowY: 'auto', border: 'none', boxShadow: 'none' }}>
-            <table style={{ width: '100%', margin: 0 }}>
+          {/* 고밀도 직원 목록 및 권한 상속 테이블 */}
+          <div style={{
+            backgroundColor: 'var(--bg-card, #ffffff)',
+            borderRadius: '8px',
+            border: '1px solid var(--border-color, #cbd5e1)',
+            overflow: 'auto'
+          }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
               <thead>
-                <tr style={{ backgroundColor: 'var(--bg-app)' }}>
-                  <th style={{ padding: '10px 14px', verticalAlign: 'middle' }}>상위 카테고리 및 하위 메뉴명</th>
-                  <th style={{ width: '135px', textAlign: 'center', padding: '8px 4px' }}>
-                    {(() => {
-                      const isSuperAdminUser = selectedUser?.id === 'u-1' || selectedUser?.id === 'sys-admin' || selectedUser?.loginId === 'admin';
-                      const allItems = MENU_CATEGORIES.flatMap(g => g.items);
-                      const isAllGlobalViewChecked = allItems.length > 0 && allItems.every(item => {
-                        const p = localPermissions.find(x => x.userId === selectedUserId && x.menuId === item.id);
-                        return isSuperAdminUser ? true : (p?.canView ?? false);
-                      });
-                      return (
-                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px' }}>
-                          <span style={{ fontSize: '13px' }}>조회 (VIEW)</span>
-                          <button
-                            type="button"
-                            disabled={!canSave || isSuperAdminUser}
-                            onClick={() => handleToggleAllMenus('view')}
-                            style={{
-                              fontSize: '11px',
-                              padding: '2px 8px',
-                              borderRadius: '4px',
-                              border: '1px solid var(--border-color)',
-                              backgroundColor: isAllGlobalViewChecked ? 'var(--primary)' : 'var(--bg-card)',
-                              color: isAllGlobalViewChecked ? '#fff' : 'var(--text-secondary)',
-                              cursor: canSave && !isSuperAdminUser ? 'pointer' : 'default',
-                              fontWeight: '700'
-                            }}
-                          >
-                            {isAllGlobalViewChecked ? '전체해제' : '전체선택'}
-                          </button>
-                        </div>
-                      );
-                    })()}
-                  </th>
-                  <th style={{ width: '135px', textAlign: 'center', padding: '8px 4px' }}>
-                    {(() => {
-                      const isSuperAdminUser = selectedUser?.id === 'u-1' || selectedUser?.id === 'sys-admin' || selectedUser?.loginId === 'admin';
-                      const allItems = MENU_CATEGORIES.flatMap(g => g.items);
-                      const isAllGlobalSaveChecked = allItems.length > 0 && allItems.every(item => {
-                        const p = localPermissions.find(x => x.userId === selectedUserId && x.menuId === item.id);
-                        return isSuperAdminUser ? true : (p?.canSave ?? false);
-                      });
-                      return (
-                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px' }}>
-                          <span style={{ fontSize: '13px' }}>저장 (SAVE)</span>
-                          <button
-                            type="button"
-                            disabled={!canSave || isSuperAdminUser}
-                            onClick={() => handleToggleAllMenus('save')}
-                            style={{
-                              fontSize: '11px',
-                              padding: '2px 8px',
-                              borderRadius: '4px',
-                              border: '1px solid var(--border-color)',
-                              backgroundColor: isAllGlobalSaveChecked ? 'var(--success)' : 'var(--bg-card)',
-                              color: isAllGlobalSaveChecked ? '#fff' : 'var(--text-secondary)',
-                              cursor: canSave && !isSuperAdminUser ? 'pointer' : 'default',
-                              fontWeight: '700'
-                            }}
-                          >
-                            {isAllGlobalSaveChecked ? '전체해제' : '전체선택'}
-                          </button>
-                        </div>
-                      );
-                    })()}
-                  </th>
+                <tr style={{
+                  backgroundColor: 'var(--bg-secondary, #f8fafc)',
+                  borderBottom: '1px solid var(--border-color, #e2e8f0)',
+                  color: 'var(--text-secondary, #475569)',
+                  fontWeight: 700,
+                  whiteSpace: 'nowrap'
+                }}>
+                  <th style={{ padding: '8px 12px', textAlign: 'center', width: '45px' }}>NO</th>
+                  <th style={{ padding: '8px 12px', textAlign: 'left', width: '110px' }}>사번 / ID</th>
+                  <th style={{ padding: '8px 12px', textAlign: 'left', width: '90px' }}>성명</th>
+                  <th style={{ padding: '8px 12px', textAlign: 'left', width: '100px' }}>소속 부서</th>
+                  <th style={{ padding: '8px 12px', textAlign: 'left', width: '70px' }}>직급</th>
+                  <th style={{ padding: '8px 12px', textAlign: 'center', width: '90px' }}>시스템 등급</th>
+                  <th style={{ padding: '8px 12px', textAlign: 'left', width: '220px' }}>상속 권한 명칭 (핵심)</th>
+                  <th style={{ padding: '8px 12px', textAlign: 'left' }}>상속 권한 메뉴 요약</th>
+                  <th style={{ padding: '8px 12px', textAlign: 'center', width: '80px' }}>상세 확인</th>
                 </tr>
               </thead>
               <tbody>
-                {MENU_CATEGORIES.map(grp => {
-                  const isCollapsed = collapsedGroups[grp.id] === true;
-                  const isAdmin = selectedUser?.role === 'ADMIN';
-                  const isSuperAdminUser = selectedUser?.id === 'u-1' || selectedUser?.id === 'sys-admin' || selectedUser?.loginId === 'admin';
+                {filteredUsers.length === 0 ? (
+                  <tr>
+                    <td colSpan={9} style={{ padding: '40px', textAlign: 'center', color: 'var(--text-muted, #94a3b8)' }}>
+                      조회된 임직원이 없습니다.
+                    </td>
+                  </tr>
+                ) : (
+                  filteredUsers.map((user, idx) => {
+                    const deptName = getDeptName(user);
+                    const isDev = user.id === 'u-1' || user.id === 'sys-admin';
+                    const summary = getUserInheritedMenus(user);
+                    const currentRole = customRoles.find(r => r.id === user.customRoleId);
 
-                  // 상위 그룹의 전체 선택 상태 파악
-                  const allViewChecked = grp.items.every(item => {
-                    if (isSuperAdminUser || item.id === 'leave_application') return true;
-                    if (item.id === 'leave_management') {
-                      const payP = localPermissions.find(x => x.userId === selectedUserId && x.menuId === 'payroll');
-                      return payP?.canView ?? false;
-                    }
-                    const p = localPermissions.find(x => x.userId === selectedUserId && x.menuId === item.id);
-                    return p?.canView ?? false;
-                  });
-                  const allSaveChecked = grp.items.every(item => {
-                    if (isSuperAdminUser || item.id === 'leave_application') return true;
-                    if (item.id === 'leave_management') {
-                      const payP = localPermissions.find(x => x.userId === selectedUserId && x.menuId === 'payroll');
-                      return payP?.canSave ?? false;
-                    }
-                    const p = localPermissions.find(x => x.userId === selectedUserId && x.menuId === item.id);
-                    return p?.canSave ?? false;
-                  });
-
-                  return (
-                    <React.Fragment key={grp.id}>
-                      {/* 상위 메뉴 카테고리 헤더 행 */}
-                      <tr style={{ backgroundColor: 'var(--bg-app)', borderTop: '2px solid var(--border-color)' }}>
-                        <td style={{ padding: '8px 12px', fontWeight: '700', color: 'var(--primary)', cursor: 'pointer' }} onClick={() => toggleGroupCollapse(grp.id)}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13.5px' }}>
-                            {isCollapsed ? <ChevronRight size={16} /> : <ChevronDown size={16} />}
-                            <FolderKanban size={16} />
-                            <span>{grp.name}</span>
-                            <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: 'normal', marginLeft: '6px' }}>
-                              ({grp.items.length}개 메뉴)
+                    return (
+                      <tr
+                        key={user.id}
+                        style={{
+                          borderBottom: '1px solid var(--border-color, #f1f5f9)',
+                          backgroundColor: idx % 2 === 1 ? 'var(--bg-secondary, #f8fafc)' : 'transparent',
+                          whiteSpace: 'nowrap'
+                        }}
+                      >
+                        <td style={{ padding: '8px 12px', textAlign: 'center', color: 'var(--text-muted, #94a3b8)', fontFamily: 'monospace' }}>
+                          {idx + 1}
+                        </td>
+                        <td style={{ padding: '8px 12px', fontFamily: 'monospace', color: 'var(--text-secondary, #475569)' }}>
+                          {user.loginId || user.id}
+                        </td>
+                        <td style={{ padding: '8px 12px', fontWeight: 700, color: 'var(--text-main, #0f172a)' }}>
+                          {user.name}
+                        </td>
+                        <td style={{ padding: '8px 12px', color: 'var(--text-secondary, #475569)' }}>
+                          {deptName}
+                        </td>
+                        <td style={{ padding: '8px 12px', color: 'var(--text-muted, #64748b)' }}>
+                          {user.position || '-'}
+                        </td>
+                        {/* 시스템 등급 (ADMIN / USER) */}
+                        <td style={{ padding: '8px 12px', textAlign: 'center' }}>
+                          {isDev ? (
+                            <span style={{ padding: '2px 6px', borderRadius: '4px', fontSize: '11px', fontWeight: 800, backgroundColor: '#fef3c7', color: '#b45309' }}>
+                              개발자
                             </span>
-                          </div>
+                          ) : (
+                            <select
+                              value={user.role || 'USER'}
+                              disabled={!canSave || !isSuperAdmin}
+                              onChange={(e) => handleUserGradeChange(user.id, e.target.value)}
+                              style={{
+                                padding: '3px 6px',
+                                fontSize: '11px',
+                                fontWeight: user.role === 'ADMIN' ? 700 : 500,
+                                borderRadius: '4px',
+                                border: '1px solid var(--border-color, #cbd5e1)',
+                                backgroundColor: user.role === 'ADMIN' ? '#dcfce7' : 'var(--bg-card, #ffffff)',
+                                color: user.role === 'ADMIN' ? '#166534' : 'var(--text-main, #0f172a)',
+                                outline: 'none',
+                                cursor: isSuperAdmin ? 'pointer' : 'not-allowed'
+                              }}
+                            >
+                              <option value="USER">USER</option>
+                              <option value="ADMIN">ADMIN</option>
+                            </select>
+                          )}
                         </td>
-                        <td style={{ textAlign: 'center', padding: '6px' }}>
+
+                        {/* 상속 권한 명칭 셀렉트박스 (핵심!) */}
+                        <td style={{ padding: '8px 12px' }}>
+                          {user.role === 'ADMIN' ? (
+                            <span style={{ fontSize: '11px', color: '#16a34a', fontWeight: 700 }}>
+                              전체 마스터 권한 (자동 승계)
+                            </span>
+                          ) : (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                              <select
+                                value={user.customRoleId || ''}
+                                disabled={!canSave}
+                                onChange={(e) => handleAssignUserRole(user.id, e.target.value)}
+                                style={{
+                                  width: '100%',
+                                  maxWidth: '200px',
+                                  padding: '4px 8px',
+                                  fontSize: '11.5px',
+                                  fontWeight: user.customRoleId ? 600 : 400,
+                                  borderRadius: '5px',
+                                  border: user.customRoleId ? '1px solid #6366f1' : '1px solid #f59e0b',
+                                  backgroundColor: user.customRoleId ? '#eef2ff' : '#fffbeb',
+                                  color: user.customRoleId ? '#3730a3' : '#b45309',
+                                  outline: 'none',
+                                  cursor: canSave ? 'pointer' : 'not-allowed'
+                                }}
+                              >
+                                <option value="">[권한 명칭 미지정]</option>
+                                {customRoles.map(r => (
+                                  <option key={r.id} value={r.id}>
+                                    {r.name}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+                          )}
+                        </td>
+
+                        {/* 상속 권한 메뉴 요약 */}
+                        <td style={{ padding: '8px 12px', fontSize: '11.5px' }}>
+                          <span style={{ fontWeight: 600, color: 'var(--text-main, #0f172a)' }}>
+                            {summary.total}
+                          </span>
+                          <span style={{ marginLeft: '8px', color: 'var(--text-muted, #64748b)' }}>
+                            ({summary.preview})
+                          </span>
+                        </td>
+
+                        {/* 상세 보기 액션 */}
+                        <td style={{ padding: '8px 12px', textAlign: 'center' }}>
                           <button
                             type="button"
-                            disabled={!canSave || isSuperAdminUser}
-                            onClick={() => handleToggleCategoryGroup(grp, 'view')}
+                            onClick={() => setPreviewUser(user)}
                             style={{
+                              padding: '3px 8px',
                               fontSize: '11px',
-                              padding: '2px 8px',
+                              fontWeight: 600,
                               borderRadius: '4px',
-                              border: '1px solid var(--border-color)',
-                              backgroundColor: allViewChecked ? 'var(--primary)' : 'var(--bg-card)',
-                              color: allViewChecked ? '#fff' : 'var(--text-secondary)',
-                              cursor: canSave && !isSuperAdminUser ? 'pointer' : 'default',
-                              fontWeight: '600'
+                              border: '1px solid var(--border-color, #cbd5e1)',
+                              backgroundColor: 'var(--bg-card, #ffffff)',
+                              color: 'var(--primary, #4f46e5)',
+                              cursor: 'pointer',
+                              whiteSpace: 'nowrap'
                             }}
                           >
-                            {allViewChecked ? '조회 전체해제' : '조회 전체선택'}
-                          </button>
-                        </td>
-                        <td style={{ textAlign: 'center', padding: '6px' }}>
-                          <button
-                            type="button"
-                            disabled={!canSave || isSuperAdminUser}
-                            onClick={() => handleToggleCategoryGroup(grp, 'save')}
-                            style={{
-                              fontSize: '11px',
-                              padding: '2px 8px',
-                              borderRadius: '4px',
-                              border: '1px solid var(--border-color)',
-                              backgroundColor: allSaveChecked ? 'var(--success)' : 'var(--bg-card)',
-                              color: allSaveChecked ? '#fff' : 'var(--text-secondary)',
-                              cursor: canSave && !isSuperAdminUser ? 'pointer' : 'default',
-                              fontWeight: '600'
-                            }}
-                          >
-                            {allSaveChecked ? '저장 전체해제' : '저장 전체선택'}
+                            상세
                           </button>
                         </td>
                       </tr>
-
-                      {/* 하위 메뉴 행들 */}
-                      {!isCollapsed && grp.items.map(menu => {
-                        const isLeaveApp = menu.id === 'leave_application';
-                        const isLeaveMgmt = menu.id === 'leave_management';
-
-                        // 급여 정산 권한 연동 대상
-                        const payrollPerm = localPermissions.find(p => p.userId === selectedUserId && p.menuId === 'payroll');
-                        const payrollCanView = isSuperAdminUser || !!payrollPerm?.canView;
-                        const payrollCanSave = isSuperAdminUser || !!payrollPerm?.canSave;
-
-                        const perm = localPermissions.find(p => p.userId === selectedUserId && p.menuId === menu.id) || { canView: isSuperAdminUser, canSave: isSuperAdminUser };
-                        const canView = isLeaveApp ? true : isLeaveMgmt ? payrollCanView : (isSuperAdminUser || perm.canView);
-                        const canSaveVal = isLeaveApp ? true : isLeaveMgmt ? payrollCanSave : (isSuperAdminUser || perm.canSave);
-
-                        return (
-                          <tr key={menu.id} style={{ borderBottom: '1px dashed var(--border-color)' }}>
-                            <td style={{ paddingLeft: '32px', fontSize: '13px' }}>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                <span>• {menu.name}</span>
-                                {isLeaveApp && (
-                                  <span style={{
-                                    fontSize: '10.5px',
-                                    padding: '1px 6px',
-                                    borderRadius: '4px',
-                                    backgroundColor: 'rgba(59, 130, 246, 0.12)',
-                                    color: '#2563eb',
-                                    fontWeight: '600',
-                                    whiteSpace: 'nowrap',
-                                    flexShrink: 0
-                                  }}>
-                                    전원 공통
-                                  </span>
-                                )}
-                                {isLeaveMgmt && (
-                                  <span style={{
-                                    fontSize: '10.5px',
-                                    padding: '1px 6px',
-                                    borderRadius: '4px',
-                                    backgroundColor: 'rgba(245, 158, 11, 0.12)',
-                                    color: '#d97706',
-                                    fontWeight: '600',
-                                    whiteSpace: 'nowrap',
-                                    flexShrink: 0
-                                  }}>
-                                    급여 권한 연동
-                                  </span>
-                                )}
-                              </div>
-                            </td>
-
-                            {/* 조회 권한 */}
-                            <td style={{ textAlign: 'center' }}>
-                              {isSuperAdminUser ? (
-                                <span style={{ color: 'var(--text-muted)', fontSize: '12px' }}><Lock size={12} /> 허용</span>
-                              ) : isLeaveApp ? (
-                                <input
-                                  type="checkbox"
-                                  checked={true}
-                                  disabled={true}
-                                  title="연차신청은 모든 임직원에게 상시 허용됩니다."
-                                  style={{ cursor: 'not-allowed' }}
-                                />
-                              ) : isLeaveMgmt ? (
-                                <input
-                                  type="checkbox"
-                                  checked={payrollCanView}
-                                  disabled={true}
-                                  title="연차관리 권한은 급여 정산 권한과 100% 동일하게 연동됩니다."
-                                  style={{ cursor: 'not-allowed' }}
-                                />
-                              ) : (
-                                <input
-                                  type="checkbox"
-                                  checked={canView}
-                                  onChange={() => handlePermissionToggle(menu.id, 'view')}
-                                  disabled={!canSave}
-                                  style={{ cursor: canSave ? 'pointer' : 'default' }}
-                                />
-                              )}
-                            </td>
-
-                            {/* 저장 권한 */}
-                            <td style={{ textAlign: 'center' }}>
-                              {isSuperAdminUser ? (
-                                <span style={{ color: 'var(--text-muted)', fontSize: '12px' }}><Lock size={12} /> 허용</span>
-                              ) : isLeaveApp ? (
-                                <input
-                                  type="checkbox"
-                                  checked={true}
-                                  disabled={true}
-                                  title="연차신청은 모든 임직원에게 상시 허용됩니다."
-                                  style={{ cursor: 'not-allowed' }}
-                                />
-                              ) : isLeaveMgmt ? (
-                                <input
-                                  type="checkbox"
-                                  checked={payrollCanSave}
-                                  disabled={true}
-                                  title="연차관리 권한은 급여 정산 권한과 100% 동일하게 연동됩니다."
-                                  style={{ cursor: 'not-allowed' }}
-                                />
-                              ) : (
-                                <input
-                                  type="checkbox"
-                                  checked={canSaveVal}
-                                  onChange={() => handlePermissionToggle(menu.id, 'save')}
-                                  disabled={!canSave || !canView}
-                                  style={{ cursor: canSave && canView ? 'pointer' : 'default' }}
-                                />
-                              )}
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </React.Fragment>
-                  );
-                })}
+                    );
+                  })
+                )}
               </tbody>
             </table>
           </div>
         </div>
+      )}
 
-      </div>
-      {/* ⚖️ Gutenberg Z-패턴 4단계 최하단 임직원 권한 대차대조식 검증 바 (헌장 3.5) */}
-      <div style={{
-        position: 'fixed',
-        bottom: 0,
-        left: 'var(--sidebar-width, 240px)',
-        right: 0,
-        height: '42px',
-        backgroundColor: 'var(--bg-card)',
-        borderTop: '2px solid var(--primary)',
-        boxShadow: '0 -2px 10px rgba(0,0,0,0.08)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        padding: '0 20px',
-        zIndex: 99,
-        fontSize: '11.5px',
-        fontWeight: 600
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '14px', overflowX: 'auto', whiteSpace: 'nowrap' }}>
-          <span>👥 <strong>전체임직원:</strong> {permissionAuditSummary.totalUsers}명</span>
-          <span style={{ color: 'var(--border-color)' }}>|</span>
-          <span>👑 <strong>개발자(ADMIN):</strong> {permissionAuditSummary.adminCount}명</span>
-          <span style={{ color: 'var(--border-color)' }}>|</span>
-          <span>💼 <strong>매니저/실무:</strong> {permissionAuditSummary.managerCount + permissionAuditSummary.userCount}명</span>
-          <span style={{ color: 'var(--border-color)' }}>|</span>
-          <span style={{ color: 'var(--primary)' }}>📑 <strong>권한매핑총수:</strong> {permissionAuditSummary.totalPermCount}건</span>
-        </div>
-
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexShrink: 0 }}>
-          <span style={{
-            padding: '2px 8px',
-            borderRadius: '4px',
-            backgroundColor: permissionAuditSummary.ghostCount === 0 ? 'var(--success-light)' : 'rgba(239,68,68,0.15)',
-            color: permissionAuditSummary.ghostCount === 0 ? 'var(--success)' : 'var(--danger)',
-            fontWeight: 700,
-            fontSize: '11px'
+      {/* ─── 직원 권한 상세 미리보기 모달 ─── */}
+      {previewUser && (
+        <div style={{
+          position: 'fixed',
+          top: 0, left: 0, right: 0, bottom: 0,
+          zIndex: 10001,
+          backgroundColor: 'rgba(0, 0, 0, 0.65)',
+          backdropFilter: 'blur(3px)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: '20px'
+        }}>
+          <div style={{
+            width: '100%',
+            maxWidth: '680px',
+            maxHeight: '85vh',
+            backgroundColor: 'var(--bg-card, #ffffff)',
+            borderRadius: '12px',
+            border: '1px solid var(--border-color, #cbd5e1)',
+            boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.25)',
+            display: 'flex',
+            flexDirection: 'column',
+            overflow: 'hidden'
           }}>
-            {permissionAuditSummary.ghostCount === 0 ? '⚖️ 대차 정상 (무효 고스트 권한 0건 무결)' : `⚠️ 고스트 권한 ${permissionAuditSummary.ghostCount}건 감지`}
-          </span>
+            <div style={{
+              padding: '14px 20px',
+              backgroundColor: 'var(--bg-secondary, #f8fafc)',
+              borderBottom: '1px solid var(--border-color, #e2e8f0)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between'
+            }}>
+              <div>
+                <h3 style={{ margin: 0, fontSize: '15px', fontWeight: 800, color: 'var(--text-main, #0f172a)' }}>
+                  [{previewUser.name}] 임직원 상속 권한 명세
+                </h3>
+                <span style={{ fontSize: '12px', color: 'var(--text-muted, #64748b)' }}>
+                  상속 권한: {customRoles.find(r => r.id === previewUser.customRoleId)?.name || '권한 미지정'} (소속: {getDeptName(previewUser)})
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setPreviewUser(null)}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted, #64748b)' }}
+              >
+                ✕
+              </button>
+            </div>
+
+            <div style={{ flex: 1, overflowY: 'auto', padding: '16px 20px' }}>
+              {previewUser.role === 'ADMIN' ? (
+                <div style={{ padding: '20px', textAlign: 'center', color: '#16a34a', fontWeight: 700 }}>
+                  최고 관리자(ADMIN) 등급으로 전사 모든 메뉴에 대해 조회 및 저장 권한이 상시 허용되어 있습니다.
+                </div>
+              ) : !previewUser.customRoleId ? (
+                <div style={{ padding: '20px', textAlign: 'center', color: '#b45309' }}>
+                  현재 상속된 권한 명칭이 없습니다. [직원 권한 상속 배정]에서 권한을 지정해 주십시오.
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                  {MENU_CATEGORIES.map(grp => {
+                    const permittedItems = grp.items.filter(item => {
+                      const perm = rolePermissions.find(p => p.roleId === previewUser.customRoleId && normalizeMenuId(p.menuId) === normalizeMenuId(item.id));
+                      return perm?.canView || perm?.canSave || normalizeMenuId(item.id) === 'leave_application';
+                    });
+
+                    if (permittedItems.length === 0) return null;
+
+                    return (
+                      <div key={grp.id} style={{ border: '1px solid var(--border-color, #e2e8f0)', borderRadius: '6px', overflow: 'hidden' }}>
+                        <div style={{ padding: '6px 12px', backgroundColor: 'var(--bg-secondary, #f1f5f9)', fontSize: '12px', fontWeight: 700, color: 'var(--text-main, #0f172a)' }}>
+                          {grp.name} ({permittedItems.length}개)
+                        </div>
+                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '11.5px' }}>
+                          <tbody>
+                            {permittedItems.map(item => {
+                              const perm = rolePermissions.find(p => p.roleId === previewUser.customRoleId && normalizeMenuId(p.menuId) === normalizeMenuId(item.id));
+                              const canView = perm?.canView || normalizeMenuId(item.id) === 'leave_application';
+                              const canSave = perm?.canSave || normalizeMenuId(item.id) === 'leave_application';
+
+                              return (
+                                <tr key={item.id} style={{ borderBottom: '1px solid #f8fafc' }}>
+                                  <td style={{ padding: '6px 12px', fontWeight: 600 }}>{item.name}</td>
+                                  <td style={{ padding: '6px 12px', width: '80px', textAlign: 'center' }}>
+                                    {canView ? <span style={{ color: '#2563eb', fontWeight: 700 }}>조회 허용</span> : '-'}
+                                  </td>
+                                  <td style={{ padding: '6px 12px', width: '80px', textAlign: 'center' }}>
+                                    {canSave ? <span style={{ color: '#16a34a', fontWeight: 700 }}>저장 허용</span> : '-'}
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            <div style={{ padding: '12px 20px', backgroundColor: 'var(--bg-secondary, #f8fafc)', borderTop: '1px solid var(--border-color, #e2e8f0)', display: 'flex', justifyContent: 'flex-end' }}>
+              <button
+                type="button"
+                onClick={() => setPreviewUser(null)}
+                style={{
+                  padding: '6px 16px',
+                  borderRadius: '6px',
+                  fontSize: '12px',
+                  fontWeight: 700,
+                  backgroundColor: 'var(--primary, #4f46e5)',
+                  color: '#ffffff',
+                  border: 'none',
+                  cursor: 'pointer'
+                }}
+              >
+                닫기
+              </button>
+            </div>
+          </div>
         </div>
-      </div>
-      <div style={{ height: '50px' }} aria-hidden="true" />
+      )}
     </div>
   );
 };

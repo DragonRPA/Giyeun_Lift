@@ -6,7 +6,8 @@ import {
   Building2, Search, Phone, MapPin, Plus, CheckCircle2, 
   AlertCircle, Lock, Unlock, ChevronDown, ChevronUp, X, Edit2, Copy, Check, Send, FileText, FolderOpen
 } from 'lucide-react';
-import { matchHangul } from '../../utils/hangulSearch';
+import { matchHangul, matchesChosungFilter, compareCustomerNames } from '../../utils/hangulSearch';
+import { ChosungFilterBar } from '../../components/ChosungFilterBar';
 import { copyToClipboard } from '../../utils/nativeLauncher';
 import { BusinessLicenseModal } from '../../components/BusinessLicenseModal';
 import { BatchBusinessLicenseModal } from '../../components/BatchBusinessLicenseModal';
@@ -22,6 +23,7 @@ export const MobileCustomerManage: React.FC<MobileCustomerManageProps> = ({ onNa
   } = useApp();
   
   const [searchTerm, setSearchTerm] = useState('');
+  const [chosungFilter, setChosungFilter] = useState<string>('전체');
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'MY' | 'ALLOWED' | 'BLOCKED' | 'INCOMPLETE'>('ALL');
   const [expandedCustomerId, setExpandedCustomerId] = useState<string | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
@@ -94,9 +96,9 @@ export const MobileCustomerManage: React.FC<MobileCustomerManageProps> = ({ onNa
     });
   }, [customers, assets, sites, billings, contacts]);
 
-  // 검색 및 필터링
+  // 검색 및 필터링 (초성 칩 필터 및 정규화 가나다 오름차순 정렬 통합)
   const filteredList = useMemo(() => {
-    return customerExtendedList.filter(item => {
+    const list = customerExtendedList.filter(item => {
       const c = item.customer;
       const matchText = !searchTerm || 
         matchHangul(c.name, searchTerm) || 
@@ -106,13 +108,17 @@ export const MobileCustomerManage: React.FC<MobileCustomerManageProps> = ({ onNa
 
       if (!matchText) return false;
 
+      if (!matchesChosungFilter(c.name, chosungFilter)) return false;
+
       if (statusFilter === 'MY') return myCustomerIds.has(c.id);
       if (statusFilter === 'ALLOWED') return c.transactionStatus !== 'BLOCKED';
       if (statusFilter === 'BLOCKED') return c.transactionStatus === 'BLOCKED';
       if (statusFilter === 'INCOMPLETE') return item.hasIncomplete;
       return true;
     });
-  }, [customerExtendedList, searchTerm, statusFilter, myCustomerIds]);
+
+    return [...list].sort((a, b) => compareCustomerNames(a.customer.name, b.customer.name));
+  }, [customerExtendedList, searchTerm, chosungFilter, statusFilter, myCustomerIds]);
 
   // 4대 상단 요약 통계
   const stats = useMemo(() => ({
@@ -293,8 +299,20 @@ export const MobileCustomerManage: React.FC<MobileCustomerManageProps> = ({ onNa
             type="text"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            placeholder="상호, 사업자번호, 대표자명 검색"
+            placeholder="고객명/초성 (예: ㅅㅅ, ㅎㄷ), 사업자번호, 대표자명..."
             className="w-full pl-9 pr-3 py-2.5 bg-slate-900 border border-slate-800 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:border-blue-500"
+          />
+        </div>
+
+        {/* 초성 자음 빠른 검색 필터 바 */}
+        <div className="flex items-center gap-2 px-0.5 overflow-x-auto">
+          <span className="text-[10.5px] font-bold text-slate-400 whitespace-nowrap flex-shrink-0">
+            초성
+          </span>
+          <ChosungFilterBar
+            selected={chosungFilter}
+            onChange={setChosungFilter}
+            compact
           />
         </div>
 

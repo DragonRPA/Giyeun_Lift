@@ -1,3 +1,112 @@
+## [v1.13.0.Build.79] - 2026-09-12 18:48
+
+### 🛡️ [권한 관리 체계의 근본적 개편: 권한 명칭 자유 정의 및 직원별 권한 100% 자동 상속 스튜디오 구축]
+
+**배경 및 문제점**:
+- 사장님 지시: "권한 관리 체계의 근본적 변경. 권한명칭 자유입력해서 이 명칭의 권한에 대한 권한체계에서의 선택여부를 저장하고 직원에게 어떤 권한 명칭에 해당하는 권한을 상속하도록. 이해했어? 진행하고 ㄹㅇ"
+- **근본 원인 분석**:
+  - 기존 방식은 개별 직원 단위로 50여 개 시스템 메뉴 체크박스를 일일이 설정하거나 고정된 4대 부서 템플릿에만 의존하여, 사내 직무(예: 영업팀장, 출고현장원, AS선임 등)별로 유연한 권한 통제가 불가능했음.
+  - 직원이 이동하거나 권한 변경 시 수십 명의 체크박스를 반복 조작해야 하는 극심한 번복 작업 발생(헌장 1.1, 1.2 위반).
+
+**개편 내역 (헌장 1.1, 1.2, 3.1, 3.2, 5.2 준수)**:
+1. **DB 스키마 및 정규화 엔티티 신설 (`src/services/db.ts`)**:
+   - `CustomRole`: 권한 명칭 자유 입력 엔티티 (`id`, `name`, `description`, `isSystem`, `createdAt`, `updatedAt`).
+   - `RolePermission`: 권한 명칭별 전사 50여 개 메뉴의 조회(`canView`) 및 저장/수정(`canSave`) 매트릭스 엔티티.
+   - `User` 엔티티에 `customRoleId?: string;` 추가하여 직원이 권한 명칭을 100% 자동 상속받는 구조 구축.
+   - `LocalDB`: `customRoles`, `rolePermissions` 컬렉션 관리, `SEED_CUSTOM_ROLES` & `SEED_ROLE_PERMISSIONS` 기본 직무 시드 데이터 탑재.
+   - `db.users` getter에서 기존 직원의 사용 중단을 예방하기 위해 부서 매핑 기반 무중단 초기 마이그레이션 탑재.
+   - `LocalDB.upsertRows<T>` 신설: 로컬 캐시 갱신 및 원격 Supabase 일괄 upsert 파이프라인 완성.
+2. **전역 컨텍스트 권한 판정 엔진 전면 개편 (`src/context/AppContext.tsx`)**:
+   - `hasPermission(menuId, action)`: `currentUser.customRoleId`를 최우선 감지하여, 해당 권한 명칭에 할당된 `rolePermissions`를 통해 실시간 조회/저장 판정 수행.
+   - 권한 명칭의 세부 메뉴 권한을 수정하면, 해당 권한 명칭을 상속받은 모든 직원에게 실시간 일괄 자동 전파.
+   - `saveCustomRole`, `deleteCustomRole`, `saveRolePermissions`, `assignUserRole` 비즈니스 뮤테이터 완성 및 동기 쓰기 대기(`awaitPendingWrites`).
+3. **사용자 및 권한 관리 2-탭 스튜디오 전면 구축 (`src/pages/users_permissions.tsx`)**:
+   - **탭 1: [권한 명칭 관리 - 역할 정의 스튜디오]**:
+     - 좌측: 권한 명칭 목록 카드, 배정 인원수 배지, `[+ 신규 권한 명칭]` 등록/수정/삭제 모달.
+     - 우측: 선택된 권한 명칭의 카테고리별 50개 메뉴 매트릭스, `전체 선택/해제`, 조회/저장 체크박스, `[권한 설정 저장]` 버튼.
+   - **탭 2: [직원 권한 상속 배정 대장 및 실시간 권한 미리보기]**:
+     - 성명/사번/부서 실시간 검색 필터.
+     - 고밀도 테이블: 성명, 사번, 부서, 직책, **상속 권한 명칭 원클릭 드롭다운 선택기**, 허용 메뉴수 배지, 실시간 권한 미리보기 모달 지원.
+
+---
+
+## [v1.12.0.Build.78] - 2026-09-12 18:25
+
+### 🛡️ [국세청 홈택스 공식 API 실시간 연동 완료 & 전수 점검 프로그레스·피드백·API 설정 스튜디오 고도화]
+
+**배경 및 문제점**:
+- 사장님 피드백: "버튼 눌렀을때 깜빡 하고 지나가서 뭘 진행을 한건지 안한건지, 모르겠어. 이렇게 빨리 끝나는거야?"
+- **근본 원인 분석**:
+  - 공공데이터포털 국세청 API 키(`NTS_API_KEY`)가 서버에 등록되지 않아, 외부 국세청 API 서버를 호출하지 못하고 시스템 내부 '사업자등록번호 체크섬(모듈러 10) 유효성 엔진'이 0.1초 만에 로컬 판정 후 종료됨.
+  - 이로 인해 실제 국세청 폐업 조회가 아닌 체크섬 판정 결과임에도 사용자에게 데이터 출처(Source)가 구분되지 않았고, 진행 프로그레스 바나 완료 알림이 없어 깜빡인 것처럼 느껴짐.
+
+**개편 내역 (헌장 1.1, 1.2, 3.1, 3.2, 5.2 준수)**:
+1. **공공데이터포털 국세청 공식 승인 API 키 정식 연동 및 검증 완료**:
+   - 사장님 제공 공공데이터포털 정식 승인키(`7f2425...2e03`) 연동 테스트 통과 (`Status: 200 OK`, `match_cnt: 1`).
+   - Vercel 프로덕션(`Production`) 및 프리뷰(`Preview`) 환경변수에 `NTS_API_KEY` 영구 등록 완료.
+   - `api/nts-status.ts` 및 `src/services/ntsBusinessService.ts`: 키 트림 처리 및 단건/배치 질의 시 인증키 자동 전송 파이프라인 완비.
+2. **실시간 점검 진행 프로그레스 바(게이지) 신설 ([`NtsStatusAuditModal.tsx`](file:///d:/01.AntiGravity/Giyuen_Lift/src/components/NtsStatusAuditModal.tsx))**:
+   - 전수 점검 진행 중(`isScanning`) 상단에 실시간 게이지 프로그레스 바 노출 (`국세청 공공데이터 공식 DB 실시간 대사 진행 중... N / N개사 (N%)`).
+   - 점검 버튼에 스피너 회전 애니메이션 탑재 및 진행 건수 동적 표출.
+3. **점검 완료 요약 알림 배너 표출**:
+   - 점검 완료 즉시 결과 요약 배너 표출: `총 N개사 실시간 대사 완료 (정상 N건, 휴업 N건, 폐업 N건, 가동위험 N건)`.
+4. **데이터 출처(Source) 정밀 배지 표출**:
+   - `🟢 국세청 실시간 대사 완료 (N건)` vs `⚠️ 번호 체크섬 판정 (N건)`을 상단 HUD에 명시하여 데이터 신뢰성 확보.
+5. **`[API 설정]` 버튼 및 팝업 모달 신설**:
+   - 모달 우상단에 `[API 설정]` 버튼 배치.
+   - 팝업을 통해 공공데이터포털 승인키 실시간 확인/변경, `[연동 테스트]` 원클릭 진단, `[설정 저장]`(localStorage & 서비스 동기화) 기능 지원.
+
+---
+
+## [v1.12.0.Build.77] - 2026-09-12 17:55
+
+### 🔤 [전사 고객사 명칭 가나다 정규화 오름차순 정렬 & 전 메뉴 초성 검색·필터링 표준화 체계 구축]
+
+**배경 및 문제점**:
+- 사장님 지시: "시스템 전반에서 고객명이 정렬되지 않게 나와. 고객 조회가 작동되는 메뉴의 UI 구성에 일관성이 없어 초성조회 필터가 있는 메뉴와 없는 메뉴가 있어 전부 동일하게 초성조회 기능 지원하고, 고객명이 오름차순 정렬되게 해줘"
+- **근본 원인 분석**:
+  - 한국 기업 데이터 특성상 `(주)현대건설`, `㈜백산이엔씨`, `주식회사 대우` 등 특수문자 및 법인 형태 접두어가 다수 존재.
+  - 기존 단순 문자열 정렬(`localeCompare`) 수행 시 특수문자 `(`, `㈜`로 시작하는 고객사가 최상단에 뭉치고 `현대건설`은 맨 하단으로 밀려나 고객사 목록이 파편화됨.
+  - 고객사 검색 및 선택 화면마다 초성 검색 지원 여부가 상이하여 업무 동선과 조작 경험이 불일치함.
+
+**개편 내역 (헌장 1.1, 1.2, 3.1, 3.2 준수)**:
+1. **정규화 초성 및 정렬 유틸리티 SSOT 완성 (`src/utils/hangulSearch.ts`)**:
+   - `extractCleanCompanyName(name)`: `(주)`, `㈜`, `주식회사`, `(유)`, `유한회사` 등 법인 수식어를 정밀 제거한 순수 상호명 추출.
+   - `getCleanLeadingChosung(name)`: 순수 상호 첫 글자의 대표 초성 자음 추출 및 쌍자음(ㄲ, ㄸ, ㅃ, ㅆ, ㅉ) 단자음 정규화.
+   - `matchesChosungFilter(name, chosung)`: 초성 칩 선택 시 정확한 기업 상호 매칭.
+   - `compareCustomerNames(a, b)`: 순수 상호명 기준 가나다 1차 오름차순 정렬 후 원본 명칭 2차 정렬로 `(주)현대건설`과 `현대건설`이 `ㅎ`에서 완벽히 일치·정렬되는 정규화 로직 구현.
+   - `sortCustomersByName(customers)`: 타입 안전한 고객 배열 가나다 정렬 헬퍼.
+   - `CHOSUNG_FILTER_LIST`: `['전체', 'ㄱ', 'ㄴ', 'ㄷ', 'ㄹ', 'ㅁ', 'ㅂ', 'ㅅ', 'ㅇ', 'ㅈ', 'ㅊ', 'ㅋ', 'ㅌ', 'ㅍ', 'ㅎ', '기타']`.
+2. **공통 초성 필터 칩 바 컴포넌트 신규 제작 (`src/components/ChosungFilterBar.tsx`)**:
+   - 100% 인라인 스타일 기반, No-Wrap 횡스크롤 지원, 선택 칩 토글 해제 지원.
+3. **데이터베이스 & 전역 컨텍스트 SSOT 정렬 주입**:
+   - `src/services/db.ts`: `db.customers` getter 호출 시 `compareCustomerNames` 기반 자동 가나다 오름차순 정렬 반환.
+   - `src/context/AppContext.tsx`: `refreshAllData()`에서 `setCustomers` 시 `sortCustomersByName` 일괄 적용.
+4. **전사 고객 조회·선택 화면 10개 메뉴 일괄 표준화 탑재**:
+   - **고객사 관리 (PC / 모바일)**:
+     - `src/pages/Customers.tsx`: 상단 `ChosungFilterBar` 칩 필터 마운트, `filteredCustomers` 초성 매칭 및 정렬, placeholder 안내 갱신.
+     - `src/mobile/pages/MobileCustomerManage.tsx`: 컴팩트 `ChosungFilterBar` 마운트, 초성 필터 및 정렬 연동.
+   - **계약 관리 (`src/pages/Contracts.tsx`)**:
+     - 상단 헤더 필터 콤보박스: `sortCustomersByName` 정렬 및 초성 검색 placeholder(`고객사명 / 초성 (예: ㅅㅅ, ㅎㄷ)`).
+     - 신규 계약서 작성 모달: 고객사 선택 영역에 초성/상호 실시간 검색창(`custModalSearch`) 추가 및 `filteredCustModalList` 가나다 정렬.
+   - **청구 관리 (`src/pages/Billings.tsx` / `src/components/BillingInvoiceTab.tsx`)**:
+     - 고객사 검색 placeholder 통일 및 청구서 발행 탭 고객사 목록 `sortCustomersByName` 오름차순 정렬.
+   - **미수금 정산 (`src/pages/Receivables.tsx`)**:
+     - 상단 고객사 드롭다운 및 빠른 검색 모달(`modalFilteredCustomers`) 가나다 정렬.
+   - **스마트 반납 (`src/pages/smart_return.tsx`)**:
+     - 계약 목록 초성 검색(`matchHangul`) 및 고객명 정렬 시 `compareCustomerNames` 적용.
+   - **AS 접수 (`src/pages/SmartAsRequest.tsx`)**:
+     - 고객사 선택부에 초성 검색창(`customerSearch`) 추가 및 `filteredCustomerList` 정렬 연동.
+   - **배차 관리 (PC / 모바일)**:
+     - `src/pages/smart_dispatch4.tsx`: 고객사 선택 목록 `sortCustomersByName` 정렬.
+     - `src/mobile/pages/MobileDispatchOrderCreate.tsx`: 배차 의뢰 고객사 선택 목록 `sortCustomersByName` 정렬.
+   - **통장 대사 (`src/pages/BankMatching.tsx`)**:
+     - 매핑 고객사 드롭다운에 `sortCustomersByName` 정렬 적용.
+   - **국세청 휴폐업 점검 모달 (`src/components/NtsStatusAuditModal.tsx`)**:
+     - 상호/초성 검색 지원 및 고객사 가나다 오름차순 정렬 적용.
+
+---
+
 ## [v1.12.0.Build.76] - 2026-09-12 17:40
 
 ### 🎨 [국세청 휴폐업 점검 & 폴더 일괄등록 모달 Tailwind 의존성 전면 소탕 및 전사 표준 Z-패턴 인라인 스타일 스튜디오 복원]

@@ -4,12 +4,21 @@
 import React, { useState, useMemo, useRef } from 'react';
 import { 
   X, Building2, Layers, Search, RefreshCw, AlertCircle, 
-  CheckCircle2, ShieldAlert, Download, Play, Check, Truck, AlertTriangle
+  CheckCircle2, ShieldAlert, Download, Play, Check, Truck, AlertTriangle, Key, ShieldCheck
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { db, Customer, Vendor, DelinquencyActionLog, Todo } from '../services/db';
-import { checkBatchNtsStatus, NtsStatusResult, formatBizNo } from '../services/ntsBusinessService';
+import { 
+  checkBatchNtsStatus, 
+  NtsStatusResult, 
+  formatBizNo, 
+  getNtsApiKey, 
+  setNtsApiKey, 
+  testNtsConnection, 
+  DEFAULT_NTS_API_KEY 
+} from '../services/ntsBusinessService';
 import { exportToExcel } from '../services/excel';
+import { matchHangul, compareCustomerNames } from '../utils/hangulSearch';
 
 interface NtsStatusAuditModalProps {
   isOpen: boolean;
@@ -32,6 +41,12 @@ export const NtsStatusAuditModal: React.FC<NtsStatusAuditModalProps> = ({
   const [scanProgress, setScanProgress] = useState({ processed: 0, total: 0 });
   const [scanResults, setScanResults] = useState<Map<string, NtsStatusResult>>(new Map());
   const [appliedIds, setAppliedIds] = useState<Set<string>>(new Set());
+  const [scanSource, setScanSource] = useState<'NTS_LIVE_API' | 'CHECKSUM_FALLBACK' | null>(null);
+  const [scanAlert, setScanAlert] = useState<{ type: 'success' | 'warning' | 'error'; message: string } | null>(null);
+  const [showConfigModal, setShowConfigModal] = useState(false);
+  const [configKeyInput, setConfigKeyInput] = useState(() => getNtsApiKey());
+  const [configTestState, setConfigTestState] = useState<{ running: boolean; message: string; success?: boolean } | null>(null);
+  const [configSavedToast, setConfigSavedToast] = useState(false);
 
   // 1. 대상 목록 정제
   const targetItems = useMemo(() => {
@@ -81,13 +96,13 @@ export const NtsStatusAuditModal: React.FC<NtsStatusAuditModalProps> = ({
     }
   }, [targetType, customers, vendors, assets, scanResults]);
 
-  // 2. 검색 및 필터링
+  // 2. 검색 및 필터링 (초성 검색 및 가나다 오름차순 정렬)
   const filteredItems = useMemo(() => {
-    return targetItems.filter(item => {
+    const list = targetItems.filter(item => {
       const matchText = !searchTerm || 
-        item.name.includes(searchTerm) || 
-        item.cleanNo.includes(searchTerm) || 
-        (item.representative || '').includes(searchTerm);
+        matchHangul(item.name, searchTerm) || 
+        item.cleanNo.includes(searchTerm.replace(/[^0-9]/g, '')) || 
+        matchHangul(item.representative || '', searchTerm);
 
       if (!matchText) return false;
 
@@ -99,6 +114,8 @@ export const NtsStatusAuditModal: React.FC<NtsStatusAuditModalProps> = ({
       if (filterType === 'ACTIVE') return item.nts?.status === 'ACTIVE' || (!item.nts && !item.isClosed);
       return true;
     });
+
+    return [...list].sort((a, b) => compareCustomerNames(a.name, b.name));
   }, [targetItems, searchTerm, filterType]);
 
   // 3. 상단 통계
@@ -126,21 +143,80 @@ export const NtsStatusAuditModal: React.FC<NtsStatusAuditModalProps> = ({
   const handleStartScan = async () => {
     if (isScanning) return;
     setIsScanning(true);
+    setScanAlert(null);
 
     const allBizNos = targetItems.map(i => i.cleanNo).filter(no => no.length === 10);
     setScanProgress({ processed: 0, total: allBizNos.length });
 
     try {
+      const activeKey = getNtsApiKey();
       const resultMap = await checkBatchNtsStatus(allBizNos, (processed, total) => {
         setScanProgress({ processed, total });
-      });
+      }, activeKey);
 
       setScanResults(resultMap);
+
+      // 데이터 소스 판정 (국세청 실시간 API vs 체크섬 폴백)
+      const firstResult = resultMap.values().next().value;
+      const isLive = firstResult?.source === 'NTS_LIVE_API';
+      setScanSource(firstResult?.source || null);
+
+      let actCount = 0;
+      let clsdCount = 0;
+      let suspCount = 0;
+      let riskCount = 0;
+
+      targetItems.forEach(item => {
+        const res = resultMap.get(item.cleanNo);
+        const stt = res?.status || (item.isClosed ? 'CLOSED' : 'ACTIVE');
+        if (stt === 'ACTIVE') actCount++;
+        else if (stt === 'CLOSED') {
+          clsdCount++;
+          if (item.rentedCount > 0) riskCount++;
+        } else if (stt === 'SUSPENDED') {
+          suspCount++;
+        }
+      });
+
+      if (isLive) {
+        setScanAlert({
+          type: 'success',
+          message: `국세청 공식 전수 점검 완료: 총 ${resultMap.size}개사 실시간 대사 완료 (정상: ${actCount}건, 휴업: ${suspCount}건, 폐업: ${clsdCount}건${riskCount > 0 ? `, 가동위험: ${riskCount}건` : ''})`
+        });
+      } else {
+        setScanAlert({
+          type: 'warning',
+          message: `국세청 API 미연결: 번호 유효성(체크섬)으로 임시 대사되었습니다. 우상단 [API 설정]에서 공공데이터포털 승인키를 확인해 주세요.`
+        });
+      }
     } catch (err: any) {
       showErrorModal(`국세청 전수 상태 조회 중 오류: ${err?.message || err}`);
+      setScanAlert({ type: 'error', message: `점검 실패: ${err?.message || err}` });
     } finally {
       setIsScanning(false);
     }
+  };
+
+  // 4-1. API 설정 모달: 연동 테스트
+  const handleTestApiKey = async () => {
+    setConfigTestState({ running: true, message: '국세청 API 서버에 테스트 요청을 전송하는 중...' });
+    const res = await testNtsConnection(configKeyInput);
+    setConfigTestState({
+      running: false,
+      message: res.message,
+      success: res.success && res.source === 'NTS_LIVE_API'
+    });
+  };
+
+  // 4-2. API 설정 모달: 키 저장
+  const handleSaveApiKey = () => {
+    setNtsApiKey(configKeyInput);
+    setConfigSavedToast(true);
+    setTimeout(() => {
+      setConfigSavedToast(false);
+      setShowConfigModal(false);
+      setConfigTestState(null);
+    }, 1200);
   };
 
   // 5. 단건 폐업 조치 (출고차단 + 긴급 자산회수 ToDo 발행 + 감사로그)
@@ -478,7 +554,7 @@ export const NtsStatusAuditModal: React.FC<NtsStatusAuditModalProps> = ({
                 type="text"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                placeholder="상호, 사업자번호 검색"
+                placeholder="상호 / 초성 (예: ㅅㅅ, ㅎㄷ), 사업자번호 검색"
                 style={{
                   width: '100%',
                   padding: '5px 8px 5px 28px',
@@ -512,8 +588,38 @@ export const NtsStatusAuditModal: React.FC<NtsStatusAuditModalProps> = ({
                 whiteSpace: 'nowrap'
               }}
             >
-              <Play size={14} style={{ fill: '#ffffff' }} />
+              {isScanning ? (
+                <RefreshCw size={14} style={{ animation: 'nts-spin 1s linear infinite' }} />
+              ) : (
+                <Play size={14} style={{ fill: '#ffffff' }} />
+              )}
               {isScanning ? `점검 중 (${scanProgress.processed}/${scanProgress.total})` : '국세청 전수 점검 시작'}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                setConfigKeyInput(getNtsApiKey());
+                setConfigTestState(null);
+                setShowConfigModal(true);
+              }}
+              style={{
+                padding: '6px 12px',
+                fontSize: '12px',
+                fontWeight: 600,
+                borderRadius: '6px',
+                border: '1px solid var(--border-color, #cbd5e1)',
+                backgroundColor: 'var(--bg-secondary, #f8fafc)',
+                color: 'var(--text-main, #0f172a)',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '5px',
+                whiteSpace: 'nowrap'
+              }}
+            >
+              <Key size={14} color="#6366f1" />
+              API 설정
             </button>
 
             <button
@@ -540,6 +646,72 @@ export const NtsStatusAuditModal: React.FC<NtsStatusAuditModalProps> = ({
           </div>
         </div>
 
+        {/* ─── 실시간 점검 프로그레스 바 (스캔 중 노출) ─── */}
+        {isScanning && (
+          <div style={{
+            padding: '8px 20px',
+            backgroundColor: '#eff6ff',
+            borderBottom: '1px solid #bfdbfe',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '5px',
+            flexShrink: 0
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', fontWeight: 600, color: '#1d4ed8' }}>
+              <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <RefreshCw size={12} style={{ animation: 'nts-spin 1s linear infinite' }} />
+                국세청 공공데이터 공식 DB 실시간 대사 진행 중...
+              </span>
+              <span>
+                {scanProgress.processed} / {scanProgress.total}개사 ({Math.round((scanProgress.processed / (scanProgress.total || 1)) * 100)}%)
+              </span>
+            </div>
+            <div style={{
+              width: '100%',
+              height: '6px',
+              backgroundColor: '#dbeafe',
+              borderRadius: '3px',
+              overflow: 'hidden'
+            }}>
+              <div style={{
+                height: '100%',
+                backgroundColor: '#2563eb',
+                width: `${Math.round((scanProgress.processed / (scanProgress.total || 1)) * 100)}%`,
+                transition: 'width 0.25s ease'
+              }} />
+            </div>
+          </div>
+        )}
+
+        {/* ─── 점검 완료 알림 배너 ─── */}
+        {scanAlert && !isScanning && (
+          <div style={{
+            padding: '8px 20px',
+            backgroundColor: scanAlert.type === 'success' ? '#f0fdf4' : scanAlert.type === 'warning' ? '#fffbeb' : '#fef2f2',
+            borderBottom: `1px solid ${scanAlert.type === 'success' ? '#bbf7d0' : scanAlert.type === 'warning' ? '#fde68a' : '#fecaca'}`,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            fontSize: '12px',
+            color: scanAlert.type === 'success' ? '#166534' : scanAlert.type === 'warning' ? '#92400e' : '#991b1b',
+            flexShrink: 0
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              {scanAlert.type === 'success' && <ShieldCheck size={16} color="#16a34a" />}
+              {scanAlert.type === 'warning' && <AlertTriangle size={16} color="#d97706" />}
+              {scanAlert.type === 'error' && <AlertCircle size={16} color="#dc2626" />}
+              <span style={{ fontWeight: 600 }}>{scanAlert.message}</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setScanAlert(null)}
+              style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'inherit', padding: '2px 4px' }}
+            >
+              <X size={14} />
+            </button>
+          </div>
+        )}
+
         {/* ─── ③ 진행 HUD 요약 바 ─── */}
         <div style={{
           padding: '6px 20px',
@@ -556,9 +728,37 @@ export const NtsStatusAuditModal: React.FC<NtsStatusAuditModalProps> = ({
             <span style={{ color: 'var(--text-muted, #64748b)' }}>점검 대상:</span>
             <strong>{stats.total}개사</strong>
             {scanResults.size > 0 && (
-              <span style={{ color: '#0284c7', fontWeight: 600 }}>
-                (국세청 대사 완료: {scanResults.size}건)
-              </span>
+              scanSource === 'NTS_LIVE_API' ? (
+                <span style={{
+                  padding: '2px 8px',
+                  borderRadius: '4px',
+                  backgroundColor: '#dcfce7',
+                  color: '#15803d',
+                  fontWeight: 700,
+                  fontSize: '11px',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '4px'
+                }}>
+                  <ShieldCheck size={13} />
+                  국세청 실시간 대사 완료 ({scanResults.size}건)
+                </span>
+              ) : (
+                <span style={{
+                  padding: '2px 8px',
+                  borderRadius: '4px',
+                  backgroundColor: '#fef3c7',
+                  color: '#b45309',
+                  fontWeight: 700,
+                  fontSize: '11px',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '4px'
+                }}>
+                  <AlertTriangle size={13} />
+                  번호 체크섬 판정 ({scanResults.size}건)
+                </span>
+              )
             )}
           </div>
 
@@ -881,6 +1081,207 @@ export const NtsStatusAuditModal: React.FC<NtsStatusAuditModalProps> = ({
           </div>
         </div>
       </div>
+
+      {/* ─── ⑥ 국세청 공공데이터 API 설정 모달 팝업 ─── */}
+      {showConfigModal && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          zIndex: 10001,
+          backgroundColor: 'rgba(0, 0, 0, 0.6)',
+          backdropFilter: 'blur(3px)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: '20px'
+        }}>
+          <div style={{
+            width: '100%',
+            maxWidth: '560px',
+            backgroundColor: 'var(--bg-card, #ffffff)',
+            borderRadius: '12px',
+            border: '1px solid var(--border-color, #cbd5e1)',
+            boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.25)',
+            display: 'flex',
+            flexDirection: 'column',
+            overflow: 'hidden'
+          }}>
+            {/* 팝업 헤더 */}
+            <div style={{
+              padding: '14px 20px',
+              backgroundColor: 'var(--bg-secondary, #f8fafc)',
+              borderBottom: '1px solid var(--border-color, #e2e8f0)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Key size={18} color="#6366f1" />
+                <h3 style={{ margin: 0, fontSize: '15px', fontWeight: 700, color: 'var(--text-main, #0f172a)' }}>
+                  국세청 공공데이터 API 연동 설정
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowConfigModal(false)}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted, #64748b)' }}
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* 팝업 본문 */}
+            <div style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                <label style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-main, #0f172a)', whiteSpace: 'nowrap' }}>
+                  공공데이터포털 일반 인증키 (ServiceKey)
+                </label>
+                <input
+                  type="text"
+                  value={configKeyInput}
+                  onChange={(e) => setConfigKeyInput(e.target.value)}
+                  placeholder="공공데이터포털(data.go.kr) 발급 인증키 입력"
+                  style={{
+                    width: '100%',
+                    padding: '8px 12px',
+                    fontSize: '12px',
+                    borderRadius: '6px',
+                    border: '1px solid var(--border-color, #cbd5e1)',
+                    backgroundColor: 'var(--bg-card, #ffffff)',
+                    color: 'var(--text-main, #0f172a)',
+                    fontFamily: 'monospace',
+                    outline: 'none'
+                  }}
+                />
+                <span style={{ fontSize: '11px', color: 'var(--text-muted, #64748b)', marginTop: '2px' }}>
+                  공공데이터포털(data.go.kr) &gt; '국세청_사업자등록정보 진위확인 및 상태조회 서비스' 발급 승인키
+                </span>
+              </div>
+
+              {/* 연동 테스트 결과 표시 */}
+              {configTestState && (
+                <div style={{
+                  padding: '10px 14px',
+                  borderRadius: '6px',
+                  fontSize: '12px',
+                  backgroundColor: configTestState.running ? '#eff6ff' : configTestState.success ? '#f0fdf4' : '#fef2f2',
+                  border: `1px solid ${configTestState.running ? '#bfdbfe' : configTestState.success ? '#bbf7d0' : '#fecaca'}`,
+                  color: configTestState.running ? '#1e40af' : configTestState.success ? '#15803d' : '#991b1b',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px'
+                }}>
+                  {configTestState.running ? (
+                    <RefreshCw size={14} style={{ animation: 'nts-spin 1s linear infinite' }} />
+                  ) : configTestState.success ? (
+                    <CheckCircle2 size={16} color="#16a34a" />
+                  ) : (
+                    <AlertCircle size={16} color="#dc2626" />
+                  )}
+                  <span>{configTestState.message}</span>
+                </div>
+              )}
+
+              {configSavedToast && (
+                <div style={{
+                  padding: '8px 12px',
+                  borderRadius: '6px',
+                  fontSize: '12px',
+                  backgroundColor: '#dcfce7',
+                  color: '#15803d',
+                  fontWeight: 700,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px'
+                }}>
+                  <Check size={14} /> 설정이 성공적으로 저장되었습니다.
+                </div>
+              )}
+            </div>
+
+            {/* 팝업 하단 액션 바 */}
+            <div style={{
+              padding: '12px 20px',
+              backgroundColor: 'var(--bg-secondary, #f8fafc)',
+              borderTop: '1px solid var(--border-color, #e2e8f0)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between'
+            }}>
+              <button
+                type="button"
+                disabled={configTestState?.running}
+                onClick={handleTestApiKey}
+                style={{
+                  padding: '6px 12px',
+                  borderRadius: '6px',
+                  fontSize: '12px',
+                  fontWeight: 600,
+                  border: '1px solid var(--border-color, #cbd5e1)',
+                  backgroundColor: 'var(--bg-card, #ffffff)',
+                  color: 'var(--text-main, #0f172a)',
+                  cursor: configTestState?.running ? 'not-allowed' : 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '5px',
+                  whiteSpace: 'nowrap'
+                }}
+              >
+                <RefreshCw size={13} />
+                연동 테스트
+              </button>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <button
+                  type="button"
+                  onClick={() => setShowConfigModal(false)}
+                  style={{
+                    padding: '6px 12px',
+                    borderRadius: '6px',
+                    fontSize: '12px',
+                    fontWeight: 600,
+                    border: '1px solid var(--border-color, #cbd5e1)',
+                    backgroundColor: 'transparent',
+                    color: 'var(--text-secondary, #475569)',
+                    cursor: 'pointer',
+                    whiteSpace: 'nowrap'
+                  }}
+                >
+                  취소
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSaveApiKey}
+                  style={{
+                    padding: '6px 16px',
+                    borderRadius: '6px',
+                    fontSize: '12px',
+                    fontWeight: 700,
+                    backgroundColor: 'var(--primary, #4f46e5)',
+                    color: '#ffffff',
+                    border: 'none',
+                    cursor: 'pointer',
+                    whiteSpace: 'nowrap'
+                  }}
+                >
+                  설정 저장
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 스피너 회전 애니메이션 스타일 */}
+      <style>{`
+        @keyframes nts-spin {
+          from { transform: rotate(0deg); }
+          to { transform: rotate(360deg); }
+        }
+      `}</style>
     </div>
   );
 };

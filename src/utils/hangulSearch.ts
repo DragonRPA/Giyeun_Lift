@@ -215,3 +215,79 @@ export function matchHangulAny(targets: (string | null | undefined)[], query?: s
   return createHangulMatcher(query).testAny(targets);
 }
 
+/**
+ * 칩 필터용 표준 초성 자음 목록 (16개 옵션)
+ */
+export const CHOSUNG_FILTER_LIST = [
+  '전체', 'ㄱ', 'ㄴ', 'ㄷ', 'ㄹ', 'ㅁ', 'ㅂ', 'ㅅ', 'ㅇ', 'ㅈ', 'ㅊ', 'ㅋ', 'ㅌ', 'ㅍ', 'ㅎ', '기타'
+] as const;
+
+export type ChosungFilterOption = typeof CHOSUNG_FILTER_LIST[number];
+
+/**
+ * 법인 수식어('(주)', '주식회사', '㈜', '(유)', '유한회사' 등)를 제거한 순수 상호명 추출
+ */
+export function extractCleanCompanyName(name?: string | null): string {
+  if (!name) return '';
+  return name
+    .replace(/주식회사|\(주\)|\(주\)|㈜|\(유\)|유한회사|\(합\)|합자회사|사단법인|재단법인/gi, '')
+    .replace(/[\s\(\)\[\]._\-]/g, '')
+    .trim();
+}
+
+/**
+ * 법인 수식어를 제거한 순수 상호의 대표 초성 자음 추출 (쌍자음은 대표 기본자음으로 정규화)
+ * 예: '(주)현대건설' -> 'ㅎ', '주식회사 백산이엔씨' -> 'ㅂ', '㈜쌍용' -> 'ㅅ', 'CJ대한통운' -> 'C'
+ */
+export function getCleanLeadingChosung(name?: string | null): string {
+  const clean = extractCleanCompanyName(name);
+  if (!clean) return '';
+  const firstChar = clean[0];
+  const ch = getChosung(firstChar);
+  // 쌍자음 정규화: ㄲ -> ㄱ, ㄸ -> ㄷ, ㅃ -> ㅂ, ㅆ -> ㅅ, ㅉ -> ㅈ
+  if (ch === 'ㄲ') return 'ㄱ';
+  if (ch === 'ㄸ') return 'ㄷ';
+  if (ch === 'ㅃ') return 'ㅂ';
+  if (ch === 'ㅆ') return 'ㅅ';
+  if (ch === 'ㅉ') return 'ㅈ';
+  return ch;
+}
+
+/**
+ * 대상 상호명이 선택된 초성 필터와 일치하는지 검사
+ */
+export function matchesChosungFilter(name?: string | null, selectedChosung?: string): boolean {
+  if (!selectedChosung || selectedChosung === '전체') return true;
+  const lead = getCleanLeadingChosung(name);
+  if (selectedChosung === '기타') {
+    const standardConsonants: readonly string[] = [
+      'ㄱ', 'ㄴ', 'ㄷ', 'ㄹ', 'ㅁ', 'ㅂ', 'ㅅ', 'ㅇ', 'ㅈ', 'ㅊ', 'ㅋ', 'ㅌ', 'ㅍ', 'ㅎ'
+    ];
+    return !standardConsonants.includes(lead);
+  }
+  return lead === selectedChosung;
+}
+
+/**
+ * 고객명 정규화 가나다 오름차순 비교 함수 (SSOT)
+ * '(주)', '㈜', '주식회사' 등 법인 표기를 제외한 순수 상호명 기준으로 가나다 오름차순 정렬하고,
+ * 순수 상호명이 동일한 경우 원래 명칭으로 2차 정렬합니다.
+ */
+export function compareCustomerNames(nameA?: string | null, nameB?: string | null): number {
+  const strA = nameA || '';
+  const strB = nameB || '';
+  const cleanA = extractCleanCompanyName(strA);
+  const cleanB = extractCleanCompanyName(strB);
+
+  return cleanA.localeCompare(cleanB, 'ko') || strA.localeCompare(strB, 'ko');
+}
+
+/**
+ * 고객 객체 배열을 가나다 오름차순(법인 수식어 제외 순수 상호명 기준)으로 정렬
+ */
+export function sortCustomersByName<T extends { name?: string | null }>(customers: T[]): T[] {
+  if (!customers || customers.length <= 1) return customers || [];
+  return [...customers].sort((a, b) => compareCustomerNames(a?.name, b?.name));
+}
+
+

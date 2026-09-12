@@ -17,6 +17,14 @@ export function normalizeCustomerName(name: string): string {
     .toLowerCase();
 }
 
+export function compareCustomerNames(nameA?: string | null, nameB?: string | null): number {
+  const strA = nameA || '';
+  const strB = nameB || '';
+  const cleanA = normalizeCustomerName(strA);
+  const cleanB = normalizeCustomerName(strB);
+  return cleanA.localeCompare(cleanB, 'ko') || strA.localeCompare(strB, 'ko');
+}
+
 export function findCustomerByNormalizedName(customers: Customer[], targetName: string): Customer | undefined {
   if (!targetName) return undefined;
   const targetKey = normalizeCustomerName(targetName);
@@ -157,6 +165,7 @@ export interface User {
   phone?: string;
   email?: string;
   profileImageUrl?: string;
+  customRoleId?: string; // 상속받은 권한 명칭 ID (CustomRole.id)
   createdAt?: string;
   updatedAt?: string;
 }
@@ -243,6 +252,25 @@ export function createMenuPermission(
     createdAt: nowIso,
     updatedAt: nowIso
   };
+}
+
+export interface CustomRole {
+  id: string;
+  name: string;          // 관리자 자유 입력 권한 명칭 (예: '영업팀장', '출고담당', '정비팀장', '총괄경리')
+  description?: string;  // 권한 설명
+  isSystem?: boolean;    // 기본 시스템 역할 여부
+  createdAt: string;
+  updatedAt?: string;
+}
+
+export interface RolePermission {
+  id: string;            // `roleperm-${roleId}-${menuId}`
+  roleId: string;        // CustomRole.id
+  menuId: string;        // 메뉴 ID
+  canView: boolean;      // 조회 권한
+  canSave: boolean;      // 저장/수정 권한
+  createdAt: string;
+  updatedAt?: string;
 }
 
 export interface CustomerBankAccount {
@@ -3264,6 +3292,131 @@ export const SEED_TENANTS: Tenant[] = [
 const SEED_USERS: User[] = [];
 const SEED_DEPARTMENTS: Department[] = [];
 const SEED_PERMISSIONS: MenuPermission[] = [];
+
+export const SEED_CUSTOM_ROLES: CustomRole[] = [
+  {
+    id: 'role_mgmt',
+    name: '관리부 (경영/회계/인사)',
+    description: '회계, 청구, 미수금, 급여, 자금 및 일반 관리 총괄',
+    isSystem: true,
+    createdAt: '2026-01-01T00:00:00.000Z'
+  },
+  {
+    id: 'role_sales',
+    name: '영업부 (고객/계약/의뢰)',
+    description: '고객 관리, 계약 체결, 배차/반납/AS 의뢰 및 미수금 확인',
+    isSystem: true,
+    createdAt: '2026-01-01T00:00:00.000Z'
+  },
+  {
+    id: 'role_logistics',
+    name: '출고팀 (배차/운송/검수)',
+    description: '배차 승인, 운송 기사 배정, 출고 검수 및 자산 입출고 관리',
+    isSystem: true,
+    createdAt: '2026-01-01T00:00:00.000Z'
+  },
+  {
+    id: 'role_mechanic',
+    name: 'AS팀 (정비/현장AS/부품)',
+    description: '장비 입고 정비, 현장 AS 처리, 소모품 수불 및 점검표 관리',
+    isSystem: true,
+    createdAt: '2026-01-01T00:00:00.000Z'
+  }
+];
+
+const SEED_ROLE_CONFIG: Record<string, Record<string, { canView: boolean; canSave: boolean }>> = {
+  role_mgmt: {
+    dashboard: { canView: true, canSave: false },
+    billing: { canView: true, canSave: true },
+    receivable: { canView: true, canSave: true },
+    purchase_settlement: { canView: true, canSave: true },
+    vendors: { canView: true, canSave: true },
+    bank_matching: { canView: true, canSave: true },
+    corporate_card: { canView: true, canSave: true },
+    cash_flow: { canView: true, canSave: true },
+    delinquency: { canView: true, canSave: true },
+    depreciation_execution: { canView: true, canSave: true },
+    payroll: { canView: true, canSave: true },
+    leave_management: { canView: true, canSave: true },
+    ot_management: { canView: true, canSave: true },
+    organization: { canView: true, canSave: true },
+    regular_reports: { canView: true, canSave: true },
+    acquisition_disposal: { canView: true, canSave: true },
+    customer: { canView: true, canSave: false },
+    contract: { canView: true, canSave: false },
+    product: { canView: true, canSave: false },
+    asset: { canView: true, canSave: false },
+    consumable_purchase: { canView: true, canSave: true },
+    consumable_inout: { canView: true, canSave: true },
+    consumable_stock: { canView: true, canSave: true },
+    consumable: { canView: true, canSave: true },
+    leave_application: { canView: true, canSave: true },
+    vehicle_log: { canView: true, canSave: true }
+  },
+  role_sales: {
+    dashboard: { canView: true, canSave: false },
+    customer: { canView: true, canSave: true },
+    contract: { canView: true, canSave: true },
+    smart_dispatch: { canView: true, canSave: true },
+    smart_dispatch4: { canView: true, canSave: true },
+    smart_return: { canView: true, canSave: true },
+    smart_as_request: { canView: true, canSave: true },
+    receivable: { canView: true, canSave: true },
+    delinquency: { canView: true, canSave: true },
+    billing: { canView: true, canSave: false },
+    product: { canView: true, canSave: false },
+    asset: { canView: true, canSave: false },
+    rent_asset: { canView: true, canSave: false },
+    leave_application: { canView: true, canSave: true },
+    vehicle_log: { canView: true, canSave: true }
+  },
+  role_logistics: {
+    dashboard: { canView: true, canSave: false },
+    delivery: { canView: true, canSave: true },
+    transport_master: { canView: true, canSave: true },
+    dispatch_assign: { canView: true, canSave: true },
+    outbound_inspections: { canView: true, canSave: true },
+    asset_inout_history: { canView: true, canSave: true },
+    print_queue_monitor: { canView: true, canSave: true },
+    smart_dispatch4: { canView: true, canSave: false },
+    product: { canView: true, canSave: false },
+    asset: { canView: true, canSave: false },
+    rent_asset: { canView: true, canSave: false },
+    consumable_purchase: { canView: true, canSave: false },
+    consumable_inout: { canView: true, canSave: true },
+    consumable_stock: { canView: true, canSave: false },
+    agent_badge: { canView: true, canSave: false },
+    leave_application: { canView: true, canSave: true },
+    vehicle_log: { canView: true, canSave: true }
+  },
+  role_mechanic: {
+    dashboard: { canView: true, canSave: false },
+    repairs: { canView: true, canSave: true },
+    field_as: { canView: true, canSave: true },
+    inspection_checklist: { canView: true, canSave: true },
+    consumable_purchase: { canView: true, canSave: true },
+    consumable_inout: { canView: true, canSave: true },
+    consumable_stock: { canView: true, canSave: true },
+    product: { canView: true, canSave: false },
+    asset: { canView: true, canSave: false },
+    rent_asset: { canView: true, canSave: false },
+    agent_badge: { canView: false, canSave: false },
+    leave_application: { canView: true, canSave: true },
+    vehicle_log: { canView: true, canSave: true }
+  }
+};
+
+export const SEED_ROLE_PERMISSIONS: RolePermission[] = Object.entries(SEED_ROLE_CONFIG).flatMap(([roleId, rules]) =>
+  Object.entries(rules).map(([menuId, perm]) => ({
+    id: `roleperm-${roleId}-${menuId}`,
+    roleId,
+    menuId,
+    canView: perm.canView,
+    canSave: perm.canSave,
+    createdAt: '2026-01-01T00:00:00.000Z',
+    updatedAt: '2026-01-01T00:00:00.000Z'
+  }))
+);
 const SEED_PRODUCTS: Product[] = mockDataProducts;
 const SEED_CUSTOMERS: Customer[] = mockDataCust.customers;
 const SEED_CONTACTS: CustomerContact[] = mockDataCust.contacts;
@@ -3847,7 +4000,7 @@ export const ALL_DB_KEYS = [
   'prepaidTransactions', 'delinquencyActionLogs', 'mechanicConsumableStocks', 'receivables', 'legalNoticeLogs', 'legalNoticeTemplates',
   'corporateVehicles', 'vehicleOperationLogs', 'vehicleFuelLogs',
   'stocktakingAudits', 'stocktakingAuditItems', 'collectedParts', 'equipmentManuals', 'standardOptions',
-  'printStations', 'printQueue'
+  'printStations', 'printQueue', 'customRoles', 'rolePermissions'
 ];
 
 class LocalDB {
@@ -3943,8 +4096,36 @@ class LocalDB {
     return defaultTenant || SEED_TENANTS[0];
   }
 
-  get users() { return this.get<User>('users', SEED_USERS); }
+  get users() { 
+    const raw = this.get<User>('users', SEED_USERS); 
+    let updated = false;
+    const mapped = raw.map(u => {
+      if (!u.customRoleId) {
+        const dept = (u.departmentId || u.department || '').toUpperCase();
+        let assignedRoleId: string | undefined;
+        if (dept.includes('0000002') || dept.includes('관리') || dept.includes('경영')) assignedRoleId = 'role_mgmt';
+        else if (dept.includes('0000003') || dept.includes('영업')) assignedRoleId = 'role_sales';
+        else if (dept.includes('0000004') || dept.includes('출고') || dept.includes('배차')) assignedRoleId = 'role_logistics';
+        else if (dept.includes('0000005') || dept.includes('AS') || dept.includes('정비')) assignedRoleId = 'role_mechanic';
+        if (assignedRoleId) {
+          updated = true;
+          return { ...u, customRoleId: assignedRoleId };
+        }
+      }
+      return u;
+    });
+    if (updated) {
+      this.set('users', mapped);
+    }
+    return mapped;
+  }
   set users(val: User[]) { this.set('users', val); }
+
+  get customRoles() { return this.get<CustomRole>('customRoles', SEED_CUSTOM_ROLES); }
+  set customRoles(val: CustomRole[]) { this.set('customRoles', val); }
+
+  get rolePermissions() { return this.get<RolePermission>('rolePermissions', SEED_ROLE_PERMISSIONS); }
+  set rolePermissions(val: RolePermission[]) { this.set('rolePermissions', val); }
 
   get departments() { return this.get<Department>('departments', SEED_DEPARTMENTS); }
   set departments(val: Department[]) { this.set('departments', val); }
@@ -3990,7 +4171,7 @@ class LocalDB {
         return { ...c, defaultPaidOptions: defPaid, defaultProtection: defProt };
       }
       return c;
-    });
+    }).sort((a, b) => compareCustomerNames(a?.name, b?.name));
   }
   set customers(val: Customer[]) { this.set('customers', val); }
 
@@ -4256,6 +4437,8 @@ class LocalDB {
       users: 'users',
       departments: 'departments',
       permissions: 'permissions',
+      customRoles: 'custom_roles',
+      rolePermissions: 'role_permissions',
       customers: 'customers',
       contacts: 'customer_contacts',
       sites: 'customer_sites',
@@ -4712,7 +4895,7 @@ class LocalDB {
         continue;
       }
       // users 테이블 전용 허용 컬럼 방어벽 (DB users 테이블에 존재하지 않는 department 컬럼 누출 차단)
-      if (tableName === 'users' && !['id', 'loginId', 'passwordHash', 'name', 'departmentId', 'position', 'managerId', 'role', 'status', 'baseSalary', 'phone', 'email', 'address', 'birthDate', 'joinDate', 'retireDate', 'profileImageUrl', 'createdAt', 'updatedAt'].includes(key)) {
+      if (tableName === 'users' && !['id', 'loginId', 'passwordHash', 'name', 'departmentId', 'position', 'managerId', 'role', 'status', 'baseSalary', 'phone', 'email', 'address', 'birthDate', 'joinDate', 'retireDate', 'profileImageUrl', 'customRoleId', 'createdAt', 'updatedAt'].includes(key)) {
         continue;
       }
       if (typeof val === 'string' && (key === 'userId' || key === 'salespersonId' || key === 'requesterId' || key === 'accepterId' || key === 'completerId' || key === 'inbounderId' || key === 'createdById' || key === 'updatedById' || key.toLowerCase().includes('user'))) {
@@ -4797,6 +4980,10 @@ class LocalDB {
       equipment_manuals: 'equipmentManuals',
       standard_options: 'standardOptions',
       standardOptions: 'standardOptions',
+      custom_roles: 'customRoles',
+      customRoles: 'customRoles',
+      role_permissions: 'rolePermissions',
+      rolePermissions: 'rolePermissions',
     };
     return (reverseMapping[key] || key) as keyof LocalDB;
   }
@@ -5021,6 +5208,48 @@ class LocalDB {
     }
 
     return true;
+  }
+
+  async upsertRows<T extends { id: string }>(key: keyof LocalDB | string, rows: T[]): Promise<void> {
+    if (!rows || rows.length === 0) return;
+    const tableKey = this.normalizeKey(key as string);
+    const list = [...(((this[tableKey] || []) as unknown) as T[])];
+
+    rows.forEach(row => {
+      const idx = list.findIndex(item => item && item.id === row.id);
+      if (idx > -1) {
+        list[idx] = { ...list[idx], ...row };
+      } else {
+        list.push(row);
+      }
+    });
+    this.set(tableKey, list);
+
+    if (supabase) {
+      const tableName = this.mapToSupabaseTable(tableKey as string);
+      const sanitizedRows = rows.map(r => this.sanitizeSupabasePayload(r, tableName));
+      const promise = supabase
+        .from(tableName)
+        .upsert(sanitizedRows, { onConflict: 'id' })
+        .then(({ error }) => {
+          if (error) {
+            console.error(`Supabase upsertRows failed for ${tableName}:`, error);
+            const msg = error.message || String(error);
+            const isTableMissing = msg.includes('Could not find the table') || (error.code === 'PGRST204' && msg.includes('table')) || error.code === '42P01';
+            if (isTableMissing) {
+              console.warn(`[Graceful Isolation] 원격 Supabase DB에 ${tableName} 테이블이 존재하지 않습니다. 로컬 저장을 완결합니다.`);
+              return null;
+            }
+            if (msg.includes('column') || msg.includes('Could not find') || error.code === 'PGRST200' || error.code === '42703' || error.code === 'PGRST204') {
+              console.warn(`[Supabase upsertRows graceful fallback] ${tableName} column mismatch:`, msg);
+              return null;
+            }
+            throw new Error(`[Supabase DB 일괄 저장 실패] ${tableName}\n\n사유: ${msg}`);
+          }
+        });
+      this.pendingWrites.push(promise);
+      await promise;
+    }
   }
 
   // Bulk upload all tables to Supabase

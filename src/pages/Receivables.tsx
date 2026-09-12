@@ -3,7 +3,7 @@ import { useApp } from '../context/AppContext';
 import { db, Receivable } from '../services/db';
 import { Plus, Search, DollarSign, Calendar, FileText, CheckCircle, AlertTriangle, RotateCcw, Download, X } from 'lucide-react';
 import { exportToExcel } from '../services/excel';
-import { matchHangul } from '../utils/hangulSearch';
+import { matchHangul, sortCustomersByName } from '../utils/hangulSearch';
 
 export const Receivables: React.FC = () => {
   const {
@@ -73,9 +73,9 @@ export const Receivables: React.FC = () => {
     // 이미 선택된 고객사가 있다면 검색 필터와 무관하게 목록 최상단에 보존
     if (modalSelectedCustId && !matched.some(cu => cu.id === modalSelectedCustId)) {
       const selectedCust = customers.find(cu => cu.id === modalSelectedCustId);
-      if (selectedCust) return [selectedCust, ...matched];
+      if (selectedCust) return [selectedCust, ...sortCustomersByName(matched)];
     }
-    return matched;
+    return sortCustomersByName(matched);
   }, [customers, sites, contracts, modalSearchTerm, modalSelectedCustId]);
 
   // 🔍 모달 빠른 검색어 기반 실시간 필터링된 현장 목록
@@ -545,7 +545,7 @@ export const Receivables: React.FC = () => {
               style={{ padding: '5px 8px', fontSize: '12px', width: '140px', borderRadius: '4px' }}
             >
               <option value="ALL">전체 고객사</option>
-              {customers.map(cu => (
+              {sortCustomersByName(customers).map(cu => (
                 <option key={cu.id} value={cu.id}>{cu.name}</option>
               ))}
             </select>

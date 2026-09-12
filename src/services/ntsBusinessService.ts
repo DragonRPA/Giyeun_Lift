@@ -78,10 +78,51 @@ function parseNtsItem(item: any, source: 'NTS_LIVE_API' | 'CHECKSUM_FALLBACK'): 
   };
 }
 
+export const DEFAULT_NTS_API_KEY = '7f24250bd002412aaa152a6e3ec63e556604f75be0fa9181983c33a618cb2e03';
+
+export function getNtsApiKey(): string {
+  if (typeof window === 'undefined') return DEFAULT_NTS_API_KEY;
+  return localStorage.getItem('erp_nts_api_key') || DEFAULT_NTS_API_KEY;
+}
+
+export function setNtsApiKey(key: string): void {
+  if (typeof window !== 'undefined') {
+    localStorage.setItem('erp_nts_api_key', key.trim());
+  }
+}
+
+export async function testNtsConnection(serviceKey?: string): Promise<{ success: boolean; message: string; source?: string }> {
+  const activeKey = (serviceKey || getNtsApiKey()).trim();
+  try {
+    const res = await fetch('/api/nts-status', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ b_no: ['1408126442'], serviceKey: activeKey })
+    });
+    if (res.ok) {
+      const json = await res.json();
+      if (json.success && json.data && json.data.length > 0) {
+        const item = json.data[0];
+        const isLive = json.source === 'NTS_LIVE_API';
+        return {
+          success: true,
+          source: json.source,
+          message: isLive 
+            ? `국세청 공식 API 연동 성공 (${item.b_stt || '정상'})` 
+            : `체크섬 알고리즘 응답 (API키 미인식)`
+        };
+      }
+    }
+    return { success: false, message: `서버 응답 오류 (HTTP ${res.status})` };
+  } catch (err: any) {
+    return { success: false, message: err?.message || '연결 실패' };
+  }
+}
+
 /**
  * 4. 단일 사업자등록번호 국세청 상태 실시간 조회
  */
-export async function checkSingleNtsStatus(bizNo: string): Promise<NtsStatusResult> {
+export async function checkSingleNtsStatus(bizNo: string, serviceKey?: string): Promise<NtsStatusResult> {
   const cleanNo = (bizNo || '').replace(/[^0-9]/g, '');
   if (cleanNo.length !== 10) {
     return {
@@ -96,11 +137,13 @@ export async function checkSingleNtsStatus(bizNo: string): Promise<NtsStatusResu
     };
   }
 
+  const activeKey = (serviceKey || getNtsApiKey()).trim();
+
   try {
     const res = await fetch('/api/nts-status', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ b_no: [cleanNo] })
+      body: JSON.stringify({ b_no: [cleanNo], serviceKey: activeKey })
     });
 
     if (res.ok) {
@@ -131,7 +174,8 @@ export async function checkSingleNtsStatus(bizNo: string): Promise<NtsStatusResu
  */
 export async function checkBatchNtsStatus(
   bizNos: string[],
-  onChunkProgress?: (processed: number, total: number) => void
+  onChunkProgress?: (processed: number, total: number) => void,
+  serviceKey?: string
 ): Promise<Map<string, NtsStatusResult>> {
   const resultMap = new Map<string, NtsStatusResult>();
   const cleanList = Array.from(new Set(bizNos.map(no => (no || '').replace(/[^0-9]/g, '')).filter(no => no.length === 10)));
@@ -139,6 +183,7 @@ export async function checkBatchNtsStatus(
 
   if (total === 0) return resultMap;
 
+  const activeKey = (serviceKey || getNtsApiKey()).trim();
   const CHUNK_SIZE = 100;
   for (let i = 0; i < total; i += CHUNK_SIZE) {
     const chunk = cleanList.slice(i, i + CHUNK_SIZE);
@@ -146,7 +191,7 @@ export async function checkBatchNtsStatus(
       const res = await fetch('/api/nts-status', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ b_no: chunk })
+        body: JSON.stringify({ b_no: chunk, serviceKey: activeKey })
       });
 
       if (res.ok) {

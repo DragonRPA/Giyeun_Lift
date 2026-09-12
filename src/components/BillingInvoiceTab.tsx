@@ -24,7 +24,7 @@ import {
   type TransactionStatementItem
 } from '../services/excelTemplateEngine';
 import type { BillingInvoice, Billing, BillingDetail } from '../services/db';
-import { matchHangul } from '../utils/hangulSearch';
+import { matchHangul, sortCustomersByName } from '../utils/hangulSearch';
 
 // ── 상태 배지 ──
 function StatusBadge({ status }: { status: string }) {
@@ -170,17 +170,18 @@ export const BillingInvoiceTab: React.FC = () => {
     loadInvoices();
   }, [loadInvoices]);
 
-  // 고객사 목록 검색 필터링 (초성검색 지원)
+  // 고객사 목록 검색 필터링 (초성검색 지원 및 가나다 오름차순 정렬)
   const filteredCustomers = useMemo(() => {
     if (!customers) return [];
-    if (!customerSearchQuery.trim()) return customers;
+    if (!customerSearchQuery.trim()) return sortCustomersByName(customers);
     const q = customerSearchQuery.trim();
-    return customers.filter(c =>
+    const list = customers.filter(c =>
       matchHangul(c.name || '', q) ||
       matchHangul(c.businessNumber || '', q) ||
       matchHangul(c.code || '', q) ||
       matchHangul(c.representativeName || (c as any).representative || '', q)
     );
+    return sortCustomersByName(list);
   }, [customers, customerSearchQuery]);
 
   // 검색 시 또는 첫 진입 시 선택된 고객사 자동 동기화

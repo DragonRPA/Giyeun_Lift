@@ -3,6 +3,7 @@ import { useApp } from '../context/AppContext';
 import { Zap, Clipboard, FileText, Check, Search, ArrowUpDown, Shield, AlertTriangle, Printer, RotateCcw, Copy, PhoneCall, Sparkles } from 'lucide-react';
 import { SmartReturnData } from '../context/AppContext';
 import { fetchMyDrafts, DraftDispatchOrder, discardDraft } from '../services/callUploadService';
+import { matchHangul, compareCustomerNames } from '../utils/hangulSearch';
 
 export const SmartReturn: React.FC = () => {
   const { hasPermission, saveSmartReturn, contracts, customers, sites, contacts, deliveries, contractAssets, assets, repairs, vendors, currentUser, users, currentTenant, printStations, enqueuePrintJob } = useApp();
@@ -210,12 +211,13 @@ export const SmartReturn: React.FC = () => {
   const filteredContracts = activeContracts.filter(c => {
     const custName = customers.find(cust => cust.id === c.customerId)?.name || '';
     const siteName = sites.find(s => s.id === c.siteId)?.name || '';
-    const matchStr = salesSearch.toLowerCase();
+    const trimmed = salesSearch.trim();
     
     const matchesSearch = 
-      custName.toLowerCase().includes(matchStr) || 
-      siteName.toLowerCase().includes(matchStr) || 
-      (c.contractNo && c.contractNo.toLowerCase().includes(matchStr));
+      !trimmed ||
+      matchHangul(custName, trimmed) || 
+      matchHangul(siteName, trimmed) || 
+      (c.contractNo && c.contractNo.toLowerCase().includes(trimmed.toLowerCase()));
 
     const matchesReturnStart = !returnStartDate || (c.endDate || '') >= returnStartDate;
     const matchesReturnEnd = !returnEndDate || (c.endDate || '') <= returnEndDate;
@@ -224,21 +226,25 @@ export const SmartReturn: React.FC = () => {
   });
 
   const sortedContracts = filteredContracts.slice().sort((a, b) => {
+    if (salesSortBy === 'CUSTOMER_NAME') {
+      const custA = customers.find(cust => cust.id === a.customerId)?.name || '';
+      const custB = customers.find(cust => cust.id === b.customerId)?.name || '';
+      const cmp = compareCustomerNames(custA, custB);
+      return salesSortDesc ? -cmp : cmp;
+    }
+
     let valA = '';
     let valB = '';
 
     if (salesSortBy === 'END_DATE') {
       valA = a.endDate || '';
       valB = b.endDate || '';
-    } else if (salesSortBy === 'CUSTOMER_NAME') {
-      valA = customers.find(cust => cust.id === a.customerId)?.name || '';
-      valB = customers.find(cust => cust.id === b.customerId)?.name || '';
     } else if (salesSortBy === 'SITE_NAME') {
       valA = sites.find(s => s.id === a.siteId)?.name || '';
       valB = sites.find(s => s.id === b.siteId)?.name || '';
     }
 
-    const compare = valA.localeCompare(valB);
+    const compare = valA.localeCompare(valB, 'ko');
     return salesSortDesc ? -compare : compare;
   });
 
@@ -749,7 +755,7 @@ export const SmartReturn: React.FC = () => {
                   <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                     <input
                       type="text"
-                      placeholder="고객명, 현장명, 계약번호 검색..."
+                      placeholder="고객명 / 초성 (예: ㅅㅅ, ㅎㄷ), 현장명, 계약번호 검색..."
                       value={salesSearch}
                       onChange={e => setSalesSearch(e.target.value)}
                       style={{ flex: 1, padding: '6px 10px', fontSize: '13px', borderRadius: '6px', border: '1px solid var(--border-color)' }}

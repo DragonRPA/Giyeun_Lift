@@ -1955,7 +1955,7 @@ ${currentTenant?.tradeName || currentTenant?.corporateName || '임대인'} 올�
                   value={tempSearchTerm} 
                   onChange={e => setTempSearchTerm(e.target.value)} 
                   onKeyDown={e => { if (e.key === 'Enter') handleSearchClick(); }}
-                  placeholder="고객사명..."
+                  placeholder="고객사명 / 초성 (예: ㅅㅅ, ㅎㄷ)..."
                   style={{ width: '100%', padding: '5px 8px', fontSize: '12px', borderRadius: '5px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-card)', color: 'var(--text-main)' }}
                 />
               </div>

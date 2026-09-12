@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
-import { db, supabase, Tenant, TenantWorkplace, TenantYard, TenantBusinessType, TenantBankAccount, OFFICIAL_STAMP_BASE64, User, MenuPermission, createMenuPermission, Customer, CustomerContact, CustomerSite, Product, Asset, Consumable, ConsumableLog, ConsumablePurchaseRequest, MechanicConsumableStock, Contract, ContractAsset, ContractHistory, Delivery, Billing, BillingType, BillingDetail, Receivable, Payment, PaymentDepositLink, Repair, RepairConsumable, Todo, BankTransaction, BankMatchingRule, BankAccountInitialBalance, AssetInOutLog, GoogleConfig, Vendor, CashFlowSnapshot, OutboundInspection, TransportCompany, TransportDriver, TransportNegotiation, SubleaseNegotiation, DepreciationLog, PurchaseSettlement, PurchaseSettlementItem, SettlementPaymentLog, ExternalLease, PurchaseSettlementType, PurchaseSettlementStatus, findCustomerByNormalizedName, AnnualLeaveQuota, LeaveUsage, OvertimeRecord, PayrollClosing, InspectionChecklistItem, EquipmentManual, StandardOption, InboundDefectDetail, PrepaidTransaction, DelinquencyActionLog, LegalNoticeLog, LegalNoticeTemplate, calculateAssetDepreciation, FieldAsTicket, FieldAsPartUsed, FieldAsCollectedPart, CorporateVehicle, VehicleOperationLog, VehicleFuelLog, RepairPartUsed, RepairCollectedPart, SaleContractTerms, StocktakingAudit, StocktakingAuditItem, CollectedPart, PrintStation, PrintQueueItem } from '../services/db';
+import { db, supabase, Tenant, TenantWorkplace, TenantYard, TenantBusinessType, TenantBankAccount, OFFICIAL_STAMP_BASE64, User, MenuPermission, createMenuPermission, CustomRole, RolePermission, Customer, CustomerContact, CustomerSite, Product, Asset, Consumable, ConsumableLog, ConsumablePurchaseRequest, MechanicConsumableStock, Contract, ContractAsset, ContractHistory, Delivery, Billing, BillingType, BillingDetail, Receivable, Payment, PaymentDepositLink, Repair, RepairConsumable, Todo, BankTransaction, BankMatchingRule, BankAccountInitialBalance, AssetInOutLog, GoogleConfig, Vendor, CashFlowSnapshot, OutboundInspection, TransportCompany, TransportDriver, TransportNegotiation, SubleaseNegotiation, DepreciationLog, PurchaseSettlement, PurchaseSettlementItem, SettlementPaymentLog, ExternalLease, PurchaseSettlementType, PurchaseSettlementStatus, findCustomerByNormalizedName, AnnualLeaveQuota, LeaveUsage, OvertimeRecord, PayrollClosing, InspectionChecklistItem, EquipmentManual, StandardOption, InboundDefectDetail, PrepaidTransaction, DelinquencyActionLog, LegalNoticeLog, LegalNoticeTemplate, calculateAssetDepreciation, FieldAsTicket, FieldAsPartUsed, FieldAsCollectedPart, CorporateVehicle, VehicleOperationLog, VehicleFuelLog, RepairPartUsed, RepairCollectedPart, SaleContractTerms, StocktakingAudit, StocktakingAuditItem, CollectedPart, PrintStation, PrintQueueItem } from '../services/db';
 import { enqueuePrintJob as serviceEnqueuePrintJob, registerPrintStation as serviceRegisterPrintStation, deletePrintStation as serviceDeletePrintStation, retryPrintJob as serviceRetryPrintJob, cancelPrintJob as serviceCancelPrintJob } from '../services/printQueueService';
 import { ErrorModal } from '../components/ErrorModal';
 import { getAllSystemMenuIds, normalizeMenuId } from '../config/menu_config';
@@ -8,6 +8,7 @@ import { broadcastWorkNotification } from '../utils/workNotificationService';
 import { issueHandoverTask, clearHandoverTasks, findActiveTasksForUser, checkAndIssuePackageResendTask } from '../utils/taskHandoverPipeline';
 import { resolveSiteDetailedAddress } from '../utils/nativeLauncher';
 import { emailService } from '../services/email';
+import { sortCustomersByName } from '../utils/hangulSearch';
 
 export interface AssetSaleItem {
   assetId: string;
@@ -140,6 +141,12 @@ interface AppContextType {
   inspectionChecklistItems: InspectionChecklistItem[];
   equipmentManuals: EquipmentManual[];
   standardOptions: StandardOption[];
+  customRoles: CustomRole[];
+  rolePermissions: RolePermission[];
+  saveCustomRole: (role: CustomRole) => Promise<void>;
+  deleteCustomRole: (roleId: string) => Promise<void>;
+  saveRolePermissions: (roleId: string, perms: { menuId: string; canView: boolean; canSave: boolean }[]) => Promise<void>;
+  assignUserRole: (userId: string, customRoleId: string | null) => Promise<void>;
 
   annualLeaveQuotas: AnnualLeaveQuota[];
   leaveUsages: LeaveUsage[];
@@ -581,6 +588,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [inspectionChecklistItems, setInspectionChecklistItems] = useState<InspectionChecklistItem[]>([]);
   const [equipmentManuals, setEquipmentManuals] = useState<EquipmentManual[]>([]);
   const [standardOptions, setStandardOptions] = useState<StandardOption[]>([]);
+  const [customRoles, setCustomRoles] = useState<CustomRole[]>([]);
+  const [rolePermissions, setRolePermissions] = useState<RolePermission[]>([]);
   const [annualLeaveQuotas, setAnnualLeaveQuotas] = useState<AnnualLeaveQuota[]>([]);
   const [leaveUsages, setLeaveUsages] = useState<LeaveUsage[]>([]);
   const [overtimeRecords, setOvertimeRecords] = useState<OvertimeRecord[]>([]);
@@ -663,7 +672,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setTenants([...db.tenants]);
     setUsers([...db.users]);
     setPermissions([...db.permissions]);
-    setCustomers([...db.customers]);
+    setCustomers(sortCustomersByName([...db.customers]));
     setContacts([...db.contacts]);
     setSites([...db.sites]);
     setProducts([...db.products]);
@@ -701,6 +710,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setInspectionChecklistItems([...db.inspectionChecklistItems]);
     setEquipmentManuals([...db.equipmentManuals]);
     setStandardOptions([...db.standardOptions]);
+    setCustomRoles([...db.customRoles]);
+    setRolePermissions([...db.rolePermissions]);
     setAnnualLeaveQuotas([...db.annualLeaveQuotas]);
     setLeaveUsages([...db.leaveUsages]);
     setOvertimeRecords([...db.overtimeRecords]);
@@ -982,7 +993,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return hasPermission('payroll', action);
     }
 
-    // 3. 사용자별 명시적 오버라이드(개인 예외 권한) 우선 판정
+    // 3. 사용자 정의 권한 명칭(CustomRole) 상속 판정 (역할 기반 자동 상속 최우선)
+    if (currentUser.customRoleId) {
+      const rolePerm = rolePermissions.find(p => 
+        p.roleId === currentUser.customRoleId && 
+        normalizeMenuId(p.menuId) === normMenuId
+      );
+      if (rolePerm) {
+        return action === 'view' ? Boolean(rolePerm.canView) : Boolean(rolePerm.canSave);
+      }
+    }
+
+    // 4. 사용자별 명시적 오버라이드(개인 예외 권한) 우선 판정
     const perm = permissions.find(p => 
       (p.userId === currentUser.id || (p as any).user_id === currentUser.id) && 
       normalizeMenuId(p.menuId) === normMenuId
@@ -991,14 +1013,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return action === 'view' ? Boolean(perm.canView) : Boolean(perm.canSave);
     }
 
-    // 4. 직무 템플릿(RBAC) 기반 자동 상속 판정
+    // 5. 직무 템플릿(RBAC) 기반 자동 상속 판정
     const dept = currentUser.departmentId || currentUser.department;
     const templateRule = getRoleTemplatePermission(currentUser.role, dept, normMenuId, action);
     if (templateRule !== undefined) {
       return templateRule;
     }
 
-    // 5. 엄격한 거부 우선 (Deny-by-Default): 정의되지 않은 메뉴는 전면 차단
+    // 6. 엄격한 거부 우선 (Deny-by-Default): 정의되지 않은 메뉴는 전면 차단
     return false;
   };
 
@@ -1082,6 +1104,115 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     } catch (err: any) {
       console.error('updateGoogleConfig Error:', err);
       showErrorModal(`⚠️ 구글 설정 원격 DB 저장 실패:\n\n${err?.message || err}`, '원격 DB 저장 오류');
+      throw err;
+    }
+  };
+
+  // ── 사용자 정의 권한 명칭(CustomRole) 및 권한(RolePermission) 관리 뮤테이터 ──
+  const saveCustomRole = async (role: CustomRole) => {
+    try {
+      const now = new Date().toISOString();
+      const updated = { ...role, updatedAt: now };
+      if (!updated.createdAt) updated.createdAt = now;
+
+      const list = [...db.customRoles];
+      const idx = list.findIndex(r => r.id === role.id);
+      if (idx > -1) {
+        list[idx] = updated;
+      } else {
+        list.push(updated);
+      }
+      db.customRoles = list;
+      setCustomRoles([...list]);
+
+      await db.upsertRows('customRoles', [updated]);
+      await db.awaitPendingWrites();
+      refreshAllData();
+    } catch (err: any) {
+      console.error('saveCustomRole error:', err);
+      showErrorModal(`권한 명칭 저장 실패: ${err?.message || err}`);
+      throw err;
+    }
+  };
+
+  const deleteCustomRole = async (roleId: string) => {
+    try {
+      const list = db.customRoles.filter(r => r.id !== roleId);
+      db.customRoles = list;
+      setCustomRoles([...list]);
+
+      // 해당 역할의 세부 메뉴 권한 삭제
+      const remainingPerms = db.rolePermissions.filter(p => p.roleId !== roleId);
+      db.rolePermissions = remainingPerms;
+      setRolePermissions([...remainingPerms]);
+
+      // 해당 역할을 상속받은 사용자들의 customRoleId 해제
+      const updatedUsers = db.users.map(u => u.customRoleId === roleId ? { ...u, customRoleId: undefined } : u);
+      db.users = updatedUsers;
+      setUsers([...updatedUsers]);
+
+      await db.deleteRow('customRoles', roleId);
+      await db.awaitPendingWrites();
+      refreshAllData();
+    } catch (err: any) {
+      console.error('deleteCustomRole error:', err);
+      showErrorModal(`권한 명칭 삭제 실패: ${err?.message || err}`);
+      throw err;
+    }
+  };
+
+  const saveRolePermissions = async (roleId: string, perms: { menuId: string; canView: boolean; canSave: boolean }[]) => {
+    try {
+      const now = new Date().toISOString();
+      const otherPerms = db.rolePermissions.filter(p => p.roleId !== roleId);
+      const newPerms: RolePermission[] = perms.map(p => ({
+        id: `roleperm-${roleId}-${normalizeMenuId(p.menuId)}`,
+        roleId,
+        menuId: normalizeMenuId(p.menuId),
+        canView: p.canView,
+        canSave: p.canSave,
+        createdAt: now,
+        updatedAt: now
+      }));
+      const combined = [...otherPerms, ...newPerms];
+      db.rolePermissions = combined;
+      setRolePermissions([...combined]);
+
+      await db.upsertRows('rolePermissions', newPerms);
+      await db.awaitPendingWrites();
+      refreshAllData();
+    } catch (err: any) {
+      console.error('saveRolePermissions error:', err);
+      showErrorModal(`역할 메뉴 권한 저장 실패: ${err?.message || err}`);
+      throw err;
+    }
+  };
+
+  const assignUserRole = async (userId: string, customRoleId: string | null) => {
+    try {
+      const list = [...db.users];
+      const idx = list.findIndex(u => u.id === userId);
+      if (idx > -1) {
+        const updatedUser = { 
+          ...list[idx], 
+          customRoleId: customRoleId || undefined, 
+          updatedAt: new Date().toISOString() 
+        };
+        list[idx] = updatedUser;
+        db.users = list;
+        setUsers([...list]);
+
+        if (currentUser?.id === userId) {
+          setCurrentUser(updatedUser);
+        }
+
+        await db.upsertRows('users', [updatedUser]);
+        await db.awaitPendingWrites();
+        refreshAllData();
+      }
+    } catch (err: any) {
+      console.error('assignUserRole error:', err);
+      showErrorModal(`직원 권한 명칭 상속 배정 실패: ${err?.message || err}`);
       throw err;
     }
   };
@@ -8846,6 +8977,7 @@ ${currentTenant?.corporateName || tenantCorp} 배상
       purchaseSettlements, purchaseSettlementItems, settlementPaymentLogs: db.settlementPaymentLogs, externalLeases, inspectionChecklistItems,
       equipmentManuals, saveEquipmentManual, deleteEquipmentManual,
       standardOptions, saveStandardOption, deleteStandardOption,
+      customRoles, rolePermissions, saveCustomRole, deleteCustomRole, saveRolePermissions, assignUserRole,
       annualLeaveQuotas, leaveUsages, overtimeRecords, payrollClosings, prepaidTransactions, delinquencyActionLogs, legalNoticeLogs, legalNoticeTemplates, saveLegalNoticeLog, saveLegalNoticeTemplate,
       corporateVehicles, vehicleOperationLogs, vehicleFuelLogs, registerCorporateVehicle, updateCorporateVehicle, deleteCorporateVehicle, registerVehicleOperationLog, updateVehicleOperationLog, deleteVehicleOperationLog, registerVehicleFuelLog, deleteVehicleFuelLog,
       refreshAllData, fullRefreshFromServer, executeMonthlyDepreciation, loadTablesForMenu, updatePermissions, saveUser, saveCustomer, saveContact, deleteContact, saveSite, deleteSite, saveProduct, saveAsset, updateGoogleConfig,

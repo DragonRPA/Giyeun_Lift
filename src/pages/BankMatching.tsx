@@ -10,7 +10,7 @@ import {
 import { exportToExcel } from '../services/excel';
 import { db, BankTransaction } from '../services/db';
 import { parseBankExcelFile } from '../services/bankParser';
-import { matchHangul } from '../utils/hangulSearch';
+import { matchHangul, sortCustomersByName } from '../utils/hangulSearch';
 
 // 한글 금액 변환 헬퍼 (공식 입금표용)
 function numberToKorean(num: number): string {
@@ -2248,7 +2248,7 @@ export const BankMatching: React.FC = () => {
                   className="form-control"
                 >
                   <option value="">고객사 선택</option>
-                  {customers.map(c => (
+                  {sortCustomersByName(customers).map(c => (
                     <option key={c.id} value={c.id}>{c.name}</option>
                   ))}
                 </select>

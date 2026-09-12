@@ -2,8 +2,9 @@
 // 국세청 홈택스 사업자등록정보 진위확인 및 휴폐업 상태조회 Vercel 서버리스 엔드포인트
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 
-// 국세청 공공데이터포털 서비스키 (환경변수 또는 요청 파라미터)
-const NTS_API_KEY = process.env.NTS_API_KEY || process.env.PUBLIC_DATA_PORTAL_KEY || '';
+// 국세청 공공데이터포털 서비스키 (환경변수 또는 공공데이터포털 정식 승인키)
+const DEFAULT_NTS_KEY = '7f24250bd002412aaa152a6e3ec63e556604f75be0fa9181983c33a618cb2e03';
+const NTS_API_KEY = process.env.NTS_API_KEY || process.env.PUBLIC_DATA_PORTAL_KEY || DEFAULT_NTS_KEY;
 
 export interface NtsBusinessStatusItem {
   b_no: string;           // 사업자등록번호 (10자리 숫자)
@@ -60,7 +61,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     // 100건 제한 방어
     const cleanNumbers = b_no.slice(0, 100).map((no: string) => String(no).replace(/[^0-9]/g, ''));
-    const activeKey = serviceKey || NTS_API_KEY;
+    const activeKey = String(serviceKey || NTS_API_KEY || '').trim();
 
     // 1순위: 국세청 공공데이터포털 실제 API 호출
     if (activeKey) {

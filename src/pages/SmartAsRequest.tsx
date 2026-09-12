@@ -3,6 +3,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useApp } from '../context/AppContext';
 import { db } from '../services/db';
 import { fetchMyDrafts, DraftDispatchOrder, discardDraft } from '../services/callUploadService';
+import { matchHangul, sortCustomersByName } from '../utils/hangulSearch';
 import { Wrench, Send, AlertTriangle, CheckCircle2, Search, Building2, MapPin, Phone, User, Tag, HelpCircle, PhoneCall, Sparkles, Clock, Check, ClipboardPaste, ChevronUp, ChevronDown, FolderOpen, Zap } from 'lucide-react';
 
 const QUICK_ISSUE_PRESETS = [
@@ -24,6 +25,17 @@ export const SmartAsRequest: React.FC = () => {
   const { customers, sites, contracts, contractAssets, assets, fieldAsTickets, createFieldAsTicket, currentUser, showErrorModal, setActiveTab } = useApp();
 
   const [selectedCustomerId, setSelectedCustomerId] = useState('');
+  const [customerSearch, setCustomerSearch] = useState('');
+
+  const filteredCustomerList = useMemo(() => {
+    const list = customers.filter(c =>
+      !customerSearch.trim() ||
+      matchHangul(c.name, customerSearch) ||
+      matchHangul(c.representative, customerSearch)
+    );
+    return sortCustomersByName(list);
+  }, [customers, customerSearch]);
+
   const [selectedSiteId, setSelectedSiteId] = useState('');
   const [selectedAssetNo, setSelectedAssetNo] = useState('');
   const [customAssetNo, setCustomAssetNo] = useState('');
@@ -645,11 +657,35 @@ export const SmartAsRequest: React.FC = () => {
             </h3>
             
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '16px' }}>
-              {/* 고객사 선택 */}
+              {/* 고객사 선택 (초성 검색 지원) */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                <label style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>
-                  고객사 (업체명)
-                </label>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <label style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>
+                    고객사 (업체명)
+                  </label>
+                  {customerSearch && (
+                    <button
+                      type="button"
+                      onClick={() => setCustomerSearch('')}
+                      style={{ fontSize: '11px', color: 'var(--primary)', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
+                    >검색 초기화</button>
+                  )}
+                </div>
+                <input
+                  type="text"
+                  value={customerSearch}
+                  onChange={(e) => setCustomerSearch(e.target.value)}
+                  placeholder="고객명 / 초성 검색 (예: ㅅㅅ, ㅎㄷ)..."
+                  style={{
+                    padding: '6px 10px',
+                    borderRadius: '6px',
+                    border: '1px solid var(--border-color)',
+                    fontSize: '12px',
+                    backgroundColor: 'var(--bg-app)',
+                    color: 'var(--text-main)',
+                    marginBottom: '2px'
+                  }}
+                />
                 <select
                   value={selectedCustomerId}
                   onChange={(e) => {
@@ -658,16 +694,18 @@ export const SmartAsRequest: React.FC = () => {
                     setSelectedAssetNo('');
                   }}
                   style={{
-                    padding: '9px 12px',
+                    padding: '8px 12px',
                     borderRadius: '6px',
                     border: '1px solid var(--border-color)',
-                    fontSize: '14px',
+                    fontSize: '13px',
                     backgroundColor: 'var(--bg-card)',
                     color: 'var(--text-main)'
                   }}
                 >
-                  <option value="">고객사 선택 (선택 안 함 가능)</option>
-                  {customers.map(c => (
+                  <option value="">
+                    {customerSearch ? `검색 결과 (${filteredCustomerList.length}개사)` : '고객사 선택 (선택 안 함 가능)'}
+                  </option>
+                  {filteredCustomerList.map(c => (
                     <option key={c.id} value={c.id}>{c.name}</option>
                   ))}
                 </select>

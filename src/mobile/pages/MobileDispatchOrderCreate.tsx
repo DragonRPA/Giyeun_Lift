@@ -7,7 +7,7 @@ import {
   Mic, MicOff, RotateCcw, FileText, Check, Sparkles, ClipboardList,
   RotateCw, Truck, ArrowDownLeft, ArrowUpRight, ArrowRight, Shield, ChevronDown, ChevronUp
 } from 'lucide-react';
-import { matchHangul } from '../../utils/hangulSearch';
+import { matchHangul, sortCustomersByName } from '../../utils/hangulSearch';
 import { 
   loadVoiceOrderDraft, 
   saveVoiceOrderDraft, 
@@ -445,9 +445,10 @@ export const MobileDispatchOrderCreate: React.FC<MobileDispatchOrderCreateProps>
   }, [sites, selectedCustomerId]);
 
   const filteredCustomersList = useMemo(() => {
-    return customers
+    const list = customers
       .filter(c => c.transactionStatus !== 'BLOCKED')
       .filter(c => !customerSearchText.trim() || matchHangul(c.name, customerSearchText) || matchHangul(c.representative, customerSearchText));
+    return sortCustomersByName(list);
   }, [customers, customerSearchText]);
 
   const filteredCustomerSites = useMemo(() => {

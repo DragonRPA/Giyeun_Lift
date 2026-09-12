@@ -972,8 +972,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     // 2. 단일 표준(SSOT) 단수형 메뉴 ID로 정규화
     const normMenuId = normalizeMenuId(menuId);
 
-    // 2-1. 연차신청 및 매뉴얼 스튜디오는 권한 구분 없이 모든 임직원의 공통 기능으로 처리 (전원 상시 개방)
-    if (normMenuId === 'leave_application' || normMenuId === 'manual_studio') {
+    // 2-1. 연차신청, 매뉴얼 스튜디오 및 업무매뉴얼은 권한 구분 없이 모든 임직원의 공통 기능으로 처리 (전원 상시 개방)
+    if (normMenuId === 'leave_application' || normMenuId === 'manual_studio' || normMenuId === 'operations_manual') {
       return true;
     }
 

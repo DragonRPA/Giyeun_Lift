@@ -5,7 +5,7 @@ import {
   LayoutDashboard, Users, UserCheck, Package, Layers, PlusCircle,
   Truck, Wrench, Shield, ShoppingBag, CreditCard, LogOut, Sun, Moon, Menu, X, Zap, Settings, Database as DatabaseIcon,
   TrendingUp, Clock, AlertTriangle, Building2, ChevronDown, ChevronRight, Briefcase, Box, FolderKanban, ShieldAlert, Terminal, ArrowLeftRight, CheckSquare,
-  Smartphone, Monitor, Car, FileText, Search, Printer, PackagePlus, Boxes, Calendar, Camera
+  Smartphone, Monitor, Car, FileText, Search, Printer, PackagePlus, Boxes, Calendar, Camera, BookOpen
 } from 'lucide-react';
 
 import { WeatherWidget } from './components/WeatherWidget';
@@ -61,6 +61,7 @@ import { GoogleConfig } from './pages/GoogleConfig';
 import { InitialDbUploader } from './pages/InitialDbUploader';
 import { AgentHeaderBadge } from './components/AgentHeaderBadge';
 import { ManualStudioModal } from './components/ManualStudioModal';
+import { OperationManualPage } from './pages/OperationManualPage';
 import { MirrorSyncProgressToast } from './components/MirrorSyncProgressToast';
 import { MobileApp } from './mobile/MobileApp';
 import { initWorkNotificationListener } from './utils/workNotificationService';
@@ -297,6 +298,7 @@ const App: React.FC = () => {
       name: '도구 및 다운로드',
       icon: <Camera size={17} />,
       items: [
+        { id: 'operations_manual', name: '업무매뉴얼', icon: <BookOpen size={16} />, component: <OperationManualPage /> },
         { id: 'manual_studio', name: '매뉴얼 스튜디오', icon: <Camera size={16} />, component: <ManualStudioModal isOpen={true} isInline={true} /> },
       ]
     },
@@ -864,6 +866,30 @@ const App: React.FC = () => {
 
           {/* 🤖 로컬 사이드카 에이전트 실시간 상태 미니 배지 */}
           <AgentHeaderBadge currentUser={currentUser} />
+
+          {/* 📖 전사 업무매뉴얼 바로가기 버튼 */}
+          <button
+            onClick={() => setActiveTab('operations_manual')}
+            style={{
+              padding: '6px 13px',
+              borderRadius: '20px',
+              backgroundColor: activeTab === 'operations_manual' ? '#EFF6FF' : 'var(--bg-app)',
+              color: activeTab === 'operations_manual' ? '#2563EB' : 'var(--text-primary)',
+              border: activeTab === 'operations_manual' ? '1.5px solid #2563EB' : '1px solid var(--border-color)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              fontSize: '12.5px',
+              fontWeight: '700',
+              cursor: 'pointer',
+              whiteSpace: 'nowrap',
+              transition: 'all 0.15s ease'
+            }}
+            title="기연리프트 전사 표준 업무매뉴얼 열람 및 A4 인쇄"
+          >
+            <BookOpen size={14} color="#2563EB" />
+            업무매뉴얼
+          </button>
 
           {/* 📸 매뉴얼 스튜디오 안내 및 다운로드 버튼 */}
           <button

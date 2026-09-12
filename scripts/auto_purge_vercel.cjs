@@ -103,4 +103,4 @@ function purgeExcessDeployments(maxKeepSlots = 12) {
   }
 }
 
-purgeExcessDeployments(12);
+purgeExcessDeployments(5);

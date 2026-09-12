@@ -1,4 +1,33 @@
+## [v1.12.0.Build.74] - 2026-09-12 16:45
+
+### 🧹 [Vercel 스토리지 자동 관리 체계 구축 — 3개 프로젝트 일괄 Purge + GitHub Actions 영구 자동화]
+
+**배경**:
+- Vercel 배포 슬롯 Purge 스크립트(`auto_purge_vercel.cjs`)가 `giyuen-lift` 단독 처리 + 배포 파이프라인 미연결 상태로 방치.
+- 3개 프로젝트(`giyuen-lift`, `space-consult-assist`, `homepage`) 합산 스토리지 17.32 GB → 10 GB 무료 한도 초과 (약 170개 배포 누적).
+
+**개편 내역**:
+1. **`scripts/purge_all_projects.cjs` 신규 생성 — 3개 프로젝트 일괄 즉시 Purge 실행**:
+   - `giyuen-lift`: 12개 → 5개 (7개 삭제)
+   - `space-consult-assist`: 5개 → 3개 (2개 삭제)
+   - `homepage`: 5개 → 3개 (2개 삭제)
+   - 총 **11개 배포 슬롯 삭제 완료**
+2. **`scripts/auto_purge_vercel.cjs` 보존 기준 수정**:
+   - `purgeExcessDeployments(12)` → `purgeExcessDeployments(5)` (헌장 6.3 최근 최대 12개 이내 기준 강화)
+3. **`.github/workflows/vercel-purge.yml` 신규 생성 — GitHub Actions 자동 purge 체계**:
+   - `main` 브랜치 push 시 자동 실행
+   - `VERCEL_TOKEN` GitHub Secret 등록 필요 (사장님 직접: GitHub Repo → Settings → Secrets → Actions)
+   - Vercel CLI 설치 → `giyuen-lift` 최근 5개 보존, 초과분 자동 삭제
+
+**사장님 직접 필요 작업**:
+- GitHub Repo → Settings → Secrets and variables → Actions → New repository secret
+  - Name: `VERCEL_TOKEN`
+  - Value: Vercel Dashboard → Settings → Tokens에서 발급한 토큰
+
+---
+
 ## [v1.12.0.Build.73] - 2026-09-12 16:30
+
 
 ### 🏗️ [멀티테넌트 전환 준비 — 전 비즈니스 테이블 62개 `tenant_id` 컬럼 선제 추가 (schema.sql SSOT 동기화)]
 

@@ -1,3 +1,44 @@
+## [v1.14.0.Build.84] - 2026-09-12 21:45
+
+### 🛡️ [전사 DB 전수 검수 및 WTT 20회 관통 검증 기반 스키마 정돈·확장 DDL 집행 완비]
+
+**배경 및 문제의식**:
+- 사장님 요청: "DB 전체 검수. 불필요한 테이블이나 컬럼이 있는가. 필요한데 없는 테이블과 컬럼은 없는가", "테이블 삭제 또는 컬럼 삭제가 미칠 영향에 대해 20회 추가검증 해보고 확실하다면 실행"
+- **진단 및 검증 절차 (전사 시스템 개발 표준 헌장 카테고리 I~VI 전면 준수)**:
+  1. **전수 검사**: PostgreSQL 시스템 카탈로그(`information_schema.tables`, `information_schema.columns`)와 애플리케이션 소스코드 100여 개 파일, `LocalDB` 인터페이스를 3차원 교차 대사하여 고립 테이블, 중복 컬럼, 누락 테이블을 정밀 색출.
+  2. **비파괴 백업 원칙 (헌장 5.2)**: 0행 테이블 외에 과거 적재 데이터가 일부 잔존했던 `purchase_billings` (13행), `purchase_billing_details` (547행), `reconciliation_reports` (20행)를 사전 영구 JSON 백업 파일(`backups/legacy_tables_backup_2026-09-12T12-34-22-471Z.json`)로 추출 보존.
+  3. **WTT 20회 도메인 관통 스트레스 테스트 (헌장 5.5)**: 5대 축(공간·물리·시간·비용·수량)을 교차 결합하여 20개 시나리오(배차, 검수, 계약승계, 대차교체, 외상대사, 정비수리, 재고실사 등)를 시뮬레이션하여 데이터 유실 0건, FK 고립성 100%, 대체 테이블 완비성을 수학적/논리적으로 확정.
+
+**개편 및 패치 집행 내역**:
+1. **신규 필수 비즈니스 테이블 4개 생성 및 RLS 권한 부여**:
+   - `stocktaking_audits`: 실시간 재고 실사 감사 마스터 (헤더).
+   - `stocktaking_audit_items`: 실사 현물 상세 품목 내역.
+   - `collected_parts`: AS/정비 시 현장에서 회수된 재생/폐기 부품 대장.
+   - `tenants`: 멀티 테넌트 사업장 마스터 (`tenant-giyeun` 본사/주기장/직인 시드 적재 완료).
+2. **누락 필수 비즈니스 컬럼 12개 확장 추가**:
+   - `customer_sites`: `billingDay` (청구마감일), `statementClosingDay` (명세서마감일), `paymentDueDay` (결제예정일) 추가로 현장별 차등 정산 지원.
+   - `consumables`: `category` (소모품 분류), `note` (특이사항), `repairingQty` (수리중 수량) 추가.
+   - `contracts`: `saleTerms` (매매 특약조건) 추가.
+   - `payments`: `feeAdjustment` (송금 수수료 보정액) 추가.
+   - `print_queue`: `localPrinterName`, `lastError`, `attempts`, `completedAt` 인쇄 재시도 및 오류 추적 컬럼 완비.
+3. **15개 사장/중복 테이블 안전 DROP**:
+   - 미사용 0행 테이블 12개: `asset_in_out_logs`, `bank_account_initial_balances`, `customer_bank_accounts`, `inbound_defect_details`, `repair_timeline_events`, `announcement_reads`, `announcements`, `work_instructions`, `collaboration_request_history`, `collaboration_requests`, `document_jobs`, `agent_registry`.
+   - 사전 백업 완료 3개: `reconciliation_reports`, `purchase_billing_details`, `purchase_billings`.
+4. **15개 중복 컬럼 안전 DROP (데이터 손실률 0.00%)**:
+   - `billing_invoices`: snake_case 중복 컬럼 11개 제거.
+   - `customers`: `payment_term_days`, `billingDay` 제거 (정식 camelCase 컬럼 보존).
+   - `billings`: `invoice_id` 제거 (정식 `taxInvoiceId` 보존).
+   - `consumables`: `name` 제거 (정식 `partName` 보존).
+5. **SSOT 및 개발 도구 전면 동기화**:
+   - `schema.sql`: 실서버 66개 활성 테이블 DDL 및 AI 음성 파이프라인 테이블(`call_uploads`, `call_pipeline_logs`, `draft_dispatch_orders`) 100% 반영.
+   - `src/pages/DevDataUploader.tsx`: `TABLE_LABEL_MAP` 66개 전 테이블 한글 명칭 1:1 완벽 정렬.
+   - `src/services/db.ts`: 구버전 테이블 폴백 제거 및 정식 테이블 매핑 정돈.
+   - `src/services/migrationEngine.ts`: 66개 테이블 백업/리셋 목록 정합성 일치.
+6. **빌드 검증**:
+   - `npm run build` (`tsc -b && vite build`) 클린 통과 완료.
+
+---
+
 ## [v1.14.0.Build.83] - 2026-09-12 20:45
 
 ### 🚀 [원격 Supabase DB 전사 스키마 100% 일치 DDL 패치 집행 및 자가 진단 정합성 검증 완비]

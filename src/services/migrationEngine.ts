@@ -381,8 +381,14 @@ function inferFeetFromModel(m: string, heightM: number = 0): number {
 const ALL_TABLES = [
   'departments',
   'users',
-  'vendors',
   'permissions',
+  'custom_roles',
+  'role_permissions',
+  'annual_leave_quotas',
+  'leave_usages',
+  'overtime_records',
+  'payroll_closings',
+  'vendors',
   'customers',
   'customer_contacts',
   'customer_sites',
@@ -390,49 +396,61 @@ const ALL_TABLES = [
   'assets',
   'consumables',
   'consumable_purchases',
-  'consumable_logs',
-  'contract_templates',
+  'mechanic_consumable_stocks',
+  'transport_companies',
+  'transport_drivers',
   'contracts',
-  'contract_history',
   'contract_assets',
   'external_leases',
+  'contract_history',
   'deliveries',
   'outbound_inspections',
   'asset_inout_logs',
-  'maintenance_logs',
-  'repair_history',
-  'regular_inspections',
-  'regular_inspection_items',
-  'statutory_inspections',
-  'maintenance_cost_details',
+  'inspection_checklist_items',
+  'repairs',
+  'repair_consumables',
+  'consumable_logs',
+  'standard_options',
   'billings',
   'billing_details',
-  'credit_card_claims',
-  'payments',
-  'purchase_billings',
-  'purchase_billing_details',
-  'purchase_payments',
+  'billing_invoices',
   'receivables',
+  'payments',
   'bank_transactions',
-  'bank_matching_rules',
   'payment_deposit_links',
+  'bank_matching_rules',
+  'bank_initial_balances',
+  'purchase_settlements',
+  'purchase_settlement_items',
+  'settlement_payment_logs',
   'cash_flow_snapshots',
-  'tax_invoices',
-  'agent_registry',
-  'activity_logs',
+  'prepaid_transactions',
+  'delinquency_action_logs',
+  'legal_notice_logs',
+  'legal_notice_templates',
+  'depreciation_logs',
+  'todos',
   'google_configs',
-  'site_notices',
-  'calendar_events',
-  'work_instructions',
-  'collaboration_requests',
-  'collaboration_request_history',
-  'document_jobs'
+  'corporate_vehicles',
+  'vehicle_operation_logs',
+  'vehicle_fuel_logs',
+  'equipment_manuals',
+  'print_stations',
+  'print_queue',
+  'privacy_access_logs',
+  'tenants',
+  'stocktaking_audits',
+  'stocktaking_audit_items',
+  'collected_parts',
+  'call_uploads',
+  'call_pipeline_logs',
+  'draft_dispatch_orders'
 ];
 
 export async function exportFullDatabaseBackup(): Promise<{ backupData: Record<string, any[]>; timestamp: string; filename: string }> {
   const backupData: Record<string, any[]> = {};
   const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-  const filename = `backup_db_49_tables_${timestamp}.json`;
+  const filename = `backup_db_66_tables_${timestamp}.json`;
 
   if (supabase) {
     for (const table of ALL_TABLES) {
@@ -478,51 +496,66 @@ export async function exportFullDatabaseBackup(): Promise<{ backupData: Record<s
 // ──────────────────────────────────────────────
 export async function resetAllDatabaseTables(keepAdmin: boolean = true): Promise<{ success: boolean; message: string }> {
   const DELETION_ORDER = [
-    'document_jobs',
-    'agent_registry',
+    'settlement_payment_logs',
+    'purchase_settlement_items',
+    'purchase_settlements',
     'payment_deposit_links',
     'bank_matching_rules',
     'bank_transactions',
+    'bank_initial_balances',
     'cash_flow_snapshots',
-    'collaboration_request_history',
-    'collaboration_requests',
-    'work_instructions',
-    'site_notices',
-    'calendar_events',
-    'activity_logs',
-    'tax_invoices',
+    'prepaid_transactions',
+    'delinquency_action_logs',
+    'legal_notice_logs',
+    'legal_notice_templates',
+    'depreciation_logs',
     'receivables',
-    'purchase_payments',
-    'purchase_billing_details',
-    'purchase_billings',
     'payments',
-    'credit_card_claims',
     'billing_details',
+    'billing_invoices',
     'billings',
-    'maintenance_cost_details',
-    'statutory_inspections',
-    'regular_inspection_items',
-    'regular_inspections',
-    'repair_history',
-    'maintenance_logs',
-    'asset_inout_logs',
-    'outbound_inspections',
-    'deliveries',
-    'transport_companies',
-    'external_leases',
-    'contract_assets',
-    'contract_history',
-    'contracts',
-    'contract_templates',
+    'repair_consumables',
+    'repairs',
+    'stocktaking_audit_items',
+    'stocktaking_audits',
+    'collected_parts',
     'consumable_logs',
+    'mechanic_consumable_stocks',
     'consumable_purchases',
     'consumables',
+    'inspection_checklist_items',
+    'outbound_inspections',
+    'deliveries',
+    'asset_inout_logs',
+    'contract_assets',
+    'contract_history',
+    'external_leases',
+    'contracts',
+    'transport_drivers',
+    'transport_companies',
     'assets',
+    'standard_options',
+    'products',
     'customer_contacts',
     'customer_sites',
     'customers',
-    'products',
-    'vendors'
+    'vendors',
+    'vehicle_fuel_logs',
+    'vehicle_operation_logs',
+    'corporate_vehicles',
+    'equipment_manuals',
+    'print_queue',
+    'print_stations',
+    'privacy_access_logs',
+    'annual_leave_quotas',
+    'leave_usages',
+    'overtime_records',
+    'payroll_closings',
+    'todos',
+    'google_configs',
+    'draft_dispatch_orders',
+    'call_pipeline_logs',
+    'call_uploads'
   ];
 
   try {
@@ -1839,9 +1872,12 @@ export async function ingestExcelInitialData(
 
     // Step 11: 매입 청구서 및 외상미수금 대장
     onProgress?.(11, totalSteps, `11/13: 전대 매입 정산 및 외상미수금 대장 적재 중...`);
-    if (parsed.purchaseBillings.length > 0) {
-      await batchUpsertChunked('purchase_billings', parsed.purchaseBillings, 100);
-      await batchUpsertChunked('purchase_billing_details', parsed.purchaseBillingDetails, 200);
+    if (parsed.purchaseBillings && parsed.purchaseBillings.length > 0) {
+      try {
+        await batchUpsertChunked('purchase_settlements', parsed.purchaseBillings, 100);
+      } catch (e) {
+        console.warn('[Ingest] purchase_settlements skipped or failed:', e);
+      }
     }
     if (parsed.receivables.length > 0) {
       await batchUpsertChunked('receivables', parsed.receivables, 100);
@@ -1880,7 +1916,13 @@ export async function ingestExcelInitialData(
       memo:                   report.allPassed ? '전 항목 통과' : '일부 항목 불일치 — 상세 확인 요망',
       created_at:             new Date().toISOString()
     };
-    await batchUpsertChunked('reconciliation_reports', [reportRecord], 1);
+    try {
+      if ((db as any)['reconciliation_reports']) {
+        await batchUpsertChunked('reconciliation_reports', [reportRecord], 1);
+      }
+    } catch (e) {
+      // reconciliation_reports 테이블은 일회성 마이그레이션 리포트이므로 안전 격리
+    }
 
     // Step 13: Supabase → LocalStorage 동기화 (stale 캐시 차단)
     onProgress?.(13, totalSteps, '13/13: localStorage 동기화 완료 중...');

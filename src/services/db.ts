@@ -4691,14 +4691,6 @@ class LocalDB {
         .range(from, from + PAGE_SIZE - 1);
 
       if (error) {
-        if (tableName === 'bank_initial_balances') {
-          const fallback = await this.fetchAllRowsFromSupabase('bank_account_initial_balances');
-          if (fallback !== null) return fallback;
-        }
-        if (tableName === 'asset_inout_logs') {
-          const fallback = await this.fetchAllRowsFromSupabase('asset_in_out_logs');
-          if (fallback !== null) return fallback;
-        }
         console.warn(`[db.ts] Supabase fetchAllRows failed for ${tableName} (range ${from}-${from + PAGE_SIZE - 1}):`, error);
         if (allRows.length > 0) return allRows;
         return null;
@@ -4984,7 +4976,6 @@ class LocalDB {
       contract_history: 'contractHistory',
       contractHistories: 'contractHistory',
       asset_inout_logs: 'assetInOutLogs',
-      asset_in_out_logs: 'assetInOutLogs',
       outbound_inspections: 'outboundInspections',
       billing_details: 'billingDetails',
       transport_companies: 'transportCompanies',
@@ -4992,7 +4983,6 @@ class LocalDB {
       bank_transactions: 'bankTransactions',
       bank_matching_rules: 'bankMatchingRules',
       bank_initial_balances: 'bankInitialBalances',
-      bank_account_initial_balances: 'bankInitialBalances',
       payment_deposit_links: 'paymentDepositLinks',
       repair_consumables: 'repairConsumables',
       consumable_logs: 'consumableLogs',
@@ -5071,12 +5061,6 @@ class LocalDB {
             const msg = error.message || String(error);
             const isTableMissing = msg.includes('Could not find the table') || (error.code === 'PGRST204' && msg.includes('table')) || error.code === '42P01';
             if (isTableMissing) {
-              if (tableName === 'bank_initial_balances') {
-                return supabase.from('bank_account_initial_balances').upsert([payloadForSupabase], { onConflict: 'id' }).then(({ data: fd }) => fd);
-              }
-              if (tableName === 'asset_inout_logs') {
-                return supabase.from('asset_in_out_logs').upsert([payloadForSupabase], { onConflict: 'id' }).then(({ data: fd }) => fd);
-              }
               console.warn(`[Graceful Isolation] 원격 Supabase DB에 ${tableName} 테이블이 존재하지 않습니다. 로컬 저장을 완결합니다.`);
               return null;
             }
@@ -5166,12 +5150,6 @@ class LocalDB {
             const msg = error.message || String(error);
             const isTableMissing = msg.includes('Could not find the table') || (error.code === 'PGRST204' && msg.includes('table')) || error.code === '42P01';
             if (isTableMissing) {
-              if (tableName === 'bank_initial_balances') {
-                return supabase.from('bank_account_initial_balances').update(payloadForSupabase as any).eq('id', id).then(({ data: fd }) => fd);
-              }
-              if (tableName === 'asset_inout_logs') {
-                return supabase.from('asset_in_out_logs').update(payloadForSupabase as any).eq('id', id).then(({ data: fd }) => fd);
-              }
               console.warn(`[Graceful Isolation] 원격 Supabase DB에 ${tableName} 테이블이 존재하지 않습니다. 로컬 저장을 완결합니다.`);
               return null;
             }
@@ -5234,12 +5212,6 @@ class LocalDB {
             console.error(`Supabase delete failed for ${tableName}:`, error);
             const msg = error.message || String(error);
             if (msg.includes('Could not find the table') || error.code === 'PGRST204' || error.code === '42P01') {
-              if (tableName === 'bank_initial_balances') {
-                return supabase.from('bank_account_initial_balances').delete().eq('id', id);
-              }
-              if (tableName === 'asset_inout_logs') {
-                return supabase.from('asset_in_out_logs').delete().eq('id', id);
-              }
               console.warn(`[Graceful Isolation] 원격 Supabase DB에 ${tableName} 테이블이 존재하지 않습니다. 로컬 저장을 완결합니다.`);
               return null;
             }

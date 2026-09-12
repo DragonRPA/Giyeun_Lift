@@ -1,5 +1,40 @@
 # 개발 요구사항 임시 기록 (dev_temp.md)
 
+## [완료] 전사 DB 전수 검수 및 WTT 20회 관통 검증 기반 스키마 정돈·확장 DDL 집행 (v1.14.0.Build.84)
+- **요구사항**: "DB 전체 검수. 불필요한 테이블이나 컬럼이 있는가. 필요한데 없는 테이블과 컬럼은 없는가", "테이블 삭제 또는 컬럼 삭제가 미칠 영향에 대해 20회 추가검증 해보고 확실하다면 실행"
+- **진단 및 검증 내역 (전사 시스템 표준 헌장 1.1 최대 편익, 1.2 3대 핵심가치, 5.2 무누락 저장/무음실패 방지, 5.3 SSOT 일치, 5.5 WTT 20회 관통 검증)**:
+  1. **사전 백업 영구 완비 (`backups/legacy_tables_backup_2026-09-12T12-34-22-471Z.json`)**:
+     - 사장 테이블 중 데이터가 잔존했던 `purchase_billings` (13행), `purchase_billing_details` (547행), `reconciliation_reports` (20행) 데이터 100% 영구 JSON 백업 완료.
+  2. **WTT 20회 도메인 관통 스트레스 테스트 전수 통과 (`scratch/wtt_20_results.json`)**:
+     - 5대 축(공간·물리·시간·비용·수량) 결합 20회 실무 시나리오 테스트 결과 **20/20 전회 무결 통과 (Pass Rate: 100%)**.
+     - 외래키 고립성 전수 검사 결과, 삭제 대상 테이블을 참조하는 외부 Inbound FK는 0건 (고립 확인).
+     - 중복 컬럼(`customers.payment_term_days`, `customers.billingDay`, `billings.invoice_id`, `consumables.name`) 삭제 시 정식 컬럼과 100% 동일 데이터 보존 확인.
+  3. **원격 Supabase DDL 리팩토링 집행 완료 (`dev_exec_ddl` RPC)**:
+     - **신규 필수 테이블 4개 생성 및 RLS 정책 부여**: `stocktaking_audits` (재고 실사 헤더), `stocktaking_audit_items` (실사 상세 품목), `collected_parts` (현장 수거/회수 부품), `tenants` (사업장/테넌트 마스터).
+     - **`tenants` 기본 시드 데이터 적재 완료**: `tenant-giyeun` (기연리프트 본사/주기장/직인 포함) upsert 성공.
+     - **누락 필수 컬럼 12개 확장 완료**:
+       - `customer_sites`: `billingDay`, `statementClosingDay`, `paymentDueDay`
+       - `consumables`: `category`, `note`, `repairingQty`
+       - `contracts`: `saleTerms`
+       - `payments`: `feeAdjustment`
+       - `print_queue`: `localPrinterName`, `lastError`, `attempts`, `completedAt`
+     - **15개 사장/중복 테이블 안전 DROP**:
+       - 0행 사장 12개: `asset_in_out_logs`, `bank_account_initial_balances`, `customer_bank_accounts`, `inbound_defect_details`, `repair_timeline_events`, `announcement_reads`, `announcements`, `work_instructions`, `collaboration_request_history`, `collaboration_requests`, `document_jobs`, `agent_registry`.
+       - 백업 후 삭제 3개: `reconciliation_reports`, `purchase_billing_details`, `purchase_billings`.
+     - **15개 중복 컬럼 안전 DROP**:
+       - `billing_invoices`: 11개 snake_case 중복 컬럼 삭제.
+       - `customers`: `payment_term_days`, `billingDay` 삭제.
+       - `billings`: `invoice_id` 삭제.
+       - `consumables`: `name` 삭제.
+  4. **SSOT 및 개발 도구 전면 동기화**:
+     - `schema.sql`: 실서버 66개 활성 테이블 및 음성 파이프라인 테이블(`call_uploads`, `call_pipeline_logs`, `draft_dispatch_orders`) 100% 동기화.
+     - `src/pages/DevDataUploader.tsx`: `TABLE_LABEL_MAP` 66개 전 테이블 한글 명칭 1:1 완벽 정렬.
+     - `src/services/db.ts`: 구버전 폴백 잔재 청산.
+     - `src/services/migrationEngine.ts`: 66개 테이블 백업/리셋 목록 정렬 및 사장 테이블 안전 격리.
+  5. **무결성 자가진단 및 빌드 검증**:
+     - 원격 Supabase 카탈로그 전수 대사 결과: `Total: 66, OK: 66, Missing: 0, Mismatch: 0` 달성.
+     - `npm run build` (`tsc -b && vite build`) 클린 통과.
+
 ## [완료] 원격 Supabase DB 전사 스키마 100% 일치 DDL 패치 집행 및 자가 진단 정합성 검증 완비 (v1.14.0.Build.83)
 - **요구사항**: "이 기능이 현재도 기능 본질 목적을 달성하고 있나? 현재 점검 했더니 이런 상태로 나오는데 조치해야하는가? 검증하고 DDL 패치 수행하고 ㄹㅇ"
 - **진단 및 본질 목적 검증 (전사 시스템 표준 헌장 1.1 최대 편익, 5.2 무음 실패 방지, 5.3 SSOT 정합성 자가 검증, 6.2 "ㄹㅇ" 배포)**:

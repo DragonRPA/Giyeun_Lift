@@ -33,9 +33,9 @@ DROP TABLE IF EXISTS asset_inout_logs CASCADE;
 DROP TABLE IF EXISTS delinquency_action_logs CASCADE;
 DROP TABLE IF EXISTS depreciation_logs CASCADE;
 DROP TABLE IF EXISTS outbound_inspections CASCADE;
-DROP TABLE IF EXISTS inbound_defect_details CASCADE;
+
 DROP TABLE IF EXISTS asset_in_out_logs CASCADE;
-DROP TABLE IF EXISTS repair_timeline_events CASCADE;
+
 DROP TABLE IF EXISTS repair_consumables CASCADE;
 DROP TABLE IF EXISTS repairs CASCADE;
 DROP TABLE IF EXISTS inspection_checklist_items CASCADE;
@@ -53,7 +53,7 @@ DROP TABLE IF EXISTS consumable_purchases CASCADE;
 DROP TABLE IF EXISTS consumables CASCADE;
 DROP TABLE IF EXISTS assets CASCADE;
 DROP TABLE IF EXISTS products CASCADE;
-DROP TABLE IF EXISTS customer_bank_accounts CASCADE;
+
 DROP TABLE IF EXISTS customer_sites CASCADE;
 DROP TABLE IF EXISTS customer_contacts CASCADE;
 DROP TABLE IF EXISTS customers CASCADE;
@@ -67,14 +67,14 @@ DROP TABLE IF EXISTS custom_roles CASCADE;
 DROP TABLE IF EXISTS permissions CASCADE;
 DROP TABLE IF EXISTS users CASCADE;
 DROP TABLE IF EXISTS departments CASCADE;
-DROP TABLE IF EXISTS collaboration_request_history CASCADE;
-DROP TABLE IF EXISTS collaboration_requests CASCADE;
-DROP TABLE IF EXISTS work_instructions CASCADE;
-DROP TABLE IF EXISTS announcement_reads CASCADE;
-DROP TABLE IF EXISTS announcements CASCADE;
+
+
+
+
+
 DROP TABLE IF EXISTS todos CASCADE;
-DROP TABLE IF EXISTS document_jobs CASCADE;
-DROP TABLE IF EXISTS agent_registry CASCADE;
+
+
 DROP TABLE IF EXISTS google_configs CASCADE;
 
 
@@ -349,24 +349,17 @@ CREATE TABLE customer_sites (
     "paidOptions"         TEXT, -- 현장별 유상옵션
     "protection"          TEXT, -- 현장별 보양작업
     "checkedSpecs"        JSONB, -- 현장별 요구사양 체크 상태
+    "billingDay"          INTEGER,
+    "statementClosingDay" INTEGER,
+    "paymentDueDay"       INTEGER,
+    "checkedSpecs"        JSONB, -- 현장별 요구사양 체크 상태
     "isActive"            BOOLEAN NOT NULL DEFAULT TRUE,
     "createdAt"           TEXT NOT NULL,
     "updatedAt"           TEXT NOT NULL,
     "tenant_id"           TEXT NOT NULL DEFAULT 'giyeun'
 );
 
--- 2-5. 고객사 계좌 (customer_bank_accounts)
-CREATE TABLE customer_bank_accounts (
-    id                    TEXT PRIMARY KEY,
-    "customerId"          TEXT NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
-    "bankName"            TEXT NOT NULL,
-    "accountNumber"       TEXT NOT NULL,
-    "accountHolder"       TEXT NOT NULL,
-    "isPrimary"           BOOLEAN DEFAULT FALSE,
-    "createdAt"           TEXT NOT NULL,
-    "updatedAt"           TEXT NOT NULL,
-    "tenant_id"           TEXT NOT NULL DEFAULT 'giyeun'
-);
+
 
 -- 2-6. 제품 카탈로그 및 표준 제원 (products)
 CREATE TABLE products (
@@ -468,6 +461,10 @@ CREATE TABLE consumables (
     "modelName"           TEXT NOT NULL UNIQUE,
     unit                  TEXT NOT NULL,
     "unitPrice"           DOUBLE PRECISION NOT NULL DEFAULT 0,
+    "stockQty"            DOUBLE PRECISION NOT NULL DEFAULT 0,
+    category              TEXT,
+    note                  TEXT,
+    "repairingQty"        DOUBLE PRECISION DEFAULT 0,
     "stockQty"            DOUBLE PRECISION NOT NULL DEFAULT 0,
     supplier              TEXT, -- 구입처/공급업체
     "vendorId"            TEXT REFERENCES vendors(id) ON DELETE SET NULL,
@@ -738,19 +735,7 @@ CREATE INDEX IF NOT EXISTS idx_outbound_inspections_asset_id ON outbound_inspect
 CREATE INDEX IF NOT EXISTS idx_outbound_inspections_status ON outbound_inspections(status);
 CREATE INDEX IF NOT EXISTS idx_outbound_inspections_delivery_id ON outbound_inspections("deliveryId");
 
--- 3-6. 입고 하자 상세 (inbound_defect_details)
-CREATE TABLE inbound_defect_details (
-    id                    TEXT PRIMARY KEY,
-    "inboundNo"           TEXT NOT NULL,
-    "assetId"             TEXT REFERENCES assets(id) ON DELETE SET NULL,
-    "defectCategory"      TEXT NOT NULL,
-    "defectDescription"   TEXT NOT NULL,
-    "isCustomerFault"     BOOLEAN NOT NULL DEFAULT FALSE,
-    "estimatedRepairCost" DOUBLE PRECISION DEFAULT 0,
-    "photoUrls"           TEXT[],
-    "createdAt"           TEXT NOT NULL,
-    "tenant_id"           TEXT NOT NULL DEFAULT 'giyeun'
-);
+
 
 -- 3-7. 자산 입출고/정비 이력 (asset_in_out_logs)
 CREATE TABLE asset_inout_logs (
@@ -913,20 +898,7 @@ CREATE TABLE repairs (
     "tenant_id"           TEXT NOT NULL DEFAULT 'giyeun'
 );
 
--- 4-2. AS 실시간 이벤트 타임라인 로그 (repair_timeline_events)
-CREATE TABLE repair_timeline_events (
-    id                    TEXT PRIMARY KEY,
-    "repairId"            TEXT NOT NULL REFERENCES repairs(id) ON DELETE CASCADE,
-    "eventType"           TEXT NOT NULL, -- CALL_MADE, TRANSIT_START, ARRIVED, COMPLETED, REVISIT_SET
-    "eventTitle"          TEXT NOT NULL,
-    "eventDescription"    TEXT,
-    "eventMeta"           JSONB,
-    "actorId"             TEXT,
-    "actorName"           TEXT,
-    "occurredAt"          TEXT NOT NULL,
-    "createdAt"           TEXT NOT NULL,
-    "tenant_id"           TEXT NOT NULL DEFAULT 'giyeun'
-);
+
 
 -- 4-3. 수리 투입 자재 (repair_consumables)
 CREATE TABLE repair_consumables (
@@ -964,16 +936,7 @@ CREATE TABLE consumable_logs (
 );
 
 -- 4-5. 검수 체크리스트 항목 (inspection_checklist_items)
-CREATE TABLE inspection_checklist_items (
-    id                    TEXT PRIMARY KEY,
-    category              TEXT NOT NULL,
-    code                  TEXT NOT NULL UNIQUE,
-    name                  TEXT NOT NULL,
-    score                 INTEGER NOT NULL DEFAULT 0,
-    description           TEXT,
-    "createdAt"           TEXT NOT NULL,
-    "updatedAt"           TEXT
-);
+
 
 -- 4-8. 전사 표준 옵션 마스터 (standard_options)
 CREATE TABLE IF NOT EXISTS standard_options (
@@ -1340,98 +1303,19 @@ CREATE TABLE todos (
     "tenant_id"           TEXT NOT NULL DEFAULT 'giyeun'
 );
 
--- 6-2. 사내 공지사항 (announcements & reads)
-CREATE TABLE announcements (
-    id                    TEXT PRIMARY KEY,
-    "authorId"            TEXT REFERENCES users(id) ON DELETE SET NULL,
-    title                 TEXT NOT NULL,
-    content               TEXT NOT NULL,
-    "createdAt"           TEXT NOT NULL,
-    "updatedAt"           TEXT NOT NULL,
-    "tenant_id"           TEXT NOT NULL DEFAULT 'giyeun'
-);
 
-CREATE TABLE announcement_reads (
-    id                    TEXT PRIMARY KEY,
-    "announcementId"      TEXT NOT NULL REFERENCES announcements(id) ON DELETE CASCADE,
-    "userId"              TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    "readAt"              TEXT NOT NULL,
-    "createdAt"           TEXT NOT NULL,
-    "updatedAt"           TEXT NOT NULL,
-    UNIQUE("announcementId", "userId"),
-    "tenant_id"           TEXT NOT NULL DEFAULT 'giyeun'
-);
 
--- 6-3. 작업 지시 (work_instructions)
-CREATE TABLE work_instructions (
-    id                    TEXT PRIMARY KEY,
-    "managerId"           TEXT REFERENCES users(id) ON DELETE SET NULL,
-    "assigneeId"          TEXT REFERENCES users(id) ON DELETE SET NULL,
-    title                 TEXT NOT NULL,
-    content               TEXT,
-    "reportType"          TEXT CHECK ("reportType" IN ('FILE', 'TEXT', 'VERBAL')) NOT NULL,
-    status                TEXT CHECK (status IN ('PENDING', 'REPORTED', 'APPROVED', 'NEEDS_WORK')) NOT NULL DEFAULT 'PENDING',
-    "reportContent"       TEXT,
-    "reportFileUrl"       TEXT,
-    "createdAt"           TEXT NOT NULL,
-    "updatedAt"           TEXT NOT NULL,
-    "tenant_id"           TEXT NOT NULL DEFAULT 'giyeun'
-);
 
--- 6-4. 협업 요청 (collaboration_requests & history)
-CREATE TABLE collaboration_requests (
-    id                    TEXT PRIMARY KEY,
-    "requesterId"         TEXT REFERENCES users(id) ON DELETE SET NULL,
-    "targetUserId"        TEXT REFERENCES users(id) ON DELETE SET NULL,
-    title                 TEXT NOT NULL,
-    content               TEXT,
-    status                TEXT CHECK (status IN ('REQUESTED', 'NEGOTIATING', 'AGREED', 'REJECTED', 'ESCALATED')) NOT NULL DEFAULT 'REQUESTED',
-    "negotiationCount"    INTEGER NOT NULL DEFAULT 0,
-    "createdAt"           TEXT NOT NULL,
-    "updatedAt"           TEXT NOT NULL,
-    "tenant_id"           TEXT NOT NULL DEFAULT 'giyeun'
-);
 
-CREATE TABLE collaboration_request_history (
-    id                    TEXT PRIMARY KEY,
-    "requestId"           TEXT NOT NULL REFERENCES collaboration_requests(id) ON DELETE CASCADE,
-    "writerId"            TEXT REFERENCES users(id) ON DELETE SET NULL,
-    content               TEXT NOT NULL,
-    action                TEXT CHECK (action IN ('NEGOTIATE', 'AGREE', 'REJECT', 'ESCALATE')) NOT NULL,
-    "createdAt"           TEXT NOT NULL,
-    "updatedAt"           TEXT NOT NULL,
-    "tenant_id"           TEXT NOT NULL DEFAULT 'giyeun'
-);
 
--- 6-5. 로컬 에이전트 레지스트리 (agent_registry)
-CREATE TABLE agent_registry (
-    callsign              TEXT PRIMARY KEY,
-    "userId"              TEXT REFERENCES users(id) ON DELETE SET NULL,
-    "machineName"         TEXT,
-    "isMaster"            BOOLEAN DEFAULT FALSE,
-    status                TEXT CHECK (status IN ('ONLINE', 'BUSY', 'OFFLINE')) NOT NULL DEFAULT 'ONLINE',
-    "lastHeartbeat"       TIMESTAMPTZ NOT NULL,
-    "createdAt"           TIMESTAMPTZ DEFAULT NOW(),
-    "updatedAt"           TIMESTAMPTZ DEFAULT NOW()
-);
 
--- 6-6. 문서 생산 백그라운드 작업 큐 (document_jobs)
-CREATE TABLE document_jobs (
-    id                    TEXT PRIMARY KEY,
-    "jobType"             TEXT NOT NULL,
-    "contractId"          TEXT REFERENCES contracts(id) ON DELETE SET NULL,
-    "targetCallsign"      TEXT,
-    "assignedCallsign"    TEXT REFERENCES agent_registry(callsign) ON DELETE SET NULL,
-    status                TEXT CHECK (status IN ('PENDING', 'PROCESSING', 'COMPLETED', 'FAILED')) NOT NULL DEFAULT 'PENDING',
-    payload               JSONB NOT NULL,
-    "resultUrl"           TEXT,
-    "localFilePath"       TEXT,
-    "errorMessage"        TEXT,
-    "createdAt"           TIMESTAMPTZ DEFAULT NOW(),
-    "lockedAt"            TIMESTAMPTZ,
-    "completedAt"         TIMESTAMPTZ,
-    "tenant_id"           TEXT NOT NULL DEFAULT 'giyeun'
-);
+
+
+
+
+
+
+
 
 -- 6-7. 클라우드 및 구글 연동 설정 (google_configs)
 CREATE TABLE google_configs (
@@ -1621,6 +1505,8 @@ CREATE TABLE IF NOT EXISTS print_queue (
     "documentHtml"        TEXT NOT NULL,
     status                TEXT CHECK (status IN ('PENDING', 'PRINTING', 'COMPLETED', 'FAILED', 'CANCELED')) NOT NULL DEFAULT 'PENDING',
     "errorMessage"        TEXT,
+    "localPrinterName"    TEXT,
+    "lastError"           TEXT,
     "requestedById"       TEXT REFERENCES users(id) ON DELETE SET NULL,
     "requestedByName"     TEXT,
     "requestedAt"         TEXT NOT NULL,
@@ -1681,3 +1567,170 @@ END $$;
 ALTER TABLE inspection_checklist_items DISABLE ROW LEVEL SECURITY;
 GRANT ALL ON TABLE inspection_checklist_items TO anon, authenticated, service_role;
 
+
+
+-- ==============================================================================
+-- 🏢 [도메인 0] 멀티테넌트 및 전사 기본 설정 (Tenants & Core Workplace)
+-- ==============================================================================
+CREATE TABLE IF NOT EXISTS tenants (
+    id                    TEXT PRIMARY KEY,
+    "tenantCode"          TEXT NOT NULL UNIQUE,
+    "systemName"          TEXT NOT NULL,
+    "displayName"         TEXT NOT NULL,
+    "corporateName"       TEXT NOT NULL,
+    "tradeName"           TEXT,
+    "businessNumber"      TEXT NOT NULL,
+    "corporateRegistrationNumber" TEXT,
+    "representativeName"  TEXT NOT NULL,
+    "openingDate"         TEXT NOT NULL,
+    "businessAddress"     TEXT NOT NULL,
+    "headOfficeAddress"   TEXT,
+    "businessCategory"    TEXT NOT NULL,
+    "businessItem"        TEXT NOT NULL,
+    "businessTypes"       JSONB DEFAULT '[]'::jsonb,
+    "isUnitTaxation"      BOOLEAN NOT NULL DEFAULT FALSE,
+    "taxEmail"            TEXT NOT NULL,
+    "taxOffice"           TEXT,
+    "certificateIssueDate" TEXT,
+    tel                   TEXT NOT NULL,
+    fax                   TEXT,
+    "salesPhone"          TEXT,
+    email                 TEXT,
+    "websiteUrl"          TEXT,
+    workplaces            JSONB DEFAULT '[]'::jsonb,
+    yards                 JSONB DEFAULT '[]'::jsonb,
+    "mainYardAddress"     TEXT,
+    "stampBase64"         TEXT,
+    "createdAt"           TEXT NOT NULL,
+    "updatedAt"           TEXT NOT NULL
+);
+
+-- ==============================================================================
+-- 📦 [도메인 4-9] 소모품 실사 및 고품 관리 (Stocktaking & Collected Parts)
+-- ==============================================================================
+CREATE TABLE IF NOT EXISTS stocktaking_audits (
+    id                    TEXT PRIMARY KEY,
+    "auditNo"             TEXT NOT NULL,
+    "targetType"          TEXT CHECK ("targetType" IN ('HQ', 'VEHICLE')) NOT NULL,
+    "mechanicId"          TEXT,
+    "mechanicName"        TEXT,
+    "vehicleNo"           TEXT,
+    "auditDate"           TEXT NOT NULL,
+    "auditorId"           TEXT NOT NULL,
+    "auditorName"         TEXT NOT NULL,
+    status                TEXT CHECK (status IN ('DRAFT', 'CONFIRMED', 'CANCELLED')) NOT NULL DEFAULT 'DRAFT',
+    "totalSystemQty"      DOUBLE PRECISION NOT NULL DEFAULT 0,
+    "totalActualQty"      DOUBLE PRECISION NOT NULL DEFAULT 0,
+    "totalDiffQty"        DOUBLE PRECISION NOT NULL DEFAULT 0,
+    "totalSystemAmount"   DOUBLE PRECISION NOT NULL DEFAULT 0,
+    "totalActualAmount"   DOUBLE PRECISION NOT NULL DEFAULT 0,
+    "totalDiffAmount"     DOUBLE PRECISION NOT NULL DEFAULT 0,
+    memo                  TEXT,
+    "confirmedAt"         TEXT,
+    "confirmedBy"         TEXT,
+    "createdAt"           TEXT NOT NULL,
+    "updatedAt"           TEXT NOT NULL,
+    "tenant_id"           TEXT NOT NULL DEFAULT 'giyeun'
+);
+
+CREATE TABLE IF NOT EXISTS stocktaking_audit_items (
+    id                    TEXT PRIMARY KEY,
+    "auditId"             TEXT NOT NULL REFERENCES stocktaking_audits(id) ON DELETE CASCADE,
+    "consumableId"        TEXT NOT NULL,
+    "modelName"           TEXT NOT NULL,
+    unit                  TEXT NOT NULL,
+    "unitPrice"           DOUBLE PRECISION NOT NULL DEFAULT 0,
+    "systemQty"           DOUBLE PRECISION NOT NULL DEFAULT 0,
+    "actualQty"           DOUBLE PRECISION NOT NULL DEFAULT 0,
+    "diffQty"             DOUBLE PRECISION NOT NULL DEFAULT 0,
+    "diffAmount"          DOUBLE PRECISION NOT NULL DEFAULT 0,
+    "diffReason"          TEXT CHECK ("diffReason" IN ('LOST', 'DAMAGED', 'UNRECORDED_USAGE', 'SURPLUS', 'OTHER')),
+    note                  TEXT,
+    "createdAt"           TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP::TEXT,
+    "tenant_id"           TEXT NOT NULL DEFAULT 'giyeun'
+);
+
+CREATE TABLE IF NOT EXISTS collected_parts (
+    id                    TEXT PRIMARY KEY,
+    "partNo"              TEXT NOT NULL,
+    "consumableId"        TEXT NOT NULL,
+    "modelName"           TEXT NOT NULL,
+    "mechanicId"          TEXT NOT NULL,
+    "mechanicName"        TEXT NOT NULL,
+    quantity              DOUBLE PRECISION NOT NULL DEFAULT 1,
+    disposition           TEXT CHECK (disposition IN ('REBUILD', 'SCRAP', 'VENDOR_WARRANTY')) NOT NULL DEFAULT 'REBUILD',
+    status                TEXT CHECK (status IN ('RECEIVED', 'IN_PROCESS', 'COMPLETED')) NOT NULL DEFAULT 'RECEIVED',
+    "receivedDate"        TEXT NOT NULL,
+    "actionDate"          TEXT,
+    "actionMemo"          TEXT,
+    memo                  TEXT,
+    "createdAt"           TEXT NOT NULL,
+    "tenant_id"           TEXT NOT NULL DEFAULT 'giyeun'
+);
+
+-- ==============================================================================
+-- 🎙️ [도메인 7-12] AI 음성통화 및 임시 출고의뢰 (Call STT Pipeline & Draft Orders)
+
+CREATE TABLE IF NOT EXISTS call_uploads (
+    id                    TEXT PRIMARY KEY,
+    uploader_id           TEXT,
+    uploader_phone        TEXT,
+    caller_phone          TEXT,
+    call_direction        TEXT,
+    call_ended_at         TEXT,
+    duration_seconds      INTEGER,
+    storage_path          TEXT,
+    file_name             TEXT,
+    call_context          TEXT,
+    summary_text          TEXT,
+    status                TEXT,
+    retry_count           INTEGER DEFAULT 0,
+    error_message         TEXT,
+    draft_id              TEXT,
+    customer_id           TEXT,
+    created_at            TEXT,
+    processed_at          TEXT,
+    auto_delete_at        TEXT
+);
+
+CREATE TABLE IF NOT EXISTS call_pipeline_logs (
+    id                    TEXT PRIMARY KEY,
+    call_upload_id        TEXT REFERENCES call_uploads(id) ON DELETE CASCADE,
+    draft_id              TEXT,
+    event_type            TEXT,
+    level                 TEXT,
+    message               TEXT,
+    payload               JSONB,
+    created_at            TEXT
+);
+
+CREATE TABLE IF NOT EXISTS draft_dispatch_orders (
+    id                    TEXT PRIMARY KEY,
+    owner_id              TEXT,
+    source_call_ids       JSONB,
+    context               TEXT,
+    customer_name         TEXT,
+    customer_name_conf    DOUBLE PRECISION,
+    customer_name_src     TEXT,
+    customer_id           TEXT,
+    site_name             TEXT,
+    site_name_conf        DOUBLE PRECISION,
+    site_id               TEXT,
+    equipment_json        JSONB,
+    loading_date          TEXT,
+    loading_date_conf     DOUBLE PRECISION,
+    loading_time          TEXT,
+    loading_time_conf     DOUBLE PRECISION,
+    contact_person        TEXT,
+    contact_person_conf   DOUBLE PRECISION,
+    contact_phone         TEXT,
+    note                  TEXT,
+    is_new_customer       BOOLEAN,
+    customer_registered   BOOLEAN,
+    status                TEXT,
+    urgency               TEXT,
+    merged_from           TEXT,
+    created_at            TEXT,
+    submitted_at          TEXT,
+    submitted_by_id       TEXT
+);

@@ -1,5 +1,136 @@
 # 개발 요구사항 임시 기록 (dev_temp.md)
 
+## [완료] 국세청 홈택스 사업자 휴폐업 실시간 진위확인 및 전사 거래처 전수 점검 스튜디오 구축 (v1.12.0.Build.71)
+- **요구사항**: "사업자 등록증의 사업자번호를 홈택스 사업자 휴폐업조회를 확인한 후에 등록 해줘야 할것 같은데. 어떤구성이 가능할까? 필요에 따라서, 정기적으로 등록된 고객의 사업자 상태를 확인 점검 하는 프로세스를 연계해서 구성한다면?"
+- **적용 목적 (헌장 1.1 최대 편익, 1.2 렌탈 도메인 3대 핵심 가치, 2.1 R&R 엄격 분리, 3.1 무수식어 건조 표준, 3.2 No-Wrap, 3.4 상하 스택, 3.5 Z-패턴, 5.2 무음 실패 방지)**:
+  1. **국세청 홈택스 사업자 상태 조회 서버리스 엔드포인트 (`api/nts-status.ts`)**:
+     - 공공데이터포털 국세청 사업자등록정보 진위확인 및 상태조회 API(`POST https://api.odcloud.kr/api/nts-businessman/v1/status`) 연동.
+     - 1회 호출 시 최대 100건 사업자번호(`b_no`) 일괄 질의.
+     - 4대 표준 상태(`01`: 계속사업자, `02`: 휴업자, `03`: 폐업자, 미등록) 파싱 및 폐업일자(`end_dt`), 과세유형(`tax_type`) 추출.
+     - 오프라인/테스트 환경을 위한 대한민국 10자리 사업자등록번호 체크섬(Modular 10) 알고리즘 대체 로직 구비.
+  2. **프론트엔드 연동 클라이언트 서비스 (`src/services/ntsBusinessService.ts`)**:
+     - `checkSingleNtsStatus`: 단건 실시간 진위확인 함수.
+     - `checkBatchNtsStatus`: 대량 사업자번호를 100건 단위 청크로 분할하여 진행률 콜백과 함께 순차 질의하는 배치 엔진.
+  3. **사업자등록증 단건/폴더 등록 프로세스 전진 방어 연동**:
+     - `BusinessLicenseModal`: OCR 완료 즉시 홈택스 조회 실행, 계속사업자(초록)/휴폐업(빨강) 배지 표출. 폐업자 시 `isClosed: true`, `transactionStatus: 'BLOCKED'`, 폐업일자 자동 세팅.
+     - `batchBusinessLicenseService`: 폴더 내 다량 등록증 처리 시에도 실시간 홈택스 대사 후 폐업처는 출고제한 상태로 자동 격리 저장.
+  4. **Gutenberg Z-패턴 국세청 휴폐업 전수 점검 스튜디오 (`src/components/NtsStatusAuditModal.tsx`)**:
+     - 매출처(Customer) / 매입처(Vendor) 탭 전환 지원.
+     - 1-Click 전수 점검 시작, 실시간 진행률 바 및 5대 통계 HUD(전체, 계속, 휴업, 폐업, 미등록).
+     - **핵심 렌탈 도메인 위험 감지**: 폐업 상태인데 현재 가동 중인 임대 장비(`RENTED`)가 1대 이상 존재하는 악성 위험 처를 탐지하여 붉은 펄스 배지 및 장비 목록 명시.
+     - **단일 원클릭 완결 조치**: 폐업 거래처 출고제한(`BLOCKED`) 일괄 적용, 자산 회수 긴급 ToDo 자동 발행, 회수 감사 로그(`delinquencyActionLogs`) 영구 기록, 감사 결과 엑셀 다운로드 지원.
+  5. **전사 관리 페이지 연동 (`src/pages/Customers.tsx`, `src/pages/Vendors.tsx`)**:
+     - 상단 툴바에 무수식어 건조 표준 명칭 `[국세청 휴폐업 점검]` 버튼 마운트.
+- **주요 변경 파일**:
+  - `api/nts-status.ts` [NEW]: 국세청 홈택스 휴폐업 API 서버리스 엔드포인트 및 체크섬 폴백 신설.
+  - `src/services/ntsBusinessService.ts` [NEW]: 국세청 상태조회 클라이언트 서비스 및 청킹 엔진 신설.
+  - `src/components/NtsStatusAuditModal.tsx` [NEW]: 국세청 휴폐업 전수 점검 스튜디오 모달 신설.
+  - `src/components/BusinessLicenseModal.tsx` [MODIFY]: 실시간 홈택스 조회 배지 및 폐업처 거래제한 자동 바인딩.
+  - `src/services/batchBusinessLicenseService.ts` [MODIFY]: 폴더 일괄 등록 시 홈택스 조회 및 폐업 격리 로직 연동.
+  - `src/services/db.ts` [MODIFY]: Customer / Vendor에 `taxType`, `taxTypeCd`, `businessStatus`, `closedDate`, `lastStatusCheckDate` 확장.
+  - `src/pages/Customers.tsx` [MODIFY]: 국세청 휴폐업 점검 버튼 및 스튜디오 모달 마운트.
+  - `src/pages/Vendors.tsx` [MODIFY]: 국세청 휴폐업 점검 버튼 및 스튜디오 모달 마운트.
+- **검증 결과**:
+  - `cmd /c npm run build`: TypeScript 0 Error 및 Vite 번들링 완료 (`✓ built in 1.40s`).
+  - `000.skelton`: 발상/계획/경험 기록 및 커밋/푸시 완료 (`b7750cd`).
+
+## [완료] 사업자등록증 폴더 일괄 순회 Vision AI 분석 및 매출처(고객사) / 매입거래처(협력사) 자동 등록/보완 스튜디오 구축 (v1.12.0.Build.70)
+- **요구사항**: "시스템 도입 초기에는 한번에 매우 많은 고객정보를 업로드 해야될 수 있는데, 사업자등록증 폴더를 지정해서 폴더내 모든파일을 순회하여 고객을 등록할 로직도 추가해줘 매출처 고객 뿐만 아니라, 매입거래처 등록도 동일하게 작동 가능하면 좋겠어"
+- **적용 목적 (헌장 1.1 최대 편익, 1.2 렌탈 도메인 3대 핵심 가치, 2.1 R&R 엄격 분리, 3.1 무수식어 건조 표준, 3.2 No-Wrap, 3.4 상하 스택, 3.5 Z-패턴, 5.2 무음 실패 방지)**:
+  1. **HTML5 디렉터리 및 드래그앤드롭 재귀 탐색 엔진 (`src/services/batchBusinessLicenseService.ts`)**:
+     - `webkitdirectory` 폴더 선택 및 `DataTransferItem.webkitGetAsEntry()` 재귀 탐색을 통해 폴더 내 하위 디렉터리까지 전수 스캔.
+     - 지원 형식(PDF, PNG, JPG, JPEG, WEBP) 자동 필터링 및 macOS/숨김 파일(`.DS_Store`, `__MACOSX`) 무결성 배제.
+  2. **매출처(Customer) / 매입거래처(Vendor) 듀얼 타겟팅 및 지능형 2-Way 자동 분기**:
+     - **🏢 매출처 (고객사)**: 사업자번호(10자리 정규화) 1차 대조 ➔ 법인 접두어 제거 상호 2차 대조. 기존 고객 일치 시 누락 필드만 스마트 보완(`SUCCESS_UPDATED`), 미등록 시 표준 거래조건(마감일/결제일/거래허용) 세팅 후 신규 등록(`SUCCESS_NEW`).
+     - **🏭 매입거래처 (협력사/외주처)**: 장비 임차처, 장비 구매처, 운송 협력사, 외주 정비공장, 소모품 구매처 등 기본 유형을 사전 선택하고 `vendors` 테이블에 자동 매핑 등록/보완.
+  3. **순차 큐(Sequential Queue) & 지수 백오프(429 재시도) 속도제한 보호 아키텍처**:
+     - 대량 업로드 시 Groq LPU / Gemini API의 분당 호출수(RPM) 초과(429)를 방지하기 위해 건당 850ms 안정 딜레이 및 429 감지 시 3초 지수 백오프 자동 재시도 탑재.
+     - `AbortController` 연동으로 작업 중 언제든 즉시 일시정지 및 중단 제어 가능.
+     - 증빙 영구 보존용 Supabase Storage 업로드(`customer_licenses`, `vendor_licenses`) 자동 연동.
+  4. **Gutenberg Z-패턴 고밀도 실시간 스트리밍 대사 스튜디오 (`src/components/BatchBusinessLicenseModal.tsx`)**:
+     - 좌상단(Scope: 대상 선택/폴더 선택) ➔ 우상단(Pipeline: 일괄 분석 시작/일시정지) ➔ 중앙(Inspection: 진행률 HUD 및 38px No-Wrap 실시간 스트리밍 그리드) ➔ 우하단(Terminal Action: 결과 엑셀 다운로드/완료 닫기).
+     - 실시간 통계 HUD: 전체, 처리, 대기, 신규등록(초록), 정보보완(파랑), 오류(빨강), 건너뜀(노랑) 배지.
+  5. **전사 관리 화면 3개소 완벽 연동**:
+     - **PC 고객 관리 (`src/pages/Customers.tsx`)**: 상단 헤더 툴바 `[📂 폴더 일괄 등록]` 버튼 탑재 (매출처 모드 자동 지정).
+     - **PC 매입처 관리 (`src/pages/Vendors.tsx`)**: 상단 헤더 툴바 `[📂 폴더 일괄 등록]` 버튼 탑재 (매입처 모드 자동 지정).
+     - **모바일 거래처 관리 (`src/mobile/pages/MobileCustomerManage.tsx`)**: 모바일 검색 헤더 툴바 `[폴더 일괄]` 버튼 탑재.
+- **주요 변경 파일**:
+  - `src/services/batchBusinessLicenseService.ts` [NEW]: 재귀 폴더 필터링, 단건 AI 분석, DB 대사/보완/등록, 순차 큐 배치 실행기 신설.
+  - `src/components/BatchBusinessLicenseModal.tsx` [NEW]: 고밀도 실시간 스트리밍 대사 스튜디오 모달 신설.
+  - `src/pages/Customers.tsx` [MODIFY]: 폴더 일괄 등록 버튼 및 모달 마운트.
+  - `src/pages/Vendors.tsx` [MODIFY]: 폴더 일괄 등록 버튼 및 모달 마운트.
+  - `src/mobile/pages/MobileCustomerManage.tsx` [MODIFY]: 폴더 일괄 등록 버튼 및 모달 마운트.
+- **검증 결과**:
+  - `cmd /c npm run build`: TypeScript 0 에러 및 빌드 번들링 완결 (`✓ built in 1.17s`).
+  - `000.skelton` 발상/계획/경험 기록 커밋 및 원격 푸시 완료 (`9a5b492`).
+
+## [완료] 자유 음성메모 기반 비정형 발화 분석 및 출고의뢰 5대 핵심항목 실시간 충족 검증 자동접수 스튜디오 구축 (v1.12.0.Build.69)
+- **요구사항**: "통화수집과 별개로, 영업사원이 웹앱에서, 음성입력으로 출고의뢰를 작성하는 기능을 강화하고 싶어. 화면을 보고 터치하는 업무흐름과 완전히 별개로 영업사원이 음성으로 필요한 내용을 음성메모하듯이 순서 없이 음성을 남기면, 출고의뢰를 구성하는 핵심 정보들이 충족되었는가 계속 확인해서, 모든 항목이 완성되면, 출고의뢰 하도록 해주는 기능"
+- **적용 목적 (헌장 1.1 최대 편익, 1.2 렌탈 도메인 3대 핵심 가치, 2.1 R&R 분리, 3.1 무수식어 건조 표준, 3.2 No-Wrap, 3.4 상하 스택, 3.5 Z-패턴)**:
+  1. **화면 터치 폼과 100% 분리된 순서 무관 비정형 다차원 슬롯 필러 (`src/services/voiceOrderDraftService.ts`)**:
+     - 기존의 경직된 4단계 순차 위자드와 달리, 영업사원이 순서에 구애받지 않고 단일 장문이나 여러 회차의 짤막한 음성 메모를 남기면(`mergeVoiceFragmentToDraft`) 5대 핵심 슬롯을 실시간 추출 및 누적 병합.
+     - 작업높이 기준 발화("8미터", "10미터", "12미터", "14미터" 등)를 지능적으로 19ft, 26ft, 32ft, 40ft 장비 규격 및 수량으로 자동 매핑.
+     - "건설", "이엔지", "산업" 등 법인 접미어가 생략된 거래처 및 현장명 부분 일치 검색 고도화.
+  2. **5대 핵심 슬롯 실시간 충족 상태 머신 (`evaluateOrderSlotsStatus`)**:
+     - 1. 🏢 **고객사**: 고객명 또는 별칭 인식 여부 (🟢 충족 / 🔴 미충족)
+     - 2. 📍 **현장명**: 기존 등록 현장 또는 신규 현장명/주소 인식 여부 (🟢 충족 / 🔴 미충족)
+     - 3. ⏰ **희망 출고일시**: 납품 희망일(오늘/내일/모레/특정일) 및 시간 인식 여부 (🟢 충족 / 🔴 미충족)
+     - 4. 🚜 **투입장비**: 규격/모델 및 수량(대수) 인식 여부 (🟢 충족 / 🔴 미충족)
+     - 5. 📞 **현장 연락처**: 현장 담당자 및 유효 전화번호(010-XXXX-XXXX) 인식 여부 (🟢 충족 / 🔴 미충족)
+     - 보조 슬롯: 운송조건(착불/당사부담, 차종), 안전/유상옵션(철망, 보양) 자동 반영.
+     - 진행률 게이지(`0% ~ 100%`) 및 결측 항목 자연어 가이드(예: "📞 현장 담당자 연락처를 말씀해 주세요") 실시간 피드백.
+  3. **전용 핸즈프리 모바일 음성메모 스튜디오 모달 (`src/mobile/components/VoiceMemoDispatchStudioModal.tsx`)**:
+     - 대형 마이크 컨트롤러(펄스 레이더 애니메이션) 및 실시간 음성 파형/전사 말풍선.
+     - 연속 청취 모드(`연속 청취 ON`) 지원으로 끊김 없는 자유 발화 지원.
+     - TTS 음성 가이드 토글 지원으로 화면을 보지 않고도 부족한 항목을 청취 가능.
+     - 영업사원이 발화한 음성 메모 조각들을 타임라인으로 보여주는 누적 피드 제공.
+  4. **100% 완성 시 원클릭 / 음성 즉시 접수 완결**:
+     - 5개 핵심 슬롯 완성 시 대형 녹색 `[🚀 출고의뢰 즉시 접수 (완결)]` 버튼 활성화.
+     - 음성 명령("접수해줘", "출고 접수") 인식 시에도 추가 터치 없이 즉시 DB에 계약서, 현장, 배차 지시건을 원스톱 자동 생성(`saveSmartDispatch`) 및 카톡/웹 푸시 브로드캐스트.
+     - 세부 조정을 원할 경우 `[일반 서식으로 전달]`을 통한 유연한 핸드오프 지원.
+  5. **모바일 출고의뢰 화면 전면 배치 (`src/mobile/pages/MobileDispatchOrderCreate.tsx`)**:
+     - 음성 입력 패널 최상단에 `[🎙️ 자유 음성메모 출고의뢰]` 메인 히어로 버튼 전진 배치.
+- **주요 변경 파일**:
+  - `src/services/voiceOrderDraftService.ts` [MODIFY]: `OrderSlotsStatus`, `evaluateOrderSlotsStatus` 구현, 작업높이 미터(8m~18m) 및 모델/수량 매핑 확장.
+  - `src/mobile/components/VoiceMemoDispatchStudioModal.tsx` [NEW]: 핸즈프리 자유 음성메모 스튜디오 전체화면 모달 신설.
+  - `src/mobile/pages/MobileDispatchOrderCreate.tsx` [MODIFY]: 음성 패널 히어로 버튼 배치 및 스튜디오 모달 마운트.
+- **검증 결과**:
+  - `cmd /c npx tsc --noEmit`: TypeScript 0 Error 통과.
+  - `cmd /c npm run build`: Production 번들 정상 완료 (`✓ built in 1.16s`).
+
+## [완료] 사업자등록증 사진/PDF 업로드 기반 AI 비전 신규 고객 자동 등록 및 기존 거래처 결측 정보 1:1 보완 파이프라인 구축 (v1.12.0.Build.68)
+- **요구사항**: "고객 등록을 아주 쉽게 처리하는 기능을 만들고 싶어. 핸드폰에서 문자메세지 또는 카카오톡등의 방법으로 사업자등록증을 수신한 경우, PC 나 핸드폰에서 이메일로 사업자등록증을 수신한 경우. 각각 PC 나 핸드폰에서 고객의 사업자등록증만 업로드 하면, AI 이미지 분석을 통해서, 고객을 신규로 등록하거나 부족한 고객의 정보를 보완 기록 해주는 기능."
+- **적용 목적 (헌장 1.1 최대 편익, 1.2 렌탈 도메인 3대 핵심 가치, 2.1 R&R 엄격 분리, 3.1 무수식어 건조 표준, 3.2 No-Wrap, 3.4 상하 스택, 3.5 Z-패턴)**:
+  1. **다중 포맷(사진 촬영/카톡 이미지/이메일 PDF) 유니버설 파일 수용 엔진 (`src/services/visionOcrService.ts`)**:
+     - 스마트폰 카메라 촬영 및 갤러리 이미지(JPG, PNG, WEBP)는 클라이언트 Canvas를 통해 장축 1800px로 지능형 최적 리사이징 압축 후 전송하여 Vercel 4.5MB 페이로드 한도 초과 방지 및 초고속(1~2초) 판독 실현.
+     - PC/이메일로 수신된 전자 사업자등록증 PDF 문서는 `pdfjs-dist`를 통해 디지털 텍스트 레이어를 1차 추출하고, 1페이지 뷰포트를 고해상도 Canvas(1.8x 스케일)로 래스터화하여 Vision AI 엔진에 결합 전달.
+  2. **하이브리드 LPU AI 비전 OCR 백엔드 (`api/vision-ocr.ts`)**:
+     - `BUSINESS_LICENSE` 전용 비전 파이프라인 신설.
+     - 초고속 Groq LPU Vision (Qwen2.5-VL / Qwen3.6-27b) 1순위 구동 및 Google Gemini 1.5 Flash 2순위 자동 장애극복(Failover) 아키텍처.
+     - 10대 핵심 항목 정밀 추출: 사업자등록번호(`XXX-XX-XXXXX` 정규화), 상호/법인명, 대표자 성명, 개업연월일(`YYYY-MM-DD`), 사업장 주소, 업태, 종목, 전자세금계산서 전용 이메일, 대표자 유선/휴대폰 번호, 관할 세무서명, 법인/개인 여부(`isCorporate`).
+  3. **지능형 2-Way 자동 분기 라우팅 시스템 (`src/components/BusinessLicenseModal.tsx`)**:
+     - **경로 A (신규 고객사 등록)**: DB에 존재하지 않는 등록번호/상호인 경우, 자동 입력된 폼과 표준 결제조건(마감 30일/약정결제 25일)이 세팅되어 담당자는 단 1회의 확인 클릭(`[신규 고객 등록]`)만으로 고객 마스터 등록 완결.
+     - **경로 B (기존 고객 정보 1:1 Diff 보완)**: DB에 기등록된 고객과 일치(등록번호 또는 상호명 매칭)할 경우, 1:1 Side-by-Side 비교 테이블을 렌더링. 비어있거나 `'미상'`인 필드만 초록색(`[보완 채택]`)으로 자동 체크되어, 단 1클릭(`[누락 정보 보완 완료]`)으로 기존 결측치 완벽 해소.
+  4. **영구 증빙 보존 및 단일 진실 원천(SSOT) 연동**:
+     - 판독 완료 즉시 원본 증빙 파일(이미지/PDF)을 Supabase Storage(`evidence/customer_licenses/`)에 영구 보존 업로드하고 고객 레코드의 `businessCertFileUrl`에 실시간 바인딩.
+     - 고객 상세 패널 및 아코디언에서 원본 등록증 1클릭 열람(`[열람 ↗]`) 및 필요 시 재판독(`[재판독 보완]`) 지원.
+     - 고객 정보 보완 시 `AppContext` 내 결측 정보 ToDo(`MISSING_INFO`)가 자동 완료 해소되도록 완결 파이프라인 연계.
+  5. **전 플랫폼(PC 웹 / 모바일 웹앱 / 모바일 출고요청) 완벽 통합**:
+     - **PC 고객 관리 (`src/pages/Customers.tsx`)**: 상단 툴바 `[📄 사업자등록증 AI 등록/보완]`, 정보누락 고객 카드 `[등록증 보완]`, 상세 패널 내 `[사업자등록증 원본 열람 ↗]` 및 `[사업자등록증 보완]` 버튼, 신규 등록 모달 내 원클릭 AI 변환 배너 탑재.
+     - **모바일 거래처 관리 (`src/mobile/pages/MobileCustomerManage.tsx`)**: 검색 헤더 `[AI 등록/보완]`, 고객 카드 `[등록증 보완]` 퀵버튼, 아코디언 내 원본 열람 및 보완 액션, 수동 등록 모달 상단 AI 판독 배너 탑재.
+     - **모바일 출고요청 신규 작성 (`src/mobile/pages/MobileDispatchOrderCreate.tsx`)**: 거래처 선택 헤더에 `[📄 사업자등록증 AI]` 버튼을 배치하여, 현장에서 카톡/문자로 받은 등록증을 즉석 업로드 ➔ 고객 등록 ➔ 출고요청 거래처 즉시 자동 선택(Auto-fill)까지 3초 안에 종결.
+- **주요 변경 파일**:
+  - `api/vision-ocr.ts` [MODIFY]: `BUSINESS_LICENSE` OCR 태스크 및 비전 프롬프트 추가.
+  - `src/services/visionOcrService.ts` [MODIFY]: Canvas 이미지 리사이징, PDF 텍스트/캔버스 래스터화 및 판독 API 호출 엔진 구현.
+  - `src/services/db.ts` [MODIFY]: `Customer` 인터페이스에 `businessCertFileUrl`, `taxOffice`, `openingDate`, `headOfficeAddress` 필드 추가.
+  - `src/components/BusinessLicenseModal.tsx` [NEW]: 드래그앤드롭/카메라/PDF 업로드, 신규 등록 및 1:1 Side-by-Side Diff 보완 통합 모달 컴포넌트.
+  - `src/pages/Customers.tsx` [MODIFY]: PC 고객관리 화면 전방위 연동.
+  - `src/mobile/pages/MobileCustomerManage.tsx` [MODIFY]: 모바일 고객관리 화면 전방위 연동.
+  - `src/mobile/pages/MobileDispatchOrderCreate.tsx` [MODIFY]: 모바일 출고요청서 작성 화면 즉석 신규 고객 등록 및 자동 선택 연동.
+- **검증 결과**:
+  - `cmd /c npx tsc --noEmit`: TypeScript 0 Error 통과.
+  - `cmd /c npm run build`: Production 번들 정상 완료 (`✓ built in 1.97s`).
+
 ## [완료] 전 부서(영업부/출고팀/AS팀/관리부) 업무매뉴얼 B안 스타일 전면 재구축 및 ERP 시스템 통합 적용 (v1.12.0.Build.67)
 - **요구사항**: "잘못된 캡처가 들어간 것을 확인하여 매뉴얼을 갱신했어. 다시 처리해주고, 전 부서 매뉴얼을 재구축 적용해서, 서비스에 반영. ㄹㅇ"
 - **적용 목적 (헌장 1.1 최대 편익, 2.1 직무별 R&R, 3.1 무수식어 건조 표준, 3.2 줄바꿈 방지, 3.5 Z-패턴, 6.2 "ㄹㅇ" 배포)**:

@@ -1,8 +1,10 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
-import { Search, Plus, Edit2, Trash2, Download, Building2, Check, RefreshCw, Calendar, DollarSign, Clock } from 'lucide-react';
+import { Search, Plus, Edit2, Trash2, Download, Building2, Check, RefreshCw, Calendar, DollarSign, Clock, FolderOpen, ShieldAlert } from 'lucide-react';
 import { exportToExcel } from '../services/excel';
 import { Vendor } from '../services/db';
+import { BatchBusinessLicenseModal } from '../components/BatchBusinessLicenseModal';
+import { NtsStatusAuditModal } from '../components/NtsStatusAuditModal';
 
 type VendorTypeOption = 'RENTAL' | 'PURCHASE' | 'TRANSPORT' | 'REPAIR' | 'OTHER';
 
@@ -41,6 +43,8 @@ export const Vendors: React.FC = () => {
   
   // 등록/수정 모달 상태
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [showBatchLicenseModal, setShowBatchLicenseModal] = useState(false);
+  const [showNtsAuditModal, setShowNtsAuditModal] = useState(false);
   const [editingVendor, setEditingVendor] = useState<Partial<Vendor> | null>(null);
   const [selectedTypes, setSelectedTypes] = useState<VendorTypeOption[]>(['RENTAL']);
 
@@ -292,6 +296,26 @@ export const Vendors: React.FC = () => {
             <RefreshCw size={14} className={isSyncing ? 'animate-spin' : ''} />
             {isSyncing ? '동기화 중...' : '누적거래액 전체 동기화'}
           </button>
+          {canSave && (
+            <button 
+              className="btn-secondary" 
+              onClick={() => setShowBatchLicenseModal(true)} 
+              style={{ display: 'flex', alignItems: 'center', gap: '6px', whiteSpace: 'nowrap', backgroundColor: '#0284c7', color: '#ffffff', borderColor: '#0369a1' }}
+              title="사업자등록증 폴더를 지정하여 내부 모든 파일 일괄 등록 및 보완"
+            >
+              <FolderOpen size={15} color="#ffffff" /> 폴더 일괄 등록
+            </button>
+          )}
+          {canSave && (
+            <button 
+              className="btn-secondary" 
+              onClick={() => setShowNtsAuditModal(true)} 
+              style={{ display: 'flex', alignItems: 'center', gap: '6px', whiteSpace: 'nowrap', backgroundColor: '#7c3aed', color: '#ffffff', borderColor: '#6d28d9' }}
+              title="국세청 홈택스 사업자 휴폐업 상태 전수 점검"
+            >
+              <ShieldAlert size={15} color="#ffffff" /> 국세청 휴폐업 점검
+            </button>
+          )}
           {canSave && (
             <button className="btn-primary" onClick={handleOpenAddModal} style={{ display: 'flex', alignItems: 'center', gap: '6px', whiteSpace: 'nowrap' }}>
               <Plus size={16} /> 신규 매입처 등록
@@ -775,6 +799,20 @@ export const Vendors: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* 📂 사업자등록증 폴더 일괄 등록 모달 */}
+      <BatchBusinessLicenseModal
+        isOpen={showBatchLicenseModal}
+        onClose={() => setShowBatchLicenseModal(false)}
+        initialTargetType="VENDOR"
+      />
+
+      {/* 🏛️ 국세청 홈택스 사업자 휴폐업 전수 점검 스튜디오 */}
+      <NtsStatusAuditModal
+        isOpen={showNtsAuditModal}
+        onClose={() => setShowNtsAuditModal(false)}
+        initialTarget="VENDOR"
+      />
     </div>
   );
 };

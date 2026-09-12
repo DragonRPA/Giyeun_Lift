@@ -347,6 +347,19 @@ export interface Customer {
   defaultCheckedSpecs?: Record<string, boolean>; // 기본 요구 사양 체크 상태
   specialNotes?: string;             // 고객사 특이사항 메모 (예: '재임대 출고건으로 운반비 및 배차 한솔렌탈 부담')
 
+  // 📄 [신규] 사업자등록증 Vision AI 연동 및 증빙 스토리지
+  businessCertFileUrl?: string;      // 사업자등록증 첨부/스토리지 URL
+  taxOffice?: string;                // 관할 세무서 (예: '평택세무서')
+  openingDate?: string;              // 개업연월일 (YYYY-MM-DD)
+  headOfficeAddress?: string;        // 본점 소재지
+
+  // 🏛️ [신규] 국세청 홈택스 휴폐업 및 과세유형 진위확인
+  taxType?: string;                  // 과세유형 (예: '부가가치세 일반과세자', '간이과세자', '면세사업자')
+  taxTypeCd?: string;                // 과세유형 코드 ('01', '02', '03' 등)
+  businessStatus?: 'ACTIVE' | 'SUSPENDED' | 'CLOSED' | 'UNREGISTERED'; // 사업자 상태
+  closedDate?: string;               // 폐업일자 (YYYY-MM-DD)
+  lastStatusCheckDate?: string;      // 최근 국세청 상태조회 일시
+
   createdAt: string;
   updatedAt?: string;
 }
@@ -984,6 +997,13 @@ export interface Vendor {
   firstTradeDate?: string;       // 최초 거래개시일 (YYYY-MM-DD)
   lastTradeDate?: string;        // 최근 거래일 (YYYY-MM-DD)
   totalPurchaseAmount?: number;  // 누적 거래액 (원, 매입거래 누계액)
+
+  // 🏛️ [신규] 국세청 홈택스 휴폐업 및 과세유형
+  taxType?: string;
+  businessStatus?: 'ACTIVE' | 'SUSPENDED' | 'CLOSED' | 'UNREGISTERED';
+  closedDate?: string;
+  lastStatusCheckDate?: string;
+
   createdAt: string;
   updatedAt?: string;
 }

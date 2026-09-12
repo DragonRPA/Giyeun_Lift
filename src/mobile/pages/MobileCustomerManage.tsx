@@ -4,10 +4,12 @@ import { useApp } from '../../context/AppContext';
 import { db, Customer, CustomerContact, CustomerSite, DelinquencyActionLog } from '../../services/db';
 import { 
   Building2, Search, Phone, MapPin, Plus, CheckCircle2, 
-  AlertCircle, Lock, Unlock, ChevronDown, ChevronUp, X, Edit2, Copy, Check, Send
+  AlertCircle, Lock, Unlock, ChevronDown, ChevronUp, X, Edit2, Copy, Check, Send, FileText, FolderOpen
 } from 'lucide-react';
 import { matchHangul } from '../../utils/hangulSearch';
 import { copyToClipboard } from '../../utils/nativeLauncher';
+import { BusinessLicenseModal } from '../../components/BusinessLicenseModal';
+import { BatchBusinessLicenseModal } from '../../components/BatchBusinessLicenseModal';
 
 interface MobileCustomerManageProps {
   onNavigateToOrder?: (customerId: string) => void;
@@ -23,6 +25,11 @@ export const MobileCustomerManage: React.FC<MobileCustomerManageProps> = ({ onNa
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'MY' | 'ALLOWED' | 'BLOCKED' | 'INCOMPLETE'>('ALL');
   const [expandedCustomerId, setExpandedCustomerId] = useState<string | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
+
+  // 📄 사업자등록증 AI 모달 상태
+  const [showBizLicenseModal, setShowBizLicenseModal] = useState(false);
+  const [targetBizLicenseCustId, setTargetBizLicenseCustId] = useState<string | undefined>(undefined);
+  const [showBatchLicenseModal, setShowBatchLicenseModal] = useState(false);
   
   // 고객사 정보 간이 수정 모달 상태 (헌장 1.1 & 2.1)
   const [editingCustomer, setEditingCustomer] = useState<Partial<Customer> | null>(null);
@@ -248,14 +255,37 @@ export const MobileCustomerManage: React.FC<MobileCustomerManageProps> = ({ onNa
           <label className="text-[11px] font-bold text-slate-400 whitespace-nowrap">
             고객사 통합 검색
           </label>
-          <button
-            type="button"
-            onClick={() => setIsCreatingCustomer(true)}
-            className="px-2.5 py-1 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs flex items-center gap-1 active:scale-95 shadow transition-transform"
-          >
-            <Plus className="w-3.5 h-3.5" />
-            <span>고객사 등록</span>
-          </button>
+          <div className="flex items-center gap-1.5">
+            <button
+              type="button"
+              onClick={() => setShowBatchLicenseModal(true)}
+              className="px-2 py-1 rounded-lg bg-sky-600 hover:bg-sky-500 text-white font-bold text-xs flex items-center gap-1 active:scale-95 shadow transition-transform"
+              title="사업자등록증 폴더/다중 파일 일괄 등록"
+            >
+              <FolderOpen className="w-3.5 h-3.5" />
+              <span>폴더 일괄</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setTargetBizLicenseCustId(undefined);
+                setShowBizLicenseModal(true);
+              }}
+              className="px-2 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center gap-1 active:scale-95 shadow transition-transform"
+              title="사업자등록증 사진/PDF 업로드로 자동 등록 및 보완"
+            >
+              <FileText className="w-3.5 h-3.5" />
+              <span>단건 등록</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setIsCreatingCustomer(true)}
+              className="px-2.5 py-1 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs flex items-center gap-1 active:scale-95 shadow transition-transform"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span>직접 등록</span>
+            </button>
+          </div>
         </div>
         <div className="relative">
           <Search className="absolute left-3 top-3 w-4 h-4 text-slate-400" />
@@ -343,9 +373,24 @@ export const MobileCustomerManage: React.FC<MobileCustomerManageProps> = ({ onNa
                         </span>
                       )}
                       {hasIncomplete && (
-                        <span className="px-1.5 py-0.5 rounded bg-amber-950 border border-amber-800/60 text-amber-300 text-[10px] font-bold whitespace-nowrap flex-shrink-0">
-                          정보 누락
-                        </span>
+                        <div className="flex items-center gap-1">
+                          <span className="px-1.5 py-0.5 rounded bg-amber-950 border border-amber-800/60 text-amber-300 text-[10px] font-bold whitespace-nowrap flex-shrink-0">
+                            정보 누락
+                          </span>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setTargetBizLicenseCustId(c.id);
+                              setShowBizLicenseModal(true);
+                            }}
+                            className="px-1.5 py-0.5 rounded bg-emerald-950/80 border border-emerald-700/80 text-emerald-300 text-[10px] font-bold whitespace-nowrap flex-shrink-0 flex items-center gap-0.5 active:scale-95"
+                            title="사업자등록증 사진으로 누락 정보 자동 보완"
+                          >
+                            <FileText className="w-2.5 h-2.5" />
+                            <span>등록증 보완</span>
+                          </button>
+                        </div>
                       )}
                     </div>
                     <div className="text-[11px] text-slate-400 font-mono flex items-center gap-1.5 whitespace-nowrap overflow-hidden text-ellipsis">
@@ -515,6 +560,37 @@ export const MobileCustomerManage: React.FC<MobileCustomerManageProps> = ({ onNa
                           ))}
                         </div>
                       )}
+                    </div>
+
+                    {/* 사업자등록증 사본 및 AI 보완 액션 */}
+                    <div className="flex items-center justify-between bg-slate-950 p-2 rounded-xl border border-slate-800 text-xs text-slate-300">
+                      <span className="flex items-center gap-1.5 text-slate-400">
+                        <FileText className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                        <span>사업자등록증 원본</span>
+                      </span>
+                      <div className="flex items-center gap-2">
+                        {c.businessCertFileUrl && (
+                          <a
+                            href={c.businessCertFileUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="text-blue-400 hover:underline font-bold text-xs"
+                          >
+                            열람 ↗
+                          </a>
+                        )}
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setTargetBizLicenseCustId(c.id);
+                            setShowBizLicenseModal(true);
+                          }}
+                          className="px-2 py-0.5 rounded bg-emerald-950 border border-emerald-700 text-emerald-300 text-[11px] font-bold active:scale-95"
+                        >
+                          {c.businessCertFileUrl ? '재판독 보완' : '등록증 보완'}
+                        </button>
+                      </div>
                     </div>
 
                     {/* 영업 연계: 고객사 지정 모바일 출고요청 직결 버튼 (BLOCKED 거래처 가드 - 과제 9) */}
@@ -724,6 +800,24 @@ export const MobileCustomerManage: React.FC<MobileCustomerManageProps> = ({ onNa
                 <X className="w-5 h-5" />
               </button>
             </div>
+
+            <div className="p-2.5 rounded-xl bg-emerald-950/40 border border-emerald-800/60 flex items-center justify-between text-xs">
+              <span className="text-emerald-300 font-bold flex items-center gap-1.5">
+                <FileText className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                사진/PDF 파일로 등록하시겠습니까?
+              </span>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsCreatingCustomer(false);
+                  setTargetBizLicenseCustId(undefined);
+                  setShowBizLicenseModal(true);
+                }}
+                className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs active:scale-95 shadow"
+              >
+                AI 자동 판독 ➔
+              </button>
+            </div>
             
             {/* 상호 */}
             <div className="flex flex-col gap-1">
@@ -874,6 +968,21 @@ export const MobileCustomerManage: React.FC<MobileCustomerManageProps> = ({ onNa
           </form>
         </div>
       )}
+
+      {/* 📄 사업자등록증 AI 신규 등록 및 정보 보완 모달 */}
+      <BusinessLicenseModal
+        isOpen={showBizLicenseModal}
+        onClose={() => setShowBizLicenseModal(false)}
+        targetCustomerId={targetBizLicenseCustId}
+        onSuccess={() => refreshAllData()}
+      />
+
+      {/* 📂 사업자등록증 폴더 일괄 등록 모달 */}
+      <BatchBusinessLicenseModal
+        isOpen={showBatchLicenseModal}
+        onClose={() => setShowBatchLicenseModal(false)}
+        initialTargetType="CUSTOMER"
+      />
     </div>
   );
 };

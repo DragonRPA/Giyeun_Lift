@@ -5,11 +5,15 @@ import {
   Plus, Search, MapPin, Phone, User, Mail, PlusCircle, Download, 
   CreditCard, ShieldCheck, Zap, Sparkles, CheckCircle2, AlertCircle, 
   X, Edit2, Trash2, RefreshCw, Layers, Check, Building2, Circle,
-  Sliders, Tag, Settings, CheckSquare, Square, ChevronDown, ChevronUp
+  Sliders, Tag, Settings, CheckSquare, Square, ChevronDown, ChevronUp, FileText, FolderOpen,
+  ShieldAlert
 } from 'lucide-react';
 import { db, Customer, CustomerContact, CustomerSite, CustomerBankAccount, StandardOption } from '../services/db';
 import { exportToExcel } from '../services/excel';
 import { matchHangul } from '../utils/hangulSearch';
+import { BusinessLicenseModal } from '../components/BusinessLicenseModal';
+import { BatchBusinessLicenseModal } from '../components/BatchBusinessLicenseModal';
+import { NtsStatusAuditModal } from '../components/NtsStatusAuditModal';
 
 export const Customers: React.FC = () => {
   const {
@@ -40,6 +44,17 @@ export const Customers: React.FC = () => {
   const [showCustModal, setShowCustModal] = useState(false);
   const [editingCust, setEditingCust] = useState<Partial<Customer> | null>(null);
   const [showCustSpecs, setShowCustSpecs] = useState(false);
+
+  // 📄 사업자등록증 AI 모달 상태
+  const [showBizLicenseModal, setShowBizLicenseModal] = useState(false);
+  const [targetBizLicenseCustId, setTargetBizLicenseCustId] = useState<string | undefined>(undefined);
+  const [showBatchLicenseModal, setShowBatchLicenseModal] = useState(false);
+  const [showNtsAuditModal, setShowNtsAuditModal] = useState(false);
+
+  const handleBizLicenseSuccess = (savedCustomer: Customer, isNew: boolean) => {
+    setSelectedCustomerId(savedCustomer.id);
+    showToast(isNew ? `신규 고객사 [${savedCustomer.name}] 등록 완료` : `고객사 [${savedCustomer.name}] 정보 보완 완료`, 'success');
+  };
 
   const [showContactModal, setShowContactModal] = useState(false);
   const [editingContact, setEditingContact] = useState<Partial<CustomerContact> | null>(null);
@@ -684,6 +699,78 @@ export const Customers: React.FC = () => {
           )}
           {canSave && (
             <button
+              onClick={() => {
+                setTargetBizLicenseCustId(undefined);
+                setShowBizLicenseModal(true);
+              }}
+              style={{
+                padding: '5px 12px',
+                fontSize: '12px',
+                fontWeight: 600,
+                display: 'flex',
+                alignItems: 'center',
+                gap: '5px',
+                whiteSpace: 'nowrap',
+                backgroundColor: '#059669',
+                color: '#ffffff',
+                border: '1px solid #047857',
+                borderRadius: '4px',
+                cursor: 'pointer',
+                boxShadow: '0 1px 2px rgba(0, 0, 0, 0.15)'
+              }}
+              title="사업자등록증 이미지/PDF 업로드 기반 AI 신규 등록 및 정보 보완"
+            >
+              <FileText size={13} color="#ffffff" /> 사업자등록증 AI 등록/보완
+            </button>
+          )}
+          {canSave && (
+            <button
+              onClick={() => setShowBatchLicenseModal(true)}
+              style={{
+                padding: '5px 12px',
+                fontSize: '12px',
+                fontWeight: 600,
+                display: 'flex',
+                alignItems: 'center',
+                gap: '5px',
+                whiteSpace: 'nowrap',
+                backgroundColor: '#0284c7',
+                color: '#ffffff',
+                border: '1px solid #0369a1',
+                borderRadius: '4px',
+                cursor: 'pointer',
+                boxShadow: '0 1px 2px rgba(0, 0, 0, 0.15)'
+              }}
+              title="사업자등록증 폴더를 지정하여 내부 모든 파일 일괄 등록 및 보완"
+            >
+              <FolderOpen size={13} color="#ffffff" /> 폴더 일괄 등록
+            </button>
+          )}
+          {canSave && (
+            <button
+              onClick={() => setShowNtsAuditModal(true)}
+              style={{
+                padding: '5px 12px',
+                fontSize: '12px',
+                fontWeight: 600,
+                display: 'flex',
+                alignItems: 'center',
+                gap: '5px',
+                whiteSpace: 'nowrap',
+                backgroundColor: '#7c3aed',
+                color: '#ffffff',
+                border: '1px solid #6d28d9',
+                borderRadius: '4px',
+                cursor: 'pointer',
+                boxShadow: '0 1px 2px rgba(0, 0, 0, 0.15)'
+              }}
+              title="국세청 홈택스 사업자 휴폐업 상태 전수 점검 및 임대자산 회수 점검"
+            >
+              <ShieldAlert size={13} color="#ffffff" /> 국세청 휴폐업 점검
+            </button>
+          )}
+          {canSave && (
+            <button
               className="btn-primary"
               onClick={handleOpenAddCust}
               style={{ padding: '5px 12px', fontSize: '12px', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '5px', whiteSpace: 'nowrap' }}
@@ -888,6 +975,32 @@ export const Customers: React.FC = () => {
                             보완필요
                           </span>
                         )}
+                        {isIncomplete && canSave && (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setTargetBizLicenseCustId(cust.id);
+                              setShowBizLicenseModal(true);
+                            }}
+                            title="사업자등록증 업로드로 누락 정보 보완"
+                            style={{
+                              padding: '1px 5px',
+                              fontSize: '9.5px',
+                              border: '1px solid #059669',
+                              borderRadius: '3px',
+                              backgroundColor: 'rgba(5,150,105,0.12)',
+                              color: '#059669',
+                              cursor: 'pointer',
+                              fontWeight: 700,
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '2px'
+                            }}
+                          >
+                            <FileText size={10} /> 등록증 보완
+                          </button>
+                        )}
                         {cust.isClosed ? (
                           <span className="badge badge-danger" style={{ fontSize: '9.5px', padding: '1px 4px' }}>폐업</span>
                         ) : cust.transactionStatus === 'BLOCKED' ? (
@@ -967,6 +1080,31 @@ export const Customers: React.FC = () => {
                   <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                     {canSave && (
                       <button
+                        type="button"
+                        onClick={() => {
+                          setTargetBizLicenseCustId(activeCustomer.id);
+                          setShowBizLicenseModal(true);
+                        }}
+                        style={{
+                          padding: '3px 8px',
+                          fontSize: '11px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '4px',
+                          borderRadius: '4px',
+                          border: '1px solid #059669',
+                          backgroundColor: 'rgba(5, 150, 105, 0.15)',
+                          color: '#059669',
+                          fontWeight: 600,
+                          cursor: 'pointer'
+                        }}
+                        title="사업자등록증 이미지/PDF 업로드로 본 고객 정보 자동 보완"
+                      >
+                        <FileText size={12} /> 사업자등록증 보완
+                      </button>
+                    )}
+                    {canSave && (
+                      <button
                         className="btn-primary"
                         onClick={() => handleOpenEditCust(activeCustomer)}
                         style={{ padding: '3px 8px', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '4px' }}
@@ -990,6 +1128,19 @@ export const Customers: React.FC = () => {
                   <div style={{ gridColumn: 'span 4' }}>
                     <span style={{ color: 'var(--text-secondary)' }}>사업장 주소:</span> {activeCustomer.address || '-'}
                   </div>
+                  {activeCustomer.businessCertFileUrl && (
+                    <div style={{ gridColumn: 'span 4', display: 'flex', alignItems: 'center', gap: '6px', paddingTop: '4px' }}>
+                      <span style={{ color: 'var(--text-secondary)' }}>사업자등록증 원본:</span>
+                      <a
+                        href={activeCustomer.businessCertFileUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        style={{ color: '#0284c7', textDecoration: 'underline', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: '3px' }}
+                      >
+                        <FileText size={12} /> 등록증 사본 열람 ↗
+                      </a>
+                    </div>
+                  )}
                 </div>
 
                 {/* 🌟 기본 옵션/보양 마스터 바 */}
@@ -1414,6 +1565,43 @@ export const Customers: React.FC = () => {
               <button type="button" onClick={() => setShowCustModal(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}><X size={18} /></button>
             </div>
 
+            {!editingCust.id && (
+              <div style={{
+                marginBottom: '10px',
+                padding: '7px 10px',
+                backgroundColor: 'rgba(5, 150, 105, 0.12)',
+                border: '1px solid #059669',
+                borderRadius: '6px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between'
+              }}>
+                <span style={{ fontSize: '11px', color: '#34d399', fontWeight: 600 }}>
+                  📄 사업자등록증 파일(이미지/PDF)로 자동 입력하시겠습니까?
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowCustModal(false);
+                    setTargetBizLicenseCustId(undefined);
+                    setShowBizLicenseModal(true);
+                  }}
+                  style={{
+                    padding: '2px 8px',
+                    fontSize: '11px',
+                    backgroundColor: '#059669',
+                    color: '#ffffff',
+                    border: 'none',
+                    borderRadius: '4px',
+                    cursor: 'pointer',
+                    fontWeight: 700
+                  }}
+                >
+                  AI 자동 판독 ➔
+                </button>
+              </div>
+            )}
+
             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', fontSize: '12px' }}>
               <div>
                 <label style={labelStyle}>고객사명 *</label>
@@ -1660,6 +1848,28 @@ export const Customers: React.FC = () => {
           </form>
         </div>
       )}
+
+      {/* 📄 사업자등록증 AI 신규 등록 및 정보 보완 모달 */}
+      <BusinessLicenseModal
+        isOpen={showBizLicenseModal}
+        onClose={() => setShowBizLicenseModal(false)}
+        targetCustomerId={targetBizLicenseCustId}
+        onSuccess={handleBizLicenseSuccess}
+      />
+
+      {/* 📂 사업자등록증 폴더 일괄 등록 모달 */}
+      <BatchBusinessLicenseModal
+        isOpen={showBatchLicenseModal}
+        onClose={() => setShowBatchLicenseModal(false)}
+        initialTargetType="CUSTOMER"
+      />
+
+      {/* 🏛️ 국세청 홈택스 사업자 휴폐업 전수 점검 스튜디오 */}
+      <NtsStatusAuditModal
+        isOpen={showNtsAuditModal}
+        onClose={() => setShowNtsAuditModal(false)}
+        initialTarget="CUSTOMER"
+      />
 
       {/* ⑦ 담당자 등록/수정 모달 */}
       {showContactModal && editingContact && (

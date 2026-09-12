@@ -5,7 +5,7 @@ import {
   Building2, MapPin, Phone, Calendar, Clock, Plus, Minus, 
   Send, AlertTriangle, CheckCircle2, ChevronRight, ArrowLeft, Bot,
   Mic, MicOff, RotateCcw, FileText, Check, Sparkles, ClipboardList,
-  RotateCw, Truck, ArrowDownLeft, ArrowUpRight, Shield, ChevronDown, ChevronUp
+  RotateCw, Truck, ArrowDownLeft, ArrowUpRight, ArrowRight, Shield, ChevronDown, ChevronUp
 } from 'lucide-react';
 import { matchHangul } from '../../utils/hangulSearch';
 import { 
@@ -20,6 +20,8 @@ import {
 import { db, ContractHistory, Delivery, ContractAsset } from '../../services/db';
 import { broadcastWorkNotification } from '../../utils/workNotificationService';
 import { VoiceGuideWizardModal, VoiceGuideWizardCompleteData } from '../components/VoiceGuideWizardModal';
+import { VoiceMemoDispatchStudioModal } from '../components/VoiceMemoDispatchStudioModal';
+import { BusinessLicenseModal } from '../../components/BusinessLicenseModal';
 
 interface MobileDispatchOrderCreateProps {
   onBack: () => void;
@@ -66,6 +68,7 @@ export const MobileDispatchOrderCreate: React.FC<MobileDispatchOrderCreateProps>
 
   // 폼 상태
   const [selectedCustomerId, setSelectedCustomerId] = useState('');
+  const [showBizLicenseModal, setShowBizLicenseModal] = useState(false);
   const [selectedSiteId, setSelectedSiteId] = useState('');
   const [newSiteName, setNewSiteName] = useState('');
   const [siteAddress, setSiteAddress] = useState('');
@@ -114,6 +117,9 @@ export const MobileDispatchOrderCreate: React.FC<MobileDispatchOrderCreateProps>
 
   // 대화형 음성 가이드 위자드 모달 상태
   const [isVoiceWizardOpen, setIsVoiceWizardOpen] = useState(false);
+
+  // 🎙️ 자유 음성메모 출고의뢰 스튜디오 모달 상태
+  const [isVoiceMemoStudioOpen, setIsVoiceMemoStudioOpen] = useState(false);
 
   // 음성 조각 입력 및 임시저장 상태
   const [isListening, setIsListening] = useState(false);
@@ -1006,40 +1012,43 @@ export const MobileDispatchOrderCreate: React.FC<MobileDispatchOrderCreateProps>
           )}
         </div>
 
-        {/* 🌟 [1] 메인: 대화형 4단계 음성 가이드 위자드 실행 버튼 */}
+        {/* 🌟 [1] 최우선 메인: 자유 음성메모 출고의뢰 스튜디오 실행 버튼 */}
         <button
           type="button"
-          onClick={() => setIsVoiceWizardOpen(true)}
-          className="w-full py-3.5 px-4 rounded-xl flex items-center justify-between font-black text-xs text-white bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-500 hover:from-blue-500 hover:to-indigo-500 shadow-lg shadow-blue-600/30 transition-all active:scale-[0.98]"
+          onClick={() => setIsVoiceMemoStudioOpen(true)}
+          className="w-full py-3.5 px-4 rounded-2xl flex items-center justify-between font-black text-xs text-white bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 hover:from-blue-500 hover:to-indigo-500 shadow-xl shadow-indigo-600/30 transition-all active:scale-[0.98]"
         >
-          <div className="flex items-center gap-2">
-            <div className="w-7 h-7 rounded-lg bg-white/20 flex items-center justify-center">
-              <Sparkles className="w-4 h-4 text-white" />
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-xl bg-white/20 flex items-center justify-center">
+              <Mic className="w-4 h-4 text-white" />
             </div>
             <div className="text-left">
-              <div className="text-[13px] font-extrabold tracking-tight">대화형 음성 인터뷰 접수</div>
-              <div className="text-[10px] text-blue-200 font-normal">고객 ➔ 현장 ➔ 장비/수량 ➔ 하차일시 4단계 가이드</div>
+              <div className="text-[13px] font-extrabold tracking-tight flex items-center gap-1.5">
+                <span>자유 음성메모 출고의뢰</span>
+                <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-white/20 text-white">
+                  핸즈프리
+                </span>
+              </div>
+              <div className="text-[10px] text-blue-100 font-normal mt-0.5">
+                순서 없이 음성메모를 남기면 5대 핵심항목 실시간 충족 검증 후 즉시 접수
+              </div>
             </div>
           </div>
-          <div className="flex items-center gap-1 text-[11px] font-bold bg-white/15 px-2.5 py-1 rounded-lg">
-            <Mic className="w-3.5 h-3.5" />
+          <div className="flex items-center gap-1 text-[11px] font-bold bg-white/20 hover:bg-white/30 px-3 py-1.5 rounded-xl whitespace-nowrap shrink-0">
             <span>시작</span>
+            <ArrowRight className="w-3.5 h-3.5" />
           </div>
         </button>
 
-        {/* 🌟 [2] 보조: 단일 음성 발화 & 통화 텍스트 붙여넣기 (2열 그리드) */}
+        {/* 🌟 [2] 보조: 단계별 대화형 위자드 & 통화 텍스트 붙여넣기 (2열 그리드) */}
         <div className="grid grid-cols-2 gap-2">
           <button
             type="button"
-            onClick={handleToggleListening}
-            className={`py-2.5 px-3 rounded-xl flex items-center justify-center gap-1.5 font-bold text-xs transition-all active:scale-[0.98] ${
-              isListening
-                ? 'bg-rose-600 text-white animate-pulse shadow-md shadow-rose-900/50'
-                : 'bg-slate-800 hover:bg-slate-750 border border-slate-700 text-slate-200'
-            }`}
+            onClick={() => setIsVoiceWizardOpen(true)}
+            className="py-2.5 px-3 rounded-xl bg-slate-800 hover:bg-slate-750 border border-slate-700 text-xs font-bold text-slate-200 flex items-center justify-center gap-1.5 transition-all active:scale-[0.98]"
           >
-            {isListening ? <MicOff className="w-3.5 h-3.5" /> : <Mic className="w-3.5 h-3.5 text-blue-400" />}
-            <span>{isListening ? '수신 중단' : '자유 음성 발화'}</span>
+            <Sparkles className="w-3.5 h-3.5 text-indigo-400" />
+            <span>대화형 위자드 (단계별)</span>
           </button>
 
           <button
@@ -1094,15 +1103,26 @@ export const MobileDispatchOrderCreate: React.FC<MobileDispatchOrderCreateProps>
           <div className="flex flex-col gap-1">
             <div className="flex items-center justify-between">
               <label className="text-[11px] text-slate-400">거래처 (고객사) 선택 *</label>
-              {customerSearchText && (
+              <div className="flex items-center gap-1.5">
                 <button
                   type="button"
-                  onClick={() => setCustomerSearchText('')}
-                  className="text-[10px] text-sky-400 font-bold"
+                  onClick={() => setShowBizLicenseModal(true)}
+                  className="text-[10px] text-emerald-400 font-bold flex items-center gap-1 bg-emerald-950/60 px-2 py-0.5 rounded border border-emerald-800/80 active:scale-95"
+                  title="사업자등록증 사진으로 고객사 신규 등록 및 자동 선택"
                 >
-                  초기화
+                  <FileText className="w-2.5 h-2.5" />
+                  <span>사업자등록증 AI</span>
                 </button>
-              )}
+                {customerSearchText && (
+                  <button
+                    type="button"
+                    onClick={() => setCustomerSearchText('')}
+                    className="text-[10px] text-sky-400 font-bold"
+                  >
+                    초기화
+                  </button>
+                )}
+              </div>
             </div>
             <input
               type="text"
@@ -1837,6 +1857,51 @@ export const MobileDispatchOrderCreate: React.FC<MobileDispatchOrderCreateProps>
           } else {
             showToast('대화형 음성으로 출고 요청 전체 서식이 완성되었습니다.');
           }
+        }}
+      />
+
+      {/* 🎙️ 자유 음성메모 출고의뢰 스튜디오 모달 (핵심 5대 슬롯 충족 자동 접수) */}
+      <VoiceMemoDispatchStudioModal
+        isOpen={isVoiceMemoStudioOpen}
+        onClose={() => setIsVoiceMemoStudioOpen(false)}
+        onHandOffToForm={(draftData) => {
+          if (draftData.customerId) setSelectedCustomerId(draftData.customerId);
+          if (draftData.siteId) setSelectedSiteId(draftData.siteId);
+          if (draftData.newSiteName) setNewSiteName(draftData.newSiteName);
+          if (draftData.siteAddress) setSiteAddress(draftData.siteAddress);
+          if (draftData.siteContactName) setSiteContactName(draftData.siteContactName);
+          if (draftData.siteContactPhone) setSiteContactPhone(draftData.siteContactPhone);
+          if (draftData.deliveryDate) setDeliveryDate(draftData.deliveryDate);
+          if (draftData.deliveryTime) setDeliveryTime(draftData.deliveryTime);
+          if (draftData.orders && draftData.orders.length > 0) setOrders(draftData.orders);
+          if (draftData.memo) setMemo(draftData.memo);
+          if (draftData.paidOptions) setPaidOptions(draftData.paidOptions);
+          if (draftData.protection) setProtection(draftData.protection);
+          if (draftData.checkedSpecs) setCheckedSpecs(draftData.checkedSpecs);
+          if (draftData.billableToCustomer !== undefined) setBillableToCustomer(draftData.billableToCustomer);
+          if (draftData.closingDay) setClosingDay(draftData.closingDay);
+          if (draftData.paymentDay) setPaymentDay(draftData.paymentDay);
+          if (draftData.vehicleType) setVehicleType(draftData.vehicleType);
+          setHasRestoredDraft(true);
+          showToast('음성 메모 내용이 일반 서식에 반영되었습니다.');
+        }}
+        onDirectSubmitSuccess={(res) => {
+          setCreatedResult({
+            isReturn: false,
+            contractNo: res.contractNo,
+            siteName: res.siteName,
+            totalCount: res.totalCount
+          });
+          showToast('음성 메모로 출고의뢰가 접수되었습니다.');
+        }}
+      />
+
+      {/* 사업자등록증 AI 신규등록/보완 모달 */}
+      <BusinessLicenseModal
+        isOpen={showBizLicenseModal}
+        onClose={() => setShowBizLicenseModal(false)}
+        onSuccess={(cust) => {
+          handleCustomerChange(cust.id);
         }}
       />
     </div>

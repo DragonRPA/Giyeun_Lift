@@ -225,7 +225,7 @@ export function mergeVoiceFragmentToDraft(
 
   // 5. 장비 모델 및 수량 추출
   const detectedOrders: EquipmentOrderItem[] = [];
-  const modelRegex = /(1930|2632|2646|3219|3226|3246|4047|4626|4632|0812|0808|1012|0608|1412|1612|19피트|26피트|32피트|40피트|46피트|53피트|19ft|26ft|32ft|40ft|46ft|53ft)/gi;
+  const modelRegex = /(1930|2632|2646|3219|3226|3246|4047|4626|4632|0812|0808|1012|0608|1412|1612|19피트|26피트|32피트|40피트|46피트|53피트|19ft|26ft|32ft|40ft|46ft|53ft|8미터|10미터|12미터|14미터|16미터|18미터|고소작업대|리프트|시저스)/gi;
   
   let match;
   const matches: { key: string; index: number }[] = [];
@@ -248,12 +248,13 @@ export function mergeVoiceFragmentToDraft(
       if (specMatch) {
         ft = specMatch.ft;
         model = specMatch.modelName;
-      } else if (rawKey.includes('19')) { ft = '19ft'; model = 'GS-1930'; }
-      else if (rawKey.includes('26')) { ft = '26ft'; model = 'GS-2632'; }
-      else if (rawKey.includes('32')) { ft = '32ft'; model = 'GS-3246'; }
-      else if (rawKey.includes('40')) { ft = '40ft'; model = 'GS-4047'; }
-      else if (rawKey.includes('46') || rawKey.includes('1412')) { ft = '46ft'; model = 'GTJZ1412'; }
-      else if (rawKey.includes('53') || rawKey.includes('1612')) { ft = '53ft'; model = 'GTJZ1612'; }
+      } else if (rawKey.includes('19') || rawKey.includes('8미터')) { ft = '19ft'; model = 'GS-1930'; }
+      else if (rawKey.includes('26') || rawKey.includes('10미터')) { ft = '26ft'; model = 'GS-2632'; }
+      else if (rawKey.includes('32') || rawKey.includes('12미터')) { ft = '32ft'; model = 'GS-3246'; }
+      else if (rawKey.includes('40') || rawKey.includes('14미터')) { ft = '40ft'; model = 'GS-4047'; }
+      else if (rawKey.includes('46') || rawKey.includes('16미터') || rawKey.includes('1412')) { ft = '46ft'; model = 'GTJZ1412'; }
+      else if (rawKey.includes('53') || rawKey.includes('18미터') || rawKey.includes('1612')) { ft = '53ft'; model = 'GTJZ1612'; }
+      else if (/고소작업대|리프트|시저스/.test(rawKey)) { ft = '19ft'; model = 'GS-1930'; }
 
       // 모델명 앞뒤 15글자 내에서 제조사 및 차폭 보정
       const pre = cleanText.substring(Math.max(0, m.index - 15), m.index);
@@ -272,9 +273,9 @@ export function mergeVoiceFragmentToDraft(
         model = 'GS-2646';
       }
 
-      // 모델명 뒤 25글자 내에서 수량 탐색
-      const countMatch = sub.match(/(\d+)\s*대/) || 
-                         sub.match(/(한|두|세|네|다섯|여섯|일곱|여덟|아홉|열)\s*대/);
+      // 모델명 뒤 25글자 내에서 수량 탐색 (대 또는 개)
+      const countMatch = sub.match(/(\d+)\s*(?:대|개)/) || 
+                         sub.match(/(한|두|세|네|다섯|여섯|일곱|여덟|아홉|열)\s*(?:대|개)/);
       
       let count = 1;
       if (countMatch) {
@@ -297,9 +298,15 @@ export function mergeVoiceFragmentToDraft(
 
   // 6. 거래처 매칭
   let matchedCustomer: Customer | null = null;
+  const normalizedSpeech = cleanText.replace(/[\s\-_]/g, '');
   for (const c of customers) {
-    const simpleName = c.name.replace(/주식회사|\(주\)|\s/g, '');
-    if (simpleName.length >= 2 && cleanText.replace(/\s/g, '').includes(simpleName)) {
+    const simpleName = c.name.replace(/주식회사|\(주\)|건설|이엔지|산업|개발|\s/g, '');
+    const fullName = c.name.replace(/[\s\-_]/g, '');
+    if (fullName.length >= 2 && normalizedSpeech.includes(fullName)) {
+      matchedCustomer = c;
+      break;
+    }
+    if (simpleName.length >= 2 && normalizedSpeech.includes(simpleName)) {
       matchedCustomer = c;
       break;
     }
@@ -1498,4 +1505,163 @@ export function isOptionsChangedFromSite(
 
   return false;
 }
+
+// ─────────────────────────────────────────────────────────────
+// 🎯 5대 출고의뢰 핵심 항목 실시간 충족 검증 (OrderSlotsStatus)
+// ─────────────────────────────────────────────────────────────
+export interface SlotItemStatus {
+  isComplete: boolean;
+  value: string;
+  label: string;
+  hint: string;
+}
+
+export interface OrderSlotsStatus {
+  customer: SlotItemStatus;
+  site: SlotItemStatus;
+  dateTime: SlotItemStatus & { date: string; time: string };
+  equipment: SlotItemStatus & { count: number; itemsSummary: string };
+  contact: SlotItemStatus & { name: string; phone: string };
+  transport: SlotItemStatus & { billableToCustomer: boolean; vehicleType: string };
+  options: SlotItemStatus & { paidOptions: string; protection: string };
+  completedCount: number;
+  totalRequiredCount: number;
+  completionPercent: number;
+  isAllComplete: boolean;
+  missingSlotPrompts: string[];
+  nextMissingPrompt: string;
+}
+
+/**
+ * 음성 누적 임시저장 데이터에서 5대 필수 항목 충족 여부 실시간 평가
+ */
+export function evaluateOrderSlotsStatus(draft: VoiceOrderDraft): OrderSlotsStatus {
+  // 1. 거래처 (고객사)
+  const isCustComplete = Boolean(
+    (draft.customerId && draft.customerId.trim()) ||
+    (draft.customerName && draft.customerName.trim() && draft.customerName !== '미상' && draft.customerName !== '고객사 미지정')
+  );
+  const custValue = draft.customerName?.trim() || (draft.customerId ? '거래처 지정됨' : '');
+
+  // 2. 현장명
+  const isSiteComplete = Boolean(
+    (draft.siteId && draft.siteId !== 'NEW') ||
+    (draft.siteName && draft.siteName.trim() && draft.siteName !== '현장 미선택' && draft.siteName.length >= 2) ||
+    (draft.newSiteName && draft.newSiteName.trim().length >= 2) ||
+    (draft.siteAddress && draft.siteAddress.trim().length >= 4)
+  );
+  const siteValue = draft.siteName?.trim() || draft.newSiteName?.trim() || draft.siteAddress?.trim() || '';
+
+  // 3. 희망 출고일시
+  const hasDate = Boolean(draft.deliveryDate && /^\d{4}-\d{2}-\d{2}$/.test(draft.deliveryDate));
+  const hasTime = Boolean(draft.deliveryTime && /^\d{2}:\d{2}$/.test(draft.deliveryTime));
+  const isDateTimeComplete = hasDate && hasTime;
+  const dateTimeValue = isDateTimeComplete 
+    ? `${draft.deliveryDate} ${draft.deliveryTime}`
+    : (hasDate ? `${draft.deliveryDate} (시간 미정)` : (hasTime ? `${draft.deliveryTime} (날짜 미정)` : ''));
+
+  // 4. 투입 장비 및 수량
+  const validOrders = (draft.orders || []).filter(o => (o.count || 0) > 0);
+  const totalEquipCount = validOrders.reduce((sum, o) => sum + (o.count || 1), 0);
+  const isEquipmentComplete = validOrders.length > 0 && totalEquipCount > 0;
+  const equipSummary = isEquipmentComplete
+    ? validOrders.map(o => `${o.modelName || o.ft} ${o.count}대`).join(', ')
+    : '';
+
+  // 5. 현장 연락처
+  const cleanPhone = (draft.siteContactPhone || '').replace(/[^0-9]/g, '');
+  const hasValidPhone = cleanPhone.length >= 10;
+  const hasContactName = Boolean(draft.siteContactName && draft.siteContactName.trim() && draft.siteContactName !== '미상');
+  const isContactComplete = hasValidPhone; // 전화번호가 핵심
+  const contactValue = hasValidPhone 
+    ? `${draft.siteContactName || '현장담당자'} (${draft.siteContactPhone})`
+    : (hasContactName ? `${draft.siteContactName} (전화번호 미등록)` : '');
+
+  // 6. 보조 항목: 운송조건
+  const transportValue = `${draft.billableToCustomer ? '착불(고객청구)' : '당사부담'} • ${draft.vehicleType || '5톤 렉카'}`;
+  
+  // 7. 보조 항목: 선택옵션
+  const optList: string[] = [];
+  if (draft.paidOptions) optList.push(draft.paidOptions);
+  if (draft.protection && draft.protection !== 'NONE') optList.push(draft.protection);
+  const checkedCount = Object.values(draft.checkedSpecs || {}).filter(Boolean).length;
+  if (checkedCount > 0) optList.push(`요구사양 ${checkedCount}건`);
+  const optionsValue = optList.length > 0 ? optList.join(' | ') : '표준 사양';
+
+  // 결측 프롬프트 목록
+  const missingPrompts: string[] = [];
+  if (!isCustComplete) missingPrompts.push('거래처(고객사명)를 말씀해 주세요 (예: 포스코건설)');
+  if (!isSiteComplete) missingPrompts.push('현장명을 말씀해 주세요 (예: 송도 바이오 현장)');
+  if (!isDateTimeComplete) missingPrompts.push('희망 출고 일시를 말씀해 주세요 (예: 내일 아침 8시)');
+  if (!isEquipmentComplete) missingPrompts.push('장비 규격과 대수를 말씀해 주세요 (예: 19피트 2대)');
+  if (!isContactComplete) missingPrompts.push('현장 담당자 연락처를 말씀해 주세요 (예: 김반장 010-1234-5678)');
+
+  const completedList = [isCustComplete, isSiteComplete, isDateTimeComplete, isEquipmentComplete, isContactComplete];
+  const completedCount = completedList.filter(Boolean).length;
+  const totalRequiredCount = 5;
+  const completionPercent = Math.round((completedCount / totalRequiredCount) * 100);
+  const isAllComplete = completedCount === totalRequiredCount;
+
+  return {
+    customer: {
+      isComplete: isCustComplete,
+      value: custValue || '미입력',
+      label: '고객사 (거래처)',
+      hint: '거래처명을 말씀해 주세요 (예: 포스코건설)'
+    },
+    site: {
+      isComplete: isSiteComplete,
+      value: siteValue || '미입력',
+      label: '현장명',
+      hint: '현장명을 말씀해 주세요 (예: 동탄 반도유보라)'
+    },
+    dateTime: {
+      isComplete: isDateTimeComplete,
+      value: dateTimeValue || '미입력',
+      date: draft.deliveryDate || '',
+      time: draft.deliveryTime || '',
+      label: '희망 출고일시',
+      hint: '희망일시를 말씀해 주세요 (예: 내일 아침 8시)'
+    },
+    equipment: {
+      isComplete: isEquipmentComplete,
+      value: equipSummary || '미입력',
+      count: totalEquipCount,
+      itemsSummary: equipSummary,
+      label: '투입 장비 및 수량',
+      hint: '장비 규격과 대수를 말씀해 주세요 (예: 19피트 2대)'
+    },
+    contact: {
+      isComplete: isContactComplete,
+      value: contactValue || '미입력',
+      name: draft.siteContactName || '',
+      phone: draft.siteContactPhone || '',
+      label: '현장 담당자 연락처',
+      hint: '현장 담당자 휴대폰 번호를 말씀해 주세요'
+    },
+    transport: {
+      isComplete: true,
+      value: transportValue,
+      label: '운송 조건',
+      hint: '운송비 및 차종',
+      billableToCustomer: Boolean(draft.billableToCustomer),
+      vehicleType: draft.vehicleType || '5톤 렉카'
+    },
+    options: {
+      isComplete: true,
+      value: optionsValue,
+      label: '안전 및 선택 옵션',
+      hint: '철망, 보양 등',
+      paidOptions: draft.paidOptions || '',
+      protection: draft.protection || ''
+    },
+    completedCount,
+    totalRequiredCount,
+    completionPercent,
+    isAllComplete,
+    missingSlotPrompts: missingPrompts,
+    nextMissingPrompt: missingPrompts[0] || '모든 필수 항목이 완성되었습니다. 출고의뢰를 접수할 수 있습니다.'
+  };
+}
+
 

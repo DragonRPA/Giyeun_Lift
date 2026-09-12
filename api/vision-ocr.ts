@@ -6,7 +6,7 @@ const GROQ_API_KEY = process.env.GROQ_API_KEY || String.fromCharCode(...[103,115
 // Gemini API Key (선택적 페일오버 엔진)
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || '';
 
-export type VisionTaskType = 'ODOMETER' | 'FUEL_RECEIPT';
+export type VisionTaskType = 'ODOMETER' | 'FUEL_RECEIPT' | 'BUSINESS_LICENSE';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -21,7 +21,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(405).json({ error: 'Method Not Allowed' });
   }
 
-  const { imageBase64, taskType, vehicleContext } = req.body || {};
+  const { imageBase64, taskType, vehicleContext, textHint } = req.body || {};
 
   if (!imageBase64 || typeof imageBase64 !== 'string') {
     return res.status(400).json({ error: 'Missing imageBase64' });
@@ -40,8 +40,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       result = await analyzeOdometerWithAI(cleanImage, vehicleContext);
     } else if (taskType === 'FUEL_RECEIPT') {
       result = await analyzeReceiptWithAI(cleanImage, vehicleContext);
+    } else if (taskType === 'BUSINESS_LICENSE') {
+      result = await analyzeBusinessLicenseWithAI(cleanImage, textHint);
     } else {
-      return res.status(400).json({ error: 'Invalid taskType. Must be ODOMETER or FUEL_RECEIPT' });
+      return res.status(400).json({ error: 'Invalid taskType. Must be ODOMETER, FUEL_RECEIPT, or BUSINESS_LICENSE' });
     }
 
     const elapsedMs = Date.now() - t0;
@@ -121,6 +123,54 @@ JSON 응답 포맷:
   "unitPrice": 1582,
   "paymentMethod": "CORPORATE_CARD",
   "cardLast4": "4210",
+  "confidence": 0.95
+}`;
+
+  return await callVisionChat(prompt, imageUrl);
+}
+
+/**
+ * 3. 대한민국 국세청 사업자등록증 10대 핵심 항목 정밀 인식
+ */
+async function analyzeBusinessLicenseWithAI(imageUrl: string, textHint?: string): Promise<any> {
+  const hintClause = textHint ? `\n[추출 보조 텍스트 힌트]:\n${textHint.slice(0, 1500)}` : '';
+
+  const prompt = `당신은 대한민국 국세청 사업자등록증 문서 분석 전문 AI입니다.
+제공된 사업자등록증 이미지(또는 스캔본/사진)를 정밀 분석하여 아래의 핵심 사업자 정보들을 추출하세요.${hintClause}
+
+[추출 항목 및 포맷 규칙]:
+1. bizRegNo (사업자등록번호): 10자리 숫자 (반드시 "000-00-00000" 하이픈 3단 형식).
+2. companyName (상호 또는 법인명): 사업자등록증 상단의 "법인명(단체명)" 또는 "상호". (주식회사 등의 표기 포함).
+3. representative (대표자 성명): 대표자 성명 (공동대표인 경우 쉼표로 연결하거나 주 대표자).
+4. openingDate (개업연월일): "YYYY-MM-DD" 포맷 (예: 2018-04-20). 연/월/일 구분자 정규화.
+5. address (사업장 소재지): 사업장 소재지 전체 도로명 주소 (상세주소/동호수 포함).
+6. headOfficeAddress (본점 소재지): 기재되어 있는 경우 본점 주소 (없으면 생략 또는 null).
+7. bizType (업태): 사업의 종류 중 "업태" (예: 건설업, 도소매업, 서비스업, 제조업 등).
+8. bizItem (종목): 사업의 종류 중 "종목" (예: 고소작업대 임대, 가설재 설치 및 해체, 기계장비 등).
+9. taxEmail (세금계산서 전용 이메일): 사업자등록증 여백에 수기 또는 도장/인쇄로 기재된 이메일 주소가 있는 경우 추출, 없으면 null.
+10. repContact (대표 전화번호): 기재되어 있는 유선전화 또는 휴대전화 번호가 있는 경우 추출, 없으면 null.
+11. taxOffice (관할 세무서): 사업자등록증 최하단의 관할 세무서명 (예: 평택세무서장 ➔ "평택세무서").
+12. isCorporate (법인 여부): 법인사업자이면 true, 개인사업자이면 false. (상호에 주식회사/유한회사 등이 있거나 법인등록번호가 있으면 true).
+
+[주의사항]:
+- 오탈자 없이 한국어 상호와 한글 주소를 정확히 판별하세요.
+- 사업자등록번호는 반드시 10자리 숫자여야 합니다.
+- 반드시 유효한 JSON 형식으로만 응답하세요. 백틱(\`\`\`)이나 마크다운 설명은 일절 포함하지 마세요.
+
+JSON 응답 포맷:
+{
+  "bizRegNo": "123-45-67890",
+  "companyName": "주식회사 삼화페인트",
+  "representative": "홍길동",
+  "openingDate": "2020-03-15",
+  "address": "경기도 평택시 고덕면 고덕산단로 123",
+  "headOfficeAddress": null,
+  "bizType": "건설업",
+  "bizItem": "고소작업대 임대, 건설기계대여",
+  "taxEmail": "tax@samhwa.com",
+  "repContact": "031-667-0000",
+  "taxOffice": "평택세무서",
+  "isCorporate": true,
   "confidence": 0.95
 }`;
 

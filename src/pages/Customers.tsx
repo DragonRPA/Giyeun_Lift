@@ -8,8 +8,9 @@ import {
   Sliders, Tag, Settings, CheckSquare, Square, ChevronDown, ChevronUp, FileText, FolderOpen,
   ShieldAlert
 } from 'lucide-react';
-import { db, Customer, CustomerContact, CustomerSite, CustomerBankAccount, StandardOption } from '../services/db';
+import { db, Customer, CustomerContact, CustomerSite, CustomerBankAccount, StandardOption, logPrivacyAccess } from '../services/db';
 import { exportToExcel } from '../services/excel';
+import { isPrivilegedPrivacyUser, maskPhoneNumber, maskEmail, maskName, maskAddress } from '../utils/privacyMasking';
 import { matchHangul, matchesChosungFilter, sortCustomersByName } from '../utils/hangulSearch';
 import { ChosungFilterBar } from '../components/ChosungFilterBar';
 import { BusinessLicenseModal } from '../components/BusinessLicenseModal';
@@ -213,61 +214,82 @@ export const Customers: React.FC = () => {
     }
   };
 
-  // 엑셀 다운로드
+  // 엑셀 다운로드 (경영진/개발자는 전체 정보, 일반 직원은 개인정보 마스킹)
   const handleExportAllCustomers = () => {
+    const isPrivileged = isPrivilegedPrivacyUser(currentUser);
     const excelData = filteredCustomers.map((c, idx) => ({
       'No': idx + 1,
       '고객명': c.name,
-      '대표자': c.representative,
+      '대표자': isPrivileged ? c.representative : maskName(c.representative),
       '업태': c.bizType || '-',
       '종목': c.bizItem || '-',
-      '대표 연락처': c.repContact || '-',
-      '대표 이메일': c.repEmail || '-',
+      '대표 연락처': isPrivileged ? (c.repContact || '-') : maskPhoneNumber(c.repContact),
+      '대표 이메일': isPrivileged ? (c.repEmail || '-') : maskEmail(c.repEmail),
       '사업자등록번호': c.bizRegNo || '-',
       '세금계산서 마감일': `매월 ${c.defaultBillingDay || 30}일`,
       '거래명세서 마감일': `매월 ${c.defaultStatementClosingDay || 25}일`,
       '약정 결제일': c.paymentDueDay ? `익월 ${c.paymentDueDay}일` : '익월 25일',
-      '본사 주소': c.address || '-',
+      '본사 주소': isPrivileged ? (c.address || '-') : maskAddress(c.address),
       '영업 상태': c.isClosed ? '폐업' : '영업중',
       '거래 상태': c.transactionStatus === 'BLOCKED' ? '거래제한' : '거래가능',
       '등록 일시': c.createdAt?.substring(0, 10) || '-'
     }));
     exportToExcel(excelData, `고객정보_조회목록_${new Date().toISOString().split('T')[0]}`, '고객사대장');
-    showToast(`고객사 목록 (${filteredCustomers.length}건) 엑셀이 다운로드되었습니다.`);
+    logPrivacyAccess(
+      'EXCEL_DOWNLOAD',
+      'customers',
+      `고객사 대장 ${excelData.length}건 엑셀 다운로드 (${isPrivileged ? '경영진/개발자 전체 원본' : '개인정보 마스킹 적용'})`,
+      { isMasked: !isPrivileged }
+    );
+    showToast(`고객사 목록 (${filteredCustomers.length}건) 엑셀이 다운로드되었습니다. (${isPrivileged ? '전체 정보' : '마스킹 적용'})`);
   };
 
   const handleExportContacts = () => {
     if (!activeCustomer) return;
+    const isPrivileged = isPrivilegedPrivacyUser(currentUser);
     const excelData = customerContacts.map((cc, idx) => ({
       'No': idx + 1,
       '고객사명': activeCustomer.name,
-      '담당자명': cc.name,
+      '담당자명': isPrivileged ? cc.name : maskName(cc.name),
       '직급': cc.position || '-',
-      '연락처': cc.contact,
-      '이메일': cc.email || '-',
+      '연락처': isPrivileged ? cc.contact : maskPhoneNumber(cc.contact),
+      '이메일': isPrivileged ? (cc.email || '-') : maskEmail(cc.email),
       '사용여부': cc.isActive !== false ? '사용' : '미사용',
       '등록 일시': cc.createdAt?.substring(0, 10) || '-'
     }));
     exportToExcel(excelData, `담당자목록_${activeCustomer.name}_${new Date().toISOString().split('T')[0]}`, '담당자리스트');
-    showToast(`담당자 목록 (${customerContacts.length}건) 엑셀이 다운로드되었습니다.`);
+    logPrivacyAccess(
+      'EXCEL_DOWNLOAD',
+      'customer_contacts',
+      `고객사 [${activeCustomer.name}] 담당자 목록 ${excelData.length}건 엑셀 다운로드 (${isPrivileged ? '경영진/개발자 전체 원본' : '개인정보 마스킹 적용'})`,
+      { targetSubjectId: activeCustomer.id, targetSubjectName: activeCustomer.name, isMasked: !isPrivileged }
+    );
+    showToast(`담당자 목록 (${customerContacts.length}건) 엑셀이 다운로드되었습니다. (${isPrivileged ? '전체 정보' : '마스킹 적용'})`);
   };
 
   const handleExportSites = () => {
     if (!activeCustomer) return;
+    const isPrivileged = isPrivilegedPrivacyUser(currentUser);
     const excelData = customerSites.map((cs, idx) => ({
       'No': idx + 1,
       '고객사명': activeCustomer.name,
       '현장명': cs.name,
-      '현장 주소': cs.address || '-',
-      '현장 담당자': cs.contactName || '-',
-      '연락처': cs.contact || '-',
+      '현장 주소': isPrivileged ? (cs.address || '-') : maskAddress(cs.address),
+      '현장 담당자': isPrivileged ? (cs.contactName || '-') : maskName(cs.contactName),
+      '연락처': isPrivileged ? (cs.contact || '-') : maskPhoneNumber(cs.contact),
       '유상옵션': normalizeOptionString(cs.paidOptions) || normalizeOptionString(activeCustomer.defaultPaidOptions) || '-',
       '보양작업': normalizeOptionString(cs.protection) || normalizeOptionString(activeCustomer.defaultProtection) || '-',
       '사용여부': cs.isActive !== false ? '사용' : '종료',
       '등록 일시': cs.createdAt?.substring(0, 10) || '-'
     }));
     exportToExcel(excelData, `현장목록_${activeCustomer.name}_${new Date().toISOString().split('T')[0]}`, '현장리스트');
-    showToast(`현장 목록 (${customerSites.length}건) 엑셀이 다운로드되었습니다.`);
+    logPrivacyAccess(
+      'EXCEL_DOWNLOAD',
+      'customer_sites',
+      `고객사 [${activeCustomer.name}] 현장 목록 ${excelData.length}건 엑셀 다운로드 (${isPrivileged ? '경영진/개발자 전체 원본' : '개인정보 마스킹 적용'})`,
+      { targetSubjectId: activeCustomer.id, targetSubjectName: activeCustomer.name, isMasked: !isPrivileged }
+    );
+    showToast(`현장 목록 (${customerSites.length}건) 엑셀이 다운로드되었습니다. (${isPrivileged ? '전체 정보' : '마스킹 적용'})`);
   };
 
   // 고객사 등록/수정 핸들러

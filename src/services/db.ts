@@ -1055,13 +1055,29 @@ export interface TransportDriver {
   companyId: string; // TransportCompany.id
   driverName: string;
   driverContact: string;
-  idNo?: string; // 주민등록번호 (000000-0* 7자리 규격)
+  birthDate?: string; // 기사 생년월일 (YYMMDD 또는 YYYY-MM-DD - 개인정보 보호법 제24조의2 준수)
+  idNo?: string; // (구) 주민등록번호 호환 필드
   address?: string; // 기사 주소
   vehicleNo: string;
   vehicleType: string;
   vehicleColor?: string; // 차량 색상
   createdAt: string;
   updatedAt?: string;
+}
+
+/** 🛡️ 법정 개인정보 접속기록 모델 (개인정보 보호법 제29조 및 안전성 확보조치 기준 제8조 준수) */
+export interface PrivacyAccessLog {
+  id: string;
+  userId: string;
+  userName: string;
+  ipAddress?: string;
+  actionType: 'LOGIN' | 'LOGOUT' | 'VIEW' | 'CREATE' | 'UPDATE' | 'DELETE' | 'EXCEL_DOWNLOAD' | 'UNMASK_VIEW';
+  targetMenu: string;
+  targetSubjectId?: string;
+  targetSubjectName?: string;
+  actionDetail: string;
+  isMasked?: boolean;
+  createdAt: string;
 }
 
 export interface RepairConsumable {
@@ -4004,7 +4020,7 @@ export const ALL_DB_KEYS = [
   'prepaidTransactions', 'delinquencyActionLogs', 'mechanicConsumableStocks', 'receivables', 'legalNoticeLogs', 'legalNoticeTemplates',
   'corporateVehicles', 'vehicleOperationLogs', 'vehicleFuelLogs',
   'stocktakingAudits', 'stocktakingAuditItems', 'collectedParts', 'equipmentManuals', 'standardOptions',
-  'printStations', 'printQueue', 'customRoles', 'rolePermissions'
+  'printStations', 'printQueue', 'customRoles', 'rolePermissions', 'privacyAccessLogs'
 ];
 
 class LocalDB {
@@ -4428,9 +4444,13 @@ class LocalDB {
   get printQueue() { return this.get<PrintQueueItem>('printQueue', []); }
   set printQueue(val: PrintQueueItem[]) { this.set('printQueue', val); }
 
+  get privacyAccessLogs() { return this.get<PrivacyAccessLog>('privacyAccessLogs', []); }
+  set privacyAccessLogs(val: PrivacyAccessLog[]) { this.set('privacyAccessLogs', val); }
+
   // Supabase 테이블 맵핑
   private mapToSupabaseTable(key: string): string {
     const mapping: Record<string, string> = {
+      privacyAccessLogs: 'privacy_access_logs',
       printStations: 'print_stations',
       printQueue: 'print_queue',
       tenants: 'tenants',
@@ -4838,6 +4858,7 @@ class LocalDB {
       case 'standardOptions':     prefix = 'OPT-';    break;
       case 'purchaseSettlements': prefix = 'PST-';    break;
       case 'purchaseSettlementItems': prefix = 'PSI-'; break;
+      case 'privacyAccessLogs':   prefix = 'PLOG-';   break;
       default:
         prefix = key.slice(0, 4).toUpperCase() + '-';
     }
@@ -4988,6 +5009,8 @@ class LocalDB {
       customRoles: 'customRoles',
       role_permissions: 'rolePermissions',
       rolePermissions: 'rolePermissions',
+      privacy_access_logs: 'privacyAccessLogs',
+      privacyAccessLogs: 'privacyAccessLogs',
     };
     return (reverseMapping[key] || key) as keyof LocalDB;
   }
@@ -5409,3 +5432,51 @@ class LocalDB {
 }
 
 export const db = new LocalDB();
+
+/**
+ * 🛡️ 법정 개인정보 접속기록 로깅 엔진 (개인정보 보호법 제29조 및 안전성 확보조치 기준 제8조 준수)
+ * - 접속자, 접속일시, 접속지, 수행업무(조회, 수정, 삭제, 다운로드), 대상정보, 마스킹 여부를 영구 기록
+ */
+export async function logPrivacyAccess(
+  actionType: PrivacyAccessLog['actionType'],
+  targetMenu: string,
+  actionDetail: string,
+  extra?: {
+    userId?: string;
+    userName?: string;
+    targetSubjectId?: string;
+    targetSubjectName?: string;
+    isMasked?: boolean;
+  }
+): Promise<PrivacyAccessLog> {
+  const curUser = (window as any).__CURRENT_USER_CACHE || null;
+  const userId = extra?.userId || curUser?.loginId || curUser?.id || 'sys-anon';
+  const userName = extra?.userName || curUser?.name || '시스템사용자';
+  const now = new Date().toISOString();
+  const id = `PLOG-${now.substring(0, 10).replace(/-/g, '')}-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
+
+  const logEntry: PrivacyAccessLog = {
+    id,
+    userId,
+    userName,
+    actionType,
+    targetMenu,
+    targetSubjectId: extra?.targetSubjectId,
+    targetSubjectName: extra?.targetSubjectName,
+    actionDetail,
+    isMasked: extra?.isMasked !== undefined ? extra.isMasked : true,
+    createdAt: now
+  };
+
+  try {
+    const list = db.privacyAccessLogs;
+    db.privacyAccessLogs = [logEntry, ...list.slice(0, 2999)]; // 최근 3,000건 로컬 캐싱
+    if (db.isSupabaseConnected()) {
+      await db.insertRow('privacyAccessLogs', logEntry);
+    }
+  } catch (err) {
+    console.error('Privacy access logging error:', err);
+  }
+  return logEntry;
+}
+

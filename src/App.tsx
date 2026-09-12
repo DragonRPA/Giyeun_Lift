@@ -5,10 +5,13 @@ import {
   LayoutDashboard, Users, UserCheck, Package, Layers, PlusCircle,
   Truck, Wrench, Shield, ShoppingBag, CreditCard, LogOut, Sun, Moon, Menu, X, Zap, Settings, Database as DatabaseIcon,
   TrendingUp, Clock, AlertTriangle, Building2, ChevronDown, ChevronRight, Briefcase, Box, FolderKanban, ShieldAlert, Terminal, ArrowLeftRight, CheckSquare,
-  Smartphone, Monitor, Car, FileText, Search, Printer, PackagePlus, Boxes, Calendar, Camera, BookOpen
+  Smartphone, Monitor, Car, FileText, Search, Printer, PackagePlus, Boxes, Calendar, Camera, BookOpen,
+  FileCheck, ShieldCheck
 } from 'lucide-react';
 
 import { WeatherWidget } from './components/WeatherWidget';
+import { PrivacyPolicyModal } from './components/PrivacyPolicyModal';
+import { PrivacyAuditPage } from './pages/PrivacyAuditPage';
 
 // 페이지 컴포넌트 임포트 (SSOT 언더바 파일명 통일)
 import { Dashboard } from './pages/Dashboard';
@@ -95,6 +98,9 @@ const App: React.FC = () => {
 
   // 모바일 메뉴 사이드바 토글 상태
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
+  // 개인정보 처리방침 법정 고지 모달 상태
+  const [showPrivacyPolicy, setShowPrivacyPolicy] = useState(false);
 
   // ─── 메뉴 검색 네비게이터 상태 ───
   const [menuSearchOpen, setMenuSearchOpen] = useState(false);
@@ -287,6 +293,7 @@ const App: React.FC = () => {
         { id: 'permission', name: '사용자 및 권한', icon: <Shield size={16} />, component: <UsersPermissions /> },
         { id: 'payroll', name: '급여 정산', icon: <CreditCard size={16} />, component: <PayrollPage /> },
         { id: 'leave_management', name: '연차관리', icon: <UserCheck size={16} />, component: <LeaveManagementPage /> },
+        { id: 'privacy_audit', name: '개인정보 접속 감사', icon: <FileCheck size={16} />, component: <PrivacyAuditPage /> },
       ]
     },
     {
@@ -620,7 +627,31 @@ const App: React.FC = () => {
               </div>
             </div>
           )}
+
+          {/* 개인정보 처리방침 법정 고지 링크 */}
+          <div style={{ marginTop: '16px', textAlign: 'center' }}>
+            <button
+              type="button"
+              onClick={() => setShowPrivacyPolicy(true)}
+              style={{
+                background: 'none',
+                border: 'none',
+                color: '#94a3b8',
+                fontSize: '11.5px',
+                cursor: 'pointer',
+                textDecoration: 'underline',
+                padding: '4px 8px'
+              }}
+            >
+              개인정보처리방침
+            </button>
+          </div>
         </div>
+
+        {/* 🛡️ 개인정보 처리방침 모달 (로그인 전 열람 가능) */}
+        {showPrivacyPolicy && (
+          <PrivacyPolicyModal onClose={() => setShowPrivacyPolicy(false)} />
+        )}
       </div>
     );
   }
@@ -844,6 +875,30 @@ const App: React.FC = () => {
           >
             <BookOpen size={14} color="#2563EB" />
             업무매뉴얼
+          </button>
+
+          {/* 🛡️ 개인정보 처리방침 법정 고지 열람 버튼 */}
+          <button
+            onClick={() => setShowPrivacyPolicy(true)}
+            style={{
+              padding: '6px 13px',
+              borderRadius: '20px',
+              backgroundColor: 'var(--bg-app)',
+              color: 'var(--text-primary)',
+              border: '1px solid var(--border-color)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              fontSize: '12.5px',
+              fontWeight: '700',
+              cursor: 'pointer',
+              whiteSpace: 'nowrap',
+              transition: 'all 0.15s ease'
+            }}
+            title="개인정보 보호법 제30조 및 안전성 확보조치 기준 고지 열람"
+          >
+            <ShieldCheck size={14} color="#10B981" />
+            개인정보처리방침
           </button>
 
           {/* 모바일 현장 전용 뷰 전환 버튼 */}
@@ -1209,6 +1264,11 @@ const App: React.FC = () => {
 
       {/* 🚀 구글 드라이브 실시간 미러링 진행상황 플로팅 토스트 */}
       <MirrorSyncProgressToast />
+
+      {/* 🛡️ 개인정보 처리방침 법정 고지 모달 */}
+      {showPrivacyPolicy && (
+        <PrivacyPolicyModal onClose={() => setShowPrivacyPolicy(false)} />
+      )}
 
     </div>
   );

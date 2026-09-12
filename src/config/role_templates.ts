@@ -17,7 +17,9 @@ const BASE_COMMON_PERMISSIONS: PermissionRuleMap = {
   ot_management: { canView: false, canSave: false },   // OT 관리: 권한관리에서 통제
   leave_management: { canView: false, canSave: false }, // 연차관리: 급여 권한자 전용
   // 에이전트 배지: 기본 비노출 (프린터·파일변환 직무만 ON)
-  agent_badge: { canView: false, canSave: false }
+  agent_badge: { canView: false, canSave: false },
+  // 개인정보 접속 감사: 관리부 및 최고관리자 전용
+  privacy_audit: { canView: false, canSave: false }
 };
 
 // 2. 관리부 (경영 / 회계 / 인사 / 자금) - DEPT-0000002
@@ -36,6 +38,7 @@ export const ACCOUNTING_TEMPLATE: PermissionRuleMap = {
   leave_management: { canView: true, canSave: true }, // 급여 권한자와 100% 동일
   ot_management: { canView: true, canSave: true },    // 관리부 OT 관리 권한
   organization: { canView: true, canSave: true },
+  privacy_audit: { canView: true, canSave: true },   // 개인정보 접속 감사 권한
   regular_reports: { canView: true, canSave: true },
   acquisition_disposal: { canView: true, canSave: true },
   // 열람만 허용 (영업/자산 상태 대사)

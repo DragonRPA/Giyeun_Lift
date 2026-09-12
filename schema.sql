@@ -510,6 +510,7 @@ CREATE TABLE transport_drivers (
     "vehicleNo"           TEXT,
     "vehicleType"         TEXT,
     "vehicleColor"        TEXT,
+    "birthDate"           TEXT,
     "idNo"                TEXT,
     address               TEXT,
     "createdAt"           TEXT NOT NULL,
@@ -1605,6 +1606,29 @@ CREATE TABLE IF NOT EXISTS print_queue (
 
 CREATE INDEX IF NOT EXISTS idx_print_queue_station_status ON print_queue("stationId", status);
 CREATE INDEX IF NOT EXISTS idx_print_queue_requested_at ON print_queue("requestedAt");
+
+-- ==============================================================================
+-- 🛡️ [도메인 7] 개인정보 보호 및 접속 감사 기록 (Privacy & Audit Logs)
+-- 대한민국 개인정보 보호법 제29조 및 개인정보의 안전성 확보조치 기준 제8조 준수
+-- ==============================================================================
+CREATE TABLE IF NOT EXISTS privacy_access_logs (
+    id                    TEXT PRIMARY KEY,
+    "userId"              TEXT NOT NULL,
+    "userName"            TEXT NOT NULL,
+    "ipAddress"           TEXT,
+    "actionType"          TEXT NOT NULL, -- LOGIN, LOGOUT, VIEW, CREATE, UPDATE, DELETE, EXCEL_DOWNLOAD, UNMASK_VIEW
+    "targetMenu"          TEXT NOT NULL,
+    "targetSubjectId"     TEXT,
+    "targetSubjectName"   TEXT,
+    "actionDetail"        TEXT,
+    "isMasked"            BOOLEAN DEFAULT TRUE,
+    "createdAt"           TEXT NOT NULL,
+    "tenant_id"           TEXT NOT NULL DEFAULT 'giyeun'
+);
+
+CREATE INDEX IF NOT EXISTS idx_privacy_access_logs_created ON privacy_access_logs("createdAt");
+CREATE INDEX IF NOT EXISTS idx_privacy_access_logs_user ON privacy_access_logs("userId");
+CREATE INDEX IF NOT EXISTS idx_privacy_access_logs_action ON privacy_access_logs("actionType");
 
 -- ==============================================================================
 -- 🔒 전 테이블 Row Level Security (RLS) 및 권한 일괄 활성화

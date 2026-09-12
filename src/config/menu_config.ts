@@ -97,7 +97,8 @@ export const SYSTEM_MENU_CONFIG: MenuGroupConfig[] = [
       { id: 'organization', name: '조직/인사 관리' },
       { id: 'permission', name: '사용자 및 권한 설정' },
       { id: 'payroll', name: '급여 정산 (보안 강제)' },
-      { id: 'leave_management', name: '연차관리' }
+      { id: 'leave_management', name: '연차관리' },
+      { id: 'privacy_audit', name: '개인정보 접속 감사' }
     ]
   },
   {
@@ -176,7 +177,10 @@ export const CANONICAL_MENU_ALIASES: Record<string, string> = {
   'print-queue': 'print_queue_monitor',
   'agent': 'agent_badge',
   'agent-badge': 'agent_badge',
-  'agentbadge': 'agent_badge'
+  'agentbadge': 'agent_badge',
+  'privacy-audit': 'privacy_audit',
+  'privacy_access_logs': 'privacy_audit',
+  'privacy_access_log': 'privacy_audit'
 };
 
 export function normalizeMenuId(menuId: string): string {

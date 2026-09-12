@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
-import { db, supabase, Tenant, TenantWorkplace, TenantYard, TenantBusinessType, TenantBankAccount, OFFICIAL_STAMP_BASE64, User, MenuPermission, createMenuPermission, CustomRole, RolePermission, Customer, CustomerContact, CustomerSite, Product, Asset, Consumable, ConsumableLog, ConsumablePurchaseRequest, MechanicConsumableStock, Contract, ContractAsset, ContractHistory, Delivery, Billing, BillingType, BillingDetail, Receivable, Payment, PaymentDepositLink, Repair, RepairConsumable, Todo, BankTransaction, BankMatchingRule, BankAccountInitialBalance, AssetInOutLog, GoogleConfig, Vendor, CashFlowSnapshot, OutboundInspection, TransportCompany, TransportDriver, TransportNegotiation, SubleaseNegotiation, DepreciationLog, PurchaseSettlement, PurchaseSettlementItem, SettlementPaymentLog, ExternalLease, PurchaseSettlementType, PurchaseSettlementStatus, findCustomerByNormalizedName, AnnualLeaveQuota, LeaveUsage, OvertimeRecord, PayrollClosing, InspectionChecklistItem, EquipmentManual, StandardOption, InboundDefectDetail, PrepaidTransaction, DelinquencyActionLog, LegalNoticeLog, LegalNoticeTemplate, calculateAssetDepreciation, FieldAsTicket, FieldAsPartUsed, FieldAsCollectedPart, CorporateVehicle, VehicleOperationLog, VehicleFuelLog, RepairPartUsed, RepairCollectedPart, SaleContractTerms, StocktakingAudit, StocktakingAuditItem, CollectedPart, PrintStation, PrintQueueItem } from '../services/db';
+import { db, supabase, Tenant, TenantWorkplace, TenantYard, TenantBusinessType, TenantBankAccount, OFFICIAL_STAMP_BASE64, User, MenuPermission, createMenuPermission, CustomRole, RolePermission, Customer, CustomerContact, CustomerSite, Product, Asset, Consumable, ConsumableLog, ConsumablePurchaseRequest, MechanicConsumableStock, Contract, ContractAsset, ContractHistory, Delivery, Billing, BillingType, BillingDetail, Receivable, Payment, PaymentDepositLink, Repair, RepairConsumable, Todo, BankTransaction, BankMatchingRule, BankAccountInitialBalance, AssetInOutLog, GoogleConfig, Vendor, CashFlowSnapshot, OutboundInspection, TransportCompany, TransportDriver, TransportNegotiation, SubleaseNegotiation, DepreciationLog, PurchaseSettlement, PurchaseSettlementItem, SettlementPaymentLog, ExternalLease, PurchaseSettlementType, PurchaseSettlementStatus, findCustomerByNormalizedName, AnnualLeaveQuota, LeaveUsage, OvertimeRecord, PayrollClosing, InspectionChecklistItem, EquipmentManual, StandardOption, InboundDefectDetail, PrepaidTransaction, DelinquencyActionLog, LegalNoticeLog, LegalNoticeTemplate, calculateAssetDepreciation, FieldAsTicket, FieldAsPartUsed, FieldAsCollectedPart, CorporateVehicle, VehicleOperationLog, VehicleFuelLog, RepairPartUsed, RepairCollectedPart, SaleContractTerms, StocktakingAudit, StocktakingAuditItem, CollectedPart, PrintStation, PrintQueueItem, logPrivacyAccess } from '../services/db';
 import { enqueuePrintJob as serviceEnqueuePrintJob, registerPrintStation as serviceRegisterPrintStation, deletePrintStation as serviceDeletePrintStation, retryPrintJob as serviceRetryPrintJob, cancelPrintJob as serviceCancelPrintJob } from '../services/printQueueService';
 import { ErrorModal } from '../components/ErrorModal';
 import { getAllSystemMenuIds, normalizeMenuId } from '../config/menu_config';
@@ -793,6 +793,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     'regular_reports':      ['contracts', 'contractAssets', 'deliveries', 'assets', 'repairs', 'purchaseSettlements', 'purchaseSettlementItems', 'billings', 'billingDetails', 'bankTransactions', 'customers'],
     'initial_db_upload':    ['contracts', 'contractAssets', 'customers', 'assets', 'sites', 'billings', 'billingDetails'],
     'print_queue_monitor':  ['printStations', 'printQueue'],
+    'privacy_audit':        ['privacyAccessLogs', 'users', 'departments'],
   };
 
   const loadTablesForMenu = async (menuId: string) => {
@@ -919,6 +920,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       } else {
         localStorage.removeItem('auto_user');
       }
+      logPrivacyAccess('LOGIN', 'login', '개발자 최고관리자 로그인 성공', {
+        userId: fallbackAdmin.loginId,
+        userName: fallbackAdmin.name
+      }).catch(console.error);
       return true;
     }
 
@@ -934,12 +939,27 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       } else {
         localStorage.removeItem('auto_user');
       }
+      logPrivacyAccess('LOGIN', 'login', `사용자 로그인 성공: ${user.name} (${user.department})`, {
+        userId: user.loginId,
+        userName: user.name
+      }).catch(console.error);
       return true;
     }
+
+    logPrivacyAccess('LOGIN', 'login', `로그인 실패 시도 (시도 ID: ${loginId})`, {
+      userId: loginId,
+      userName: '미식별'
+    }).catch(console.error);
     return false;
   };
 
   const logout = () => {
+    if (currentUser) {
+      logPrivacyAccess('LOGOUT', 'logout', `사용자 로그아웃: ${currentUser.name}`, {
+        userId: currentUser.loginId,
+        userName: currentUser.name
+      }).catch(console.error);
+    }
     setCurrentUser(null);
     sessionStorage.removeItem('user');
     sessionStorage.removeItem('original_admin_user');
@@ -960,6 +980,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
     
     if (targetUser) {
+      logPrivacyAccess('VIEW', 'switch_user', `사용자 계정 전환: ${currentUser?.name || '미인증'} -> ${targetUser.name}`, {
+        userId: currentUser?.loginId || targetUser.loginId,
+        userName: currentUser?.name || targetUser.name,
+        targetSubjectId: targetUser.id,
+        targetSubjectName: targetUser.name
+      }).catch(console.error);
+
       if (currentUser?.role === 'ADMIN' && !sessionStorage.getItem('original_admin_user')) {
         sessionStorage.setItem('original_admin_user', JSON.stringify(currentUser));
       }

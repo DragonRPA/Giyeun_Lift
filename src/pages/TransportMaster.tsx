@@ -1,11 +1,12 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { Settings, Users, Truck, Plus, Trash2, Edit2, Copy, Check, X, CreditCard, Building, Download } from 'lucide-react';
-import { TransportCompany, TransportDriver, db } from '../services/db';
+import { TransportCompany, TransportDriver, db, logPrivacyAccess } from '../services/db';
 import { exportToExcel } from '../services/excel';
+import { isPrivilegedPrivacyUser, maskPhoneNumber, maskName, maskAddress } from '../utils/privacyMasking';
 
 export const TransportMaster: React.FC = () => {
-  const { transportCompanies, transportDrivers, hasPermission, refreshAllData, showErrorModal } = useApp();
+  const { transportCompanies, transportDrivers, hasPermission, refreshAllData, showErrorModal, currentUser } = useApp();
   const canSave = hasPermission('delivery', 'save');
 
   // 토스트 알림 상태 (헌장 5.2: 브라우저 alert/confirm 전면 퇴출)
@@ -110,13 +111,16 @@ export const TransportMaster: React.FC = () => {
   // 기사 추가/수정 모달 열기
   const handleOpenDriverModal = (driver?: TransportDriver) => {
     if (driver) {
-      setEditingDriver({ ...driver });
+      setEditingDriver({ 
+        ...driver,
+        birthDate: driver.birthDate || (driver.idNo ? driver.idNo.slice(0, 6) : '')
+      });
     } else {
       setEditingDriver({
         companyId: selectedCompanyId || (transportCompanies[0]?.id || ''),
         driverName: '',
         driverContact: '',
-        idNo: '',
+        birthDate: '',
         address: '',
         vehicleNo: '',
         vehicleType: '3.5T',
@@ -157,15 +161,17 @@ export const TransportMaster: React.FC = () => {
     }
   };
 
-  // 주민등록번호 마스킹 자동 포맷팅 (000000-0*)
-  const handleIdNoChange = (val: string) => {
+  // 기사 생년월일 포맷팅 (YYMMDD 또는 YYYY-MM-DD)
+  const handleBirthDateChange = (val: string) => {
     const raw = val.replace(/[^0-9]/g, '');
     let formatted = raw;
-    if (raw.length > 6) {
-      formatted = `${raw.slice(0, 6)}-${raw.slice(6, 7)}`;
+    if (raw.length === 6) {
+      formatted = `${raw.slice(0, 2)}-${raw.slice(2, 4)}-${raw.slice(4, 6)}`;
+    } else if (raw.length === 8) {
+      formatted = `${raw.slice(0, 4)}-${raw.slice(4, 6)}-${raw.slice(6, 8)}`;
     }
     if (editingDriver) {
-      setEditingDriver({ ...editingDriver, idNo: formatted.slice(0, 8) });
+      setEditingDriver({ ...editingDriver, birthDate: formatted || raw, idNo: undefined });
     }
   };
 
@@ -236,24 +242,31 @@ export const TransportMaster: React.FC = () => {
       showToast('내보낼 기사 데이터가 없습니다.', 'warning');
       return;
     }
+    const isPrivileged = isPrivilegedPrivacyUser(currentUser);
     const rows = filteredDrivers.map((d, index) => {
       const comp = transportCompanies.find(c => c.id === d.companyId);
       return {
         'No': index + 1,
-        '기사명': d.driverName,
+        '기사명': isPrivileged ? d.driverName : maskName(d.driverName),
         '소속운송사': comp?.name || '미상',
-        '주민번호': d.idNo ? `${d.idNo}******` : '-',
-        '연락처': d.driverContact || '-',
+        '생년월일': d.birthDate || (d.idNo ? d.idNo.slice(0, 6) : '-'),
+        '연락처': isPrivileged ? (d.driverContact || '-') : maskPhoneNumber(d.driverContact),
         '차종/톤수': d.vehicleType || '-',
         '차량번호': d.vehicleNo || '-',
         '차량색상': d.vehicleColor || '-',
-        '주소': d.address || '-',
+        '주소': isPrivileged ? (d.address || '-') : maskAddress(d.address),
         '등록일시': d.createdAt ? d.createdAt.substring(0, 10) : '-'
       };
     });
     const todayStr = new Date().toISOString().split('T')[0];
     exportToExcel(rows, `운송기사목록_${todayStr}`, '운송기사');
-    showToast(`기사 ${rows.length}명 엑셀 내보내기 완료`);
+    logPrivacyAccess(
+      'EXCEL_DOWNLOAD',
+      'transport_drivers',
+      `운송기사 목록 ${rows.length}건 엑셀 다운로드 (${isPrivileged ? '경영진/개발자 전체 원본' : '개인정보 마스킹'})`,
+      { isMasked: !isPrivileged }
+    );
+    showToast(`기사 ${rows.length}명 엑셀 내보내기 완료 (${isPrivileged ? '전체 정보' : '마스킹 적용'})`);
   };
 
   return (
@@ -394,7 +407,7 @@ export const TransportMaster: React.FC = () => {
                 <tr style={{ whiteSpace: 'nowrap' }}>
                   <th style={{ whiteSpace: 'nowrap' }}>기사명</th>
                   <th style={{ whiteSpace: 'nowrap' }}>소속 운송사</th>
-                  <th style={{ whiteSpace: 'nowrap' }}>주민번호</th>
+                  <th style={{ whiteSpace: 'nowrap' }}>생년월일</th>
                   <th style={{ whiteSpace: 'nowrap' }}>연락처</th>
                   <th style={{ whiteSpace: 'nowrap' }}>차종/톤수</th>
                   <th style={{ whiteSpace: 'nowrap' }}>차량번호</th>
@@ -421,7 +434,7 @@ export const TransportMaster: React.FC = () => {
                       <tr key={d.id} style={{ whiteSpace: 'nowrap' }}>
                         <td style={{ fontWeight: '700', whiteSpace: 'nowrap' }}>{d.driverName}</td>
                         <td style={{ whiteSpace: 'nowrap' }}><span className="badge badge-secondary">{comp?.name || '미상'}</span></td>
-                        <td style={{ fontSize: '12px', fontFamily: 'monospace', whiteSpace: 'nowrap' }}>{d.idNo ? `${d.idNo}******` : '-'}</td>
+                        <td style={{ fontSize: '12px', fontFamily: 'monospace', whiteSpace: 'nowrap' }}>{d.birthDate || (d.idNo ? `${d.idNo.slice(0, 6)}` : '-')}</td>
                         <td style={{ whiteSpace: 'nowrap' }}>{d.driverContact || '-'}</td>
                         <td style={{ whiteSpace: 'nowrap' }}><span className="badge badge-info">{d.vehicleType || '-'}</span></td>
                         <td style={{ fontWeight: '600', whiteSpace: 'nowrap' }}>{d.vehicleNo || '-'}</td>
@@ -530,13 +543,13 @@ export const TransportMaster: React.FC = () => {
                   <input type="text" value={editingDriver.driverContact || ''} onChange={e => setEditingDriver({ ...editingDriver, driverContact: e.target.value })} placeholder="010-0000-0000" />
                 </div>
                 <div>
-                  <label>주민등록번호 (OOOOOO-O*)</label>
+                  <label>생년월일 (YYMMDD)</label>
                   <input 
                     type="text" 
-                    value={editingDriver.idNo || ''} 
-                    onChange={e => handleIdNoChange(e.target.value)} 
-                    placeholder="900101-1" 
-                    maxLength={8}
+                    value={editingDriver.birthDate || ''} 
+                    onChange={e => handleBirthDateChange(e.target.value)} 
+                    placeholder="예: 850315" 
+                    maxLength={10}
                   />
                 </div>
               </div>

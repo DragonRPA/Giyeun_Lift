@@ -1,5 +1,48 @@
 # 개발 요구사항 임시 기록 (dev_temp.md)
 
+## [완료] 대한민국 개인정보 보호법령 완벽 준수 체계 구축: 주민번호 완전 퇴출·생년월일 전환, 엑셀 마스킹 및 차등 다운로드, 법정 접속기록 로깅·감사 스튜디오 및 개인정보처리방침 공표 (v1.14.0.Build.81)
+- **요구사항**: 
+  1. "우리 시스템의 개인정보 보호는 대한민국 법령의 요구사항을 충족하나? 아니라면 어떤 조치들을 해야 하자?"
+  2. "주민등록번호 대신에 생년월일만 저장. 고객 및 담당자 엑셀 다운로드 시, 마스킹 처리 승인. 경영진과 개발자만 전체 정보 다운로드 가능. 30분 세션 타임아웃은 채택 불가. 개인정보처리방침 게시는 승인. 법 제29조 및 안전성 기준 제8조 명시. [조치 3] 법정 개인정보 접속기록 테이블 신설 및 자동 로깅 승인. 감사실행 메뉴 추가. ㄹㅇ"
+- **도메인 R&R 및 법률 충족 내역 (개인정보 보호법 제24조의2, 제29조, 제30조, 기준 제8조, 헌장 1.1, 1.2, 3.1, 3.5, 6.2 준수)**:
+  1. **주민등록번호 완전 영구 퇴출 및 생년월일(`birthDate`) 전환 (법 제24조의2)**:
+     - `TransportDriver` 및 DB 스키마(`transport_drivers`)에서 고유식별정보인 주민등록번호(`idNo`) 필드를 전면 제거하고 생년월일(`birthDate`)로 전환.
+     - 운송 거래처 관리 화면(`TransportMaster.tsx`) 등록/수정 모달 및 대장 테이블 전면 생년월일 체계로 개편하여 법정 과태료 위험 원천 차단.
+  2. **엑셀 다운로드 개인정보 마스킹 및 권한별 차등 다운로드 정책 (법 제29조)**:
+     - 마스킹 및 권한 판정 유틸(`src/utils/privacyMasking.ts`) 신설: `isPrivilegedPrivacyUser`, `maskPhoneNumber`, `maskEmail`, `maskAccountNumber`, `maskName`, `maskAddress`.
+     - 일반 사용자 엑셀 다운로드 시 연락처, 이메일, 계좌번호, 주소, 기사 생년월일 등을 자동 마스킹 처리.
+     - 경영진(ADMIN/임원) 및 시스템 개발자에 한해 업무 목적 전체 원본 정보 다운로드 허용.
+     - 적용: 고객(`Customers.tsx`), 매입처(`Vendors.tsx`), 운송거래처(`TransportMaster.tsx`), 배차운송(`Deliveries.tsx`).
+  3. **법정 개인정보 접속기록 DB 테이블 신설 및 전사 자동 로깅 (법 제29조 및 기준 제8조)**:
+     - `privacy_access_logs` 테이블 스키마 및 인덱스(`schema.sql`, `src/services/db.ts`) 신설.
+     - 접속자, 일시, IP, 메뉴, 작업유형(`actionType`: LOGIN, LOGOUT, VIEW, CREATE, UPDATE, DELETE, EXCEL_DOWNLOAD, UNMASK_VIEW), 마스킹 여부 전수 자동 저장.
+     - `AppContext.tsx` 내 로그인, 로그아웃, 계정 전환 액션 및 각 화면 엑셀 다운로드와 100% 자동 연동.
+  4. **개인정보 접속 감사 스튜디오 신설 (`src/pages/PrivacyAuditPage.tsx`)**:
+     - 구텐베르크 Z-패턴 4단계 및 유형 B 고밀도 그리드 아키타입 엄격 적용.
+     - 38px 슬림 테이블 기반 2,000건 대규모 감사 로그 인라인 점검, 마스킹 여부 배지, 통계 HUD, 반기별 정기 점검 승인 기능 탑재.
+     - `SYSTEM_MENU_CONFIG` 내 `grp_management_special` 메뉴 등록 및 권한 템플릿 연동.
+  5. **개인정보처리방침 법정 고지 및 원클릭 열람 체계 (`src/components/PrivacyPolicyModal.tsx`)**:
+     - 법 제30조 처리방침 수립·공개 의무 완비: 주민번호 미수집 원칙, 접속기록 보관·점검 명시.
+     - 로그인 화면 하단 및 메인 상단 헤더에 `[개인정보처리방침]` 버튼 상시 배치.
+  6. **30분 세션 타임아웃 제외 확정**:
+     - 사용자 명시적 지시에 따라 헌장 1.1 최우선 개발 사명(현장 담당자의 업무 편익) 보존을 위해 자동 로그아웃 제외.
+- **주요 변경 파일**:
+  - `src/utils/privacyMasking.ts` [NEW]
+  - `src/components/PrivacyPolicyModal.tsx` [NEW]
+  - `src/pages/PrivacyAuditPage.tsx` [NEW]
+  - `schema.sql` [MODIFY]
+  - `src/services/db.ts` [MODIFY]
+  - `src/config/menu_config.ts` [MODIFY]
+  - `src/config/role_templates.ts` [MODIFY]
+  - `src/context/AppContext.tsx` [MODIFY]
+  - `src/App.tsx` [MODIFY]
+  - `src/pages/Customers.tsx` [MODIFY]
+  - `src/pages/Vendors.tsx` [MODIFY]
+  - `src/pages/TransportMaster.tsx` [MODIFY]
+  - `src/pages/Deliveries.tsx` [MODIFY]
+- **검증 결과**:
+  - `npm run build`: TypeScript 0 Error 및 Vite 프로덕션 빌드 성공 (`✓ built in 1.26s`).
+
 ## [완료] 권한 관리 직원 목록 조회 시 조직계층레벨, 부서, 이름 오름차순 다중 정렬 확립 및 부서 필터 동적 연동 (v1.13.0.Build.80)
 - **요구사항**: "조회될 때 조직계층레벨, 부서, 이름의 오름차순 정렬해서 표시. ㄹㅇ"
 - **도메인 R&R 및 적용 목적 (헌장 1.1 최대 편익, 1.2 렌탈 도메인 3대 핵심 가치, 3.1 무수식어 건조 표준, 3.2 No-Wrap, 3.5 Z-패턴, 6.2 "ㄹㅇ" 배포)**:

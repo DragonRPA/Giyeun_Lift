@@ -2,8 +2,9 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { Truck, Check, DollarSign, Calendar, Navigation, AlertTriangle, CheckCircle, ShieldAlert, Download, Search, Camera, Upload, Sun, MapPin } from 'lucide-react';
-import { Delivery, db } from '../services/db';
+import { Delivery, db, logPrivacyAccess } from '../services/db';
 import { exportToExcel } from '../services/excel';
+import { isPrivilegedPrivacyUser, maskPhoneNumber, maskName, maskAddress } from '../utils/privacyMasking';
 import { DestinationWeatherModal } from '../components/DestinationWeatherModal';
 
 interface SettleVehicle {
@@ -55,7 +56,7 @@ const compressImage = (file: File): Promise<File> => {
 
 export const Deliveries: React.FC = () => {
   const {
-    deliveries, contracts, customers, assets, contractAssets, sites, dispatchDelivery, settleDeliveryCost, completeDelivery, completeInboundDelivery, hasPermission, showErrorModal
+    currentUser, deliveries, contracts, customers, assets, contractAssets, sites, dispatchDelivery, settleDeliveryCost, completeDelivery, completeInboundDelivery, hasPermission, showErrorModal
   } = useApp();
 
   // 토스트 알림 상태 (헌장 5.2: 브라우저 alert/confirm 전면 퇴출)
@@ -193,6 +194,7 @@ export const Deliveries: React.FC = () => {
   });
 
   const handleExportExcel = () => {
+    const isPrivileged = isPrivilegedPrivacyUser(currentUser);
     const excelData = filteredDeliveries.map((d, idx) => {
       let displayName = getCustNameFromContract(d.contractId);
       if (displayName === '-' && (d.memo || '').includes('[외주정비회수]')) {
@@ -205,13 +207,13 @@ export const Deliveries: React.FC = () => {
         try {
           const parsed = JSON.parse(d.vehicles);
           if (Array.isArray(parsed)) {
-            vehiclesSummary = parsed.map(v => `${v.transportCompany} ${v.vehicleNo} (${v.driverName})`).join(' / ');
+            vehiclesSummary = parsed.map(v => `${v.transportCompany} ${v.vehicleNo} (${isPrivileged ? v.driverName : maskName(v.driverName)})`).join(' / ');
           }
         } catch(e) {
-          vehiclesSummary = `${d.vehicleType || ''} ${d.vehicleNo || ''} (${d.driverName || ''})`;
+          vehiclesSummary = `${d.vehicleType || ''} ${d.vehicleNo || ''} (${isPrivileged ? (d.driverName || '') : maskName(d.driverName)})`;
         }
       } else {
-        vehiclesSummary = `${d.vehicleType || ''} ${d.vehicleNo || ''} (${d.driverName || ''})`;
+        vehiclesSummary = `${d.vehicleType || ''} ${d.vehicleNo || ''} (${isPrivileged ? (d.driverName || '') : maskName(d.driverName)})`;
       }
 
       return {
@@ -231,15 +233,15 @@ export const Deliveries: React.FC = () => {
         // ③ 상차지 (출발)
         '상차지 구분': d.pickupType === 'VENDOR_YARD' ? '타사주기장 직출고' : '당사 보관소',
         '상차지명': d.pickupVendorName || (d.type === 'OUTBOUND' ? '당사 보관소' : displayName),
-        '상차지 주소': d.originAddress || '-',
+        '상차지 주소': isPrivileged ? (d.originAddress || '-') : maskAddress(d.originAddress),
         '상차일자': d.loadingDate || '-',
         '상차시간': d.loadingTimeSlot || '-',
 
         // ④ 하차지 (경유 및 도착)
         '하차지 구분': d.dropoffType === 'MULTI_STOP' ? '다중경유 혼적' : '단일하차',
         '1차 경유지명': d.viaDropoffName || '-',
-        '1차 경유지 주소': d.viaDropoffAddress || '-',
-        '최종 하차지 주소': d.destinationAddress || '-',
+        '1차 경유지 주소': isPrivileged ? (d.viaDropoffAddress || '-') : maskAddress(d.viaDropoffAddress),
+        '최종 하차지 주소': isPrivileged ? (d.destinationAddress || '-') : maskAddress(d.destinationAddress),
         '하차일자': d.unloadingDate || '-',
         '하차시간': d.unloadingTimeSlot || '-',
 
@@ -248,8 +250,8 @@ export const Deliveries: React.FC = () => {
         '운송 거래처': d.transportCompany || '-',
         '차종': d.vehicleType || '-',
         '차량번호': d.vehicleNo || '-',
-        '기사명': d.driverName || '-',
-        '기사 연락처': d.driverContact || '-',
+        '기사명': isPrivileged ? (d.driverName || '-') : maskName(d.driverName),
+        '기사 연락처': isPrivileged ? (d.driverContact || '-') : maskPhoneNumber(d.driverContact),
 
         // ⑥ 운송비 및 정산
         '예상 운송비': d.expectedCost ? `${d.expectedCost.toLocaleString()}원` : '0원',
@@ -266,6 +268,17 @@ export const Deliveries: React.FC = () => {
     });
 
     exportToExcel(excelData, `배차정산대장_${new Date().toISOString().split('T')[0]}`, '배차목록');
+
+    logPrivacyAccess(
+      'EXCEL_DOWNLOAD',
+      'delivery',
+      `배차정산대장 ${excelData.length}건 엑셀 다운로드 (${isPrivileged ? '경영진/개발자 전체 원본' : '기사 연락처/주소 마스킹 적용'})`,
+      {
+        userId: currentUser?.loginId,
+        userName: currentUser?.name,
+        isMasked: !isPrivileged
+      }
+    ).catch(console.error);
   };
 
   const handleOpenDispatch = (d: Delivery) => {

@@ -2,7 +2,8 @@ import React, { useState, useRef } from 'react';
 import { useApp } from '../context/AppContext';
 import { Search, Plus, Edit2, Trash2, Download, Building2, Check, RefreshCw, Calendar, DollarSign, Clock, FolderOpen, ShieldAlert, CreditCard, Upload, FileText, FileCheck, AlertCircle, Loader2, Sparkles, ExternalLink } from 'lucide-react';
 import { exportToExcel } from '../services/excel';
-import { Vendor, Customer } from '../services/db';
+import { Vendor, Customer, logPrivacyAccess } from '../services/db';
+import { isPrivilegedPrivacyUser, maskPhoneNumber, maskEmail, maskName, maskAccountNumber, maskAddress } from '../utils/privacyMasking';
 import { BatchBusinessLicenseModal } from '../components/BatchBusinessLicenseModal';
 import { NtsStatusAuditModal } from '../components/NtsStatusAuditModal';
 import { uploadToSupabaseStorage } from '../services/supabaseStorage';
@@ -36,7 +37,7 @@ export const calculateTradeDuration = (startDateStr?: string): string => {
 };
 
 export const Vendors: React.FC = () => {
-  const { vendors, customers, saveCustomer, saveVendor, deleteVendor, recalculateAllVendorMetrics, hasPermission, showErrorModal } = useApp();
+  const { currentUser, vendors, customers, saveCustomer, saveVendor, deleteVendor, recalculateAllVendorMetrics, hasPermission, showErrorModal } = useApp();
 
   const [searchInput, setSearchInput] = useState('');   // 입력 중인 값
   const [searchTerm, setSearchTerm] = useState('');      // 실제 조회에 사용되는 값
@@ -621,6 +622,7 @@ export const Vendors: React.FC = () => {
   });
 
   const handleExport = () => {
+    const isPrivileged = isPrivilegedPrivacyUser(currentUser);
     const data = filtered.map(v => {
       const vTypes = getVendorTypes(v);
       const typeLabels = vTypes.map(t => VENDOR_TYPE_CONFIG[t]?.label || t).join(', ');
@@ -628,17 +630,17 @@ export const Vendors: React.FC = () => {
         '매입처ID': v.id,
         '상호명': v.name,
         '사업자등록번호': v.bizRegNo || '-',
-        '대표자명': v.representative || '-',
+        '대표자명': isPrivileged ? (v.representative || '-') : maskName(v.representative),
         '업태': v.bizType || '-',
         '종목': v.bizItem || '-',
-        '담당자명': v.contactName || '-',
-        '연락처': v.contact || '-',
-        '이메일': v.email || '-',
-        '주소': v.address || '-',
+        '담당자명': isPrivileged ? (v.contactName || '-') : maskName(v.contactName),
+        '연락처': isPrivileged ? (v.contact || '-') : maskPhoneNumber(v.contact),
+        '이메일': isPrivileged ? (v.email || '-') : maskEmail(v.email),
+        '주소': isPrivileged ? (v.address || '-') : maskAddress(v.address),
         '매입/거래구분': typeLabels,
         '지급은행': v.bankName || '-',
-        '지급계좌번호': v.accountNumber || v.bankAccount || '-',
-        '예금주': v.accountHolder || '-',
+        '지급계좌번호': isPrivileged ? (v.accountNumber || v.bankAccount || '-') : maskAccountNumber(v.accountNumber || v.bankAccount),
+        '예금주': isPrivileged ? (v.accountHolder || '-') : maskName(v.accountHolder),
         '사업자등록증등록': v.businessCertFileUrl ? '등록됨' : '미등록',
         '통장사본등록': v.passbookFileUrl ? '등록됨' : '미등록',
         '국세청상태': v.businessStatus === 'CLOSED' ? `폐업(${v.closedDate || '-'})` : (v.businessStatus === 'ACTIVE' ? '계속사업자' : (v.businessStatus || '-')),
@@ -652,6 +654,12 @@ export const Vendors: React.FC = () => {
     });
 
     exportToExcel(data, `매입처공급자목록_${new Date().toISOString().split('T')[0]}`, '매입처목록');
+    logPrivacyAccess(
+      'EXCEL_DOWNLOAD',
+      'vendors',
+      `매입처 공급자 대장 ${data.length}건 엑셀 다운로드 (${isPrivileged ? '경영진/개발자 전체 원본' : '개인정보 마스킹 적용'})`,
+      { isMasked: !isPrivileged }
+    );
   };
 
   return (

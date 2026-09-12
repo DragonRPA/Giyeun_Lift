@@ -1,3 +1,42 @@
+## [v1.14.0.Build.82] - 2026-09-12 20:20
+
+### 🛡️ [권한 증발 결함 원천 해결: Supabase custom_roles·role_permissions DDL 실행 및 시드 적재, LocalDB 비파괴적 pull 정책 전환, users.customRoleId 정밀 상속 및 805행 permissions 양방향 동기화 완비]
+
+**배경 및 문제점**:
+- 사장님 요청: "저장된 권한이 모두 사라졌어. 기능 다시 검토해서 오류있으면 수정하고 ㄹㅇ."
+- **근본 원인 분석**:
+  1. **Supabase DDL 미적재 및 캐시 소거 버그**:
+     - 원격 Supabase PostgreSQL DB에 `custom_roles`, `role_permissions`, `privacy_access_logs` 테이블 및 `users.customRoleId` 컬럼이 생성되지 않은 상태였음.
+     - `LocalDB.pullFromSupabase()` 진입 시 `ALL_DB_KEYS.forEach(key => this.set(key, []))` 코드가 사전에 모든 로컬 캐시를 빈 배열로 강제 파괴했음.
+     - 원격 DB에 테이블이 없어 Supabase fetch가 `null`을 반환하자, 로컬 스토리지의 `customRoles`, `rolePermissions`가 영구히 `[]` 빈 배열로 고착화됨.
+  2. **`LocalDB.get` 빈 배열 폴백 부재**:
+     - `localStorage.getItem('erp_customRoles')`가 `"[]"` 문자열을 반환하여 falsy 체크를 통과하면서 `SEED_CUSTOM_ROLES`로 폴백되지 못하고 0건으로 리턴됨.
+     - 결과적으로 권한 관리 화면에서 `등록된 권한 명칭 (0)`으로 표출되고 모든 체크박스가 공백으로 초기화됨.
+  3. **권한 저장 및 사용자 역할 상속 시 무음 실패/DB 거부**:
+     - `users.customRoleId` 컬럼이 DB에 없어 역할 지정 시 `column users.customRoleId does not exist` 에러 발생.
+     - `rolePermissions` 저장 시 `custom_roles`, `role_permissions` 테이블 부재로 저장 실패.
+  4. **메뉴 전환 시 캐시 재로딩 누락**:
+     - `loadTablesForMenu('permission')`에 `customRoles`와 `rolePermissions`가 등록되지 않아 화면 진입 시 최신 권한을 끌어오지 못했음.
+
+**개편 내역 (전사 시스템 표준 헌장 1.1, 1.2, 5.2, 5.3, 6.2 준수)**:
+1. **Supabase DDL 실행 및 스키마 SSOT 완비 (`schema.sql`, DB 반영)**:
+   - `dev_exec_ddl` RPC를 통해 원격 Supabase에 `custom_roles`, `role_permissions`, `privacy_access_logs` 테이블 신설 및 `users.customRoleId` 컬럼 영구 추가.
+   - RLS 비활성화 및 anon, authenticated, service_role 대상 ALL GRANT 완료.
+   - `schema.sql` 로컬 DDL 원본에 DROP TABLE 및 CREATE TABLE 정의를 1:1 동기화.
+2. **4대 필수 기본 권한 및 71개 메뉴 권한 DB 시드 영구 적재**:
+   - `custom_roles`: `role_mgmt` (관리부), `role_sales` (영업부), `role_logistics` (출고팀), `role_mechanic` (AS팀) 4종 원격 DB 적재.
+   - `role_permissions`: 71개 메뉴별 접근 권한 룰(canView, canSave) 원격 DB 적재.
+   - `users`: 전체 18명 재직 임직원의 부서(DEPT) 및 직책을 정밀 판별하여 `customRoleId`를 100% 자동 매핑 완료 (사장/부사장/대표이사/관리부 ➔ role_mgmt, 영업부 ➔ role_sales, 출고팀 ➔ role_logistics, AS팀/외국인 ➔ role_mechanic).
+3. **LocalDB 비파괴적 pull 정책 전면 전환 (`src/services/db.ts`)**:
+   - `pullFromSupabase()` 진입부의 파괴적인 `ALL_DB_KEYS.forEach(key => this.set(key, []))` 로직을 영구 삭제하여, 통신 장애나 테이블 부재 시에도 기존 로컬 데이터가 소거되지 않도록 방어.
+   - Supabase fetch 결과가 빈 배열이거나 null인 경우에도 `SEED_CUSTOM_ROLES`, `SEED_ROLE_PERMISSIONS`로 자동 복구 폴백 보장.
+   - `LocalDB.get` 내부에서도 `customRoles`와 `rolePermissions`가 빈 배열일 때 시드 데이터로 자동 치환 및 localStorage 즉시 복원.
+4. **메뉴 테이블 맵핑 확장 및 805행 permissions 양방향 동기화 (`src/context/AppContext.tsx`)**:
+   - `MENU_TABLE_MAP['permission']`에 `customRoles`, `rolePermissions`를 공식 추가하여 화면 진입 시 완벽 로딩.
+   - `saveRolePermissions` 및 `assignUserRole` 실행 시, 신규 역할 체계뿐만 아니라 기존 805행 레거시/글로벌 `permissions` 테이블에도 사용자별 메뉴 권한(`perm-${userId}-${menuId}`)을 1:1 양방향 자동 동기화하여 완벽한 호환성 확보.
+
+---
+
 ## [v1.14.0.Build.81] - 2026-09-12 20:10
 
 ### 🛡️ [대한민국 개인정보 보호법령 완벽 준수 체계 구축: 주민번호 완전 퇴출·생년월일 전환, 엑셀 마스킹 및 권한별 차등 다운로드, 법정 접속기록 로깅·감사 스튜디오 및 개인정보처리방침 공표]

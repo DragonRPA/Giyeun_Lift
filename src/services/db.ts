@@ -232,6 +232,7 @@ export interface MenuPermission {
   canSave: boolean;
   createdAt: string;
   updatedAt?: string;
+  role?: string;
 }
 
 /** MenuPermission 단일 진실의 원천(SSOT) 팩토리 생성 함수 */
@@ -4028,7 +4029,13 @@ class LocalDB {
 
   private get<T>(key: string, seed: T[]): T[] {
     if (this.inMemoryCache.has(key)) {
-      return this.inMemoryCache.get(key);
+      const cached = this.inMemoryCache.get(key);
+      if (Array.isArray(cached) && cached.length === 0 && seed && seed.length > 0 && (key === 'customRoles' || key === 'rolePermissions')) {
+        this.inMemoryCache.set(key, seed);
+        try { localStorage.setItem(`erp_${key}`, JSON.stringify(seed)); } catch {}
+        return seed;
+      }
+      return cached;
     }
     try {
       const val = localStorage.getItem(`erp_${key}`);
@@ -4042,6 +4049,11 @@ class LocalDB {
         return seed;
       }
       const parsed = JSON.parse(val);
+      if (Array.isArray(parsed) && parsed.length === 0 && seed && seed.length > 0 && (key === 'customRoles' || key === 'rolePermissions')) {
+        this.inMemoryCache.set(key, seed);
+        try { localStorage.setItem(`erp_${key}`, JSON.stringify(seed)); } catch {}
+        return seed;
+      }
       this.inMemoryCache.set(key, parsed);
       return parsed;
     } catch {
@@ -4122,11 +4134,10 @@ class LocalDB {
     const mapped = raw.map(u => {
       if (!u.customRoleId) {
         const dept = (u.departmentId || u.department || '').toUpperCase();
-        let assignedRoleId: string | undefined;
-        if (dept.includes('0000002') || dept.includes('관리') || dept.includes('경영')) assignedRoleId = 'role_mgmt';
+        if (dept.includes('0000001') || dept.includes('0000002') || dept.includes('관리') || dept.includes('경영') || dept.includes('임원') || u.position === '사장' || u.position === '부사장' || u.position === '대표이사') assignedRoleId = 'role_mgmt';
         else if (dept.includes('0000003') || dept.includes('영업')) assignedRoleId = 'role_sales';
         else if (dept.includes('0000004') || dept.includes('출고') || dept.includes('배차')) assignedRoleId = 'role_logistics';
-        else if (dept.includes('0000005') || dept.includes('AS') || dept.includes('정비')) assignedRoleId = 'role_mechanic';
+        else if (dept.includes('0000005') || dept.includes('0000006') || dept.includes('AS') || dept.includes('정비') || dept.includes('외국인')) assignedRoleId = 'role_mechanic';
         if (assignedRoleId) {
           updated = true;
           return { ...u, customRoleId: assignedRoleId };
@@ -4710,7 +4721,12 @@ class LocalDB {
       const tableName = this.mapToSupabaseTable(key);
       const data = await this.fetchAllRowsFromSupabase(tableName);
       if (data !== null) {
-        const normalizedData = this.normalizePayloadKeys(data, tableName);
+        let normalizedData = this.normalizePayloadKeys(data, tableName);
+        if (key === 'customRoles' && (!normalizedData || normalizedData.length === 0)) {
+          normalizedData = SEED_CUSTOM_ROLES;
+        } else if (key === 'rolePermissions' && (!normalizedData || normalizedData.length === 0)) {
+          normalizedData = SEED_ROLE_PERMISSIONS;
+        }
         this.set(key as keyof LocalDB, normalizedData);
         return normalizedData;
       }
@@ -4735,13 +4751,6 @@ class LocalDB {
       this.pendingWrites = [];
     }
 
-    // ✅ [SSOT 원칙] Supabase pull 직전, 모든 테이블의 로컬 캐시를 빈 배열로 초기화한다.
-    // 이전 세션의 구버전 데이터(테스트 데이터, 삭제된 DB 데이터 등)가 로컬에 잔류하여
-    // Supabase fetch 실패 테이블 영역에서 stale 데이터로 오염되는 현상을 원천 차단한다.
-    ALL_DB_KEYS.forEach(key => {
-      this.set(key as keyof LocalDB, []);
-    });
-
     const tables = ALL_DB_KEYS;
 
     try {
@@ -4765,7 +4774,13 @@ class LocalDB {
       // 전체 로컬 스토리지 캐시를 원격 DB(Supabase) 최신 값으로 덮어쓰기 (Supabase가 단일 진실의 원천 SSOT)
       results.forEach(({ key, data }) => {
         if (data !== null) {
-          this.set(key as keyof LocalDB, data);
+          if (key === 'customRoles' && Array.isArray(data) && data.length === 0) {
+            this.set(key as keyof LocalDB, SEED_CUSTOM_ROLES);
+          } else if (key === 'rolePermissions' && Array.isArray(data) && data.length === 0) {
+            this.set(key as keyof LocalDB, SEED_ROLE_PERMISSIONS);
+          } else {
+            this.set(key as keyof LocalDB, data);
+          }
         }
       });
     } catch (err) {

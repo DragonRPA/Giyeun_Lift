@@ -62,6 +62,8 @@ DROP TABLE IF EXISTS payroll_closings CASCADE;
 DROP TABLE IF EXISTS overtime_records CASCADE;
 DROP TABLE IF EXISTS leave_usages CASCADE;
 DROP TABLE IF EXISTS annual_leave_quotas CASCADE;
+DROP TABLE IF EXISTS role_permissions CASCADE;
+DROP TABLE IF EXISTS custom_roles CASCADE;
 DROP TABLE IF EXISTS permissions CASCADE;
 DROP TABLE IF EXISTS users CASCADE;
 DROP TABLE IF EXISTS departments CASCADE;
@@ -111,6 +113,7 @@ CREATE TABLE users (
     "joinDate"            TEXT,
     "retireDate"          TEXT,
     "profileImageUrl"     TEXT,
+    "customRoleId"        TEXT, -- 사용자 정의 권한 명칭 (custom_roles.id)
     "createdAt"           TEXT NOT NULL,
     "updatedAt"           TEXT NOT NULL,
     "tenant_id"           TEXT NOT NULL DEFAULT 'giyeun'
@@ -127,6 +130,30 @@ CREATE TABLE permissions (
     "createdAt"           TEXT,
     "updatedAt"           TEXT,
     UNIQUE("userId", "menuId"),
+    "tenant_id"           TEXT NOT NULL DEFAULT 'giyeun'
+);
+
+-- 1-3-1. 사용자 정의 권한 명칭 마스터 (custom_roles)
+CREATE TABLE custom_roles (
+    id                    TEXT PRIMARY KEY,
+    name                  TEXT NOT NULL,
+    description           TEXT,
+    "isSystem"            BOOLEAN DEFAULT FALSE,
+    "createdAt"           TIMESTAMPTZ DEFAULT now(),
+    "updatedAt"           TIMESTAMPTZ DEFAULT now(),
+    "tenant_id"           TEXT NOT NULL DEFAULT 'giyeun'
+);
+
+-- 1-3-2. 권한 명칭별 메뉴 접근 규칙 (role_permissions)
+CREATE TABLE role_permissions (
+    id                    TEXT PRIMARY KEY,
+    "roleId"              TEXT NOT NULL REFERENCES custom_roles(id) ON DELETE CASCADE,
+    "menuId"              TEXT NOT NULL,
+    "canView"             BOOLEAN NOT NULL DEFAULT FALSE,
+    "canSave"             BOOLEAN NOT NULL DEFAULT FALSE,
+    "createdAt"           TIMESTAMPTZ DEFAULT now(),
+    "updatedAt"           TIMESTAMPTZ DEFAULT now(),
+    UNIQUE("roleId", "menuId"),
     "tenant_id"           TEXT NOT NULL DEFAULT 'giyeun'
 );
 

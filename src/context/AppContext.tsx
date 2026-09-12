@@ -778,7 +778,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     'bank_matching':        ['bankTransactions', 'bankMatchingRules', 'billings', 'customers'],
     'vendors':              ['vendors'],
     'organization':         ['users', 'departments'],
-    'permission':           ['users', 'permissions', 'departments'],
+    'permission':           ['users', 'permissions', 'departments', 'customRoles', 'rolePermissions'],
     'payroll':              ['users', 'departments'],
     'corporate_card':       ['vendors', 'billings'],
     'cash_flow':            ['billings', 'payments', 'contracts', 'assets'],
@@ -1206,6 +1206,35 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setRolePermissions([...combined]);
 
       await db.upsertRows('rolePermissions', newPerms);
+
+      // 🔄 해당 roleId를 보유한 임직원들의 permissions(805행 호환 테이블)도 100% 동기화
+      const affectedUsers = db.users.filter(u => u.customRoleId === roleId);
+      if (affectedUsers.length > 0) {
+        const syncPerms: MenuPermission[] = [];
+        affectedUsers.forEach(u => {
+          newPerms.forEach(np => {
+            syncPerms.push({
+              id: `perm-${u.id}-${np.menuId}`,
+              userId: u.id,
+              menuId: np.menuId,
+              role: (u.role || 'USER') as any,
+              canView: np.canView,
+              canSave: np.canSave,
+              createdAt: now,
+              updatedAt: now
+            });
+          });
+        });
+        if (syncPerms.length > 0) {
+          const validUserIds = new Set(db.users.map(u => u.id));
+          const otherUserPerms = db.permissions.filter(p => !affectedUsers.some(au => au.id === p.userId));
+          const updatedDbPerms = [...otherUserPerms, ...syncPerms].filter(p => p.userId && validUserIds.has(p.userId));
+          db.permissions = updatedDbPerms;
+          setPermissions([...updatedDbPerms]);
+          await db.upsertRows('permissions', syncPerms);
+        }
+      }
+
       await db.awaitPendingWrites();
       refreshAllData();
     } catch (err: any) {
@@ -1234,6 +1263,30 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         }
 
         await db.upsertRows('users', [updatedUser]);
+
+        // 🔄 상속된 역할의 권한을 permissions 테이블(레거시/글로벌 호환)에도 1:1 동기화
+        if (customRoleId) {
+          const now = new Date().toISOString();
+          const roleRules = db.rolePermissions.filter(p => p.roleId === customRoleId);
+          if (roleRules.length > 0) {
+            const userPerms: MenuPermission[] = roleRules.map(rp => ({
+              id: `perm-${userId}-${rp.menuId}`,
+              userId,
+              menuId: rp.menuId,
+              role: (updatedUser.role || 'USER') as any,
+              canView: rp.canView,
+              canSave: rp.canSave,
+              createdAt: now,
+              updatedAt: now
+            }));
+            const otherUserPerms = db.permissions.filter(p => p.userId !== userId);
+            const mergedPerms = [...otherUserPerms, ...userPerms];
+            db.permissions = mergedPerms;
+            setPermissions([...mergedPerms]);
+            await db.upsertRows('permissions', userPerms);
+          }
+        }
+
         await db.awaitPendingWrites();
         refreshAllData();
       }

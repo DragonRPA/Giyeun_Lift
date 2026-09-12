@@ -1,3 +1,31 @@
+## [v1.14.0.Build.83] - 2026-09-12 20:45
+
+### 🚀 [원격 Supabase DB 전사 스키마 100% 일치 DDL 패치 집행 및 자가 진단 정합성 검증 완비]
+
+**배경 및 진단 결과**:
+- 사장님 요청: "이 기능이 현재도 기능 본질 목적을 달성하고 있나? 현재 점검 했더니 이런 상태로 나오는데 조치해야하는가? 검증하고 DDL 패치 수행하고 ㄹㅇ"
+- **본질 목적 달성 여부 검증 (전사 시스템 표준 헌장 5.3)**:
+  - `DevDataUploader.tsx`의 스키마 검증 및 패치 기능은 PostgREST의 스키마 캐시 오염을 우회하여 PostgreSQL 내부 카탈로그(`information_schema.columns`)를 직접 1:1 대사(Reconciliation)함.
+  - 로컬 `schema.sql`과 원격 Supabase DB 간의 미생성 테이블 및 누락 컬럼을 단 1개의 오차도 없이 정확히 판별해내는 **헌장 5.3(SSOT 무결성 자가 검증) 핵심 진단 도구로서 본질 목적을 100% 충실히 달성**하고 있음을 확인.
+- **조치 필요성 판단**:
+  - 화면에 나타난 470개 DDL 패치 경고는 단순 과대 판정이 아니라, 원격 DB에 10개 신규 테이블이 미생성 상태였고 19개 핵심 테이블에 실무 비즈니스 컬럼(`billings.billingType`, `billings.rejectReason`, `billings.details`, `deliveries.waivedAmount`, `assets.maintenanceScore` 등)이 누락된 상태였음.
+  - 이를 방치할 경우 청구서 반려, 표준 옵션 선택, 배차비 감면, 차량 운행일지 등록 등 실무 조작 시 `42703 (undefined column)` 또는 `42P01 (undefined table)` 에러로 저장 실패가 발생하므로 **즉각적인 DDL 패치가 절대적으로 필수**였음.
+
+**개편 및 패치 집행 내역 (전사 시스템 표준 헌장 1.1, 5.2, 5.3, 6.2 준수)**:
+1. **Supabase DDL 일괄 패치 안전 실행 (`dev_exec_ddl` RPC)**:
+   - 비파괴적 `CREATE TABLE IF NOT EXISTS`, `ALTER TABLE ... ADD COLUMN IF NOT EXISTS`, `RLS Policy` DDL 총 468개 구문을 19개 배치로 나누어 일괄 안전 실행 완료 (`Total Success: 468, Total Failed: 0`).
+   - 10개 신규 테이블 생성: `standard_options`, `corporate_vehicles`, `vehicle_operation_logs`, `vehicle_fuel_logs`, `equipment_manuals`, `print_stations`, `print_queue`, `legal_notice_logs`, `legal_notice_templates`, `bank_initial_balances`.
+   - 19개 테이블 누락 컬럼 추가: `billings` (billingType, rejectReason, details), `assets` (13개 컬럼), `deliveries` (12개 컬럼), `repairs` (10개 컬럼), `todos` (17개 컬럼), `contracts` (4개 컬럼), `contract_assets` (5개 컬럼), `outbound_inspections` (4개 컬럼) 등.
+2. **전사 표준 옵션 마스터 (`standard_options`) 16종 시드 데이터 영구 적재**:
+   - 유상 옵션 10종 (`opt_paid_sensor`, `opt_paid_mesh`, `opt_paid_tin`, `opt_paid_inverter`, `opt_paid_lugtire`, `opt_paid_whitetire`, `opt_paid_airpipe`, `opt_paid_extinguisher`, `opt_paid_joystick`, `opt_paid_tubefire`)
+   - 보양 작업 6종 (`opt_prot_none`, `opt_prot_mesh`, `opt_prot_tin`, `opt_prot_ladder`, `opt_prot_corner`, `opt_prot_floor`)
+3. **스키마 재검증 100% 일치 수렴 확인**:
+   - `DevDataUploader` 자가 진단 로직 실행 결과: 전체 69개 테이블 중 **Missing: 0, Mismatch: 0, OK: 69개 (100% 정상 일치)** 달성.
+4. **개발자 도구 테이블 라벨 메타데이터 보강 (`src/pages/DevDataUploader.tsx`)**:
+   - `TABLE_LABEL_MAP`에 신설된 13개 테이블의 한글 명칭 메타데이터 등록 완료.
+
+---
+
 ## [v1.14.0.Build.82] - 2026-09-12 20:20
 
 ### 🛡️ [권한 증발 결함 원천 해결: Supabase custom_roles·role_permissions DDL 실행 및 시드 적재, LocalDB 비파괴적 pull 정책 전환, users.customRoleId 정밀 상속 및 805행 permissions 양방향 동기화 완비]

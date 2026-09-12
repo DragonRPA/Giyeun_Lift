@@ -134,6 +134,19 @@ const TABLE_LABEL_MAP: Record<string, string> = {
   purchase_settlements: '월말 매입 정산 헤더',
   purchase_settlement_items: '매입 정산 라인 항목',
   external_leases: '임차(전대)장비 임차 계약',
+  standard_options: '전사 표준 옵션 마스터',
+  bank_initial_balances: '은행 계좌 기초 잔액',
+  legal_notice_logs: '내용증명 발송 이력',
+  legal_notice_templates: '내용증명 서식 템플릿',
+  corporate_vehicles: '업무용 차량 마스터',
+  vehicle_operation_logs: '차량 운행 일지',
+  vehicle_fuel_logs: '차량 주유 및 연비 일지',
+  equipment_manuals: '장비 매뉴얼 / 부품도',
+  print_stations: '프린트 스테이션',
+  print_queue: '라벨/문서 인쇄 큐',
+  privacy_access_logs: '개인정보 열람 감사 로그',
+  custom_roles: '커스텀 직무 권한 역할',
+  role_permissions: '역할별 세부 메뉴 권한',
 };
 
 const COLUMN_LABEL_MAP: Record<string, string> = {

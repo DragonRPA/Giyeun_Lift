@@ -60,7 +60,6 @@ import { RegularReportsPage } from './pages/RegularReportsPage';
 import { GoogleConfig } from './pages/GoogleConfig';
 import { InitialDbUploader } from './pages/InitialDbUploader';
 import { AgentHeaderBadge } from './components/AgentHeaderBadge';
-import { ManualStudioModal } from './components/ManualStudioModal';
 import { OperationManualPage } from './pages/OperationManualPage';
 import { MirrorSyncProgressToast } from './components/MirrorSyncProgressToast';
 import { MobileApp } from './mobile/MobileApp';
@@ -96,9 +95,6 @@ const App: React.FC = () => {
 
   // 모바일 메뉴 사이드바 토글 상태
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-
-  // 📸 매뉴얼 스튜디오 가이드 & 다운로드 모달 상태
-  const [isManualStudioOpen, setIsManualStudioOpen] = useState(false);
 
   // ─── 메뉴 검색 네비게이터 상태 ───
   const [menuSearchOpen, setMenuSearchOpen] = useState(false);
@@ -296,10 +292,9 @@ const App: React.FC = () => {
     {
       id: 'grp_tools',
       name: '도구 및 다운로드',
-      icon: <Camera size={17} />,
+      icon: <BookOpen size={17} />,
       items: [
         { id: 'operations_manual', name: '업무매뉴얼', icon: <BookOpen size={16} />, component: <OperationManualPage /> },
-        { id: 'manual_studio', name: '매뉴얼 스튜디오', icon: <Camera size={16} />, component: <ManualStudioModal isOpen={true} isInline={true} /> },
       ]
     },
     {
@@ -613,43 +608,6 @@ const App: React.FC = () => {
             <div>• 아이패드는 화면 회전 및 상단 모드 전환을 통해 모바일/PC 뷰를 자유롭게 선택할 수 있습니다.</div>
           </div>
 
-          {/* 📸 매뉴얼 스튜디오 안내 및 다운로드 (로그인 전 공용 배포) */}
-          <div style={{
-            marginTop: '12px',
-            padding: '10px 14px',
-            borderRadius: '12px',
-            backgroundColor: 'rgba(37, 99, 235, 0.08)',
-            border: '1px solid rgba(37, 99, 235, 0.25)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            fontSize: '12px'
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <Camera size={15} color="#2563EB" />
-              <span style={{ fontWeight: '600', color: 'var(--text-primary)' }}>
-                업무 매뉴얼 제작 도구 (Manual Studio)
-              </span>
-            </div>
-            <button
-              type="button"
-              onClick={() => setIsManualStudioOpen(true)}
-              style={{
-                padding: '5px 12px',
-                borderRadius: '6px',
-                backgroundColor: '#2563EB',
-                color: '#FFFFFF',
-                fontSize: '11px',
-                fontWeight: 'bold',
-                border: 'none',
-                cursor: 'pointer',
-                whiteSpace: 'nowrap'
-              }}
-            >
-              설명서 / 다운로드
-            </button>
-          </div>
-
           {/* 테스트 계정 안내 — 개발 환경(localhost)에서만 표시 */}
           {(window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') && (
             <div style={{ marginTop: '16px', padding: '12px', border: '1px dashed #f59e0b', borderRadius: 'var(--radius-sm)', backgroundColor: 'rgba(251,191,36,0.07)', fontSize: '12px' }}>
@@ -663,9 +621,6 @@ const App: React.FC = () => {
             </div>
           )}
         </div>
-
-        {/* 📸 매뉴얼 스튜디오 안내 및 다운로드 모달 (로그인 화면용) */}
-        <ManualStudioModal isOpen={isManualStudioOpen} onClose={() => setIsManualStudioOpen(false)} />
       </div>
     );
   }
@@ -890,31 +845,6 @@ const App: React.FC = () => {
             <BookOpen size={14} color="#2563EB" />
             업무매뉴얼
           </button>
-
-          {/* 📸 매뉴얼 스튜디오 안내 및 다운로드 버튼 */}
-          <button
-            onClick={() => setIsManualStudioOpen(true)}
-            style={{
-              padding: '6px 13px',
-              borderRadius: '20px',
-              backgroundColor: 'var(--bg-app)',
-              color: 'var(--text-primary)',
-              border: '1px solid var(--border-color)',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
-              fontSize: '12.5px',
-              fontWeight: '600',
-              cursor: 'pointer',
-              whiteSpace: 'nowrap',
-              transition: 'all 0.15s ease'
-            }}
-            title="매뉴얼 스튜디오 (Manual Studio) 사용설명서 및 다운로드"
-          >
-            <Camera size={14} color="#2563EB" />
-            매뉴얼 스튜디오
-          </button>
-
 
           {/* 모바일 현장 전용 뷰 전환 버튼 */}
           <button
@@ -1279,9 +1209,6 @@ const App: React.FC = () => {
 
       {/* 🚀 구글 드라이브 실시간 미러링 진행상황 플로팅 토스트 */}
       <MirrorSyncProgressToast />
-
-      {/* 📸 매뉴얼 스튜디오 안내 및 다운로드 모달 */}
-      <ManualStudioModal isOpen={isManualStudioOpen} onClose={() => setIsManualStudioOpen(false)} />
 
     </div>
   );
